@@ -60,7 +60,7 @@ export default function BookingManager() {
       .eq('apartment_id', apt.id)
       .order('check_in', { ascending: false })
 
-    setBookings((data as Booking[]) ?? [])
+    setBookings((data as unknown as Booking[]) ?? [])
     setLoading(false)
   }, [])
 
