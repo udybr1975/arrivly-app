@@ -88,7 +88,7 @@ function Section({ title, icon, children, defaultOpen = true }: {
 
 export default function GuestPage() {
   const [params] = useSearchParams()
-  const apartmentId = params.get('id')
+  const apartmentId = params.get('apt')
 
   const [apt, setApt] = useState<Apartment | null>(null)
   const [details, setDetails] = useState<Detail[]>([])

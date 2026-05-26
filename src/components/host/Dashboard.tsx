@@ -15,17 +15,21 @@ interface Apartment {
 export default function Dashboard() {
   const navigate = useNavigate()
   const [apt, setApt] = useState<Apartment | null>(null)
+  const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return
+      if (!user) { setLoading(false); return }
+
+      const { data: hostData } = await supabase
+        .from('hosts').select('trial_ends_at').eq('id', user.id).maybeSingle()
 
       const { data } = await supabase
         .from('apartments')
         .select('id, name, neighborhood, created_at')
-        .eq('created_by', user.id)
+        .eq('host_id', user.id)
         .order('created_at')
         .limit(1)
         .maybeSingle()
@@ -34,18 +38,20 @@ export default function Dashboard() {
         navigate('/onboarding')
         return
       }
+      setTrialEndsAt(hostData?.trial_ends_at ?? null)
       setApt(data)
       setLoading(false)
     }
     load()
   }, [navigate])
 
-  if (loading) return <Loader />
+  if (loading || !apt) return <Loader />
 
-  const daysUsed = Math.floor((Date.now() - new Date(apt!.created_at).getTime()) / 86_400_000)
-  const trialRemaining = Math.max(0, ARRIVLY_CONFIG.trialDays - daysUsed)
+  const trialRemaining = trialEndsAt
+    ? Math.max(0, Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / 86_400_000))
+    : ARRIVLY_CONFIG.trialDays
   const trialActive = trialRemaining > 0
-  const guestUrl = `${ARRIVLY_CONFIG.appUrl}/guest?id=${apt!.id}`
+  const guestUrl = `${ARRIVLY_CONFIG.appUrl}/guest?apt=${apt.id}`
 
   const actions = [
     { to: '/dashboard/property', icon: Building2, label: 'Edit Property', desc: 'Update details, amenities & info' },
@@ -58,8 +64,8 @@ export default function Dashboard() {
   return (
     <div className="max-w-2xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold mb-0.5">{apt!.name}</h1>
-        <p className="text-gray-400">{apt!.neighborhood}</p>
+        <h1 className="text-2xl font-bold mb-0.5">{apt.name}</h1>
+        <p className="text-gray-400">{apt.neighborhood}</p>
       </div>
 
       {/* Trial banner */}
@@ -85,7 +91,7 @@ export default function Dashboard() {
           <p className="text-sm font-mono text-gray-300 truncate">{guestUrl}</p>
         </div>
         <a
-          href={`/guest?id=${apt!.id}`}
+          href={`/guest?apt=${apt.id}`}
           target="_blank"
           rel="noopener noreferrer"
           className="ml-4 text-gray-400 hover:text-white transition-colors shrink-0"
