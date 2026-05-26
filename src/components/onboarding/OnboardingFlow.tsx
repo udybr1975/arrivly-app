@@ -61,7 +61,7 @@ export default function OnboardingFlow() {
 
       if (updateErr) throw updateErr
 
-      navigate('/dashboard')
+      navigate('/dashboard/property')
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Something went wrong')
       setSaving(false)
@@ -288,7 +288,7 @@ export default function OnboardingFlow() {
                 disabled={saving}
                 className="flex-1 bg-white text-[#1c1c1a] py-2.5 rounded-lg font-semibold hover:bg-gray-100 transition-colors disabled:opacity-50"
               >
-                {saving ? 'Setting up…' : 'Go to dashboard →'}
+                {saving ? 'Setting up…' : 'Add my first property →'}
               </button>
             </div>
           </div>
