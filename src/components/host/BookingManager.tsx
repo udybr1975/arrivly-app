@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useToast } from '../shared/Toast'
 import { api } from '../../lib/api'
 import Loader from '../shared/Loader'
+import { ARRIVLY_CONFIG } from '../../config'
 
 interface Booking {
   id: string
@@ -11,8 +12,13 @@ interface Booking {
   status: string
   reference_number: string | null
   source: string | null
-  guest_count: number
-  guests: { first_name: string; last_name: string; email: string } | null
+  guests: { first_name: string; last_name: string } | null
+}
+
+interface AddForm {
+  firstName: string
+  checkIn: string
+  checkOut: string
 }
 
 type View = 'list' | 'cal'
@@ -36,6 +42,22 @@ function statusPill(status: string) {
     pending: 'bg-[#faeeda] text-[#7a4800]',
   }
   return `text-[10px] px-2 py-0.5 rounded-full font-medium ${map[status] ?? 'bg-[#f0e8ff] text-[#4a0e8f]'}`
+}
+
+function randomRef(): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+  let result = 'ARR-'
+  for (let i = 0; i < 6; i++) result += chars[Math.floor(Math.random() * chars.length)]
+  return result
+}
+
+function guestPageUrl(aptId: string, ref: string): string {
+  return `${ARRIVLY_CONFIG.appUrl}/guest?apt=${aptId}&token=${ref}`
+}
+
+function isActiveToday(b: Booking): boolean {
+  const today = new Date().toISOString().slice(0, 10)
+  return b.check_in <= today && b.check_out > today
 }
 
 function CalendarView({ bookings }: { bookings: Booking[] }) {
@@ -90,9 +112,12 @@ export default function BookingManager() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
+  const [adding, setAdding] = useState(false)
+  const [showForm, setShowForm] = useState(false)
   const [view, setView] = useState<View>('list')
   const [aptId, setAptId] = useState<string | null>(null)
   const [icalUrl, setIcalUrl] = useState('')
+  const [form, setForm] = useState<AddForm>({ firstName: '', checkIn: '', checkOut: '' })
 
   const load = useCallback(async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -112,7 +137,7 @@ export default function BookingManager() {
 
     const { data } = await supabase
       .from('bookings')
-      .select('id, check_in, check_out, status, reference_number, source, guest_count, guests(first_name, last_name, email)')
+      .select('id, check_in, check_out, status, reference_number, source, guests(first_name, last_name)')
       .eq('apartment_id', apt.id)
       .order('check_in', { ascending: false })
 
@@ -136,14 +161,83 @@ export default function BookingManager() {
     }
   }
 
+  async function addBooking() {
+    if (!aptId || !form.firstName.trim() || !form.checkIn || !form.checkOut) return
+    setAdding(true)
+    try {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) throw new Error('Not logged in')
+
+      // Find or create guest row
+      const nameParts = form.firstName.trim().split(' ')
+      const firstName = nameParts[0]
+      const lastName = nameParts.slice(1).join(' ') || '—'
+
+      let guestId: string
+      const { data: existing } = await supabase
+        .from('guests')
+        .select('id')
+        .eq('first_name', firstName)
+        .eq('last_name', lastName)
+        .maybeSingle()
+
+      if (existing) {
+        guestId = existing.id
+      } else {
+        const { data: newGuest, error: gErr } = await supabase
+          .from('guests')
+          .insert({ first_name: firstName, last_name: lastName })
+          .select('id')
+          .single()
+        if (gErr || !newGuest) throw gErr ?? new Error('Failed to create guest')
+        guestId = newGuest.id
+      }
+
+      // Generate unique reference number
+      let ref = randomRef()
+      for (let i = 0; i < 5; i++) {
+        const { data: clash } = await supabase
+          .from('bookings')
+          .select('id')
+          .eq('reference_number', ref)
+          .maybeSingle()
+        if (!clash) break
+        ref = randomRef()
+      }
+
+      const { error: bErr } = await supabase.from('bookings').insert({
+        apartment_id: aptId,
+        guest_id: guestId,
+        check_in: form.checkIn,
+        check_out: form.checkOut,
+        status: 'confirmed',
+        source: 'manual',
+        reference_number: ref,
+        guest_count: 1,
+      })
+      if (bErr) throw bErr
+
+      toast('Booking added', 'success')
+      setShowForm(false)
+      setForm({ firstName: '', checkIn: '', checkOut: '' })
+      await load()
+    } catch (e: unknown) {
+      toast(e instanceof Error ? e.message : 'Failed to add booking', 'error')
+    } finally {
+      setAdding(false)
+    }
+  }
+
   if (loading) return <Loader />
 
   const today = new Date().toISOString().slice(0, 10)
   const upcoming = bookings.filter(b => b.check_out >= today)
   const past = bookings.filter(b => b.check_out < today)
 
-  const BTN_DARK = 'bg-[#1a1a1a] text-white px-3 py-1.5 rounded-[7px] text-xs font-semibold hover:opacity-80 transition-opacity'
+  const BTN_DARK = 'bg-[#1a1a1a] text-white px-3 py-1.5 rounded-[7px] text-xs font-semibold hover:opacity-80 transition-opacity disabled:opacity-40'
   const BTN_OUT = 'bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1.5 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors'
+  const INPUT = 'w-full bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-3 py-2 text-xs text-[#444] focus:outline-none focus:border-[#1a1a1a] transition-colors'
+  const LABEL = 'block text-[10px] uppercase tracking-[.06em] text-[#999] mb-[3px]'
 
   return (
     <div className="max-w-2xl">
@@ -152,8 +246,55 @@ export default function BookingManager() {
         <div className="flex items-center gap-2">
           <button onClick={() => setView('list')} className={view === 'list' ? BTN_DARK : BTN_OUT}>List</button>
           <button onClick={() => setView('cal')} className={view === 'cal' ? BTN_DARK : BTN_OUT}>Cal</button>
+          <button onClick={() => setShowForm(v => !v)} className={BTN_DARK}>+ Add</button>
         </div>
       </div>
+
+      {/* Manual add form */}
+      {showForm && (
+        <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mb-4">
+          <div className="text-[12px] font-semibold text-[#1a1a1a] mb-3">Add booking manually</div>
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            <div>
+              <label className={LABEL}>Guest name</label>
+              <input
+                value={form.firstName}
+                onChange={e => setForm(p => ({ ...p, firstName: e.target.value }))}
+                className={INPUT}
+                placeholder="Ana García"
+              />
+            </div>
+            <div>
+              <label className={LABEL}>Check-in</label>
+              <input
+                type="date"
+                value={form.checkIn}
+                onChange={e => setForm(p => ({ ...p, checkIn: e.target.value }))}
+                className={INPUT}
+              />
+            </div>
+            <div>
+              <label className={LABEL}>Check-out</label>
+              <input
+                type="date"
+                value={form.checkOut}
+                onChange={e => setForm(p => ({ ...p, checkOut: e.target.value }))}
+                className={INPUT}
+              />
+            </div>
+          </div>
+          <div className="flex gap-2 justify-end">
+            <button onClick={() => setShowForm(false)} className={BTN_OUT}>Cancel</button>
+            <button
+              onClick={addBooking}
+              disabled={adding || !form.firstName.trim() || !form.checkIn || !form.checkOut}
+              className={BTN_DARK}
+            >
+              {adding ? 'Adding…' : 'Add booking'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {view === 'cal' && <CalendarView bookings={bookings} />}
 
@@ -162,7 +303,7 @@ export default function BookingManager() {
           {bookings.length === 0 && (
             <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-8 text-center">
               <div className="text-[#ccc] text-3xl mb-2">📅</div>
-              <div className="text-[12px] text-[#aaa]">No bookings yet. Add an iCal URL below to sync.</div>
+              <div className="text-[12px] text-[#aaa]">No bookings yet. Add one manually or sync from iCal below.</div>
             </div>
           )}
 
@@ -190,10 +331,19 @@ export default function BookingManager() {
                       </div>
                       <div className="text-[11px] text-[#888]">
                         {fmt(b.check_in)} → {fmt(b.check_out)}
-                        {b.guest_count > 1 && <span className="ml-2">· {b.guest_count} guests</span>}
                         {b.reference_number && <span className="ml-2 font-mono">· {b.reference_number}</span>}
                       </div>
                     </div>
+                    {isActiveToday(b) && b.reference_number && aptId && (
+                      <a
+                        href={guestPageUrl(aptId, b.reference_number)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="shrink-0 text-[10px] bg-[#e4f0da] text-[#2a5c0a] px-2 py-1 rounded-[5px] font-medium no-underline hover:bg-[#d4e8c8] transition-colors"
+                      >
+                        👁 Guest page
+                      </a>
+                    )}
                   </div>
                 ))}
               </div>
@@ -241,13 +391,13 @@ export default function BookingManager() {
         <input
           value={icalUrl}
           onChange={e => setIcalUrl(e.target.value)}
-          className="w-full bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-3 py-2 text-xs text-[#444] focus:outline-none focus:border-[#1a1a1a] transition-colors mb-3"
+          className={INPUT}
           placeholder="https://www.airbnb.com/calendar/ical/…"
         />
         <button
           onClick={syncICal}
           disabled={syncing || !aptId}
-          className="bg-[#1a1a1a] text-white px-4 py-2 rounded-[8px] text-xs font-semibold hover:opacity-80 transition-opacity disabled:opacity-40"
+          className="mt-3 bg-[#1a1a1a] text-white px-4 py-2 rounded-[8px] text-xs font-semibold hover:opacity-80 transition-opacity disabled:opacity-40"
         >
           {syncing ? '↻ Syncing…' : '↻ Sync now'}
         </button>
