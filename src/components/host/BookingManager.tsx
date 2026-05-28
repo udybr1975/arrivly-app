@@ -23,6 +23,11 @@ interface AddForm {
 
 type View = 'list' | 'cal'
 
+const INPUT = 'w-full bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-3 py-2 text-xs text-[#444] focus:outline-none focus:border-[#1a1a1a] transition-colors'
+const LABEL = 'block text-[10px] uppercase tracking-[.06em] text-[#999] mb-[3px]'
+const BTN_DARK = 'bg-[#1a1a1a] text-white px-3 py-1.5 rounded-[7px] text-xs font-semibold hover:opacity-80 transition-opacity disabled:opacity-40'
+const BTN_OUT = 'bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1.5 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors'
+
 function fmt(d: string) {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
 }
@@ -32,7 +37,28 @@ function sourceColor(source: string | null): string {
   const s = source.toLowerCase()
   if (s.includes('airbnb')) return '#3b6d11'
   if (s.includes('vrbo')) return '#185fa5'
+  if (s.includes('booking')) return '#003580'
+  if (s.includes('tripadvisor')) return '#00aa6c'
+  if (s.includes('guesty') || s.includes('hostaway') || s.includes('lodgify')) return '#7c3aed'
   return '#c97c14'
+}
+
+function sourceLabel(source: string | null): string {
+  if (!source) return 'Manual'
+  const s = source.toLowerCase()
+  if (s === 'manual') return 'Manual'
+  if (s.includes('airbnb') && s.includes('block')) return 'Airbnb block'
+  if (s.includes('airbnb')) return 'Airbnb'
+  if (s.includes('vrbo') && s.includes('block')) return 'VRBO block'
+  if (s.includes('vrbo')) return 'VRBO'
+  if (s.includes('booking') && s.includes('block')) return 'Booking block'
+  if (s.includes('booking')) return 'Booking.com'
+  if (s.includes('tripadvisor')) return 'TripAdvisor'
+  if (s.includes('guesty')) return 'Guesty'
+  if (s.includes('hostaway')) return 'Hostaway'
+  if (s.includes('lodgify')) return 'Lodgify'
+  if (s.includes('block')) return 'Blocked'
+  return 'iCal'
 }
 
 function statusPill(status: string) {
@@ -46,18 +72,9 @@ function statusPill(status: string) {
 
 function randomRef(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let result = 'ARR-'
-  for (let i = 0; i < 6; i++) result += chars[Math.floor(Math.random() * chars.length)]
-  return result
-}
-
-function guestPageUrl(aptId: string, ref: string): string {
-  return `${ARRIVLY_CONFIG.appUrl}/guest?apt=${aptId}&token=${ref}`
-}
-
-function isActiveToday(b: Booking): boolean {
-  const today = new Date().toISOString().slice(0, 10)
-  return b.check_in <= today && b.check_out > today
+  let r = 'ARR-'
+  for (let i = 0; i < 6; i++) r += chars[Math.floor(Math.random() * chars.length)]
+  return r
 }
 
 function CalendarView({ bookings }: { bookings: Booking[] }) {
@@ -112,11 +129,12 @@ export default function BookingManager() {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
-  const [adding, setAdding] = useState(false)
-  const [showForm, setShowForm] = useState(false)
+  const [savingIcal, setSavingIcal] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [view, setView] = useState<View>('list')
   const [aptId, setAptId] = useState<string | null>(null)
-  const [icalUrl, setIcalUrl] = useState('')
+  const [icalText, setIcalText] = useState('')
+  const [showAddForm, setShowAddForm] = useState(false)
   const [form, setForm] = useState<AddForm>({ firstName: '', checkIn: '', checkOut: '' })
 
   const load = useCallback(async () => {
@@ -125,7 +143,7 @@ export default function BookingManager() {
 
     const { data: apt } = await supabase
       .from('apartments')
-      .select('id, airbnb_ical_url')
+      .select('id, ical_urls')
       .eq('host_id', user.id)
       .order('created_at')
       .limit(1)
@@ -133,7 +151,7 @@ export default function BookingManager() {
 
     if (!apt) { setLoading(false); return }
     setAptId(apt.id)
-    setIcalUrl(apt.airbnb_ical_url ?? '')
+    setIcalText((apt as unknown as { ical_urls: string | null }).ical_urls ?? '')
 
     const { data } = await supabase
       .from('bookings')
@@ -147,12 +165,32 @@ export default function BookingManager() {
 
   useEffect(() => { load() }, [load])
 
+  async function saveIcalUrls() {
+    if (!aptId) return
+    setSavingIcal(true)
+    const { error } = await supabase
+      .from('apartments')
+      .update({ ical_urls: icalText.trim() || null } as Record<string, unknown>)
+      .eq('id', aptId)
+    if (error) toast('Could not save URLs', 'error')
+    else toast('Calendar URLs saved', 'success')
+    setSavingIcal(false)
+  }
+
   async function syncICal() {
     if (!aptId) return
     setSyncing(true)
     try {
-      await api.post('/sync-ical', { apartment_id: aptId })
-      toast('Bookings synced from iCal', 'success')
+      const result = await api.post('/sync-ical', { apartment_id: aptId }) as {
+        imported: number
+        skipped: number
+        errors: string[]
+      }
+      const msg = `Synced — ${result.imported} new, ${result.skipped} already known`
+      toast(
+        result.errors.length > 0 ? `${msg} (${result.errors.length} error(s))` : msg,
+        result.errors.length > 0 ? 'error' : 'success'
+      )
       await load()
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : 'Sync failed', 'error')
@@ -163,68 +201,58 @@ export default function BookingManager() {
 
   async function addBooking() {
     if (!aptId || !form.firstName.trim() || !form.checkIn || !form.checkOut) return
-    setAdding(true)
+    if (form.checkOut <= form.checkIn) {
+      toast('Check-out must be after check-in', 'error')
+      return
+    }
+    setSaving(true)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) throw new Error('Not logged in')
-
-      // Find or create guest row
-      const nameParts = form.firstName.trim().split(' ')
-      const firstName = nameParts[0]
-      const lastName = nameParts.slice(1).join(' ') || '—'
-
-      let guestId: string
-      const { data: existing } = await supabase
+      const { data: existingGuest } = await supabase
         .from('guests')
         .select('id')
-        .eq('first_name', firstName)
-        .eq('last_name', lastName)
+        .eq('first_name', form.firstName.trim())
         .maybeSingle()
 
-      if (existing) {
-        guestId = existing.id
+      let guestId: string
+      if (existingGuest?.id) {
+        guestId = existingGuest.id
       } else {
-        const { data: newGuest, error: gErr } = await supabase
+        const { data: newGuest, error: guestErr } = await supabase
           .from('guests')
-          .insert({ first_name: firstName, last_name: lastName })
+          .insert({ first_name: form.firstName.trim(), last_name: '', email: '' })
           .select('id')
           .single()
-        if (gErr || !newGuest) throw gErr ?? new Error('Failed to create guest')
+        if (guestErr || !newGuest) throw new Error(guestErr?.message ?? 'Could not create guest')
         guestId = newGuest.id
       }
 
-      // Generate unique reference number
       let ref = randomRef()
-      for (let i = 0; i < 5; i++) {
-        const { data: clash } = await supabase
-          .from('bookings')
-          .select('id')
-          .eq('reference_number', ref)
-          .maybeSingle()
-        if (!clash) break
-        ref = randomRef()
-      }
+      const { data: collision } = await supabase
+        .from('bookings')
+        .select('id')
+        .eq('reference_number', ref)
+        .maybeSingle()
+      if (collision) ref = randomRef()
 
-      const { error: bErr } = await supabase.from('bookings').insert({
+      const { error: bookErr } = await supabase.from('bookings').insert({
         apartment_id: aptId,
         guest_id: guestId,
         check_in: form.checkIn,
         check_out: form.checkOut,
         status: 'confirmed',
-        source: 'manual',
         reference_number: ref,
-        guest_count: 1,
+        source: 'manual',
       })
-      if (bErr) throw bErr
+      if (bookErr) throw new Error(bookErr.message)
 
-      toast('Booking added', 'success')
-      setShowForm(false)
+      toast(`Booking added · ${ref}`, 'success')
       setForm({ firstName: '', checkIn: '', checkOut: '' })
+      setShowAddForm(false)
       await load()
     } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : 'Failed to add booking', 'error')
+      toast(e instanceof Error ? e.message : 'Could not add booking', 'error')
     } finally {
-      setAdding(false)
+      setSaving(false)
     }
   }
 
@@ -233,11 +261,15 @@ export default function BookingManager() {
   const today = new Date().toISOString().slice(0, 10)
   const upcoming = bookings.filter(b => b.check_out >= today)
   const past = bookings.filter(b => b.check_out < today)
+  const isBlock = (source: string | null) => source?.includes('block') ?? false
 
-  const BTN_DARK = 'bg-[#1a1a1a] text-white px-3 py-1.5 rounded-[7px] text-xs font-semibold hover:opacity-80 transition-opacity disabled:opacity-40'
-  const BTN_OUT = 'bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1.5 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors'
-  const INPUT = 'w-full bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-3 py-2 text-xs text-[#444] focus:outline-none focus:border-[#1a1a1a] transition-colors'
-  const LABEL = 'block text-[10px] uppercase tracking-[.06em] text-[#999] mb-[3px]'
+  function guestPageUrl(ref: string) {
+    return `${ARRIVLY_CONFIG.appUrl}/guest?apt=${aptId}&token=${ref}`
+  }
+
+  function isActiveToday(b: Booking) {
+    return today >= b.check_in && today < b.check_out && b.status === 'confirmed'
+  }
 
   return (
     <div className="max-w-2xl">
@@ -246,26 +278,31 @@ export default function BookingManager() {
         <div className="flex items-center gap-2">
           <button onClick={() => setView('list')} className={view === 'list' ? BTN_DARK : BTN_OUT}>List</button>
           <button onClick={() => setView('cal')} className={view === 'cal' ? BTN_DARK : BTN_OUT}>Cal</button>
-          <button onClick={() => setShowForm(v => !v)} className={BTN_DARK}>+ Add</button>
+          <button
+            onClick={() => setShowAddForm(v => !v)}
+            className="bg-[#1a1a1a] text-white px-3 py-1.5 rounded-[7px] text-xs font-semibold hover:opacity-80 transition-opacity"
+          >
+            {showAddForm ? '✕ Cancel' : '+ Add booking'}
+          </button>
         </div>
       </div>
 
-      {/* Manual add form */}
-      {showForm && (
+      {/* Add booking form */}
+      {showAddForm && (
         <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mb-4">
-          <div className="text-[12px] font-semibold text-[#1a1a1a] mb-3">Add booking manually</div>
-          <div className="grid grid-cols-3 gap-2 mb-3">
-            <div>
-              <label className={LABEL}>Guest name</label>
+          <div className="text-[12px] font-semibold text-[#1a1a1a] mb-3">New manual booking</div>
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="col-span-2">
+              <label className={LABEL}>Guest first name <span className="text-red-500 normal-case">*</span></label>
               <input
                 value={form.firstName}
                 onChange={e => setForm(p => ({ ...p, firstName: e.target.value }))}
                 className={INPUT}
-                placeholder="Ana García"
+                placeholder="Maria"
               />
             </div>
             <div>
-              <label className={LABEL}>Check-in</label>
+              <label className={LABEL}>Check-in <span className="text-red-500 normal-case">*</span></label>
               <input
                 type="date"
                 value={form.checkIn}
@@ -274,7 +311,7 @@ export default function BookingManager() {
               />
             </div>
             <div>
-              <label className={LABEL}>Check-out</label>
+              <label className={LABEL}>Check-out <span className="text-red-500 normal-case">*</span></label>
               <input
                 type="date"
                 value={form.checkOut}
@@ -283,16 +320,16 @@ export default function BookingManager() {
               />
             </div>
           </div>
-          <div className="flex gap-2 justify-end">
-            <button onClick={() => setShowForm(false)} className={BTN_OUT}>Cancel</button>
-            <button
-              onClick={addBooking}
-              disabled={adding || !form.firstName.trim() || !form.checkIn || !form.checkOut}
-              className={BTN_DARK}
-            >
-              {adding ? 'Adding…' : 'Add booking'}
-            </button>
+          <div className="bg-[#f8f6f2] rounded-[7px] px-3 py-2 text-[11px] text-[#888] mb-3 leading-relaxed">
+            A booking reference (ARR-XXXXXX) is generated automatically and becomes the guest's QR token.
           </div>
+          <button
+            onClick={addBooking}
+            disabled={saving || !form.firstName.trim() || !form.checkIn || !form.checkOut}
+            className={BTN_DARK}
+          >
+            {saving ? 'Saving…' : 'Save booking'}
+          </button>
         </div>
       )}
 
@@ -300,10 +337,10 @@ export default function BookingManager() {
 
       {view === 'list' && (
         <>
-          {bookings.length === 0 && (
+          {bookings.length === 0 && !showAddForm && (
             <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-8 text-center">
               <div className="text-[#ccc] text-3xl mb-2">📅</div>
-              <div className="text-[12px] text-[#aaa]">No bookings yet. Add one manually or sync from iCal below.</div>
+              <div className="text-[12px] text-[#aaa]">No bookings yet. Add one above or sync a calendar below.</div>
             </div>
           )}
 
@@ -314,36 +351,38 @@ export default function BookingManager() {
                 {upcoming.map(b => (
                   <div
                     key={b.id}
-                    className="bg-white border border-[#ddd8ce] rounded-[10px] px-4 py-3 flex items-center gap-3"
+                    className={`bg-white border border-[#ddd8ce] rounded-[10px] px-4 py-3 ${isBlock(b.source) ? 'opacity-50' : ''}`}
                     style={{ borderLeft: `3px solid ${sourceColor(b.source)}` }}
                   >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                        <span className="text-[12px] font-semibold text-[#1a1a1a]">
-                          {b.guests ? `${b.guests.first_name} ${b.guests.last_name}` : 'Guest'}
-                        </span>
-                        <span className={statusPill(b.status)}>{b.status}</span>
-                        {b.source && (
-                          <span className="text-[10px] text-[#888] bg-[#f8f6f2] border border-[#ddd8ce] px-2 py-0.5 rounded-full">
-                            {b.source}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                          <span className="text-[12px] font-semibold text-[#1a1a1a]">
+                            {isBlock(b.source) ? 'Blocked' : (b.guests ? b.guests.first_name : 'Guest')}
                           </span>
-                        )}
+                          {!isBlock(b.source) && <span className={statusPill(b.status)}>{b.status}</span>}
+                          <span className="text-[10px] text-[#888] bg-[#f8f6f2] border border-[#ddd8ce] px-2 py-0.5 rounded-full">
+                            {sourceLabel(b.source)}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[#888]">
+                          {fmt(b.check_in)} → {fmt(b.check_out)}
+                          {!isBlock(b.source) && b.reference_number && (
+                            <span className="ml-2 font-mono">{b.reference_number}</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-[11px] text-[#888]">
-                        {fmt(b.check_in)} → {fmt(b.check_out)}
-                        {b.reference_number && <span className="ml-2 font-mono">· {b.reference_number}</span>}
-                      </div>
+                      {isActiveToday(b) && !isBlock(b.source) && b.reference_number && (
+                        <a
+                          href={guestPageUrl(b.reference_number)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shrink-0 text-[10px] bg-[#e4f0da] text-[#2a5c0a] px-2 py-1 rounded-[5px] font-medium no-underline hover:bg-[#d4e8c8] transition-colors"
+                        >
+                          👁 Guest page
+                        </a>
+                      )}
                     </div>
-                    {isActiveToday(b) && b.reference_number && aptId && (
-                      <a
-                        href={guestPageUrl(aptId, b.reference_number)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="shrink-0 text-[10px] bg-[#e4f0da] text-[#2a5c0a] px-2 py-1 rounded-[5px] font-medium no-underline hover:bg-[#d4e8c8] transition-colors"
-                      >
-                        👁 Guest page
-                      </a>
-                    )}
                   </div>
                 ))}
               </div>
@@ -357,24 +396,19 @@ export default function BookingManager() {
                 {past.map(b => (
                   <div
                     key={b.id}
-                    className="bg-white border border-[#ddd8ce] rounded-[10px] px-4 py-3 flex items-center gap-3 opacity-60"
+                    className="bg-white border border-[#ddd8ce] rounded-[10px] px-4 py-3 opacity-50"
                     style={{ borderLeft: `3px solid ${sourceColor(b.source)}` }}
                   >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-0.5 flex-wrap">
-                        <span className="text-[12px] font-semibold text-[#1a1a1a]">
-                          {b.guests ? `${b.guests.first_name} ${b.guests.last_name}` : 'Guest'}
-                        </span>
-                        {b.source && (
-                          <span className="text-[10px] text-[#888] bg-[#f8f6f2] border border-[#ddd8ce] px-2 py-0.5 rounded-full">
-                            {b.source}
-                          </span>
-                        )}
-                      </div>
-                      <div className="text-[11px] text-[#888]">
-                        {fmt(b.check_in)} → {fmt(b.check_out)}
-                        {b.reference_number && <span className="ml-2 font-mono">· {b.reference_number}</span>}
-                      </div>
+                    <div className="flex items-center gap-2 mb-0.5 flex-wrap">
+                      <span className="text-[12px] font-semibold text-[#1a1a1a]">
+                        {isBlock(b.source) ? 'Blocked' : (b.guests ? b.guests.first_name : 'Guest')}
+                      </span>
+                      <span className="text-[10px] text-[#888] bg-[#f8f6f2] border border-[#ddd8ce] px-2 py-0.5 rounded-full">
+                        {sourceLabel(b.source)}
+                      </span>
+                    </div>
+                    <div className="text-[11px] text-[#888]">
+                      {fmt(b.check_in)} → {fmt(b.check_out)}
                     </div>
                   </div>
                 ))}
@@ -384,23 +418,31 @@ export default function BookingManager() {
         </>
       )}
 
-      {/* iCal card */}
+      {/* Calendar sync card */}
       <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mt-4">
-        <div className="text-[12px] font-semibold text-[#1a1a1a] mb-1">iCal sync</div>
-        <div className="text-[11px] text-[#888] mb-3">Paste your Airbnb / VRBO iCal URL to auto-import bookings.</div>
-        <input
-          value={icalUrl}
-          onChange={e => setIcalUrl(e.target.value)}
-          className={INPUT}
-          placeholder="https://www.airbnb.com/calendar/ical/…"
+        <div className="text-[12px] font-semibold text-[#1a1a1a] mb-1">Calendar sync</div>
+        <div className="text-[11px] text-[#888] mb-3 leading-relaxed">
+          Paste one iCal URL per line — Airbnb, VRBO, Booking.com, Guesty, Hostaway, or any platform. No limit.
+        </div>
+        <textarea
+          value={icalText}
+          onChange={e => setIcalText(e.target.value)}
+          rows={4}
+          className={`${INPUT} resize-none font-mono text-[11px] mb-3`}
+          placeholder={`https://www.airbnb.com/calendar/ical/…\nhttps://www.vrbo.com/icalendar/…\nhttps://booking.com/…`}
         />
-        <button
-          onClick={syncICal}
-          disabled={syncing || !aptId}
-          className="mt-3 bg-[#1a1a1a] text-white px-4 py-2 rounded-[8px] text-xs font-semibold hover:opacity-80 transition-opacity disabled:opacity-40"
-        >
-          {syncing ? '↻ Syncing…' : '↻ Sync now'}
-        </button>
+        <div className="flex gap-2">
+          <button onClick={saveIcalUrls} disabled={savingIcal} className={BTN_OUT}>
+            {savingIcal ? 'Saving…' : 'Save URLs'}
+          </button>
+          <button
+            onClick={syncICal}
+            disabled={syncing || !aptId || !icalText.trim()}
+            className={BTN_DARK}
+          >
+            {syncing ? '↻ Syncing…' : '↻ Sync now'}
+          </button>
+        </div>
       </div>
     </div>
   )
