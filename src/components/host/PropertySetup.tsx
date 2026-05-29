@@ -157,7 +157,18 @@ export default function PropertySetup() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { showErr('Not logged in'); setSaving(false); return }
 
-    const fields = {
+    const fields: {
+      name: string
+      max_guests: number
+      country: string | null
+      city: string | null
+      neighborhood: string | null
+      street: string | null
+      street_number: string | null
+      floor_note: string | null
+      lat?: number
+      lng?: number
+    } = {
       name: basic.name,
       max_guests: basic.maxGuests,
       country: basic.country || null,
@@ -166,6 +177,28 @@ export default function PropertySetup() {
       street: basic.street || null,
       street_number: basic.streetNumber || null,
       floor_note: basic.floorNote || null,
+    }
+
+    // Best-effort geocoding: address -> coordinates, stored once on save.
+    // Never blocks the save; on failure, existing coordinates are left untouched.
+    const streetLine = [basic.street, basic.streetNumber].filter(Boolean).join(' ').trim()
+    const address = [streetLine, basic.neighborhood, basic.city, basic.country]
+      .map(s => (s || '').trim())
+      .filter(Boolean)
+      .join(', ')
+    if (address) {
+      try {
+        const geo = await api.post<{ lat?: number; lng?: number; error?: string }>(
+          '/geocode',
+          { address }
+        )
+        if (typeof geo.lat === 'number' && typeof geo.lng === 'number') {
+          fields.lat = geo.lat
+          fields.lng = geo.lng
+        }
+      } catch {
+        /* best-effort: keep saving without updating coordinates */
+      }
     }
 
     if (apartmentId) {

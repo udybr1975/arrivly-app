@@ -24,13 +24,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const data = await response.json() as GoogleGeocodeResult
 
     if (data.status !== 'OK' || !data.results[0]) {
-      return res.status(200).json({ error: `Geocoding failed: ${data.status}` })
+      return res.status(200).json({ error: 'Address not found' })
     }
 
     const { lat, lng } = data.results[0].geometry.location
     return res.status(200).json({ lat, lng })
-  } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    return res.status(500).json({ error: message })
+  } catch {
+    return res.status(500).json({ error: 'Geocoding request failed' })
   }
 }

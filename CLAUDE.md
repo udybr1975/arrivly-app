@@ -108,3 +108,9 @@ Full redesign to cream design system. All 12 screens. App live at arrivly.anna-s
 
 ## Session 3 Status: COMPLETE ✓
 Core host flows working end-to-end. Guest page fully functional with token flow. Bookings addable manually and via iCal. My picks showing on guest Explore tab.
+
+## Agent review policy
+- Run the code-reviewer subagent (read-only) on every change that modifies code, before committing.
+- Run the security-auditor subagent (read-only) before every production deploy, and for any change touching secrets, auth, RLS, or API routes.
+- Use debugger only when stuck (~20+ min). Run dead-code-cleaner periodically; it writes a report and waits for approval before removing anything.
+- Subagents live in .claude/agents/ and run inside Claude Code.
