@@ -186,6 +186,7 @@ export default function PropertySetup() {
       .map(s => (s || '').trim())
       .filter(Boolean)
       .join(', ')
+    let geoMissed = false
     if (address) {
       try {
         const geo = await api.post<{ lat?: number; lng?: number; error?: string }>(
@@ -195,9 +196,11 @@ export default function PropertySetup() {
         if (typeof geo.lat === 'number' && typeof geo.lng === 'number') {
           fields.lat = geo.lat
           fields.lng = geo.lng
+        } else {
+          geoMissed = true
         }
       } catch {
-        /* best-effort: keep saving without updating coordinates */
+        geoMissed = true
       }
     }
 
@@ -214,7 +217,14 @@ export default function PropertySetup() {
       setApartmentId(data.id)
     }
 
-    showOk()
+    if (geoMissed) {
+      setFeedback({
+        ok: true,
+        msg: "Saved — but we couldn't pin this address on the map, so guest weather and directions may be approximate. Check the street and number.",
+      })
+    } else {
+      showOk()
+    }
     setSaving(false)
   }
 
