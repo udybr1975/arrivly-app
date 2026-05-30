@@ -7,7 +7,7 @@ import Loader from '../shared/Loader'
 interface Apartment {
   id: string
   name: string
-  accent_color: string
+  accent_color: string | null
 }
 
 export default function BrandingPanel() {

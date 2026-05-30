@@ -29,7 +29,7 @@ export const ARRIVLY_CONFIG = {
   adminEmail: 'udy.bar.yosef@gmail.com',
 
   // App
-  appUrl: 'https://arrivly.anna-stays.fi',
+  appUrl: import.meta.env.VITE_APP_URL ?? 'https://arrivly.anna-stays.fi',
   appName: 'Arrivly',
 
   // Maps
