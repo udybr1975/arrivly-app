@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getDirectionsUrl } from '../../lib/maps'
+import InstallPrompt from './InstallPrompt'
 import { ARRIVLY_CONFIG } from '../../config'
 
 interface Host {
@@ -842,6 +843,8 @@ export default function GuestPage() {
           </button>
         </div>
       )}
+
+      <InstallPrompt accentColor={accentColor} />
 
     </div>
   )
