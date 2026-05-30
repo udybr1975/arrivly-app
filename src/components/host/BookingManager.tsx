@@ -126,6 +126,7 @@ function CalendarView({ bookings }: { bookings: Booking[] }) {
 
 export default function BookingManager() {
   const { toast } = useToast()
+  const [apartments, setApartments] = useState<{ id: string; name: string; ical_urls: string | null }[]>([])
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [syncing, setSyncing] = useState(false)
@@ -137,41 +138,61 @@ export default function BookingManager() {
   const [showAddForm, setShowAddForm] = useState(false)
   const [form, setForm] = useState<AddForm>({ firstName: '', checkIn: '', checkOut: '' })
 
-  const load = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setLoading(false); return }
-
-    const { data: apt } = await supabase
-      .from('apartments')
-      .select('id, ical_urls')
-      .eq('host_id', user.id)
-      .order('created_at')
-      .limit(1)
-      .maybeSingle()
-
-    if (!apt) { setLoading(false); return }
-    setAptId(apt.id)
-    setIcalText((apt as unknown as { ical_urls: string | null }).ical_urls ?? '')
-
-    const { data } = await supabase
-      .from('bookings')
-      .select('id, check_in, check_out, status, reference_number, source, guests(first_name, last_name)')
-      .eq('apartment_id', apt.id)
-      .order('check_in', { ascending: false })
-
-    setBookings((data as unknown as Booking[]) ?? [])
-    setLoading(false)
+  // Load all host apartments once on mount; set default selection to first
+  useEffect(() => {
+    async function loadApartments() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!user) { setLoading(false); return }
+      const { data } = await supabase
+        .from('apartments')
+        .select('id, name, ical_urls')
+        .eq('host_id', user.id)
+        .order('created_at')
+      const list = (data ?? []) as { id: string; name: string; ical_urls: string | null }[]
+      setApartments(list)
+      if (list.length === 0) { setLoading(false); return }
+      setAptId(prev => prev ?? list[0].id)
+    }
+    loadApartments()
   }, [])
 
-  useEffect(() => { load() }, [load])
+  // Reload bookings and iCal text whenever the selected apartment changes.
+  // Accepts an optional signal so the useEffect cleanup can cancel a stale
+  // in-flight request if the user switches apartments quickly.
+  const loadBookings = useCallback(async (signal?: { cancelled: boolean }) => {
+    if (!aptId) return
+    try {
+      const apt = apartments.find(a => a.id === aptId)
+      setIcalText(apt?.ical_urls ?? '')   // synchronous lookup — immediate update
+      const { data } = await supabase
+        .from('bookings')
+        .select('id, check_in, check_out, status, reference_number, source, guests(first_name, last_name)')
+        .eq('apartment_id', aptId)
+        .order('check_in', { ascending: false })
+      if (signal?.cancelled) return
+      setBookings((data as unknown as Booking[]) ?? [])
+      setLoading(false)
+    } catch {
+      if (!signal?.cancelled) setLoading(false)
+    }
+  }, [aptId, apartments])
+
+  useEffect(() => {
+    const signal = { cancelled: false }
+    loadBookings(signal)
+    return () => { signal.cancelled = true }
+  }, [loadBookings])
 
   async function saveIcalUrls() {
     if (!aptId) return
     setSavingIcal(true)
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setSavingIcal(false); return }
     const { error } = await supabase
       .from('apartments')
       .update({ ical_urls: icalText.trim() || null } as Record<string, unknown>)
       .eq('id', aptId)
+      .eq('host_id', user.id)
     if (error) toast('Could not save URLs', 'error')
     else toast('Calendar URLs saved', 'success')
     setSavingIcal(false)
@@ -191,7 +212,7 @@ export default function BookingManager() {
         result.errors.length > 0 ? `${msg} (${result.errors.length} error(s))` : msg,
         result.errors.length > 0 ? 'error' : 'success'
       )
-      await load()
+      await loadBookings()
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : 'Sync failed', 'error')
     } finally {
@@ -248,7 +269,7 @@ export default function BookingManager() {
       toast(`Booking added · ${ref}`, 'success')
       setForm({ firstName: '', checkIn: '', checkOut: '' })
       setShowAddForm(false)
-      await load()
+      await loadBookings()
     } catch (e: unknown) {
       toast(e instanceof Error ? e.message : 'Could not add booking', 'error')
     } finally {
@@ -257,6 +278,13 @@ export default function BookingManager() {
   }
 
   if (loading) return <Loader />
+
+  if (!aptId) return (
+    <div className="max-w-2xl">
+      <h1 className="text-[17px] font-serif font-light text-[#1a1a1a] mb-4">Bookings</h1>
+      <p className="text-[12px] text-[#aaa]">No properties yet. Set up a property in the Overview first.</p>
+    </div>
+  )
 
   const today = new Date().toISOString().slice(0, 10)
   const upcoming = bookings.filter(b => b.check_out >= today)
@@ -273,8 +301,21 @@ export default function BookingManager() {
 
   return (
     <div className="max-w-2xl">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-[17px] font-serif font-light text-[#1a1a1a]">Bookings</h1>
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+        <div className="flex items-center gap-2">
+          <h1 className="text-[17px] font-serif font-light text-[#1a1a1a]">Bookings</h1>
+          {apartments.length > 1 && (
+            <select
+              value={aptId as string}
+              onChange={e => setAptId(e.target.value)}
+              className="bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-3 py-2 text-xs text-[#444] focus:outline-none focus:border-[#1a1a1a]"
+            >
+              {apartments.map(a => (
+                <option key={a.id} value={a.id}>{a.name}</option>
+              ))}
+            </select>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setView('list')} className={view === 'list' ? BTN_DARK : BTN_OUT}>List</button>
           <button onClick={() => setView('cal')} className={view === 'cal' ? BTN_DARK : BTN_OUT}>Cal</button>
