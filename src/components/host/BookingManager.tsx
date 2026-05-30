@@ -78,12 +78,19 @@ function randomRef(): string {
 }
 
 function CalendarView({ bookings }: { bookings: Booking[] }) {
-  const now = new Date()
-  const year = now.getFullYear()
-  const month = now.getMonth()
+  const [cursor, setCursor] = useState(() => {
+    const n = new Date()
+    return new Date(n.getFullYear(), n.getMonth(), 1)
+  })
+  const year = cursor.getFullYear()
+  const month = cursor.getMonth()
   const firstDay = new Date(year, month, 1).getDay()
   const daysInMonth = new Date(year, month + 1, 0).getDate()
   const DAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+
+  const now = new Date()
+  const isCurrentMonth = year === now.getFullYear() && month === now.getMonth()
+  const todayDay = now.getDate()
 
   function isBooked(day: number) {
     const d = new Date(year, month, day).toISOString().slice(0, 10)
@@ -96,8 +103,20 @@ function CalendarView({ bookings }: { bookings: Booking[] }) {
 
   return (
     <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4">
-      <div className="text-[12px] font-semibold text-[#1a1a1a] mb-3">
-        {now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+      <div className="flex items-center justify-between mb-3">
+        <button
+          onClick={() => setCursor(c => new Date(c.getFullYear(), c.getMonth() - 1, 1))}
+          className="w-7 h-7 flex items-center justify-center rounded-[6px] border border-[#ddd8ce] text-[#444] hover:bg-[#f0ede6] transition-colors"
+          aria-label="Previous month"
+        >‹</button>
+        <div className="text-[12px] font-semibold text-[#1a1a1a]">
+          {cursor.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}
+        </div>
+        <button
+          onClick={() => setCursor(c => new Date(c.getFullYear(), c.getMonth() + 1, 1))}
+          className="w-7 h-7 flex items-center justify-center rounded-[6px] border border-[#ddd8ce] text-[#444] hover:bg-[#f0ede6] transition-colors"
+          aria-label="Next month"
+        >›</button>
       </div>
       <div className="grid grid-cols-7 gap-1 mb-1">
         {DAYS.map(d => (
@@ -113,7 +132,9 @@ function CalendarView({ bookings }: { bookings: Booking[] }) {
                 ? ''
                 : isBooked(day)
                   ? 'bg-[#1a1a1a] text-white font-semibold'
-                  : 'text-[#444] hover:bg-[#f0ede6]'
+                  : isCurrentMonth && day === todayDay
+                    ? 'ring-1 ring-[#1a1a1a] text-[#1a1a1a] font-semibold'
+                    : 'text-[#444] hover:bg-[#f0ede6]'
             }`}
           >
             {day ?? ''}
