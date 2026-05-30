@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
+import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import Loader from '../shared/Loader'
@@ -20,6 +21,8 @@ const BTN_DARK = 'bg-[#1a1a1a] text-white px-4 py-2 rounded-[8px] text-xs font-s
 const BTN_AI = 'bg-[#1a1a1a] text-white px-4 py-2 rounded-[8px] text-xs font-semibold hover:opacity-80 transition-opacity disabled:opacity-40'
 
 export default function PropertySetup() {
+  const { aptId } = useParams<{ aptId: string }>()
+  const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('basic')
   const [apartmentId, setApartmentId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -63,66 +66,77 @@ export default function PropertySetup() {
 
   useEffect(() => {
     async function load() {
+      if (!aptId) { navigate('/dashboard/property'); return }
+
+      setLoading(true)
+      setFeedback(null)
+      setBasic({ name: '', maxGuests: 2, country: '', city: '', neighborhood: '', street: '', streetNumber: '', floorNote: '' })
+      setWifi({ ssid: '', password: '' })
+      setCheckin({ checkInFrom: '', checkOutBy: '', doorCode: '', entryInstructions: '' })
+      setRawRules('')
+      setPolishedRules('')
+      setExtrasContent('')
+      setImportResult('')
+
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
 
       const { data: apt } = await supabase
         .from('apartments')
         .select('id, name, country, city, neighborhood, street, street_number, floor_note, max_guests')
+        .eq('id', aptId)
         .eq('host_id', user.id)
-        .order('created_at')
-        .limit(1)
         .maybeSingle()
 
-      if (apt) {
-        setApartmentId(apt.id)
-        setBasic({
-          name: apt.name ?? '',
-          maxGuests: apt.max_guests ?? 2,
-          country: apt.country ?? '',
-          city: apt.city ?? '',
-          neighborhood: apt.neighborhood ?? '',
-          street: apt.street ?? '',
-          streetNumber: apt.street_number ?? '',
-          floorNote: apt.floor_note ?? '',
+      if (!apt) { navigate('/dashboard/property'); return }
+
+      setApartmentId(apt.id)
+      setBasic({
+        name: apt.name ?? '',
+        maxGuests: apt.max_guests ?? 2,
+        country: apt.country ?? '',
+        city: apt.city ?? '',
+        neighborhood: apt.neighborhood ?? '',
+        street: apt.street ?? '',
+        streetNumber: apt.street_number ?? '',
+        floorNote: apt.floor_note ?? '',
+      })
+
+      const { data: dets } = await supabase
+        .from('apartment_details')
+        .select('category, content, is_private')
+        .eq('apartment_id', apt.id)
+
+      if (dets) {
+        const wifiRow = dets.find(d => d.category === 'WiFi')
+        if (wifiRow) {
+          const lines = wifiRow.content.split('\n')
+          setWifi({
+            ssid: (lines[0] ?? '').replace('Network: ', ''),
+            password: (lines[1] ?? '').replace('Password: ', ''),
+          })
+        }
+
+        const ciRows = dets.filter(d => d.category === 'Check-in')
+        setCheckin({
+          checkInFrom:        ciRows.find(d => d.content.startsWith('Check-in from: '))?.content.replace('Check-in from: ', '') ?? '',
+          checkOutBy:         ciRows.find(d => d.content.startsWith('Check-out by: '))?.content.replace('Check-out by: ', '') ?? '',
+          doorCode:           ciRows.find(d => d.content.startsWith('Door code: '))?.content.replace('Door code: ', '') ?? '',
+          entryInstructions:  ciRows.find(d =>
+            !d.content.startsWith('Check-in from: ') &&
+            !d.content.startsWith('Check-out by: ') &&
+            !d.content.startsWith('Door code: ')
+          )?.content ?? '',
         })
 
-        const { data: dets } = await supabase
-          .from('apartment_details')
-          .select('category, content, is_private')
-          .eq('apartment_id', apt.id)
-
-        if (dets) {
-          const wifiRow = dets.find(d => d.category === 'WiFi')
-          if (wifiRow) {
-            const lines = wifiRow.content.split('\n')
-            setWifi({
-              ssid: (lines[0] ?? '').replace('Network: ', ''),
-              password: (lines[1] ?? '').replace('Password: ', ''),
-            })
-          }
-
-          const ciRows = dets.filter(d => d.category === 'Check-in')
-          setCheckin({
-            checkInFrom:        ciRows.find(d => d.content.startsWith('Check-in from: '))?.content.replace('Check-in from: ', '') ?? '',
-            checkOutBy:         ciRows.find(d => d.content.startsWith('Check-out by: '))?.content.replace('Check-out by: ', '') ?? '',
-            doorCode:           ciRows.find(d => d.content.startsWith('Door code: '))?.content.replace('Door code: ', '') ?? '',
-            entryInstructions:  ciRows.find(d =>
-              !d.content.startsWith('Check-in from: ') &&
-              !d.content.startsWith('Check-out by: ') &&
-              !d.content.startsWith('Door code: ')
-            )?.content ?? '',
-          })
-
-          const rulesRow = dets.find(d => d.category === 'House Rules')
-          if (rulesRow) setRawRules(rulesRow.content)
-        }
+        const rulesRow = dets.find(d => d.category === 'House Rules')
+        if (rulesRow) setRawRules(rulesRow.content)
       }
 
       setLoading(false)
     }
     load()
-  }, [])
+  }, [aptId])
 
   const loadPicks = useCallback(async () => {
     if (!apartmentId) return
@@ -328,6 +342,7 @@ export default function PropertySetup() {
   }
 
   async function deletePick(id: string) {
+    if (!apartmentId) return
     const { error } = await supabase.from('host_picks').delete().eq('id', id).eq('apartment_id', apartmentId)
     if (error) { showErr(error.message); return }
     await loadPicks()

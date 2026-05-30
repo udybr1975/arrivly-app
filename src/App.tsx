@@ -7,6 +7,7 @@ import Login from './components/auth/Login'
 import Signup from './components/auth/Signup'
 import OnboardingFlow from './components/onboarding/OnboardingFlow'
 import Dashboard from './components/host/Dashboard'
+import PropertyList from './components/host/PropertyList'
 import PropertySetup from './components/host/PropertySetup'
 import BookingManager from './components/host/BookingManager'
 import QRCodePanel from './components/host/QRCodePanel'
@@ -96,7 +97,8 @@ export default function App() {
             <Route path="/onboarding" element={<OnboardingFlow />} />
             <Route element={<Layout />}>
               <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/dashboard/property" element={<PropertySetup />} />
+              <Route path="/dashboard/property" element={<PropertyList />} />
+              <Route path="/dashboard/property/:aptId" element={<PropertySetup />} />
               <Route path="/dashboard/bookings" element={<BookingManager />} />
               <Route path="/dashboard/qr" element={<QRCodePanel />} />
               <Route path="/dashboard/branding" element={<BrandingPanel />} />

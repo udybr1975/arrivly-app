@@ -63,8 +63,9 @@ export default function OnboardingFlow() {
         .limit(1)
         .maybeSingle()
 
+      let newAptId: string | null = null
       if (!existing) {
-        const { error: aptErr } = await supabase.from('apartments').insert({
+        const { data: newApt, error: aptErr } = await supabase.from('apartments').insert({
           host_id: user.id,
           name: s1.brandName,
           country: s2.country,
@@ -73,11 +74,12 @@ export default function OnboardingFlow() {
           street: s2.street,
           street_number: s2.streetNumber,
           is_visible: false,
-        })
+        }).select('id').maybeSingle()
         if (aptErr) throw aptErr
+        newAptId = newApt?.id ?? null
       }
 
-      navigate('/dashboard/property')
+      navigate(newAptId ? `/dashboard/property/${newAptId}` : '/dashboard/property')
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Something went wrong')
       setSaving(false)
