@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import Loader from '../shared/Loader'
@@ -352,6 +352,12 @@ export default function PropertySetup() {
 
   return (
     <div className="max-w-2xl">
+      <Link
+        to="/dashboard/property"
+        className="inline-flex items-center gap-1 text-[11px] text-[#888] hover:text-[#1a1a1a] transition-colors mb-3"
+      >
+        ← Back to properties
+      </Link>
       <h1 className="text-[17px] font-serif font-light text-[#1a1a1a] mb-4">Property setup</h1>
 
       {/* Tab bar */}

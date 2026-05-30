@@ -7,7 +7,7 @@ import Loader from '../shared/Loader'
 interface Apartment {
   id: string
   name: string
-  neighborhood: string
+  neighborhood: string | null
   created_at: string
 }
 
@@ -15,6 +15,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [apt, setApt] = useState<Apartment | null>(null)
   const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null)
+  const [propertyCount, setPropertyCount] = useState(0)
   const [bookingCount, setBookingCount] = useState(0)
   const [completeness, setCompleteness] = useState<Record<string, boolean>>({})
   const [loading, setLoading] = useState(true)
@@ -27,22 +28,24 @@ export default function Dashboard() {
       const { data: hostData } = await supabase
         .from('hosts').select('trial_ends_at').eq('id', user.id).maybeSingle()
 
-      const { data } = await supabase
+      const { data: apts } = await supabase
         .from('apartments')
         .select('id, name, neighborhood, created_at')
         .eq('host_id', user.id)
         .order('created_at')
-        .limit(1)
-        .maybeSingle()
 
-      if (!data) { setLoading(false); navigate('/onboarding'); return }
+      const list = apts ?? []
+      if (list.length === 0) { setLoading(false); navigate('/onboarding'); return }
+      const first = list[0]
 
       setTrialEndsAt(hostData?.trial_ends_at ?? null)
-      setApt(data)
+      setApt(first)
+      setPropertyCount(list.length)
 
+      const aptIds = list.map(a => a.id)
       const [{ count }, { data: dets }] = await Promise.all([
-        supabase.from('bookings').select('*', { count: 'exact', head: true }).eq('apartment_id', data.id),
-        supabase.from('apartment_details').select('category').eq('apartment_id', data.id),
+        supabase.from('bookings').select('*', { count: 'exact', head: true }).in('apartment_id', aptIds),
+        supabase.from('apartment_details').select('category').eq('apartment_id', first.id),
       ])
       setBookingCount(count ?? 0)
       const cats = new Set((dets ?? []).map(d => d.category))
@@ -73,7 +76,7 @@ export default function Dashboard() {
       {/* Metrics */}
       <div className="grid grid-cols-3 gap-2.5 mb-5">
         {[
-          { label: 'Properties', value: '1' },
+          { label: 'Properties', value: String(propertyCount) },
           { label: 'Bookings', value: String(bookingCount) },
           { label: 'QR scans', value: '—' },
         ].map(m => (
@@ -122,13 +125,22 @@ export default function Dashboard() {
             👁 Preview guest page
           </a>
           <Link
-            to="/dashboard/property"
+            to={`/dashboard/property/${apt.id}`}
             className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1.5 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors"
           >
             ✏️ Edit property
           </Link>
         </div>
       </div>
+
+      {propertyCount > 1 && (
+        <Link
+          to="/dashboard/property"
+          className="inline-block text-[11px] text-[#888] hover:text-[#1a1a1a] transition-colors mb-2"
+        >
+          View all {propertyCount} properties →
+        </Link>
+      )}
 
       {/* Add property (dashed) */}
       <div className="border border-dashed border-[#ccc] rounded-[10px] p-4 mb-3 flex items-center justify-center cursor-pointer hover:bg-white/60 transition-colors">
