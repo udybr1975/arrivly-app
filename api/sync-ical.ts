@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { sendPushToHost } from './_lib/push'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
@@ -61,7 +62,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: apt, error: aptErr } = await supabase
     .from('apartments')
-    .select('ical_urls, host_id')
+    .select('ical_urls, host_id, name')
     .eq('id', apartment_id)
     .single()
 
@@ -119,6 +120,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     } catch {
       errors.push(`${source}: fetch failed`)
+    }
+  }
+
+  if (imported > 0) {
+    try {
+      await sendPushToHost(supabase, apt.host_id, {
+        title: imported === 1 ? 'New booking' : 'New bookings',
+        body: `${imported} new booking${imported === 1 ? '' : 's'} synced for ${apt.name ?? 'your property'}`,
+        url: '/dashboard/bookings',
+      })
+    } catch {
+      // ignore — notification is best-effort
     }
   }
 
