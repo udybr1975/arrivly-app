@@ -77,11 +77,19 @@ export default function Layout() {
               {label}
             </NavLink>
           ))}
-          {/* Settings — no route yet */}
-          <div className="flex items-center gap-[7px] px-[10px] py-[7px] rounded-[7px] text-xs text-[#666] hover:bg-white/60 cursor-pointer">
+          <NavLink
+            to="/dashboard/settings"
+            className={({ isActive }) =>
+              `flex items-center gap-[7px] px-[10px] py-[7px] rounded-[7px] text-xs cursor-pointer transition-colors ${
+                isActive
+                  ? 'bg-white text-[#1a1a1a] font-semibold shadow-[0_1px_2px_rgba(0,0,0,.06)]'
+                  : 'text-[#666] hover:bg-white/60'
+              }`
+            }
+          >
             <span className="text-sm">⚙️</span>
             Settings
-          </div>
+          </NavLink>
         </nav>
 
         {/* Trial widget + sign out */}
