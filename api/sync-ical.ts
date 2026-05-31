@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-import { sendPushToHost } from './_lib/push'
+import { sendPushToHost } from './_lib/push.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
