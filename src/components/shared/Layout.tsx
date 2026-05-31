@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Menu } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 
 const NAV = [
@@ -20,6 +21,7 @@ export default function Layout() {
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [host, setHost] = useState<HostData | null>(null)
+  const [menuOpen, setMenuOpen] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -49,10 +51,44 @@ export default function Layout() {
     : 0
   const showTrial = host?.subscription_status === 'trial' && trialRemaining > 0
 
+  const closeMenu = () => setMenuOpen(false)
+
   return (
     <div className="flex min-h-screen bg-[#f0ede6]">
-      {/* Sidebar */}
-      <aside className="w-[170px] shrink-0 bg-[#f8f6f2] border-r border-[#ddd8ce] p-[14px] flex flex-col min-h-screen">
+
+      {/* Mobile top bar — hidden on md+ */}
+      <div className="md:hidden fixed top-0 inset-x-0 h-12 z-30 bg-[#f8f6f2] border-b border-[#ddd8ce] flex items-center px-3 gap-2">
+        <button
+          onClick={() => setMenuOpen(true)}
+          aria-label="Open menu"
+          aria-expanded={menuOpen}
+          aria-controls="sidebar-nav"
+          className="p-1.5 text-[#666] hover:text-[#1a1a1a] transition-colors"
+        >
+          <Menu size={18} />
+        </button>
+        <span className="text-[13px] font-semibold text-[#1a1a1a] truncate">
+          {host?.brand_name ?? 'Arrivly'}
+        </span>
+      </div>
+
+      {/* Backdrop — closes drawer on tap */}
+      {menuOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-40 bg-black/40"
+          onClick={closeMenu}
+        />
+      )}
+
+      {/* Sidebar — off-canvas on mobile, static on desktop */}
+      <aside id="sidebar-nav" className={`
+        fixed inset-y-0 left-0 z-50 w-[170px] shrink-0
+        bg-[#f8f6f2] border-r border-[#ddd8ce] p-[14px]
+        flex flex-col min-h-screen
+        transform transition-transform duration-200
+        ${menuOpen ? 'translate-x-0' : '-translate-x-full'}
+        md:static md:translate-x-0 md:z-auto
+      `}>
         {/* Brand + email */}
         <div className="mb-3.5">
           <div className="text-[13px] font-semibold text-[#1a1a1a] truncate">
@@ -68,6 +104,7 @@ export default function Layout() {
               key={to}
               to={to}
               end={end}
+              onClick={closeMenu}
               className={({ isActive }) =>
                 `flex items-center gap-[7px] px-[10px] py-[7px] rounded-[7px] text-xs cursor-pointer transition-colors ${
                   isActive
@@ -82,6 +119,7 @@ export default function Layout() {
           ))}
           <NavLink
             to="/dashboard/settings"
+            onClick={closeMenu}
             className={({ isActive }) =>
               `flex items-center gap-[7px] px-[10px] py-[7px] rounded-[7px] text-xs cursor-pointer transition-colors ${
                 isActive
@@ -106,6 +144,7 @@ export default function Layout() {
               <div className="text-[10px] text-[#2a5c0a] mb-1.5">days remaining</div>
               <NavLink
                 to="/dashboard/billing"
+                onClick={closeMenu}
                 className="block bg-[#1a3a0a] text-white text-center py-1.5 rounded-[5px] text-[10px] font-semibold hover:opacity-80 transition-opacity"
               >
                 Add card
@@ -121,8 +160,8 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* Main */}
-      <main className="flex-1 p-4 overflow-auto">
+      {/* Main — pt-16 clears the fixed mobile top bar; md:pt-4 restores normal padding */}
+      <main className="flex-1 px-4 pb-4 pt-16 md:pt-4 overflow-auto min-w-0">
         <Outlet />
       </main>
     </div>
