@@ -42,6 +42,20 @@ function parseIcal(text: string): Array<{
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  const authHeader = req.headers.authorization
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+  if (!token) return res.status(401).json({ error: 'Unauthorized' })
+
+  const authClient = createClient(
+    process.env.VITE_SUPABASE_URL!,
+    process.env.VITE_SUPABASE_ANON_KEY!
+  )
+  const { data: authData, error: authError } = await authClient.auth.getUser(token)
+  if (authError || !authData.user) return res.status(401).json({ error: 'Unauthorized' })
+  const userId = authData.user.id
+
+  if (!req.body) return res.status(400).json({ error: 'Request body required' })
+
   const { apartment_id } = req.body as { apartment_id?: string }
   if (!apartment_id) return res.status(400).json({ error: 'apartment_id required' })
 
@@ -52,6 +66,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .single()
 
   if (aptErr || !apt) return res.status(404).json({ error: 'Apartment not found' })
+
+  if (apt.host_id !== userId) return res.status(403).json({ error: 'Forbidden' })
 
   const urls = (apt.ical_urls ?? '')
     .split('\n')
@@ -101,8 +117,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })
         imported++
       }
-    } catch (e) {
-      errors.push(`${source}: ${e instanceof Error ? e.message : 'fetch failed'}`)
+    } catch {
+      errors.push(`${source}: fetch failed`)
     }
   }
 
