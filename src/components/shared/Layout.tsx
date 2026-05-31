@@ -37,8 +37,11 @@ export default function Layout() {
   }, [])
 
   async function signOut() {
-    await supabase.auth.signOut()
-    navigate('/login')
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      await supabase.auth.signOut({ scope: 'local' })
+    }
+    navigate('/login', { replace: true })
   }
 
   const trialRemaining = host?.trial_ends_at
