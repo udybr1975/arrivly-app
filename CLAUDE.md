@@ -43,6 +43,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - `bookings.reference_number` — is the guest token, used in QR URL
 - `guide_recommendations` — always query with `.maybeSingle()` never `.single()`
 - RLS on `host_picks` joins through `apartments.host_id` — correct, verified
+- `push_subscriptions` has a UNIQUE index on `endpoint` (`push_subscriptions_endpoint_key`) — subscriptions upsert with `onConflict: 'endpoint'`
 
 ## Config
 All pricing and branding settings are in `src/config.ts`. Change there only.
@@ -151,10 +152,48 @@ Full multi-property support (overview, bookings, editing). House-rules auto-poli
 
 ---
 
+## Session 6 Progress (2026-05-31)
+
+### Completed — Priority 4 Push Notifications
+- [x] **4a** — Real `api/send-push.ts` via `web-push`. `71e484b`
+  - Auth-gated: Bearer token → `getUser` (anon client); host-scoped by JWT (never trusts client-provided host_id).
+  - Reads VAPID from env; payload `{title,body,url}` (must match sw.js push handler exactly); prunes dead subs on 404/410.
+  - VAPID env set by Udy in Vercel (Production): `VITE_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (`mailto:udy.bar.yosef@gmail.com`). Verified live (`200 {sent:1}`).
+- [x] **4b** — Host push opt-in. `a8228dc`
+  - Settings page at `/dashboard/settings` (enable/disable) + sidebar nav.
+  - `webpush.ts` hardened (try/catch, null-guard VAPID, safe toJSON, upsert error check, PushManager guard).
+  - DB migration: `create unique index push_subscriptions_endpoint_key on push_subscriptions (endpoint)` — enables upsert `onConflict:'endpoint'`.
+- [x] **Mobile enable fix** — `f495d94`
+  - `subscribeToPush` returns a `SubscribeResult` discriminated union (`unsupported | denied | no-key | subscribe-failed | invalid-subscription | save-failed`) instead of a bare boolean.
+  - Clears any existing PushSubscription before re-subscribing → fixes mobile `InvalidStateError` from a stale/mismatched-key subscription.
+  - Settings shows a specific message per failure reason. Verified working on mobile.
+- [x] **4c-1 + 4c-2** — Server-side send helper + new-booking notification. `a0cc452`
+  - NEW `api/_lib/push.ts` (underscore folder → NOT a Vercel route): `isPushConfigured()` (lazy singleton VAPID init) + `sendPushToHost(db, hostId, payload, apartmentId?)` (concurrent send; prunes 404/410 scoped by host_id+endpoint+role; never throws). url validated to start with `/` or `https://`.
+  - `api/send-push.ts` refactored to delegate lookup+send+prune to the helper; external API unchanged (405/500/401/400/200).
+  - `api/sync-ical.ts`: after the import loop, if `imported > 0`, best-effort `sendPushToHost` ("N new booking(s) synced for {name}", url `/dashboard/bookings`). A push failure can never break a sync. `imported` is a true new-booking count (sync dedupes by iCal UID).
+
+### Completed — Security & fixes
+- [x] **sync-ical auth/ownership gate** — `91b6239` (CRITICAL). Was service-role with NO auth; apartment_id is public (guest URLs) → anyone could inject bookings into any host's calendar. Now requires Bearer token + verifies `apt.host_id === userId` (403 else). Error messages scrubbed (iCal URLs can carry auth tokens).
+- [x] **Auth/session-switch fix** — `79b4112` (CRITICAL). Logging out then into a 2nd account stayed on the 1st until site data cleared. Layout.signOut: global signOut → on error `signOut({scope:'local'})` → navigate to /login; Login.tsx `signOut({scope:'local'})` before signInWithPassword (auto-heals stuck users); try/finally.
+- [x] **Responsive mobile layout** — `263e0d3`. The 170px sidebar (always in-flow) ate ~half the phone width and clipped pages. Now an off-canvas hamburger drawer on mobile (top bar z-30, backdrop z-40, drawer z-50; closes on nav-link tap), static `md+` (desktop pixel-identical). a11y: aria-expanded/aria-controls.
+- [x] **Landing login link** — `b283f3f`. Added "Log in" to the landing hero (was signup-only).
+
+### Verified / closed this session (no code change)
+- push_subscriptions RLS = single `ALL` policy `USING (host_id = auth.uid())` → DELETE correctly gated for RLS clients; sync-ical's service-role prune bypasses RLS and is code-scoped (host_id+endpoint+role). No gap.
+- `VITE_VAPID_PUBLIC_KEY` read server-side (send-push + _lib/push) is INTENTIONAL and correct — it's the public key (browser-safe); Vercel exposes all env vars to functions regardless of prefix. Documented in the helper comment. The "fix it" reviewer note is a false positive.
+
+## Session 6 Status: COMPLETE ✓ (4c-3 crons pending CRON_SECRET)
+Push send path live; host opt-in live (desktop + mobile); new-booking-on-sync notification live. Remaining: unattended cron triggers (4c-3).
+
 ## Known notes / minor debt
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
 - `BookingCalendar.tsx` is an unused stub; the real calendar is `CalendarView` inside `BookingManager.tsx`.
 - QR scans metric on Overview still shows "—" (not wired to any data source).
+- `api/stripe-webhook.ts` is a stub with NO signature verification — must implement before billing goes live.
+- `api/sync-ical.ts`: mild SSRF (no private-IP/metadata blocklist on fetched iCal URLs — only an authenticated host can reach it now); no per-host rate limit; insert errors not checked (`imported++` regardless). Tidy before public launch.
+- `sendPushToHost` url check uses `startsWith('/')`, which also admits protocol-relative `//host` — only ever set from the host's own send-push request (self-targeted), so negligible.
+- send-push `apartmentId` is not ownership-checked — latent only (lookup forces `host_id = userId`, so a foreign apartmentId matches zero rows).
+- Mobile drawer a11y follow-ups: Escape-to-close, focus return on close.
 
 ---
 
@@ -177,8 +216,12 @@ All pricing and plan settings live in `src/config.ts` only.
 
 ## Next up (Priority order)
 
-1. **Priority 4 — Push notifications epic.**
-   - **PREREQUISITE (Udy, in Vercel before any code):** generate VAPID keypair (`npx web-push generate-vapid-keys`) and add to Vercel env vars: `VITE_VAPID_PUBLIC_KEY` (public, browser-safe), `VAPID_PRIVATE_KEY` (secret, no VITE_ prefix), `VAPID_SUBJECT` (e.g. `mailto:udy.bar.yosef@gmail.com`).
-   - **4a** — Real `api/send-push.ts` via `web-push` library (dep already in package.json; `webpush.ts` client lib exists but has no callers; `sw.js` push + notificationclick handlers already in place).
-   - **4b** — Host opt-in UI: push permission request on dashboard; save subscription to `push_subscriptions` table.
-   - **4c** — Notification triggers: new booking (BookingManager); trial-ending + checkout-reminder crons need `CRON_SECRET` in Vercel.
+1. **Priority 4 — Push notifications: 4c-3 crons (remaining).**
+   - **PREREQUISITE (Udy, in Vercel before any code):** set `CRON_SECRET` (Production) to a long random string. Vercel auto-sends it as `Authorization: Bearer <CRON_SECRET>` to cron endpoints; each endpoint rejects anything else.
+   - Add a `vercel.json` cron schedule.
+   - Build cron endpoints on the shared `sendPushToHost` helper, each guarded by the bearer check:
+     - Monthly iCal sync-all → notify hosts of newly imported bookings (this is what makes the 4c-2 notification genuinely valuable — unattended).
+     - Trial-ending reminder (5 days before expiry).
+     - Checkout-reminder (morning of departure).
+2. **Stripe webhook** — implement `api/stripe-webhook.ts` with signature verification before any billing goes live.
+3. **Tier-2 booking system** (future; €49 `price_tier2`) — architecture already upgrade-ready.
