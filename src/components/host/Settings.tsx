@@ -32,17 +32,29 @@ export default function Settings() {
   async function handleEnable() {
     if (!userId) return
     setBusy(true)
-    const ok = await subscribeToPush(userId)
-    if (ok) {
+    const result = await subscribeToPush(userId)
+    if (result.ok) {
       setPushState('on')
       toast('Notifications enabled', 'success')
-    } else {
+      setBusy(false)
+      return
+    }
+    if (result.reason === 'denied') {
       const permission = await checkPermission()
       if (permission === 'denied') {
         setPushState('blocked')
       } else {
-        toast('Could not enable notifications', 'error')
+        toast('Notification permission was not granted', 'error')
       }
+    } else {
+      const messages: Record<string, string> = {
+        unsupported: 'This browser does not support notifications',
+        'no-key': 'Push is not set up on the server yet',
+        'subscribe-failed': 'Could not register this device for notifications',
+        'invalid-subscription': 'Could not register this device for notifications',
+        'save-failed': 'Could not save your notification settings',
+      }
+      toast(messages[result.reason] ?? 'Could not enable notifications', 'error')
     }
     setBusy(false)
   }

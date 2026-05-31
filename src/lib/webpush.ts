@@ -1,46 +1,71 @@
 import { supabase } from './supabase'
 
+export type SubscribeResult =
+  | { ok: true }
+  | {
+      ok: false
+      reason: 'unsupported' | 'denied' | 'no-key' | 'subscribe-failed' | 'invalid-subscription' | 'save-failed'
+    }
+
 export async function checkPermission(): Promise<NotificationPermission> {
   if (!('Notification' in window)) return 'denied'
   return Notification.permission
 }
 
-export async function subscribeToPush(hostId?: string, apartmentId?: string): Promise<boolean> {
-  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return false
+export async function subscribeToPush(hostId?: string, apartmentId?: string): Promise<SubscribeResult> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
+    return { ok: false, reason: 'unsupported' }
+  }
 
+  const permission = await Notification.requestPermission()
+  if (permission !== 'granted') {
+    return { ok: false, reason: 'denied' }
+  }
+
+  const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
+  if (!vapidPublicKey) {
+    return { ok: false, reason: 'no-key' }
+  }
+
+  let subscription: PushSubscription
   try {
-    const permission = await Notification.requestPermission()
-    if (permission !== 'granted') return false
-
     const reg = await navigator.serviceWorker.ready
-    const vapidPublicKey = import.meta.env.VITE_VAPID_PUBLIC_KEY
-    if (!vapidPublicKey) return false
-
-    const subscription = await reg.pushManager.subscribe({
+    // A subscription left over from an earlier visit (created before the VAPID
+    // key existed, or with a different key) makes a fresh subscribe throw
+    // InvalidStateError on some browsers. Clear it first, then subscribe clean.
+    const existing = await reg.pushManager.getSubscription()
+    if (existing) {
+      await existing.unsubscribe()
+    }
+    subscription = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
     })
-
-    const json = subscription.toJSON()
-    if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return false
-
-    const { error } = await supabase.from('push_subscriptions').upsert(
-      {
-        host_id: hostId ?? null,
-        apartment_id: apartmentId ?? null,
-        role: hostId ? 'host' : 'guest',
-        endpoint: json.endpoint,
-        p256dh: json.keys.p256dh,
-        auth_key: json.keys.auth,
-      },
-      { onConflict: 'endpoint' }
-    )
-    if (error) return false
-
-    return true
   } catch {
-    return false
+    return { ok: false, reason: 'subscribe-failed' }
   }
+
+  const json = subscription.toJSON()
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
+    return { ok: false, reason: 'invalid-subscription' }
+  }
+
+  const { error } = await supabase.from('push_subscriptions').upsert(
+    {
+      host_id: hostId ?? null,
+      apartment_id: apartmentId ?? null,
+      role: hostId ? 'host' : 'guest',
+      endpoint: json.endpoint,
+      p256dh: json.keys.p256dh,
+      auth_key: json.keys.auth,
+    },
+    { onConflict: 'endpoint' }
+  )
+  if (error) {
+    return { ok: false, reason: 'save-failed' }
+  }
+
+  return { ok: true }
 }
 
 export async function unsubscribeFromPush(hostId?: string): Promise<void> {
