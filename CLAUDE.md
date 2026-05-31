@@ -44,6 +44,10 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - `guide_recommendations` — always query with `.maybeSingle()` never `.single()`
 - RLS on `host_picks` joins through `apartments.host_id` — correct, verified
 - `push_subscriptions` has a UNIQUE index on `endpoint` (`push_subscriptions_endpoint_key`) — subscriptions upsert with `onConflict: 'endpoint'`
+- `push_subscriptions` RLS verified (2026-05-31): single ALL policy
+  `push_host_all` `USING (host_id = auth.uid())` with no explicit WITH CHECK —
+  Postgres applies USING as WITH CHECK on ALL policies, so client writes are
+  host-scoped. (Optional: make WITH CHECK explicit for clarity.)
 
 ## Config
 All pricing and branding settings are in `src/config.ts`. Change there only.
@@ -197,6 +201,28 @@ Full multi-property support (overview, bookings, editing). House-rules auto-poli
   - code-reviewer + security-auditor: both clear. Deployed `dpl_Fz9Hqv…` (READY).
     Live re-test of an actual iCal sync still pending confirmation.
 
+### Push hardening (2026-05-31) — stop orphan churn + self-heal DB↔browser drift
+- [x] **subscribeToPush reuse** — `e12afd5`. Reuses an existing PushSubscription
+  when its applicationServerKey matches the current VAPID key (byte-compared via
+  applicationServerKeyMatches), so Enable no longer mints a new endpoint and
+  orphans the prior row each time. Key mismatch / unreadable → unsubscribe + fresh
+  subscribe (preserves the mobile InvalidStateError fix). All paths still upsert
+  (onConflict:'endpoint'), rebinding host_id.
+- [x] **reaffirmSubscription(hostId)** — `e12afd5`. Settings calls it silently on
+  load when the browser reports subscribed; upserts the current endpoint so a
+  pruned DB row can't leave the toggle showing "on" while the host receives
+  nothing. hostId from server-verified getUser(), never localStorage.
+- Note: the earlier "re-enable on every login" symptom was already resolved by the
+  ESM hotfix (the churn was a side-effect of the broken state); this change is
+  preventative. Verified live — sync + push working; orphan rows from the broken
+  window self-pruned 4 → 3.
+- [x] **RLS verified (push_subscriptions, 2026-05-31)** — policy `push_host_all`
+  is `FOR ALL USING (host_id = auth.uid())`, RLS enabled. with_check is null, but
+  for an ALL policy Postgres applies USING as the WITH CHECK, so client
+  INSERT/UPDATE are host-scoped (a client cannot write another host's row). Unique
+  index `push_subscriptions_endpoint_key` on (endpoint) confirmed present. Optional
+  clarity hardening: add an explicit `WITH CHECK (host_id = auth.uid())`.
+
 ## Session 6 Status: COMPLETE ✓ (ESM hotfix shipped; 4c-3 crons pending CRON_SECRET)
 Push send path live; host opt-in live (desktop + mobile); new-booking-on-sync notification live. Remaining: unattended cron triggers (4c-3).
 
@@ -209,13 +235,8 @@ Push send path live; host opt-in live (desktop + mobile); new-booking-on-sync no
 - `sendPushToHost` url check uses `startsWith('/')`, which also admits protocol-relative `//host` — only ever set from the host's own send-push request (self-targeted), so negligible.
 - send-push `apartmentId` is not ownership-checked — latent only (lookup forces `host_id = userId`, so a foreign apartmentId matches zero rows).
 - Mobile drawer a11y follow-ups: Escape-to-close, focus return on close.
-- Push opt-in persistence (identified 2026-05-31, fix queued — not yet shipped):
-  the Settings toggle reads browser state only (never the DB), and `subscribeToPush`
-  unconditionally unsubscribes + re-subscribes on every enable — minting a new
-  endpoint and orphaning the prior `push_subscriptions` row (4 rows seen for one
-  host/device). Cross-device re-enable is inherent to web push. Planned fix: reuse
-  an existing subscription when the VAPID key matches; reaffirm the DB row on load.
-  Stale endpoints self-prune on next send (404/410).
+- ~~Push opt-in persistence / orphan rows on re-enable~~ — RESOLVED `e12afd5`
+  (subscribeToPush reuse + reaffirm-on-load); see Session 6 "Push hardening".
 
 ---
 
