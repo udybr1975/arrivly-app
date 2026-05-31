@@ -30,17 +30,25 @@ export async function subscribeToPush(hostId?: string, apartmentId?: string): Pr
   let subscription: PushSubscription
   try {
     const reg = await navigator.serviceWorker.ready
-    // A subscription left over from an earlier visit (created before the VAPID
-    // key existed, or with a different key) makes a fresh subscribe throw
-    // InvalidStateError on some browsers. Clear it first, then subscribe clean.
+    const appServerKey = urlBase64ToUint8Array(vapidPublicKey)
     const existing = await reg.pushManager.getSubscription()
-    if (existing) {
-      await existing.unsubscribe()
+
+    if (existing && applicationServerKeyMatches(existing, appServerKey)) {
+      // Same VAPID key — reuse the existing subscription so the endpoint stays
+      // stable and no orphaned push_subscriptions row is created.
+      subscription = existing
+    } else {
+      // Key mismatch, unreadable key, or no existing subscription.
+      // Unsubscribe any stale sub first (preserves the mobile InvalidStateError fix),
+      // then subscribe fresh.
+      if (existing) {
+        await existing.unsubscribe()
+      }
+      subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: appServerKey,
+      })
     }
-    subscription = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
-    })
   } catch {
     return { ok: false, reason: 'subscribe-failed' }
   }
@@ -89,6 +97,38 @@ export async function isSubscribed(): Promise<boolean> {
   } catch {
     return false
   }
+}
+
+// Silently reaffirms the current browser subscription in the DB without prompting.
+// Call on Settings load when the browser reports subscribed — heals a pruned row.
+export async function reaffirmSubscription(hostId: string): Promise<void> {
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return
+  if (Notification.permission !== 'granted') return
+  const reg = await navigator.serviceWorker.ready
+  const sub = await reg.pushManager.getSubscription()
+  if (!sub) return
+  const json = sub.toJSON()
+  if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) return
+  await supabase.from('push_subscriptions').upsert(
+    {
+      host_id: hostId,
+      apartment_id: null,
+      role: 'host',
+      endpoint: json.endpoint,
+      p256dh: json.keys.p256dh,
+      auth_key: json.keys.auth,
+    },
+    { onConflict: 'endpoint' }
+  )
+}
+
+function applicationServerKeyMatches(sub: PushSubscription, key: Uint8Array): boolean {
+  const k = sub.options?.applicationServerKey
+  if (!k) return false
+  const a = new Uint8Array(k as ArrayBuffer)
+  if (a.byteLength !== key.byteLength) return false
+  for (let i = 0; i < a.byteLength; i++) if (a[i] !== key[i]) return false
+  return true
 }
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {

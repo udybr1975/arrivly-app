@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../shared/Toast'
-import { checkPermission, subscribeToPush, unsubscribeFromPush, isSubscribed } from '../../lib/webpush'
+import { checkPermission, subscribeToPush, unsubscribeFromPush, isSubscribed, reaffirmSubscription } from '../../lib/webpush'
 import Loader from '../shared/Loader'
 
 type PushState = 'loading' | 'off' | 'on' | 'blocked'
@@ -24,6 +24,9 @@ export default function Settings() {
         return
       }
       const subscribed = await isSubscribed()
+      if (subscribed) {
+        await reaffirmSubscription(user.id)
+      }
       setPushState(subscribed ? 'on' : 'off')
     }
     init()
