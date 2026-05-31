@@ -182,7 +182,22 @@ Full multi-property support (overview, bookings, editing). House-rules auto-poli
 - push_subscriptions RLS = single `ALL` policy `USING (host_id = auth.uid())` → DELETE correctly gated for RLS clients; sync-ical's service-role prune bypasses RLS and is code-scoped (host_id+endpoint+role). No gap.
 - `VITE_VAPID_PUBLIC_KEY` read server-side (send-push + _lib/push) is INTENTIONAL and correct — it's the public key (browser-safe); Vercel exposes all env vars to functions regardless of prefix. Documented in the helper comment. The "fix it" reviewer note is a false positive.
 
-## Session 6 Status: COMPLETE ✓ (4c-3 crons pending CRON_SECRET)
+### Hotfix (2026-05-31) — API routes 500: Node ESM missing import extension
+- [x] **ESM import extension** — `0a1c9cd`. `package.json` `"type":"module"` makes
+  Vercel run every api/ function as native Node ESM, which requires explicit file
+  extensions on relative imports. The 4c helper import `./_lib/push` (no extension)
+  threw `ERR_MODULE_NOT_FOUND` at Lambda startup, so every `send-push` and
+  `sync-ical` request 500'd from `a0cc452` onward (sync-ical surfaced it; send-push
+  was latent — its earlier 200s were on a pre-4c deployment).
+  - Root cause hidden at build: `tsc` uses bundler moduleResolution and `vite build`
+    only builds the frontend, so neither runs api/ through Node's ESM resolver.
+  - Fix: `./_lib/push` → `./_lib/push.js` in `api/sync-ical.ts` and `api/send-push.ts`.
+    tsc maps the `.js` specifier back to the `.ts` source (build stays green); Node
+    resolves the emitted `.js` at runtime.
+  - code-reviewer + security-auditor: both clear. Deployed `dpl_Fz9Hqv…` (READY).
+    Live re-test of an actual iCal sync still pending confirmation.
+
+## Session 6 Status: COMPLETE ✓ (ESM hotfix shipped; 4c-3 crons pending CRON_SECRET)
 Push send path live; host opt-in live (desktop + mobile); new-booking-on-sync notification live. Remaining: unattended cron triggers (4c-3).
 
 ## Known notes / minor debt
@@ -194,6 +209,13 @@ Push send path live; host opt-in live (desktop + mobile); new-booking-on-sync no
 - `sendPushToHost` url check uses `startsWith('/')`, which also admits protocol-relative `//host` — only ever set from the host's own send-push request (self-targeted), so negligible.
 - send-push `apartmentId` is not ownership-checked — latent only (lookup forces `host_id = userId`, so a foreign apartmentId matches zero rows).
 - Mobile drawer a11y follow-ups: Escape-to-close, focus return on close.
+- Push opt-in persistence (identified 2026-05-31, fix queued — not yet shipped):
+  the Settings toggle reads browser state only (never the DB), and `subscribeToPush`
+  unconditionally unsubscribes + re-subscribes on every enable — minting a new
+  endpoint and orphaning the prior `push_subscriptions` row (4 rows seen for one
+  host/device). Cross-device re-enable is inherent to web push. Planned fix: reuse
+  an existing subscription when the VAPID key matches; reaffirm the DB row on load.
+  Stale endpoints self-prune on next send (404/410).
 
 ---
 
@@ -211,6 +233,13 @@ Claude in chat NEVER pushes to GitHub. All code changes are delivered as Claude 
 
 ### Config rule
 All pricing and plan settings live in `src/config.ts` only.
+
+### api/ ESM rule (Node runtime)
+`package.json` is `"type":"module"`, so Vercel runs every api/ function as native
+Node ESM. ALL relative imports inside api/ MUST include the `.js` extension
+(e.g. `./_lib/push.js`, `./_lib/ical.js`, `./_lib/cron.js`). Extensionless relative
+imports compile fine but throw `ERR_MODULE_NOT_FOUND` at runtime. Imports from
+node_modules are unaffected. This applies to the 4c-3 cron files when they land.
 
 ---
 
