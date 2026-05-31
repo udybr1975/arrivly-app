@@ -29,7 +29,10 @@ function Landing() {
       <div className="max-w-4xl mx-auto">
         {/* Dark hero */}
         <div className="bg-[#1c1c1a] px-9 pt-12 pb-9">
-          <div className="font-mono text-[11px] text-white/35 uppercase tracking-[.2em] mb-3.5">Arrivly</div>
+          <div className="flex justify-between items-center mb-3.5 flex-wrap gap-y-1">
+            <div className="font-mono text-[11px] text-white/35 uppercase tracking-[.2em]">Arrivly</div>
+            <Link to="/login" className="text-[12px] text-white/60 hover:text-white transition-colors">Log in</Link>
+          </div>
           <h1 className="text-[28px] font-serif font-light text-white leading-tight max-w-[440px] mb-3">
             Give every guest their own personal page.
           </h1>
