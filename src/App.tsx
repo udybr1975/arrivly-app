@@ -1,4 +1,7 @@
-import { BrowserRouter, Routes, Route, Link } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { BrowserRouter, Routes, Route, Link, Navigate } from 'react-router-dom'
+import { supabase } from './lib/supabase'
+import Loader from './components/shared/Loader'
 import { ToastProvider } from './components/shared/Toast'
 import PrivateRoute from './components/shared/PrivateRoute'
 import SuperAdminRoute from './components/shared/SuperAdminRoute'
@@ -23,7 +26,7 @@ const FEATURES = [
   { emoji: '💬', title: 'Built-in chatbot', desc: 'Answers guest questions 24/7. Knows your apartment. Zero effort from you.' },
 ]
 
-function Landing() {
+function LandingContent() {
   return (
     <div className="min-h-screen bg-[#f0ede6]">
       <div className="max-w-4xl mx-auto">
@@ -82,6 +85,28 @@ function Landing() {
       </div>
     </div>
   )
+}
+
+function Landing() {
+  const [checking, setChecking] = useState(true)
+  const [authed, setAuthed] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    // getSession() is intentional — local-only, no network. PrivateRoute uses
+    // getUser() for the real server-validated gate on every protected route.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!cancelled) {
+        setAuthed(!!session)
+        setChecking(false)
+      }
+    })
+    return () => { cancelled = true }
+  }, [])
+
+  if (checking) return <Loader />
+  if (authed) return <Navigate to="/dashboard" replace />
+  return <LandingContent />
 }
 
 export default function App() {
