@@ -324,13 +324,43 @@ node_modules are unaffected. This applies to the 4c-3 cron files when they land.
 
 ---
 
-## Next up (Priority order)
+## Roadmap to v1 (locked 2026-06-02)
 
-1. **Stripe webhook** — implement `api/stripe-webhook.ts` with signature verification before any
-   billing goes live.
-2. **Cron follow-ups (pre-launch hardening):**
-   - sync-ical: prove the import-triggered push with a controllable test iCal feed.
-   - trial-ending: add a `trial_reminder_sent_at` column for true retry-idempotency.
-   - iCal fetch: add an SSRF private-IP/metadata blocklist + per-host rate limit.
-   - cron-sync-ical: batch / raise maxDuration before onboarding many hosts (30s cap).
-3. **Tier-2 booking system** (future; €49 `price_tier2`) — architecture already upgrade-ready.
+Build order is A→G. Stripe/billing is intentionally late (per Udy): build the full product
+first, switch on revenue near the end. Reorder only by explicit decision.
+
+Locked product decisions:
+- Guest↔host messaging: token-based, NO guest login/account. Guest messages from the guest
+  page using their booking token. Install (add-to-home-screen) is NUDGED, not required — it
+  enables push replies to the guest (mandatory for push on iOS). In-app messaging is the
+  PRIMARY host↔guest channel; WhatsApp/email remain the un-installed fallback. System emails
+  (trial reminders, receipts) are separate and stay.
+- Guest-page city image: stock image API (mirror Anna's Stays' provider for licensing
+  consistency). Host can override per-apartment via Supabase Storage upload.
+- Design: every guest-page redesign starts as an inline interactive mockup for Udy to approve
+  BEFORE any code.
+- Superadmin impersonate: read-only "view as" snapshot served by the admin API — never a full
+  session takeover — with a visible "viewing as" banner + audit trail. Money actions deferred
+  until billing exists.
+
+Phases:
+- A — Guest-page value (content engines): real AI city guide (generate-guide +
+  cron-refresh-guides), AI host picks (generate-host-picks), city events (city-events), real
+  guest chatbot (port from Anna's Stays ChatBot). All stubs today.
+- B — Guest-page look & feel: city/host images + Supabase Storage (#4), finish host logo
+  upload path (#5 — display already works), port Anna's guest features + image lightbox (#2),
+  approved design pass (#6).
+- C — Communication: in-app token-based messaging (#3) + Resend transactional email
+  (send-email): welcome + day-25 trial reminder email.
+- D — Superadmin (#1): service-role admin API (superadmin-gated) + wire the existing /admin
+  dashboard (currently blind because hosts RLS = own-row-only) + read-only impersonate.
+- E — Billing (Tier-1 Stripe): create-subscription, billing-portal, stripe-webhook (signature
+  verified), subscription lifecycle, guest-page grace/expired enforcement.
+- F — Tier-2 booking system (#7): full booking (availability → request → approve → pay →
+  manage) on the €49 price, referencing Anna's Stays components. Built on working Stripe.
+- G — Pre-launch hardening: cron follow-ups (sync-ical real-feed test, trial idempotency
+  column), iCal SSRF blocklist + rate limit, cron batching/maxDuration at scale, mobile drawer
+  a11y, dead-code sweep, full security audit.
+
+Tier-2 architecture stays upgrade-ready throughout (plan-gated component slots; bookings/guests
+schema already supports it).
