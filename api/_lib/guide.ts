@@ -76,17 +76,30 @@ export async function generateGuideForApartment(
   const generatePromise = ai.models.generateContent({
     model: MODEL,
     contents: buildPrompt(apt),
-    config: { responseMimeType: 'application/json' },
+    config: {
+      responseMimeType: 'application/json',
+      thinkingConfig: { thinkingBudget: 0 },   // disable thinking — was eating the output budget
+      maxOutputTokens: 8192,
+    },
   })
 
   let raw = ''
+  let finishReason: string | undefined
   try {
     const response = await Promise.race([generatePromise, timeoutPromise])
     clearTimeout(timer)
     raw = response.text?.trim() ?? ''
-  } catch {
+    finishReason = response.candidates?.[0]?.finishReason
+      ? String(response.candidates[0].finishReason)
+      : undefined
+  } catch (e) {
     clearTimeout(timer)
     raw = ''
+    // Truncate + scrub: the GenAI SDK can embed the API key in error/request-URL strings
+    const msg = String((e as Error)?.message ?? e)
+      .replace(/key=[^&\s]+/gi, 'key=REDACTED')
+      .slice(0, 120)
+    console.error('[guide] generate threw', { aptId: apt.id, msg })
   }
 
   // Defensive: strip code fences, fall back to {} on parse failure
@@ -153,7 +166,12 @@ export async function generateGuideForApartment(
   }
 
   if (placeCount === 0) {
-    console.error('[guide] empty result', { aptId: apt.id, rawLen: raw.length, sample: raw.slice(0, 120) })
+    console.error('[guide] empty result', {
+      aptId: apt.id,
+      rawLen: raw.length,
+      finishReason: finishReason ?? null,
+      sample: raw.slice(0, 200),
+    })
   }
 
   const { error: upsertErr } = await db.from('guide_recommendations').upsert(
