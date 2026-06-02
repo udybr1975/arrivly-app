@@ -61,6 +61,19 @@ export default function PropertySetup() {
   const [pickForm, setPickForm] = useState({
     name: '', category: 'Restaurant', address: '', note: ''
   })
+  const [pasteText, setPasteText] = useState('')
+  const [enriching, setEnriching] = useState(false)
+  const [candidates, setCandidates] = useState<Array<{
+    key: string
+    name: string
+    category: string
+    address: string
+    note: string
+    lat: number | null
+    lng: number | null
+    located: boolean
+  }>>([])
+  const [savingPicks, setSavingPicks] = useState(false)
 
   useEffect(() => {
     async function load() {
@@ -74,6 +87,11 @@ export default function PropertySetup() {
       setRawRules('')
       setExtrasContent('')
       setImportResult('')
+      setPasteText('')
+      setCandidates([])
+      setEnriching(false)
+      setPicks([])
+      setPickForm({ name: '', category: 'Restaurant', address: '', note: '' })
 
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
@@ -347,6 +365,58 @@ export default function PropertySetup() {
     const { error } = await supabase.from('host_picks').delete().eq('id', id).eq('apartment_id', apartmentId)
     if (error) { showErr(error.message); return }
     await loadPicks()
+  }
+
+  async function enrichPicks() {
+    if (!apartmentId || !pasteText.trim()) return
+    setEnriching(true)
+    try {
+      const data = await api.post<{
+        picks: Array<{ name: string; category: string; address: string; lat: number | null; lng: number | null; located: boolean }>
+      }>('/generate-host-picks', { apartmentId, text: pasteText })
+      if (!data.picks || data.picks.length === 0) {
+        setFeedback({ ok: false, msg: "Couldn't identify any places — add them manually below." })
+      } else {
+        setCandidates(data.picks.map(p => ({ ...p, key: crypto.randomUUID(), note: '' })))
+      }
+    } catch {
+      showErr('Could not identify places')
+    }
+    setEnriching(false)
+  }
+
+  function updateCandidate(key: string, field: 'name' | 'category' | 'address' | 'note', value: string) {
+    setCandidates(cs => cs.map(c => c.key === key ? { ...c, [field]: value } : c))
+  }
+
+  function removeCandidate(key: string) {
+    setCandidates(cs => cs.filter(c => c.key !== key))
+  }
+
+  async function confirmPicks() {
+    if (!candidates.length || !apartmentId) return
+    setSavingPicks(true)
+    const nextOrder = (picks.length ? Math.max(...picks.map(p => p.display_order)) : 0) + 1
+    const rows = candidates.map((c, i) => ({
+      apartment_id: apartmentId,
+      name: c.name.trim(),
+      category: c.category,
+      address: c.address.trim() || null,
+      note: c.note.trim() || null,
+      lat: c.lat,
+      lng: c.lng,
+      display_order: nextOrder + i,
+    }))
+    const { error } = await supabase.from('host_picks').insert(rows)
+    if (error) {
+      showErr(error.message)
+    } else {
+      setPasteText('')
+      setCandidates([])
+      showOk()
+      await loadPicks()
+    }
+    setSavingPicks(false)
   }
 
   if (loading) return <Loader />
@@ -623,6 +693,97 @@ export default function PropertySetup() {
           <p className="text-[11px] text-[#888]">
             Add your favourite local places. They appear in the Explore tab on the guest page with a Navigate button.
           </p>
+
+          {/* AI enrichment card */}
+          <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 space-y-3">
+            <div className="text-[12px] font-semibold text-[#1a1a1a]">✦ Add places with AI</div>
+            <p className="text-[11px] text-[#888] leading-relaxed">
+              Paste your favourites in free text — AI identifies each place, locates it on the map, and categorises it for you.
+            </p>
+            <textarea
+              value={pasteText}
+              onChange={e => setPasteText(e.target.value)}
+              className={`${INPUT} resize-none`}
+              rows={4}
+              placeholder="Mercadona on Carrer del Rec, Bar Marsella, Cafe Regatta…"
+            />
+            <button
+              onClick={enrichPicks}
+              disabled={enriching || !apartmentId || !pasteText.trim()}
+              className={BTN_AI}
+            >
+              {enriching ? 'Identifying…' : '✦ Identify places'}
+            </button>
+
+            {candidates.length > 0 && (
+              <div className="space-y-3 pt-1">
+                <div className={LABEL}>Review & edit before saving</div>
+                {candidates.map(c => (
+                  <div key={c.key} className="bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] p-3 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <div className="flex-1 min-w-0 grid grid-cols-2 gap-2">
+                        <div className="col-span-2">
+                          <label className={LABEL}>Name</label>
+                          <input
+                            value={c.name}
+                            onChange={e => updateCandidate(c.key, 'name', e.target.value)}
+                            className={INPUT}
+                          />
+                        </div>
+                        <div>
+                          <label className={LABEL}>Category</label>
+                          <select
+                            value={c.category}
+                            onChange={e => updateCandidate(c.key, 'category', e.target.value)}
+                            className={INPUT}
+                          >
+                            {['Restaurant', 'Bar', 'Coffee', 'Sight', 'Essential', 'Nightlife'].map(cat => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={LABEL}>Address</label>
+                          <input
+                            value={c.address}
+                            onChange={e => updateCandidate(c.key, 'address', e.target.value)}
+                            className={INPUT}
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <label className={LABEL}>Your note (optional)</label>
+                          <input
+                            value={c.note}
+                            onChange={e => updateCandidate(c.key, 'note', e.target.value)}
+                            className={INPUT}
+                            placeholder="Why you love it"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => removeCandidate(c.key)}
+                        className="text-[#ccc] hover:text-[#8a1a1a] transition-colors text-xs shrink-0 mt-5"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                    <div className={`text-[10px] ${c.located ? 'text-[#2a5c0a]' : 'text-[#7a4800]'}`}>
+                      {c.located ? '📍 Located' : "⚠ Couldn't locate — saved without map pin"}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  onClick={confirmPicks}
+                  disabled={savingPicks || candidates.length === 0}
+                  className={BTN_DARK}
+                >
+                  {savingPicks
+                    ? 'Saving…'
+                    : `Confirm & add ${candidates.length} place${candidates.length === 1 ? '' : 's'}`}
+                </button>
+              </div>
+            )}
+          </div>
 
           {/* Add pick form */}
           <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 space-y-3">
