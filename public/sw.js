@@ -1,4 +1,4 @@
-const CACHE_NAME = 'arrivly-v2'
+const CACHE_NAME = 'arrivly-v3'
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json']
 
 self.addEventListener('install', (event) => {
@@ -25,6 +25,10 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event
   const url = new URL(request.url)
+
+  // Only handle same-origin requests. Cross-origin (Supabase, wttr.in, Google, fonts, etc.)
+  // must go straight to network — never serve stale DB data from cache.
+  if (url.origin !== self.location.origin) return
 
   // Network-first for API calls
   if (url.pathname.startsWith('/api/')) {
@@ -91,7 +95,8 @@ self.addEventListener('fetch', (event) => {
 
 self.addEventListener('push', (event) => {
   if (!event.data) return
-  const data = event.data.json()
+  let data
+  try { data = event.data.json() } catch { return }
   event.waitUntil(
     self.registration.showNotification(data.title || 'Arrivly', {
       body: data.body || '',
@@ -104,7 +109,11 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const url = event.notification.data?.url || '/'
+  const rawUrl = event.notification.data?.url || '/'
+  // Guard against protocol-relative or external URLs injected via push payload.
+  const url = typeof rawUrl === 'string' && rawUrl.startsWith('/') && !rawUrl.startsWith('//')
+    ? rawUrl
+    : '/'
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
       for (const client of windowClients) {
