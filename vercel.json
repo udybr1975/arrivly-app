@@ -8,6 +8,8 @@
     }
   },
   "crons": [
-    { "path": "/api/cron-checkout-reminder", "schedule": "0 6 * * *" }
+    { "path": "/api/cron-checkout-reminder", "schedule": "0 6 * * *" },
+    { "path": "/api/cron-trial-ending", "schedule": "0 8 * * *" },
+    { "path": "/api/cron-sync-ical", "schedule": "0 4 1 * *" }
   ]
 }
