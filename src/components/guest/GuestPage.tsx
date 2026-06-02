@@ -303,7 +303,9 @@ export default function GuestPage() {
 
   useEffect(() => {
     if (activeTab !== 'explore' || !aptId) return
-    if (hostPicks.length > 0 || guideCategories) return
+    if (guideCategories) return
+
+    let cancelled = false
 
     async function fetchExplore() {
       setGuideLoading(true)
@@ -319,11 +321,15 @@ export default function GuestPage() {
           .eq('apartment_id', aptId!)
           .maybeSingle(),
       ])
+      if (cancelled) return
       if (picksRes.data) setHostPicks(picksRes.data as HostPick[])
-      if (guideRes.data?.categories) setGuideCategories(guideRes.data.categories as GuideCategories)
+      const cats = guideRes.data?.categories as GuideCategories | undefined
+      if (cats && Object.keys(cats).length > 0) setGuideCategories(cats)
       setGuideLoading(false)
     }
     fetchExplore()
+
+    return () => { cancelled = true }
   }, [activeTab, aptId, hostPicks.length, guideCategories])
 
   const rulesRaw = useMemo(() =>
