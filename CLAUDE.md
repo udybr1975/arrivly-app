@@ -223,15 +223,75 @@ Full multi-property support (overview, bookings, editing). House-rules auto-poli
   index `push_subscriptions_endpoint_key` on (endpoint) confirmed present. Optional
   clarity hardening: add an explicit `WITH CHECK (host_id = auth.uid())`.
 
-## Session 6 Status: COMPLETE ✓ (ESM hotfix shipped; 4c-3 crons pending CRON_SECRET)
-Push send path live; host opt-in live (desktop + mobile); new-booking-on-sync notification live. Remaining: unattended cron triggers (4c-3).
+### 4c-3 — Cron-driven push triggers (2026-06-02) ✓
+All cron endpoints are guarded by `isCronAuthorized` (api/_lib/cron.ts): compares the
+Authorization header to `Bearer <CRON_SECRET>`, fails closed if the secret is absent.
+Vercel auto-sends that header to the paths listed in vercel.json `crons[]`.
+
+- **Part 1** `5b01770` — api/_lib/cron.ts (isCronAuthorized) + api/cron-checkout-reminder.ts
+  (daily 06:00 UTC; check_out = today UTC, status confirmed/completed, excludes `*_block`,
+  grouped per host). api/cron-refresh-guides.ts retrofitted with the auth guard.
+- **Part 2** `92113a1` —
+  - api/_lib/ical.ts: sync core extracted from sync-ical.ts (detectSource, parseIcal,
+    syncApartmentBookings). Insert error now CHECKED — `imported++` only on success — so a
+    failed insert can no longer fire a false "new booking" push. The cron and the
+    interactive route share this one fixed core.
+  - api/sync-ical.ts: delegates to `_lib/ical.js`; auth + ownership gate unchanged.
+  - api/cron-sync-ical.ts: monthly (04:00 UTC, 1st). Service-role; iterates apartments with
+    `ical_urls`; one aggregated push per host when new bookings land. Global 30s maxDuration
+    — fine now, needs batching before many hosts.
+  - api/cron-trial-ending.ts: daily (08:00 UTC). Hosts with subscription_status='trial'
+    whose trial_ends_at falls on the UTC day exactly 5 days out. Fires once via a
+    calendar-day window; NOT retry-idempotent (durable fix = a `trial_reminder_sent_at`
+    column, deferred).
+  - vercel.json: `crons[]` now holds all three (checkout `0 6 * * *`, trial `0 8 * * *`,
+    sync `0 4 1 * *`).
+  - code-reviewer + security-auditor clean (VITE_SUPABASE_URL server-side = known false
+    positive; SSRF on iCal fetch = pre-existing debt, now also exercised by the monthly cron).
+
+**Live verification (2026-06-02):**
+- checkout-reminder — confirmed end-to-end: real push to BOTH host devices; body matched code.
+- trial-ending — verified via a temporary trial-date nudge on the test host (reverted after);
+  push delivered to desktop + the installed Android app.
+- sync-ical — deployed and locked; true import-triggered push still untested (needs a
+  controllable test iCal feed, deferred). 401-without-bearer confirmed on all three endpoints.
+- Push subscriptions churn correctly: installing the PWA invalidated the prior browser-tab
+  subscription (FCM 410), which `sendPushToHost` auto-pruned; re-enabling inside the installed
+  app registered a fresh endpoint. Notifications deliver with the app closed and independent of
+  an active login session.
+
+**Security:** CRON_SECRET rotated (Production) + redeployed on 2026-06-02 after the value was
+exposed during manual testing. A leaked CRON_SECRET can only trigger the three cron endpoints
+(no data read, no destructive action).
+
+### App-open routing fix (2026-06-02) `ce296a6`
+The installed PWA always cold-launched on the marketing landing page (`/`) even when the host
+was already logged in — Supabase sessions persist by default (login was never lost; only the
+routing was wrong). Fix (src/App.tsx only): the marketing markup moved to `LandingContent`; a
+new `Landing` wrapper reads `supabase.auth.getSession()` and redirects authenticated users to
+`/dashboard` (replace), else renders `LandingContent`. getSession() (local, fast, no flash) is
+fine for the redirect decision — `/dashboard` stays gated by PrivateRoute's server-validated
+getUser(). A `cancelled` flag guards setState-on-unmount under strict mode. code-reviewer +
+security-auditor clean (no loop, no cross-account leak, no open redirect). Behavioural note: a
+host who abandoned onboarding mid-way now lands on /dashboard rather than the marketing page on
+reopen (correct place; dashboard handles draft state) — add an onboarding-completeness gate
+later only if wanted.
+
+## Session 6 Status: COMPLETE ✓ — Priority 4 (push) done; app-open routing fixed.
+Send path, host opt-in (desktop + mobile), new-booking-on-sync, and all three cron triggers
+are live. Checkout + trial pushes verified on 2 devices (desktop + installed Android app);
+sync-ical deployed + locked (real-feed import push still to be tested). Installed app now
+opens straight to /dashboard for logged-in hosts (`ce296a6`).
 
 ## Known notes / minor debt
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
 - `BookingCalendar.tsx` is an unused stub; the real calendar is `CalendarView` inside `BookingManager.tsx`.
 - QR scans metric on Overview still shows "—" (not wired to any data source).
 - `api/stripe-webhook.ts` is a stub with NO signature verification — must implement before billing goes live.
-- `api/sync-ical.ts`: mild SSRF (no private-IP/metadata blocklist on fetched iCal URLs — only an authenticated host can reach it now); no per-host rate limit; insert errors not checked (`imported++` regardless). Tidy before public launch.
+- iCal fetch (`api/_lib/ical.ts`, used by both sync-ical and cron-sync-ical): mild SSRF (no
+  private-IP/metadata blocklist on fetched URLs); no per-host rate limit. The monthly cron now
+  exercises this unattended. Insert error is now checked (no more false `imported++`). Tidy SSRF
+  + rate limit before public launch.
 - `sendPushToHost` url check uses `startsWith('/')`, which also admits protocol-relative `//host` — only ever set from the host's own send-push request (self-targeted), so negligible.
 - send-push `apartmentId` is not ownership-checked — latent only (lookup forces `host_id = userId`, so a foreign apartmentId matches zero rows).
 - Mobile drawer a11y follow-ups: Escape-to-close, focus return on close.
@@ -266,12 +326,11 @@ node_modules are unaffected. This applies to the 4c-3 cron files when they land.
 
 ## Next up (Priority order)
 
-1. **Priority 4 — Push notifications: 4c-3 crons (remaining).**
-   - **PREREQUISITE (Udy, in Vercel before any code):** set `CRON_SECRET` (Production) to a long random string. Vercel auto-sends it as `Authorization: Bearer <CRON_SECRET>` to cron endpoints; each endpoint rejects anything else.
-   - Add a `vercel.json` cron schedule.
-   - Build cron endpoints on the shared `sendPushToHost` helper, each guarded by the bearer check:
-     - Monthly iCal sync-all → notify hosts of newly imported bookings (this is what makes the 4c-2 notification genuinely valuable — unattended).
-     - Trial-ending reminder (5 days before expiry).
-     - Checkout-reminder (morning of departure).
-2. **Stripe webhook** — implement `api/stripe-webhook.ts` with signature verification before any billing goes live.
+1. **Stripe webhook** — implement `api/stripe-webhook.ts` with signature verification before any
+   billing goes live.
+2. **Cron follow-ups (pre-launch hardening):**
+   - sync-ical: prove the import-triggered push with a controllable test iCal feed.
+   - trial-ending: add a `trial_reminder_sent_at` column for true retry-idempotency.
+   - iCal fetch: add an SSRF private-IP/metadata blocklist + per-host rate limit.
+   - cron-sync-ical: batch / raise maxDuration before onboarding many hosts (30s cap).
 3. **Tier-2 booking system** (future; €49 `price_tier2`) — architecture already upgrade-ready.
