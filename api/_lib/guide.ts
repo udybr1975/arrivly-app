@@ -31,23 +31,6 @@ export interface AptInput {
   country?: string | null
 }
 
-const PLACE_ITEM_SCHEMA = {
-  type: 'object',
-  properties: {
-    name: { type: 'string', description: 'Exact establishment name' },
-    description: { type: 'string', description: 'One-sentence description in the area primary language' },
-    address: { type: 'string', description: 'Specific street address with neighbourhood and city' },
-  },
-  required: ['name'],
-}
-
-const RESPONSE_JSON_SCHEMA = {
-  type: 'object',
-  properties: Object.fromEntries(
-    CATEGORIES.map(cat => [cat, { type: 'array', items: PLACE_ITEM_SCHEMA }])
-  ),
-}
-
 const cap = (s: string | null | undefined) => (s ?? '').slice(0, 200)
 
 function buildPrompt(apt: AptInput): string {
@@ -65,7 +48,14 @@ function buildPrompt(apt: AptInput): string {
     `For each place provide: name (exact establishment name), ` +
     `description (one sentence in the area's primary language), ` +
     `and address (specific street address with neighbourhood and city). ` +
-    `Prefer places within 15 minutes' walk. Only include places you are confident exist.`
+    `Prefer places within 15 minutes' walk. Only include places you are confident exist. ` +
+    `Respond with ONLY a JSON object — no markdown, no prose — with exactly these keys: ` +
+    `"Restaurant", "Bar", "Coffee", "Sight", "Essential", "Nightlife". ` +
+    `Each key maps to an array of up to 5 objects of the form ` +
+    `{"name": string, "description": string, "address": string}. ` +
+    `description is one sentence in the area's primary language; address is a specific ` +
+    `street address including neighbourhood and city. Use an empty array for a category ` +
+    `with no confident picks.`
   )
 }
 
@@ -80,16 +70,13 @@ export async function generateGuideForApartment(
 
   let timer!: ReturnType<typeof setTimeout>
   const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('timeout')), 10000)
+    timer = setTimeout(() => reject(new Error('timeout')), 30000)
   })
 
   const generatePromise = ai.models.generateContent({
     model: MODEL,
     contents: buildPrompt(apt),
-    config: {
-      responseMimeType: 'application/json',
-      responseJsonSchema: RESPONSE_JSON_SCHEMA,
-    },
+    config: { responseMimeType: 'application/json' },
   })
 
   let raw = ''
@@ -104,11 +91,31 @@ export async function generateGuideForApartment(
 
   // Defensive: strip code fences, fall back to {} on parse failure
   const cleaned = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim()
-  let categories: CategoriesMap = {}
+  let parsed: Record<string, unknown> = {}
   try {
-    categories = JSON.parse(cleaned) as CategoriesMap
+    const p = JSON.parse(cleaned)
+    if (p !== null && typeof p === 'object' && !Array.isArray(p)) {
+      parsed = p as Record<string, unknown>
+    }
   } catch {
-    categories = {}
+    parsed = {}
+  }
+
+  // Coerce to known shape: keep only items with a non-empty name string
+  const categories: CategoriesMap = {}
+  for (const cat of CATEGORIES) {
+    const raw_arr = parsed[cat]
+    if (Array.isArray(raw_arr)) {
+      const places: Place[] = raw_arr
+        .filter((item): item is Record<string, unknown> => item !== null && typeof item === 'object')
+        .filter((item) => typeof item['name'] === 'string' && (item['name'] as string).trim() !== '')
+        .map((item) => ({
+          name: (item['name'] as string).trim(),
+          ...(typeof item['description'] === 'string' ? { description: item['description'] } : {}),
+          ...(typeof item['address'] === 'string' ? { address: item['address'] } : {}),
+        }))
+      categories[cat] = places
+    }
   }
 
   // Geocode best-effort: collect place+address pairs, cap at MAX_GEOCODE, batch GEOCODE_CONCURRENCY at a time
@@ -143,6 +150,10 @@ export async function generateGuideForApartment(
   let placeCount = 0
   for (const cat of CATEGORIES) {
     placeCount += categories[cat]?.length ?? 0
+  }
+
+  if (placeCount === 0) {
+    console.error('[guide] empty result', { aptId: apt.id, rawLen: raw.length, sample: raw.slice(0, 120) })
   }
 
   const { error: upsertErr } = await db.from('guide_recommendations').upsert(
