@@ -283,6 +283,20 @@ are live. Checkout + trial pushes verified on 2 devices (desktop + installed And
 sync-ical deployed + locked (real-feed import push still to be tested). Installed app now
 opens straight to /dashboard for logged-in hosts (`ce296a6`).
 
+---
+
+## Session 7 Progress (2026-06-02)
+
+### Completed
+- [x] **Guide generation fix** — gemini-2.5-flash thinking disabled (`thinkingBudget: 0`); guide now populated. Sweet home verified: 25 geocoded places across multiple categories. `de3eb37`
+- [x] **Guest-page Explore hardening** — no longer caches an empty guide; retries on every tab switch until a non-empty guide loads. `cancelled` flag added to prevent stale setState on tab-switch during an in-flight fetch. `95486d8`
+- [x] **Service worker fix (arrivly-v3)** — cross-origin requests (Supabase, wttr.in, Google Maps) are no longer intercepted or cached by the SW. Cache version bumped to v3 to purge all stale v2 entries on activation. Push handler hardened: `event.data.json()` wrapped in try/catch; notification URL validated before `openWindow` to prevent protocol-relative open redirect. `6238ae1`
+
+### In progress
+- [ ] **A2 — AI host picks** (`api/generate-host-picks` + `api/_lib/host-picks.ts`): Gemini identifies local picks → geocoded via `api/_lib/geo.ts` → categorized; returns candidates, no DB write. Paste/review UI in PropertySetup My-picks tab pending.
+
+## Session 7 Status: IN PROGRESS
+
 ## Known notes / minor debt
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
 - `BookingCalendar.tsx` is an unused stub; the real calendar is `CalendarView` inside `BookingManager.tsx`.
@@ -297,6 +311,24 @@ opens straight to /dashboard for logged-in hosts (`ce296a6`).
 - Mobile drawer a11y follow-ups: Escape-to-close, focus return on close.
 - ~~Push opt-in persistence / orphan rows on re-enable~~ — RESOLVED `e12afd5`
   (subscribeToPush reuse + reaffirm-on-load); see Session 6 "Push hardening".
+
+---
+
+## Lessons / learnings
+
+- **gemini-2.5-flash thinking is ON by default** and consumes the output token budget, returning
+  empty text on large/JSON generations. Always set `thinkingConfig: { thinkingBudget: 0 }`.
+  Working pattern: `responseMimeType: 'application/json'` + `thinkingBudget: 0` + JSON shape in
+  the prompt + defensive parse. Do NOT use `responseJsonSchema` (unreliable with thinking off).
+
+- **`public/sw.js` must NEVER cache cross-origin requests.** Guard at the top of the `fetch`
+  handler: `if (url.origin !== self.location.origin) return`. Returning without calling
+  `event.respondWith` passes the request to the browser natively — no caching, no interception.
+  Bump `CACHE_NAME` on EVERY `sw.js` change so the activate handler purges stale caches.
+
+- **`vercel.json` `functions{}`: never list a specific file pattern alongside the `api/**/*.ts`
+  glob** — Vercel rejects overlapping patterns and the build fails. Use one glob, raise its
+  `maxDuration`.
 
 ---
 
@@ -344,9 +376,11 @@ Locked product decisions:
   until billing exists.
 
 Phases:
-- A — Guest-page value (content engines): real AI city guide (generate-guide +
-  cron-refresh-guides), AI host picks (generate-host-picks), city events (city-events), real
-  guest chatbot (port from Anna's Stays ChatBot). All stubs today.
+- A — Guest-page value (content engines):
+  - **A1 — AI city guide** (generate-guide + cron-refresh-guides): COMPLETE ✓ Live. Guide populated; Sweet home verified at 25 geocoded places. `de3eb37`
+  - **A2 — AI host picks** (generate-host-picks): IN PROGRESS. Endpoint: Gemini identify → geocode (`api/_lib/geo.ts`) → categorize; returns candidates, no DB write. Paste/review UI in PropertySetup My-picks tab pending.
+  - A3 — City events (city-events): stub.
+  - A4 — Real guest chatbot (port from Anna's Stays ChatBot): stub.
 - B — Guest-page look & feel: city/host images + Supabase Storage (#4), finish host logo
   upload path (#5 — display already works), port Anna's guest features + image lightbox (#2),
   approved design pass (#6).
