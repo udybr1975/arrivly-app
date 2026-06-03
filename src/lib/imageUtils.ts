@@ -1,7 +1,6 @@
 import { supabase } from './supabase'
+import { api } from './api'
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const BUCKET = 'apartment-images'
 
 // Neutral, warm interior fallback when a host hasn't set a hero image yet.
@@ -16,33 +15,34 @@ export function resolveImageUrl(url: string | null | undefined): string {
   return data.publicUrl
 }
 
-// Uploads to the public 'apartment-images' bucket with the host's access token
-// attached explicitly. The storage write RLS policy requires auth.uid() to equal
-// the first path segment ({hostId}/...). Relying on the SDK's implicit auth was
-// sending the request unauthenticated (anon), which the policy correctly rejected.
-// Attaching the same bearer token our /api calls already use guarantees the
-// request is authenticated. Signature unchanged so callers are unaffected.
-export async function uploadImage(file: File, path: string): Promise<string> {
-  const { data: { session } } = await supabase.auth.getSession()
-  const token = session?.access_token
-  if (!token) throw new Error('Your session has expired — please log in again, then retry.')
+const MIME_TO_EXT: Record<string, string> = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+}
 
-  const encodedPath = path.split('/').map(encodeURIComponent).join('/')
-  const res = await fetch(`${SUPABASE_URL}/storage/v1/object/${BUCKET}/${encodedPath}`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      apikey: SUPABASE_ANON_KEY,
-      'x-upsert': 'true',
-      'cache-control': 'max-age=3600',
-      'content-type': file.type,
-    },
-    body: file,
-  })
-  if (!res.ok) {
-    const detail = await res.text().catch(() => '')
-    const msg = (() => { try { return JSON.parse(detail)?.message } catch { return null } })()
-    throw new Error(msg || detail || `Upload failed (HTTP ${res.status})`)
-  }
+// Storage rejects the host's login token directly on this project (authenticated
+// uploads are seen as anonymous and the write RLS policy refuses them). So a
+// server route authorises the host and returns a one-time signed upload URL
+// minted with the service key; the file is then sent to that signed URL, which
+// carries its own authorisation. The server builds the path from the verified
+// host id, so the client cannot choose where files land. Returns the stored path.
+export async function uploadImage(
+  file: File,
+  kind: 'hero' | 'logo',
+  apartmentId?: string,
+): Promise<string> {
+  const ext = MIME_TO_EXT[file.type]
+  if (!ext) throw new Error('Use a PNG, JPG or WebP image.')
+
+  const { path, token } = await api.post<{ path: string; token: string }>(
+    '/create-upload-url',
+    { kind, apartmentId, ext },
+  )
+
+  const { error } = await supabase.storage
+    .from(BUCKET)
+    .uploadToSignedUrl(path, token, file, { contentType: file.type })
+  if (error) throw error
   return path
 }

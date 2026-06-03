@@ -76,14 +76,11 @@ export default function BrandingPanel() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file || !hostId) return
-    const mimeToExt: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }
-    if (!mimeToExt[file.type]) { toast('Use a PNG, JPG or WebP image.', 'error'); return }
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { toast('Use a PNG, JPG or WebP image.', 'error'); return }
     if (file.size > 2 * 1024 * 1024) { toast('Logo must be under 2 MB.', 'error'); return }
     setUploadingLogo(true)
     try {
-      const ext = mimeToExt[file.type]
-      const path = `${hostId}/logo-${Date.now()}.${ext}`
-      await uploadImage(file, path)
+      const path = await uploadImage(file, 'logo')
       const { error } = await supabase.from('hosts').update({ logo_url: path }).eq('id', hostId)
       if (error) throw error
       setLogoUrl(path)

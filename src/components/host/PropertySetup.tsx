@@ -272,14 +272,11 @@ export default function PropertySetup() {
     const file = e.target.files?.[0]
     e.target.value = ''
     if (!file || !apartmentId || !hostId) return
-    const mimeToExt: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }
-    if (!mimeToExt[file.type]) { showErr('Use a PNG, JPG or WebP image.'); return }
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { showErr('Use a PNG, JPG or WebP image.'); return }
     if (file.size > 5 * 1024 * 1024) { showErr('Cover photo must be under 5 MB.'); return }
     setUploadingHero(true)
     try {
-      const ext = mimeToExt[file.type]
-      const path = `${hostId}/${apartmentId}/hero-${Date.now()}.${ext}`
-      await uploadImage(file, path)
+      const path = await uploadImage(file, 'hero', apartmentId)
       const { error } = await supabase.from('apartments').update({ hero_image_url: path }).eq('id', apartmentId).eq('host_id', hostId)
       if (error) throw error
       setHeroImageUrl(path)
