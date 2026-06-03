@@ -57,11 +57,8 @@ export default function PropertySetup() {
     lng: number | null
   }>>([])
   const [picksLoading, setPicksLoading] = useState(false)
-  const [addingPick, setAddingPick] = useState(false)
-  const [pickForm, setPickForm] = useState({
-    name: '', category: 'Restaurant', address: '', note: ''
-  })
   const [pasteText, setPasteText] = useState('')
+  const [relocatingKey, setRelocatingKey] = useState<string | null>(null)
   const [enriching, setEnriching] = useState(false)
   const [candidates, setCandidates] = useState<Array<{
     key: string
@@ -91,7 +88,7 @@ export default function PropertySetup() {
       setCandidates([])
       setEnriching(false)
       setPicks([])
-      setPickForm({ name: '', category: 'Restaurant', address: '', note: '' })
+      setRelocatingKey(null)
 
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
@@ -337,29 +334,6 @@ export default function PropertySetup() {
     setImporting(false)
   }
 
-  async function savePick() {
-    if (!apartmentId || !pickForm.name.trim()) return
-    setAddingPick(true)
-    const nextOrder = picks.length > 0 ? Math.max(...picks.map(p => p.display_order)) + 1 : 1
-    const { error } = await supabase.from('host_picks').insert({
-      apartment_id: apartmentId,
-      name: pickForm.name.trim(),
-      category: pickForm.category,
-      address: pickForm.address.trim() || null,
-      note: pickForm.note.trim() || null,
-      display_order: nextOrder,
-      lat: null,
-      lng: null,
-    })
-    if (error) showErr(error.message)
-    else {
-      setPickForm({ name: '', category: 'Restaurant', address: '', note: '' })
-      showOk()
-      await loadPicks()
-    }
-    setAddingPick(false)
-  }
-
   async function deletePick(id: string) {
     if (!apartmentId) return
     const { error } = await supabase.from('host_picks').delete().eq('id', id).eq('apartment_id', apartmentId)
@@ -391,6 +365,24 @@ export default function PropertySetup() {
 
   function removeCandidate(key: string) {
     setCandidates(cs => cs.filter(c => c.key !== key))
+  }
+
+  async function relocateCandidate(key: string, query: string) {
+    if (!query) return
+    setRelocatingKey(key)
+    try {
+      const geo = await api.post<{ lat?: number; lng?: number; error?: string }>('/geocode', { address: query })
+      const lat = geo.lat
+      const lng = geo.lng
+      if (typeof lat === 'number' && typeof lng === 'number') {
+        setCandidates(cs => cs.map(c => c.key === key ? { ...c, lat, lng, located: true } : c))
+      } else {
+        setCandidates(cs => cs.map(c => c.key === key ? { ...c, lat: null, lng: null, located: false } : c))
+      }
+    } catch {
+      // leave coordinates unchanged on failure
+    }
+    setRelocatingKey(null)
   }
 
   async function confirmPicks() {
@@ -767,8 +759,18 @@ export default function PropertySetup() {
                         ✕
                       </button>
                     </div>
-                    <div className={`text-[10px] ${c.located ? 'text-[#2a5c0a]' : 'text-[#7a4800]'}`}>
-                      {c.located ? '📍 Located' : "⚠ Couldn't locate — saved without map pin"}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className={`text-[10px] ${c.located ? 'text-[#2a5c0a]' : 'text-[#7a4800]'}`}>
+                        {c.located ? '📍 Located' : "⚠ Couldn't locate — saved without map pin"}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => relocateCandidate(c.key, [c.name, c.address].map(s => s.trim()).filter(Boolean).join(', '))}
+                        disabled={!!relocatingKey || !c.address.trim()}
+                        className="text-[10px] text-[#0c3d70] underline underline-offset-2 hover:opacity-70 disabled:opacity-40 disabled:no-underline shrink-0"
+                      >
+                        {relocatingKey === c.key ? 'Locating…' : 'Re-locate from address'}
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -783,62 +785,6 @@ export default function PropertySetup() {
                 </button>
               </div>
             )}
-          </div>
-
-          {/* Add pick form */}
-          <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 space-y-3">
-            <div className="text-[12px] font-semibold text-[#1a1a1a]">Add a place</div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <label className={LABEL}>Place name <span className="text-red-500 normal-case">*</span></label>
-                <input
-                  value={pickForm.name}
-                  onChange={e => setPickForm(p => ({ ...p, name: e.target.value }))}
-                  className={INPUT}
-                  placeholder="Cafe Kuppi"
-                />
-              </div>
-              <div>
-                <label className={LABEL}>Category</label>
-                <select
-                  value={pickForm.category}
-                  onChange={e => setPickForm(p => ({ ...p, category: e.target.value }))}
-                  className={INPUT}
-                >
-                  {['Restaurant', 'Bar', 'Coffee', 'Sight', 'Essential', 'Nightlife'].map(c => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className={LABEL}>Address (optional)</label>
-                <input
-                  value={pickForm.address}
-                  onChange={e => setPickForm(p => ({ ...p, address: e.target.value }))}
-                  className={INPUT}
-                  placeholder="Fleminginkatu 12"
-                />
-              </div>
-              <div className="col-span-2">
-                <label className={LABEL}>Your note (optional)</label>
-                <input
-                  value={pickForm.note}
-                  onChange={e => setPickForm(p => ({ ...p, note: e.target.value }))}
-                  className={INPUT}
-                  placeholder="Best oat latte in the neighbourhood"
-                />
-              </div>
-            </div>
-            <div className="bg-[#dceef8] rounded-[7px] px-3 py-2 text-[11px] text-[#0c3d70] leading-[1.6]">
-              Address is saved as text. Coordinates will be geocoded automatically when geocoding is enabled.
-            </div>
-            <button
-              onClick={savePick}
-              disabled={addingPick || !apartmentId || !pickForm.name.trim()}
-              className={BTN_DARK}
-            >
-              {addingPick ? 'Saving…' : '+ Add place'}
-            </button>
           </div>
 
           {/* Picks list */}
