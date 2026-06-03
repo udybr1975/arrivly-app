@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, type ChangeEvent } from 'react'
 import { supabase } from '../../lib/supabase'
 import { ARRIVLY_CONFIG } from '../../config'
 import { useToast } from '../shared/Toast'
 import Loader from '../shared/Loader'
+import { resolveImageUrl, uploadImage } from '../../lib/imageUtils'
 
 interface Apartment {
   id: string
@@ -18,12 +19,20 @@ export default function BrandingPanel() {
   const [customHex, setCustomHex] = useState('')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
+  const [logoUrl, setLogoUrl] = useState<string | null>(null)
+  const [uploadingLogo, setUploadingLogo] = useState(false)
 
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
       setHostId(user.id)
+      const { data: hostRow } = await supabase
+        .from('hosts')
+        .select('logo_url')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (hostRow?.logo_url) setLogoUrl(hostRow.logo_url)
       const { data } = await supabase
         .from('apartments')
         .select('id, name, accent_color')
@@ -63,6 +72,37 @@ export default function BrandingPanel() {
     if (/^#[0-9a-fA-F]{6}$/.test(hex)) setSelectedColor(hex)
   }
 
+  async function handleLogoFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !hostId) return
+    const mimeToExt: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }
+    if (!mimeToExt[file.type]) { toast('Use a PNG, JPG or WebP image.', 'error'); return }
+    if (file.size > 2 * 1024 * 1024) { toast('Logo must be under 2 MB.', 'error'); return }
+    setUploadingLogo(true)
+    try {
+      const ext = mimeToExt[file.type]
+      const path = `${hostId}/logo-${Date.now()}.${ext}`
+      await uploadImage(file, path)
+      const { error } = await supabase.from('hosts').update({ logo_url: path }).eq('id', hostId)
+      if (error) throw error
+      setLogoUrl(path)
+      toast('Logo updated', 'success')
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Upload failed', 'error')
+    } finally {
+      setUploadingLogo(false)
+    }
+  }
+
+  async function removeLogo() {
+    if (!hostId) return
+    const { error } = await supabase.from('hosts').update({ logo_url: null }).eq('id', hostId)
+    if (error) { toast(error.message, 'error'); return }
+    setLogoUrl(null)
+    toast('Logo removed', 'success')
+  }
+
   if (loading) return <Loader />
 
   const LABEL = 'block text-[10px] uppercase tracking-[.06em] text-[#999] mb-[3px]'
@@ -74,6 +114,28 @@ export default function BrandingPanel() {
       <div className="flex gap-4 items-start">
         {/* Left: controls */}
         <div className="flex-1 space-y-4">
+          <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4">
+            <label className={LABEL}>Logo</label>
+            <div className="flex items-center gap-3 mt-2">
+              <div className="w-16 h-16 rounded-[8px] border border-[#ddd8ce] bg-[#f8f6f2] flex items-center justify-center overflow-hidden shrink-0">
+                {logoUrl ? (
+                  <img src={resolveImageUrl(logoUrl)} alt="Logo" className="w-full h-full object-contain" />
+                ) : (
+                  <span className="text-[9px] text-[#999] text-center px-1">No logo</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-2 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors cursor-pointer inline-block">
+                  {uploadingLogo ? 'Uploading…' : logoUrl ? 'Replace logo' : 'Upload logo'}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleLogoFile} disabled={uploadingLogo} />
+                </label>
+                {logoUrl && (
+                  <button onClick={removeLogo} disabled={uploadingLogo} className="text-[11px] text-[#a33] hover:underline bg-transparent border-none cursor-pointer text-left disabled:opacity-40">Remove</button>
+                )}
+                <p className="text-[10px] text-[#999]">PNG, JPG or WebP · under 2 MB · shown in your guest page header.</p>
+              </div>
+            </div>
+          </div>
           <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4">
             <label className={LABEL}>Brand colour</label>
             <div className="grid grid-cols-3 gap-2 mt-2">

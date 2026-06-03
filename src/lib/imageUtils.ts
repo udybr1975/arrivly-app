@@ -11,3 +11,11 @@ export function resolveImageUrl(url: string | null | undefined): string {
   const { data } = supabase.storage.from('apartment-images').getPublicUrl(url)
   return data.publicUrl
 }
+
+export async function uploadImage(file: File, path: string): Promise<string> {
+  const { error } = await supabase.storage
+    .from('apartment-images')
+    .upload(path, file, { upsert: true, cacheControl: '3600' })
+  if (error) throw error
+  return path
+}

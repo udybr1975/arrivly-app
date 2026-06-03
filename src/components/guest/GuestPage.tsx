@@ -407,7 +407,7 @@ export default function GuestPage() {
         style={{ background: `linear-gradient(160deg, ${accentColor}22 0%, #fff 60%)` }}
       >
         {host?.logo_url ? (
-          <img src={host.logo_url} alt={brandName} className="h-12 mb-6 object-contain" />
+          <img src={resolveImageUrl(host.logo_url)} alt={brandName} className="h-12 mb-6 object-contain" />
         ) : (
           <div
             className="w-12 h-12 rounded-full flex items-center justify-center mb-6 text-white font-bold text-xl"
@@ -432,7 +432,7 @@ export default function GuestPage() {
       <div className="min-h-screen flex flex-col" style={{ background: accentColor }}>
         <div className="flex-1 flex flex-col items-center justify-center px-8 py-16 text-center">
           {host?.logo_url && (
-            <img src={host.logo_url} alt={brandName} className="h-10 mb-8 object-contain opacity-90" />
+            <img src={resolveImageUrl(host.logo_url)} alt={brandName} className="h-10 mb-8 object-contain opacity-90" />
           )}
           <p className="text-white/70 text-xs tracking-widest uppercase mb-3">{brandName}</p>
           <h1 className="text-3xl font-light text-white leading-tight mb-4">
