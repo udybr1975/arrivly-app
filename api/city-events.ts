@@ -36,13 +36,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const place = country ? `${city}, ${country}` : city
 
   const prompt =
-    `Today is ${today}. Use web search to find 5-7 real, specific events happening in ${place} ` +
-    `between ${today} and ${untilStr} — the next 7 days only. ` +
-    `Include concerts, exhibitions, markets, festivals, sports, theatre or nightlife with real venues and dates. ` +
-    `Do NOT include past events, generic "things to do", or anything you cannot verify is scheduled in this window. ` +
+    `Today is ${today}. Use web search to find as many real, specific events as you can verify happening in ${place} ` +
+    `between ${today} and ${untilStr} — the next 7 days only. Aim for at least 10 and up to 15. ` +
+    `Include concerts, exhibitions, markets, festivals, sports, theatre, food and nightlife with real venues and dates. ` +
+    `Do NOT include past events, generic "things to do", duplicates, or anything you cannot verify is scheduled in this window. ` +
+    `Accuracy matters more than quantity — include fewer rather than invent or pad. ` +
     `Return ONLY raw JSON — no markdown, no code fences — shaped exactly as: ` +
-    `{"week":"${today} – ${untilStr}","categories":[{"name":"This week","events":[{"title":"","venue":"","date":"","desc":"","price":"Free or €XX"}]}]}. ` +
-    `Each event: title (name), venue (place), date (day/date within the window), desc (one short sentence), price ("Free" or e.g. "€20"). ` +
+    `{"week":"${today} – ${untilStr}","categories":[{"name":"This week","events":[{"title":"","venue":"","date":"","desc":"","price":"","url":""}]}]}. ` +
+    `Each event: title (name), venue (place), date (day or date within the window), desc (one short sentence), ` +
+    `price (very short, e.g. "Free" or "€20" — max ~12 characters, no parentheses or notes), ` +
+    `url (the official event or ticket page if you are confident it is correct, otherwise an empty string — never invent a URL). ` +
     `If you cannot verify any real events, return {"week":"${today} – ${untilStr}","categories":[]}.`
 
   const ai = new GoogleGenAI({ apiKey })
@@ -58,12 +61,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           contents: prompt,
           // googleSearch grounding: cannot be combined with responseMimeType JSON,
           // so we parse fenced text defensively (same pattern as Anna's grounded admin events).
-          config: { tools: [{ googleSearch: {} }] as any, thinkingConfig: { thinkingBudget: 0 } as any },
+          config: { tools: [{ googleSearch: {} }] as any, thinkingConfig: { thinkingBudget: 0 } as any, maxOutputTokens: 4096 },
         })
         const response = await Promise.race([gen, timeout])
         const raw = (response.text || '').replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim()
         const parsed = JSON.parse(raw)
         if (parsed && typeof parsed === 'object' && Array.isArray(parsed.categories)) {
+          const SAFE_SCHEME = /^https?:\/\//i
+          parsed.categories.forEach((cat: any) => {
+            cat.events?.forEach((ev: any) => {
+              if (ev.url && !SAFE_SCHEME.test(String(ev.url).trim())) ev.url = ''
+            })
+          })
           return res.status(200).json(parsed)
         }
       } finally {

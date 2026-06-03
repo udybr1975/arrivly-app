@@ -9,9 +9,17 @@ interface Props {
   isOnTrial: boolean
   onClose: () => void
 }
-interface EventItem { title: string; venue: string; date: string; desc: string; price: string }
+interface EventItem { title: string; venue: string; date: string; desc: string; price: string; url?: string }
 interface EventCategory { name: string; events: EventItem[] }
 interface EventsData { week: string; categories: EventCategory[] }
+
+const SAFE_URL = /^https?:\/\//i
+function eventHref(ev: EventItem, city: string): string {
+  const u = (ev.url ?? '').trim()
+  if (SAFE_URL.test(u)) return u
+  const q = [ev.title, ev.venue, city].filter(Boolean).join(' ')
+  return `https://www.google.com/search?q=${encodeURIComponent(q)}`
+}
 
 export default function EventsPage({ apartmentId, city, accentColor, brandName, isOnTrial, onClose }: Props) {
   const [events, setEvents] = useState<EventsData | null>(null)
@@ -109,16 +117,25 @@ export default function EventsPage({ apartmentId, city, accentColor, brandName, 
                   )}
                   <div className="space-y-3">
                     {cat.events.map((ev, j) => (
-                      <div key={j} className="bg-[#faf9f6] border border-gray-100 rounded-lg p-4">
+                      <a
+                        key={j}
+                        href={eventHref(ev, city)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block bg-[#faf9f6] border border-gray-100 rounded-lg p-4 no-underline hover:border-gray-300 transition-colors"
+                      >
                         <div className="flex justify-between items-start gap-3 mb-1.5">
-                          <h4 className="font-medium text-[#1c1c1a]">{ev.title}</h4>
-                          {ev.price && <span className="text-[10px] text-white px-2 py-0.5 rounded uppercase tracking-wide shrink-0" style={{ background: accentColor }}>{ev.price}</span>}
+                          <h4 className="font-medium text-[#1c1c1a] flex-1 min-w-0 break-words">{ev.title}</h4>
+                          {ev.price && (
+                            <span className="text-[10px] text-white px-2 py-0.5 rounded uppercase tracking-wide shrink-0 max-w-[40%] truncate" style={{ background: accentColor }}>{ev.price}</span>
+                          )}
                         </div>
                         {(ev.venue || ev.date) && (
-                          <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5" style={{ color: accentColor }}>{[ev.venue, ev.date].filter(Boolean).join(' — ')}</p>
+                          <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5 break-words" style={{ color: accentColor }}>{[ev.venue, ev.date].filter(Boolean).join(' — ')}</p>
                         )}
-                        {ev.desc && <p className="text-sm text-gray-600 leading-relaxed">{ev.desc}</p>}
-                      </div>
+                        {ev.desc && <p className="text-sm text-gray-600 leading-relaxed break-words">{ev.desc}</p>}
+                        <span className="mt-2 inline-flex items-center gap-1 text-[10px] uppercase tracking-widest" style={{ color: accentColor }}>View event ↗</span>
+                      </a>
                     ))}
                   </div>
                 </section>
