@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Home, MessageCircle, MapPin, MoreHorizontal,
-  Copy, Check, RefreshCw, Navigation, Calendar,
+  Copy, Check, RefreshCw, Navigation, Calendar, Star,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getDirectionsUrl } from '../../lib/maps'
@@ -526,7 +526,7 @@ export default function GuestPage() {
 
           {wifiParsed && (wifiParsed.network || wifiParsed.password) && (
             <div className="max-w-lg mx-auto px-6 py-6">
-              <div className="bg-[#faf9f6] border-l-4 p-5 shadow-sm shadow-[0_1px_5px_rgba(0,0,0,0.05)]" style={{ borderLeftColor: accentColor }}>
+              <div className="bg-[#faf9f6] border-l-4 p-5 shadow-[0_1px_5px_rgba(0,0,0,0.05)]" style={{ borderLeftColor: accentColor }}>
                 <p className="text-[10px] tracking-widest uppercase text-gray-400 mb-4">WiFi</p>
                 {wifiParsed.network && (
                   <div className="mb-3">
@@ -620,12 +620,11 @@ export default function GuestPage() {
 
       {activeTab === 'explore' && (
         <div className="pb-28" style={{ background: `linear-gradient(to bottom, ${accentColor}1a, #fbfaf7 360px)` }}>
-          <div className="max-w-lg mx-auto px-6 py-8">
-            <h2 className="text-2xl font-light text-[#1c1c1a] mb-1">Explore</h2>
-            <p className="text-sm text-gray-500 italic mb-6 leading-relaxed">
-              {apt.neighborhood}, {apt.city}
-            </p>
-
+          <div className="px-6 pt-8 pb-6 text-white" style={{ background: accentColor }}>
+            <p className="text-[10px] tracking-[0.16em] uppercase opacity-70 mb-1">Host picks & local guide</p>
+            <h2 className="text-2xl font-light" style={{ fontFamily: 'Georgia, serif' }}>Around {apt.neighborhood}</h2>
+          </div>
+          <div className="max-w-lg mx-auto px-6 pt-6 pb-8">
             <button
               onClick={() => setShowEvents(true)}
               className="flex items-center justify-between w-full p-4 rounded-xl mb-6 cursor-pointer bg-[#faf9f6] border border-gray-100 text-left"
@@ -649,9 +648,12 @@ export default function GuestPage() {
               <>
                 {hostPicks.length > 0 && (
                   <div className="mb-8">
-                    <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-3">
-                      Host recommendations
-                    </p>
+                    <div className="flex items-center gap-1.5 mb-3">
+                      <Star size={12} style={{ color: accentColor }} />
+                      <p className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: accentColor }}>
+                        {brandName}'s picks
+                      </p>
+                    </div>
                     <div className="space-y-2">
                       {hostPicks.map(pick => (
                         <div key={pick.id} className="bg-[#faf9f6] border border-gray-100 rounded-lg p-4 shadow-[0_1px_5px_rgba(0,0,0,0.05)]">
@@ -776,6 +778,13 @@ export default function GuestPage() {
 
       {activeTab === 'more' && (
         <div className="pb-28" style={{ background: `linear-gradient(to bottom, ${accentColor}1a, #fbfaf7 360px)` }}>
+          <div className="px-6 pt-8 pb-6 text-white" style={{ background: accentColor }}>
+            {host?.logo_url && (
+              <img src={resolveImageUrl(host.logo_url)} alt={brandName} className="h-7 mb-2 object-contain" />
+            )}
+            <p className="text-[10px] tracking-[0.16em] uppercase opacity-70 mb-1">More</p>
+            <h2 className="text-2xl font-light" style={{ fontFamily: 'Georgia, serif' }}>{brandName}</h2>
+          </div>
           <div className="max-w-lg mx-auto px-6 py-10 border-b border-gray-100">
             <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Save this page</h2>
             <p className="text-sm text-gray-500 leading-relaxed mb-6">
@@ -808,11 +817,7 @@ export default function GuestPage() {
           )}
 
           <div className="max-w-lg mx-auto px-6 py-10 text-center">
-            {host?.logo_url ? (
-              <img src={host.logo_url} alt={brandName} className="h-8 mx-auto mb-3 object-contain opacity-60" />
-            ) : (
-              <p className="text-sm font-medium text-gray-400 mb-2">{brandName}</p>
-            )}
+            <p className="text-sm font-medium text-gray-400 mb-2">{brandName}</p>
             {isOnTrial && (
               <p className="text-[10px] text-gray-300 mt-6">{ARRIVLY_CONFIG.poweredByText}</p>
             )}

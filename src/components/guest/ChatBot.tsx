@@ -54,6 +54,13 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
 
   return (
     <div className="flex flex-col h-full bg-white">
+      <div className="shrink-0 px-5 py-3.5 text-white flex items-center gap-3" style={{ background: accentColor }}>
+        <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-sm font-bold">{brandName.charAt(0)}</span>
+        <div>
+          <p className="text-[10px] tracking-[0.16em] uppercase opacity-70 leading-none mb-1">Ask your host</p>
+          <p className="text-sm font-medium leading-none">{brandName}</p>
+        </div>
+      </div>
       <div className="flex-1 overflow-y-auto px-5 py-5 space-y-3">
         {msgs.map((m, i) => (
           <div
