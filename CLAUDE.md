@@ -292,10 +292,28 @@ opens straight to /dashboard for logged-in hosts (`ce296a6`).
 - [x] **Guest-page Explore hardening** — no longer caches an empty guide; retries on every tab switch until a non-empty guide loads. `cancelled` flag added to prevent stale setState on tab-switch during an in-flight fetch. `95486d8`
 - [x] **Service worker fix (arrivly-v3)** — cross-origin requests (Supabase, wttr.in, Google Maps) are no longer intercepted or cached by the SW. Cache version bumped to v3 to purge all stale v2 entries on activation. Push handler hardened: `event.data.json()` wrapped in try/catch; notification URL validated before `openWindow` to prevent protocol-relative open redirect. `6238ae1`
 
-### In progress
-- [ ] **A2 — AI host picks** (`api/generate-host-picks` + `api/_lib/host-picks.ts`): Gemini identifies local picks → geocoded via `api/_lib/geo.ts` → categorized; returns candidates, no DB write. Paste/review UI in PropertySetup My-picks tab pending.
+### Completed (continued)
+- [x] **A2 — AI host picks endpoint** (`api/generate-host-picks` + `api/_lib/host-picks.ts`): Gemini identifies local picks → geocoded via `api/_lib/geo.ts` → categorized; returns candidates (≤20), NO DB write; auth + ownership gated. `3da7e00`
 
-## Session 7 Status: IN PROGRESS
+## Session 7 Status: COMPLETE ✓
+
+---
+
+## Session 8 Progress (2026-06-03)
+
+### Completed — A2 AI host picks UI
+- [x] **Paste-and-review My-picks UI** — PropertySetup My-picks tab: free-text paste → `/api/generate-host-picks` (token via `api.post`) → editable candidate review list (name/category/address/note, 📍 located / ⚠ not-located indicator, remove) → "Confirm & add N" batch-inserts into `host_picks` with lat/lng + `display_order` continuing from max; clears + reloads on success. AI state reset in `load()` on apartment switch (prevents wrong-apartment insert). `081f7eb`
+- [x] **My-picks cleanup + re-locate** — removed the manual "Add a place" card entirely (it only ever saved `lat/lng = null`; strictly inferior to the AI path) and the stale "geocoded when enabled" note with it. Added per-candidate "Re-locate from address": edit the address, re-call `/api/geocode` to refresh that candidate's pin (flips ⚠ → 📍). Stale-closure fixed (query string passed at call site, not read from closure); re-locate buttons serialise (all disabled while one runs). `631d7c0`
+
+### Verified live (2026-06-03)
+- Sweet home (`d9614d11`): AI identify → confirm saved 4 geocoded picks alongside the pre-existing manual "teller"; re-locate flips a corrected address to 📍 Located.
+- Test Apartment 1 (`aaaaaaaa-…-0001`): same flow verified end-to-end; guest page reachable via `ARR-TEST01` (booking dates moved to 2026-06-02 → 06-09 for testing).
+
+### Test-data to revert when guest-side testing wraps
+- `ARR-SWEET1` checkout → back to 2026-06-02 (currently 2026-06-05).
+- `ARR-TEST01` → back to original 2026-05-27 → 05-31 (or leave expired).
+
+## Session 8 Status: IN PROGRESS — A2 complete; A3 (city events) next.
 
 ## Known notes / minor debt
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
@@ -378,7 +396,7 @@ Locked product decisions:
 Phases:
 - A — Guest-page value (content engines):
   - **A1 — AI city guide** (generate-guide + cron-refresh-guides): COMPLETE ✓ Live. Guide populated; Sweet home verified at 25 geocoded places. `de3eb37`
-  - **A2 — AI host picks** (generate-host-picks): IN PROGRESS. Endpoint: Gemini identify → geocode (`api/_lib/geo.ts`) → categorize; returns candidates, no DB write. Paste/review UI in PropertySetup My-picks tab pending.
+  - **A2 — AI host picks** (generate-host-picks): COMPLETE ✓ Live. Endpoint (`3da7e00`) + paste-and-review UI in PropertySetup My-picks tab (`081f7eb`); manual add-card removed and per-candidate "re-locate from address" added (`631d7c0`). Verified on Sweet home + Test Apartment 1.
   - A3 — City events (city-events): stub.
   - A4 — Real guest chatbot (port from Anna's Stays ChatBot): stub.
 - B — Guest-page look & feel: city/host images + Supabase Storage (#4), finish host logo
