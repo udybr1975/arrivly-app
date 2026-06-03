@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, type ChangeEvent } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import Loader from '../shared/Loader'
+import { resolveImageUrl, uploadImage } from '../../lib/imageUtils'
 
 const TABS = [
   { key: 'basic',   label: 'Basic info' },
@@ -25,6 +26,7 @@ export default function PropertySetup() {
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('basic')
   const [apartmentId, setApartmentId] = useState<string | null>(null)
+  const [hostId, setHostId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null)
@@ -34,6 +36,8 @@ export default function PropertySetup() {
     name: '', maxGuests: 2, country: '', city: '',
     neighborhood: '', street: '', streetNumber: '', floorNote: '',
   })
+  const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null)
+  const [uploadingHero, setUploadingHero] = useState(false)
   // Tab 2
   const [wifi, setWifi] = useState({ ssid: '', password: '' })
   // Tab 3
@@ -89,13 +93,15 @@ export default function PropertySetup() {
       setEnriching(false)
       setPicks([])
       setRelocatingKey(null)
+      setHeroImageUrl(null)
 
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
+      setHostId(user.id)
 
       const { data: apt } = await supabase
         .from('apartments')
-        .select('id, name, country, city, neighborhood, street, street_number, floor_note, max_guests')
+        .select('id, name, country, city, neighborhood, street, street_number, floor_note, max_guests, hero_image_url')
         .eq('id', aptId)
         .eq('host_id', user.id)
         .maybeSingle()
@@ -103,6 +109,7 @@ export default function PropertySetup() {
       if (!apt) { navigate('/dashboard'); return }
 
       setApartmentId(apt.id)
+      setHeroImageUrl(apt.hero_image_url ?? null)
       setBasic({
         name: apt.name ?? '',
         maxGuests: apt.max_guests ?? 2,
@@ -252,6 +259,37 @@ export default function PropertySetup() {
       showOk()
     }
     setSaving(false)
+  }
+
+  async function handleHeroFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !apartmentId || !hostId) return
+    const mimeToExt: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }
+    if (!mimeToExt[file.type]) { showErr('Use a PNG, JPG or WebP image.'); return }
+    if (file.size > 5 * 1024 * 1024) { showErr('Cover photo must be under 5 MB.'); return }
+    setUploadingHero(true)
+    try {
+      const ext = mimeToExt[file.type]
+      const path = `${hostId}/${apartmentId}/hero-${Date.now()}.${ext}`
+      await uploadImage(file, path)
+      const { error } = await supabase.from('apartments').update({ hero_image_url: path }).eq('id', apartmentId).eq('host_id', hostId)
+      if (error) throw error
+      setHeroImageUrl(path)
+      showOk()
+    } catch (err) {
+      showErr(err instanceof Error ? err.message : 'Upload failed')
+    } finally {
+      setUploadingHero(false)
+    }
+  }
+
+  async function removeHero() {
+    if (!apartmentId || !hostId) return
+    const { error } = await supabase.from('apartments').update({ hero_image_url: null }).eq('id', apartmentId).eq('host_id', hostId)
+    if (error) { showErr(error.message); return }
+    setHeroImageUrl(null)
+    showOk()
   }
 
   // ── Tab 2 ──────────────────────────────────────────────────────────────────
@@ -454,6 +492,28 @@ export default function PropertySetup() {
       {/* ── Tab 1: Basic info ─────────────────────────────────────────────── */}
       {tab === 'basic' && (
         <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 space-y-3">
+          <div>
+            <label className={LABEL}>Cover photo</label>
+            <div className="flex items-start gap-3 mt-1">
+              <div className="w-32 aspect-[16/10] rounded-[8px] border border-[#ddd8ce] bg-[#f8f6f2] overflow-hidden shrink-0 flex items-center justify-center">
+                {heroImageUrl ? (
+                  <img src={resolveImageUrl(heroImageUrl)} alt="Cover" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="text-[9px] text-[#999] text-center px-1">Default image</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className={`${apartmentId ? 'cursor-pointer hover:bg-[#f0ede6]' : 'opacity-40 cursor-not-allowed'} bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-2 rounded-[7px] text-xs transition-colors inline-block`}>
+                  {uploadingHero ? 'Uploading…' : heroImageUrl ? 'Replace photo' : 'Upload photo'}
+                  <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleHeroFile} disabled={uploadingHero || !apartmentId} />
+                </label>
+                {heroImageUrl && (
+                  <button type="button" onClick={removeHero} disabled={uploadingHero} className="text-[11px] text-[#a33] hover:underline bg-transparent border-none cursor-pointer text-left disabled:opacity-40">Remove</button>
+                )}
+                <p className="text-[10px] text-[#999] max-w-[200px] leading-snug">PNG, JPG or WebP · under 5 MB · shown as the banner at the top of your guest page. Leave empty for a default image.</p>
+              </div>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="col-span-2">
               <label className={LABEL}>Property name <span className="text-red-500 normal-case">*</span></label>
