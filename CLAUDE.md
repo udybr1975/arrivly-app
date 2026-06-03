@@ -309,11 +309,21 @@ opens straight to /dashboard for logged-in hosts (`ce296a6`).
 - Sweet home (`d9614d11`): AI identify → confirm saved 4 geocoded picks alongside the pre-existing manual "teller"; re-locate flips a corrected address to 📍 Located.
 - Test Apartment 1 (`aaaaaaaa-…-0001`): same flow verified end-to-end; guest page reachable via `ARR-TEST01` (booking dates moved to 2026-06-02 → 06-09 for testing).
 
+### Completed — A3 AI city events
+- [x] **Grounded city-events endpoint** (`api/city-events.ts`, replaced the stub) — POST `{ apartmentId }`; city looked up server-side from the DB (authoritative, multi-city — never trusts a client city); `gemini-2.5-flash` + `googleSearch` grounding (no `responseMimeType`; fenced-text defensive parse), `thinkingBudget: 0`, `maxOutputTokens: 4096`, 30s race-timeout, 3 retries, key-scrubbed logs. Generated fresh on every open (no DB, no cron), next-7-days, "no past events"; returns `{ error: true }` on any failure. `39ef5c9`
+- [x] **Explore-tab popup** (`src/components/guest/EventsPage.tsx`, replaced the stub; wired in `GuestPage.tsx`) — "This week in {city}" opens a host-accent-themed modal with loading/error/empty states. `39ef5c9`
+- [x] **Refinements** (`0a22f04`) — prompt targets 10–15 events (integrity guard dominant: include fewer rather than invent); event cards are clickable links (official event page if the model supplies one, else a Google-search fallback), URLs sanitized to `http(s)` on BOTH client (`eventHref`) and server (pre-passthrough strip); mobile overflow fixed (title `flex-1 min-w-0 break-words`, price pill capped + truncated, terse-price prompt).
+
+### Verified live — A3 (2026-06-03)
+- Helsinki (Sweet home, `ARR-SWEET1`): real current events, themed, clickable.
+- Barcelona (new test apt `Casa Marco` `bf07680b`, `ARR-BCN001`): dynamic-city path confirmed — Barcelona events for a non-Helsinki city, proving city is read per-apartment (vs Anna's hardcoded Helsinki).
+
 ### Test-data to revert when guest-side testing wraps
 - `ARR-SWEET1` checkout → back to 2026-06-02 (currently 2026-06-05).
 - `ARR-TEST01` → back to original 2026-05-27 → 05-31 (or leave expired).
+- Barcelona test apt `Casa Marco` (`bf07680b`) + guest "Marco" + booking `ARR-BCN001` — created only for the dynamic-city test; delete when done.
 
-## Session 8 Status: IN PROGRESS — A2 complete; A3 (city events) next.
+## Session 8 Status: COMPLETE ✓ — A2 + A3 done & live; A4 (guest chatbot) next.
 
 ## Known notes / minor debt
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
@@ -397,7 +407,7 @@ Phases:
 - A — Guest-page value (content engines):
   - **A1 — AI city guide** (generate-guide + cron-refresh-guides): COMPLETE ✓ Live. Guide populated; Sweet home verified at 25 geocoded places. `de3eb37`
   - **A2 — AI host picks** (generate-host-picks): COMPLETE ✓ Live. Endpoint (`3da7e00`) + paste-and-review UI in PropertySetup My-picks tab (`081f7eb`); manual add-card removed and per-candidate "re-locate from address" added (`631d7c0`). Verified on Sweet home + Test Apartment 1.
-  - A3 — City events (city-events): stub.
+  - **A3 — City events** (city-events): COMPLETE ✓ Live. Grounded `api/city-events` (googleSearch, dynamic city from DB, thinkingBudget 0, 10–15 events, fresh each open, no DB/cron) + Explore-tab popup `EventsPage.tsx` with clickable, https-sanitized event links. Verified Helsinki + Barcelona. `39ef5c9`, `0a22f04`
   - A4 — Real guest chatbot (port from Anna's Stays ChatBot): stub.
 - B — Guest-page look & feel: city/host images + Supabase Storage (#4), finish host logo
   upload path (#5 — display already works), port Anna's guest features + image lightbox (#2),
