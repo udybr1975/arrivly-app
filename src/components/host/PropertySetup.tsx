@@ -237,6 +237,7 @@ export default function PropertySetup() {
       }
     }
 
+    let savedId: string | null = apartmentId
     if (apartmentId) {
       const { error } = await supabase.from('apartments').update(fields).eq('id', apartmentId).eq('host_id', user.id)
       if (error) { showErr(error.message); setSaving(false); return }
@@ -248,6 +249,12 @@ export default function PropertySetup() {
         .maybeSingle()
       if (error || !data) { showErr(error?.message ?? 'Could not create property'); setSaving(false); return }
       setApartmentId(data.id)
+      savedId = data.id
+    }
+
+    // Refresh the cached by-city hero (shown only when no host upload). Fire-and-forget.
+    if (savedId && basic.city.trim()) {
+      api.post('/city-image', { apartmentId: savedId }).catch(() => {})
     }
 
     if (geoMissed) {
@@ -510,7 +517,7 @@ export default function PropertySetup() {
                 {heroImageUrl && (
                   <button type="button" onClick={removeHero} disabled={uploadingHero} className="text-[11px] text-[#a33] hover:underline bg-transparent border-none cursor-pointer text-left disabled:opacity-40">Remove</button>
                 )}
-                <p className="text-[10px] text-[#999] max-w-[200px] leading-snug">PNG, JPG or WebP · under 5 MB · shown as the banner at the top of your guest page. Leave empty for a default image.</p>
+                <p className="text-[10px] text-[#999] max-w-[200px] leading-snug">PNG, JPG or WebP · under 5 MB · shown as the banner at the top of your guest page. Leave empty and we'll use a photo of your city.</p>
               </div>
             </div>
           </div>

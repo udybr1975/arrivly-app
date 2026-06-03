@@ -31,6 +31,8 @@ interface Apartment {
   accent_color: string | null
   max_guests: number | null
   hero_image_url: string | null
+  city_image_url: string | null
+  city_image_credit: string | null
 }
 
 interface Detail {
@@ -159,7 +161,7 @@ export default function GuestPage() {
       const [aptRes, detRes] = await Promise.all([
         supabase
           .from('apartments')
-          .select('id,host_id,name,neighborhood,city,country,lat,lng,accent_color,max_guests,hero_image_url')
+          .select('id,host_id,name,neighborhood,city,country,lat,lng,accent_color,max_guests,hero_image_url,city_image_url,city_image_credit')
           .eq('id', aptId!)
           .maybeSingle(),
         supabase
@@ -452,14 +454,28 @@ export default function GuestPage() {
   // pageState === 'active'
   const apt = apartment!
 
+  // Hero precedence: host upload → cached by-city image (with credit) → static fallback.
+  const heroSrc = apt.hero_image_url
+    ? resolveImageUrl(apt.hero_image_url)
+    : (apt.city_image_url || FALLBACK_HERO)
+  let heroCredit: { name: string; userLink: string; unsplashLink: string } | null = null
+  if (!apt.hero_image_url && apt.city_image_url && apt.city_image_credit) {
+    try { heroCredit = JSON.parse(apt.city_image_credit) } catch { heroCredit = null }
+  }
+
   return (
     <div className="min-h-screen bg-[#fbfaf7] font-sans">
 
       {activeTab === 'home' && (
         <div className="pb-28" style={{ background: `linear-gradient(to bottom, ${accentColor}1a, #fbfaf7 360px)` }}>
           <div className="relative h-64">
-            <img src={resolveImageUrl(apt.hero_image_url)} alt="" className="absolute inset-0 w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).src = FALLBACK_HERO }} />
+            <img src={heroSrc} alt="" className="absolute inset-0 w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).src = FALLBACK_HERO }} />
             <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${accentColor} 4%, ${accentColor}8c 34%, transparent 82%)` }} />
+            {heroCredit && (
+              <div className="absolute top-2 right-2 text-[9px] text-white/80 bg-black/30 rounded px-1.5 py-0.5">
+                Photo by <a href={heroCredit.userLink} target="_blank" rel="noopener noreferrer" className="underline">{heroCredit.name}</a> on <a href={heroCredit.unsplashLink} target="_blank" rel="noopener noreferrer" className="underline">Unsplash</a>
+              </div>
+            )}
             <div className="absolute left-0 right-0 bottom-0 px-6 pb-6 text-white">
               {host?.logo_url ? (
                 <img src={resolveImageUrl(host.logo_url)} alt={brandName} className="h-7 mb-4 object-contain" />
