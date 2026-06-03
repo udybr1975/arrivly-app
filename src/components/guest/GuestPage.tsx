@@ -8,6 +8,7 @@ import { supabase } from '../../lib/supabase'
 import { getDirectionsUrl } from '../../lib/maps'
 import InstallPrompt from './InstallPrompt'
 import EventsPage from './EventsPage'
+import ChatBot from './ChatBot'
 import { ARRIVLY_CONFIG } from '../../config'
 
 interface Host {
@@ -113,18 +114,6 @@ const CATEGORY_COLORS: Record<string, string> = {
 
 function categoryColor(cat: string): string {
   return CATEGORY_COLORS[cat] ?? '#555'
-}
-
-function ChatBotStub({ accentColor }: { accentColor: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center h-full px-6 py-12 text-center gap-4">
-      <MessageCircle size={32} style={{ color: accentColor }} />
-      <p className="font-semibold text-[#1c1c1a]">AI assistant coming soon</p>
-      <p className="text-sm text-gray-500 leading-relaxed max-w-xs">
-        The chat feature is being built. Contact your host directly for now.
-      </p>
-    </div>
-  )
 }
 
 export default function GuestPage() {
@@ -595,7 +584,14 @@ export default function GuestPage() {
 
       {activeTab === 'chat' && (
         <div style={{ height: 'calc(100vh - 56px)' }}>
-          <ChatBotStub accentColor={accentColor} />
+          <ChatBot
+            apartmentId={apt.id}
+            token={tokenParam ?? ''}
+            accentColor={accentColor}
+            brandName={brandName}
+            guestName={guestName}
+            city={apt.city}
+          />
         </div>
       )}
 
