@@ -28,7 +28,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 
 ## Database (Supabase)
 - **hosts** — id (= auth.uid), name, brand_name, whatsapp, logo_url, accent_color, contact_email, country, city, neighborhood, street, street_number, lat, lng, plan, trial_ends_at, subscription_status, stripe_customer_id, stripe_subscription_id, push_endpoint, created_at
-- **apartments** — id, host_id, name, country, city, neighborhood, street, street_number, floor_note, lat, lng, max_guests, description, images[], is_visible, accent_color, ical_urls, created_at
+- **apartments** — id, host_id, name, country, city, neighborhood, street, street_number, floor_note, lat, lng, max_guests, description, images[], is_visible, accent_color, ical_urls, hero_image_url, city_image_url, city_image_credit, created_at
 - **apartment_details** — id, apartment_id, category, content, is_private
 - **host_picks** — id, apartment_id, name, category, address, lat, lng, note, display_order, created_at
 - **bookings** — id, apartment_id, guest_id, check_in, check_out, status, reference_number, source, created_at
@@ -48,6 +48,18 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
   `push_host_all` `USING (host_id = auth.uid())` with no explicit WITH CHECK —
   Postgres applies USING as WITH CHECK on ALL policies, so client writes are
   host-scoped. (Optional: make WITH CHECK explicit for clarity.)
+
+### Image system
+- **Bucket** `apartment-images` — public read; 3 owner-scoped write RLS policies (insert/update/delete), condition `(storage.foldername(name))[1] = auth.uid()`.
+- **Columns:**
+  - `apartments.hero_image_url` — host's own uploaded cover photo, stored as a bucket path (e.g. `{hostId}/{aptId}/hero-{ts}.jpg`).
+  - `apartments.city_image_url` — cached Unsplash by-city default hero, stored as a full `https://` URL.
+  - `apartments.city_image_credit` — JSON string `{ name, username, link }` for Unsplash attribution caption.
+  - `hosts.logo_url` — host logo, stored as a bucket path.
+- **Guest hero precedence:** host upload (`hero_image_url`) → city image (`city_image_url`, with attribution caption) → static `FALLBACK_HERO` (hardcoded Unsplash warm interior).
+- **Upload flow:** client calls `POST /api/create-upload-url` (Bearer token) → server verifies host via `getUser`, checks apartment ownership with the service-role key, builds path `{hostId}/{aptId}/hero-{ts}.{ext}` or `{hostId}/logo-{ts}.{ext}`, calls `createSignedUploadUrl` → returns `{ path, token }` → client calls `supabase.storage.uploadToSignedUrl(path, token, file)`. File goes direct to Storage; never passes through Vercel (no 4.5 MB body limit).
+- **`src/lib/imageUtils.ts`:** `resolveImageUrl(url)` (path → public URL, full URL → as-is, null → fallback) + `uploadImage(file, kind, apartmentId?)` (calls the signed-URL flow).
+- **Env var:** `UNSPLASH_ACCESS_KEY` — server-side only (no `VITE_` prefix); used by `api/city-image.ts`.
 
 ## Config
 All pricing and branding settings are in `src/config.ts`. Change there only.
@@ -330,8 +342,9 @@ opens straight to /dashboard for logged-in hosts (`ce296a6`).
 - `ARR-SWEET1` checkout → back to 2026-06-02 (currently 2026-06-05).
 - `ARR-TEST01` → back to original 2026-05-27 → 05-31 (or leave expired).
 - Barcelona test apt `Casa Marco` (`bf07680b`) + guest "Marco" + booking `ARR-BCN001` — created only for the dynamic-city test; delete when done.
+- **Sweet home (`d9614d11`) Storage:** 2 orphaned hero files in the bucket from upload testing; `hero_image_url` is currently `null` (removed after testing). Clean up orphaned files when Storage object deletion is implemented (Phase G).
 
-## Session 8 Status: COMPLETE ✓ — A2 + A3 + A4 done & live; Phase B (guest-page look & feel) next.
+## Session 8 Status: COMPLETE ✓ — A2 + A3 + A4 + Phase B done & live. Next: Session 9 · Phase C (in-app token-based messaging + Resend transactional email: welcome + day-25 trial reminder).
 
 ## Known notes / minor debt
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
@@ -374,6 +387,20 @@ opens straight to /dashboard for logged-in hosts (`ce296a6`).
   tier/context logic in that one file so the Tier-2 upgrade is additive (new tiers,
   email+reference) with no change to the endpoint or the chatbot UI. Grounded chat (googleSearch)
   cannot use `responseMimeType` — return plain text and strip `**`.
+
+- **CRITICAL — Supabase Storage rejects the host's gotrue user JWT on this project.**
+  Authenticated uploads are treated as anonymous, so the owner-scoped write RLS policy refuses
+  them with "new row violates row-level security policy" (HTTP 400). The database (PostgREST)
+  and auth (gotrue) accept the SAME token fine; only Storage refuses it. Almost certainly a
+  side effect of the earlier API-key / JWT-signing-key migration (legacy HS256 revoked). Proven:
+  a simulated authenticated insert to `{hostId}/...` passes RLS; the real request carries
+  `Authorization: Bearer` and still 400s. **DO NOT fix uploads by attaching the token
+  client-side** — that was tried (`2cbad9b`) and Storage still refused it. The working pattern
+  is server-minted signed upload URLs via the service-role key + client `uploadToSignedUrl`
+  (the signed token authorises, independent of the user JWT); this also lifts the Vercel 4.5 MB
+  body limit since the file goes direct to Storage. Open item: Storage not accepting user JWTs
+  is a project-level issue to raise with Supabase support (JWT signing keys) — not required for
+  uploads to work, but affects any future direct-Storage client call.
 
 ---
 
@@ -426,9 +453,11 @@ Phases:
   - **A2 — AI host picks** (generate-host-picks): COMPLETE ✓ Live. Endpoint (`3da7e00`) + paste-and-review UI in PropertySetup My-picks tab (`081f7eb`); manual add-card removed and per-candidate "re-locate from address" added (`631d7c0`). Verified on Sweet home + Test Apartment 1.
   - **A3 — City events** (city-events): COMPLETE ✓ Live. Grounded `api/city-events` (googleSearch, dynamic city from DB, thinkingBudget 0, 10–15 events, fresh each open, no DB/cron) + Explore-tab popup `EventsPage.tsx` with clickable, https-sanitized event links. Verified Helsinki + Barcelona. `39ef5c9`, `0a22f04`
   - **A4 — Real guest chatbot** (guest-chat): COMPLETE ✓ Live. Server-gated `api/_lib/guest-access.ts` (verified/public tiers; private apartment_details only for verified) + grounded `api/guest-chat.ts` (gemini-2.5-flash, googleSearch, thinkingBudget 0, 2×20s) + `ChatBot.tsx` in the Chat tab (accent-themed, persistent starter chips). Tier 2 extends `guest-access.ts` only. Verified on Sweet home. `5a53223`
-- B — Guest-page look & feel: city/host images + Supabase Storage (#4), finish host logo
-  upload path (#5 — display already works), port Anna's guest features + image lightbox (#2),
-  approved design pass (#6).
+- B — Guest-page look & feel: COMPLETE ✓ Live.
+  - Photo hero + accent scrim, accent section headers, Take-me-home moved above WiFi, tinted page background. `d2bbe37`, `457fcbe`
+  - Host logo upload (BrandingPanel) + per-property cover photo upload (PropertySetup). `45e1c70`, `9dcc1f6`
+  - By-city default hero via Unsplash with attribution, cached per property (`city_image_url` + `city_image_credit`); env var `UNSPLASH_ACCESS_KEY` (server-side, no VITE_ prefix). `7da1c85`
+  - Image upload auth fix: Storage rejects host JWT → signed URL flow via service-role key (`api/create-upload-url`). `72e8f41`
 - C — Communication: in-app token-based messaging (#3) + Resend transactional email
   (send-email): welcome + day-25 trial reminder email.
 - D — Superadmin (#1): service-role admin API (superadmin-gated) + wire the existing /admin
@@ -440,6 +469,10 @@ Phases:
 - G — Pre-launch hardening: cron follow-ups (sync-ical real-feed test, trial idempotency
   column), iCal SSRF blocklist + rate limit, cron batching/maxDuration at scale, mobile drawer
   a11y, dead-code sweep, full security audit.
+  - Add server-side file-size cap in `api/create-upload-url.ts` (client guards are 5 MB cover /
+    2 MB logo; a direct API caller can bypass them).
+  - Delete the previous Storage object on cover/logo replace and remove (`removeHero`/`removeLogo`
+    + replace currently orphan the old file in the bucket).
 
 Tier-2 architecture stays upgrade-ready throughout (plan-gated component slots; bookings/guests
 schema already supports it).
