@@ -318,12 +318,20 @@ opens straight to /dashboard for logged-in hosts (`ce296a6`).
 - Helsinki (Sweet home, `ARR-SWEET1`): real current events, themed, clickable.
 - Barcelona (new test apt `Casa Marco` `bf07680b`, `ARR-BCN001`): dynamic-city path confirmed — Barcelona events for a non-Helsinki city, proving city is read per-apartment (vs Anna's hardcoded Helsinki).
 
+### Completed — A4 guest chatbot
+- [x] **Server-gated access seam** (`api/_lib/guest-access.ts`) — `resolveGuestAccess(db, apartmentId, token)` returns tier `verified` (token matches a confirmed/completed, in-dates booking for that apartment) or `public`, resolved entirely server-side. `buildGuestSystemInstruction` builds the prompt from apartment_details + host_picks + guide_recommendations, including private detail rows ONLY for the verified tier — a public caller never receives them. This is the single seam Tier 2 extends (prospect/paid tiers, email+reference) without touching the endpoint or the UI. `5a53223`
+- [x] **Grounded chat endpoint** (`api/guest-chat.ts`, replaced the stub) — POST `{ apartmentId, token, message, history }`; resolves apartment + tier from the DB, builds the gated context, calls `gemini-2.5-flash` with `googleSearch` + `thinkingBudget: 0`; 2 retries × 20s timeout (≈43s worst case, inside 60s maxDuration); strips `**`; key-scrubbed logs. `5a53223`
+- [x] **ChatBot component** (`src/components/guest/ChatBot.tsx`, replaced the stub; wired into the GuestPage Chat tab) — accent-themed bubbles, seeded greeting, persistent starter-question chips, auto-scroll, graceful error recovery. Browser sends only `{ apartmentId, token, message, history }`; all knowledge gating is server-side. `5a53223` (starter chips made persistent in a follow-up fix)
+
+### Verified live — A4 (2026-06-03)
+- Sweet home (`ARR-SWEET1`, verified): greets the guest by name, answers from private check-in/Wi-Fi details, grounded for the neighbourhood. Public-tier withholding is correct by construction (private rows never enter a public context) and isn't reachable through the Tier-1 UI, since the Chat tab only renders on the token-verified active page.
+
 ### Test-data to revert when guest-side testing wraps
 - `ARR-SWEET1` checkout → back to 2026-06-02 (currently 2026-06-05).
 - `ARR-TEST01` → back to original 2026-05-27 → 05-31 (or leave expired).
 - Barcelona test apt `Casa Marco` (`bf07680b`) + guest "Marco" + booking `ARR-BCN001` — created only for the dynamic-city test; delete when done.
 
-## Session 8 Status: COMPLETE ✓ — A2 + A3 done & live; A4 (guest chatbot) next.
+## Session 8 Status: COMPLETE ✓ — A2 + A3 + A4 done & live; Phase B (guest-page look & feel) next.
 
 ## Known notes / minor debt
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
@@ -336,6 +344,7 @@ opens straight to /dashboard for logged-in hosts (`ce296a6`).
   + rate limit before public launch.
 - `sendPushToHost` url check uses `startsWith('/')`, which also admits protocol-relative `//host` — only ever set from the host's own send-push request (self-targeted), so negligible.
 - send-push `apartmentId` is not ownership-checked — latent only (lookup forces `host_id = userId`, so a foreign apartmentId matches zero rows).
+- `api/guest-chat.ts` is public (guest-facing) with no rate limit — same posture as `city-events`/`generate-guide`; fold abuse/rate-limiting into Phase G hardening.
 - Mobile drawer a11y follow-ups: Escape-to-close, focus return on close.
 - ~~Push opt-in persistence / orphan rows on re-enable~~ — RESOLVED `e12afd5`
   (subscribeToPush reuse + reaffirm-on-load); see Session 6 "Push hardening".
@@ -357,6 +366,14 @@ opens straight to /dashboard for logged-in hosts (`ce296a6`).
 - **`vercel.json` `functions{}`: never list a specific file pattern alongside the `api/**/*.ts`
   glob** — Vercel rejects overlapping patterns and the build fails. Use one glob, raise its
   `maxDuration`.
+
+- **Guest-facing AI context is gated server-side, never client-side.** `api/guest-chat.ts`
+  takes only `{ apartmentId, token }` from the browser; the server resolves the access tier
+  (`api/_lib/guest-access.ts`) and filters private `apartment_details` before building the
+  prompt, so a public caller can't obtain private rows by tampering with client state. Keep the
+  tier/context logic in that one file so the Tier-2 upgrade is additive (new tiers,
+  email+reference) with no change to the endpoint or the chatbot UI. Grounded chat (googleSearch)
+  cannot use `responseMimeType` — return plain text and strip `**`.
 
 ---
 
@@ -408,7 +425,7 @@ Phases:
   - **A1 — AI city guide** (generate-guide + cron-refresh-guides): COMPLETE ✓ Live. Guide populated; Sweet home verified at 25 geocoded places. `de3eb37`
   - **A2 — AI host picks** (generate-host-picks): COMPLETE ✓ Live. Endpoint (`3da7e00`) + paste-and-review UI in PropertySetup My-picks tab (`081f7eb`); manual add-card removed and per-candidate "re-locate from address" added (`631d7c0`). Verified on Sweet home + Test Apartment 1.
   - **A3 — City events** (city-events): COMPLETE ✓ Live. Grounded `api/city-events` (googleSearch, dynamic city from DB, thinkingBudget 0, 10–15 events, fresh each open, no DB/cron) + Explore-tab popup `EventsPage.tsx` with clickable, https-sanitized event links. Verified Helsinki + Barcelona. `39ef5c9`, `0a22f04`
-  - A4 — Real guest chatbot (port from Anna's Stays ChatBot): stub.
+  - **A4 — Real guest chatbot** (guest-chat): COMPLETE ✓ Live. Server-gated `api/_lib/guest-access.ts` (verified/public tiers; private apartment_details only for verified) + grounded `api/guest-chat.ts` (gemini-2.5-flash, googleSearch, thinkingBudget 0, 2×20s) + `ChatBot.tsx` in the Chat tab (accent-themed, persistent starter chips). Tier 2 extends `guest-access.ts` only. Verified on Sweet home. `5a53223`
 - B — Guest-page look & feel: city/host images + Supabase Storage (#4), finish host logo
   upload path (#5 — display already works), port Anna's guest features + image lightbox (#2),
   approved design pass (#6).
