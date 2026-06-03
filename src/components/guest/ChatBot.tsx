@@ -50,7 +50,7 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
     }
   }
 
-  const showStarters = msgs.length === 1 && !loading
+  const showStarters = !loading
 
   return (
     <div className="flex flex-col h-full bg-white">
