@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Home, MessageCircle, MapPin, MoreHorizontal,
-  Copy, Check, RefreshCw, Navigation,
+  Copy, Check, RefreshCw, Navigation, Calendar,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getDirectionsUrl } from '../../lib/maps'
 import InstallPrompt from './InstallPrompt'
+import EventsPage from './EventsPage'
 import { ARRIVLY_CONFIG } from '../../config'
 
 interface Host {
@@ -140,6 +141,7 @@ export default function GuestPage() {
   const [loading, setLoading] = useState(true)
   const [pageState, setPageState] = useState<PageState>('loading')
   const [activeTab, setActiveTab] = useState<ActiveTab>('home')
+  const [showEvents, setShowEvents] = useState(false)
 
   const [guestName, setGuestName] = useState<string | null>(null)
   const [thankYouName, setThankYouName] = useState<string | null>(null)
@@ -624,6 +626,20 @@ export default function GuestPage() {
               </a>
             )}
 
+            <button
+              onClick={() => setShowEvents(true)}
+              className="flex items-center justify-between w-full p-4 rounded-xl mb-6 cursor-pointer bg-[#faf9f6] border border-gray-100 text-left"
+            >
+              <div className="flex items-center gap-3">
+                <Calendar size={18} style={{ color: accentColor }} />
+                <div>
+                  <p className="text-sm font-medium text-[#1c1c1a]">This week in {apt.city}</p>
+                  <p className="text-xs text-gray-400">Live local events, updated each time you open</p>
+                </div>
+              </div>
+              <span style={{ color: accentColor }}>→</span>
+            </button>
+
             {guideLoading ? (
               <div className="flex items-center justify-center py-16 gap-2 text-gray-400">
                 <RefreshCw size={18} className="animate-spin" />
@@ -848,6 +864,17 @@ export default function GuestPage() {
             Save →
           </button>
         </div>
+      )}
+
+      {showEvents && (
+        <EventsPage
+          apartmentId={apt.id}
+          city={apt.city}
+          accentColor={accentColor}
+          brandName={brandName}
+          isOnTrial={isOnTrial}
+          onClose={() => setShowEvents(false)}
+        />
       )}
 
       <InstallPrompt accentColor={accentColor} />
