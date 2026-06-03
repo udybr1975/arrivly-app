@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getDirectionsUrl } from '../../lib/maps'
+import { resolveImageUrl, FALLBACK_HERO } from '../../lib/imageUtils'
 import InstallPrompt from './InstallPrompt'
 import EventsPage from './EventsPage'
 import ChatBot from './ChatBot'
@@ -29,6 +30,7 @@ interface Apartment {
   lng: number | null
   accent_color: string | null
   max_guests: number | null
+  hero_image_url: string | null
 }
 
 interface Detail {
@@ -157,7 +159,7 @@ export default function GuestPage() {
       const [aptRes, detRes] = await Promise.all([
         supabase
           .from('apartments')
-          .select('id,host_id,name,neighborhood,city,country,lat,lng,accent_color,max_guests')
+          .select('id,host_id,name,neighborhood,city,country,lat,lng,accent_color,max_guests,hero_image_url')
           .eq('id', aptId!)
           .maybeSingle(),
         supabase
@@ -451,32 +453,34 @@ export default function GuestPage() {
   const apt = apartment!
 
   return (
-    <div className="min-h-screen bg-white font-sans">
+    <div className="min-h-screen bg-[#fbfaf7] font-sans">
 
       {activeTab === 'home' && (
-        <div className="pb-28">
-          <div
-            className="relative px-6 pt-14 pb-12"
-            style={{ background: `linear-gradient(160deg, ${accentColor} 0%, ${accentColor}cc 100%)` }}
-          >
-            {host?.logo_url ? (
-              <img src={host.logo_url} alt={brandName} className="h-8 mb-6 object-contain" />
-            ) : (
-              <p className="text-white/80 text-sm font-medium mb-6">{brandName}</p>
-            )}
-            <h1 className="text-3xl font-light text-white leading-tight">
-              {guestName ? `Welcome, ${guestName}.` : 'Welcome.'}
-            </h1>
-            <p className="text-white/70 text-sm mt-2 leading-relaxed">
-              {apt.name} · {apt.neighborhood}
-            </p>
-            {weather && (
-              <div className="mt-4 inline-flex items-center gap-2 bg-white/20 rounded-full px-3 py-1.5">
-                <span className="text-base">{weather.icon}</span>
-                <span className="text-white text-sm">{weather.temp}°C</span>
-                <span className="text-white/70 text-xs">{weather.condition}</span>
-              </div>
-            )}
+        <div className="pb-28" style={{ background: `linear-gradient(to bottom, ${accentColor}1a, #fbfaf7 360px)` }}>
+          <div className="relative h-64">
+            <img src={resolveImageUrl(apt.hero_image_url)} alt="" className="absolute inset-0 w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).src = FALLBACK_HERO }} />
+            <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${accentColor} 4%, ${accentColor}8c 34%, transparent 82%)` }} />
+            <div className="absolute left-0 right-0 bottom-0 px-6 pb-6 text-white">
+              {host?.logo_url ? (
+                <img src={resolveImageUrl(host.logo_url)} alt={brandName} className="h-7 mb-4 object-contain" />
+              ) : (
+                <div className="flex items-center gap-2 mb-4">
+                  <span className="w-6 h-6 rounded-full bg-white/25 flex items-center justify-center text-xs font-bold">{brandName.charAt(0)}</span>
+                  <span className="text-sm font-medium opacity-90">{brandName}</span>
+                </div>
+              )}
+              <h1 className="text-3xl font-light leading-tight" style={{ fontFamily: 'Georgia, serif' }}>
+                {guestName ? `Welcome, ${guestName}.` : 'Welcome.'}
+              </h1>
+              <p className="text-white/80 text-sm mt-1.5">{apt.name} · {apt.neighborhood}</p>
+              {weather && (
+                <div className="mt-3 inline-flex items-center gap-2 bg-white/20 rounded-full px-3 py-1.5">
+                  <span className="text-base">{weather.icon}</span>
+                  <span className="text-sm">{weather.temp}°C</span>
+                  <span className="text-white/70 text-xs">{weather.condition}</span>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="max-w-lg mx-auto px-6 pt-8 pb-4">
@@ -501,9 +505,28 @@ export default function GuestPage() {
             </div>
           </div>
 
+          {apt.lat !== null && apt.lng !== null && (
+            <div className="max-w-lg mx-auto px-6 pt-4 pb-1">
+              <a
+                href={getDirectionsUrl(apt.lat, apt.lng)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-3 w-full p-4 rounded-xl text-white no-underline shadow-[0_4px_14px_rgba(0,0,0,0.12)]"
+                style={{ background: accentColor }}
+              >
+                <Home size={18} />
+                <div className="flex-1">
+                  <p className="text-sm font-semibold">Take me home</p>
+                  <p className="text-xs opacity-75">Walking directions to {apt.name}</p>
+                </div>
+                <Navigation size={16} className="opacity-80" />
+              </a>
+            </div>
+          )}
+
           {wifiParsed && (wifiParsed.network || wifiParsed.password) && (
             <div className="max-w-lg mx-auto px-6 py-6">
-              <div className="bg-[#faf9f6] border-l-4 p-5 shadow-sm" style={{ borderLeftColor: accentColor }}>
+              <div className="bg-[#faf9f6] border-l-4 p-5 shadow-sm shadow-[0_1px_5px_rgba(0,0,0,0.05)]" style={{ borderLeftColor: accentColor }}>
                 <p className="text-[10px] tracking-widest uppercase text-gray-400 mb-4">WiFi</p>
                 {wifiParsed.network && (
                   <div className="mb-3">
@@ -538,7 +561,7 @@ export default function GuestPage() {
 
           {checkinDetails.length > 0 && (
             <div className="max-w-lg mx-auto px-6 py-4">
-              <div className="bg-[#faf9f6] border border-gray-100 rounded-lg p-5">
+              <div className="bg-[#faf9f6] border border-gray-100 rounded-lg p-5 shadow-[0_1px_5px_rgba(0,0,0,0.05)]">
                 <p className="text-[10px] tracking-widest uppercase text-gray-400 mb-4">Check-in info</p>
                 <div className="space-y-3">
                   {checkinDetails.map(d => {
@@ -596,31 +619,12 @@ export default function GuestPage() {
       )}
 
       {activeTab === 'explore' && (
-        <div className="pb-28">
+        <div className="pb-28" style={{ background: `linear-gradient(to bottom, ${accentColor}1a, #fbfaf7 360px)` }}>
           <div className="max-w-lg mx-auto px-6 py-8">
             <h2 className="text-2xl font-light text-[#1c1c1a] mb-1">Explore</h2>
             <p className="text-sm text-gray-500 italic mb-6 leading-relaxed">
               {apt.neighborhood}, {apt.city}
             </p>
-
-            {apt.lat !== null && apt.lng !== null && (
-              <a
-                href={getDirectionsUrl(apt.lat, apt.lng)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-between w-full p-4 rounded-xl mb-6 text-white no-underline"
-                style={{ background: accentColor }}
-              >
-                <div className="flex items-center gap-3">
-                  <Home size={18} />
-                  <div>
-                    <p className="text-sm font-medium">Take me home</p>
-                    <p className="text-xs opacity-70">Walking directions to {apt.name}</p>
-                  </div>
-                </div>
-                <Navigation size={16} className="opacity-80" />
-              </a>
-            )}
 
             <button
               onClick={() => setShowEvents(true)}
@@ -650,7 +654,7 @@ export default function GuestPage() {
                     </p>
                     <div className="space-y-2">
                       {hostPicks.map(pick => (
-                        <div key={pick.id} className="bg-[#faf9f6] border border-gray-100 rounded-lg p-4">
+                        <div key={pick.id} className="bg-[#faf9f6] border border-gray-100 rounded-lg p-4 shadow-[0_1px_5px_rgba(0,0,0,0.05)]">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 mb-0.5">
@@ -700,7 +704,7 @@ export default function GuestPage() {
                         if (!Array.isArray(places) || places.length === 0) return null
                         const isExpanded = expandedGuideCategory === cat
                         return (
-                          <div key={cat} className="bg-[#faf9f6] border border-gray-100 rounded-lg overflow-hidden">
+                          <div key={cat} className="bg-[#faf9f6] border border-gray-100 rounded-lg overflow-hidden shadow-[0_1px_5px_rgba(0,0,0,0.05)]">
                             <button
                               onClick={() => setExpandedGuideCategory(isExpanded ? null : cat)}
                               className="w-full flex items-center justify-between px-4 py-3.5 border-none bg-transparent cursor-pointer text-left"
@@ -771,7 +775,7 @@ export default function GuestPage() {
       )}
 
       {activeTab === 'more' && (
-        <div className="pb-28">
+        <div className="pb-28" style={{ background: `linear-gradient(to bottom, ${accentColor}1a, #fbfaf7 360px)` }}>
           <div className="max-w-lg mx-auto px-6 py-10 border-b border-gray-100">
             <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Save this page</h2>
             <p className="text-sm text-gray-500 leading-relaxed mb-6">
