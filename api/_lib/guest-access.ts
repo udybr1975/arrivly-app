@@ -44,6 +44,43 @@ export async function resolveGuestAccess(
   return { tier: 'verified', guestName }
 }
 
+export interface MessagingAccess { allowed: boolean; bookingId: string | null; guestName: string | null }
+
+function addDaysISO(dateStr: string, days: number): string {
+  const d = new Date(dateStr + 'T00:00:00Z')
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().split('T')[0]
+}
+
+// Wider window than resolveGuestAccess: messaging is allowed from when the booking
+// exists (no check-in lower bound, so pre-arrival questions work) until the day
+// AFTER check-out.
+export async function resolveMessagingAccess(
+  db: SupabaseClient,
+  apartmentId: string,
+  token: string | null
+): Promise<MessagingAccess> {
+  const none: MessagingAccess = { allowed: false, bookingId: null, guestName: null }
+  if (!token) return none
+  const { data: booking } = await db
+    .from('bookings')
+    .select('id, check_out, guest_id, status')
+    .eq('reference_number', token)
+    .eq('apartment_id', apartmentId)
+    .in('status', ['confirmed', 'completed'])
+    .limit(1)
+    .maybeSingle()
+  if (!booking) return none
+  const today = helsinkiToday()
+  if (today > addDaysISO(booking.check_out, 1)) return none
+  let guestName: string | null = null
+  if (booking.guest_id) {
+    const { data: g } = await db.from('guests').select('first_name').eq('id', booking.guest_id).maybeSingle()
+    guestName = g?.first_name ?? null
+  }
+  return { allowed: true, bookingId: booking.id, guestName }
+}
+
 // Builds the system instruction server-side. Private apartment_details rows are
 // included ONLY for the verified tier — a public caller never receives them.
 export async function buildGuestSystemInstruction(
