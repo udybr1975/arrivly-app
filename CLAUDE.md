@@ -54,7 +54,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - **Columns:**
   - `apartments.hero_image_url` — host's own uploaded cover photo, stored as a bucket path (e.g. `{hostId}/{aptId}/hero-{ts}.jpg`).
   - `apartments.city_image_url` — cached Unsplash by-city default hero, stored as a full `https://` URL.
-  - `apartments.city_image_credit` — JSON string `{ name, username, link }` for Unsplash attribution caption.
+  - `apartments.city_image_credit` — JSON string `{ name, userLink, unsplashLink }` for Unsplash attribution caption.
   - `hosts.logo_url` — host logo, stored as a bucket path.
 - **Guest hero precedence:** host upload (`hero_image_url`) → city image (`city_image_url`, with attribution caption) → static `FALLBACK_HERO` (hardcoded Unsplash warm interior).
 - **Upload flow:** client calls `POST /api/create-upload-url` (Bearer token) → server verifies host via `getUser`, checks apartment ownership with the service-role key, builds path `{hostId}/{aptId}/hero-{ts}.{ext}` or `{hostId}/logo-{ts}.{ext}`, calls `createSignedUploadUrl` → returns `{ path, token }` → client calls `supabase.storage.uploadToSignedUrl(path, token, file)`. File goes direct to Storage; never passes through Vercel (no 4.5 MB body limit).
