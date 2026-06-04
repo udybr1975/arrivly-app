@@ -23,8 +23,10 @@ interface ThreadMessage {
 
 interface BookingRow {
   id: string
+  reference_number: string | null
   check_in: string
   check_out: string
+  status: string
   apartment_id: string
   guests: { first_name: string } | null
 }
@@ -35,8 +37,10 @@ interface Conversation {
   guestName: string
   checkIn: string
   checkOut: string
-  lastBody: string
-  lastAt: string
+  status: string
+  reference: string
+  lastBody: string | null
+  lastAt: string | null
   unread: number
 }
 
@@ -67,32 +71,37 @@ export default function Messages() {
   const openThreadIdRef = useRef<string | null>(null)
 
   const loadConversations = useCallback(async () => {
-    const { data: msgs, error: msgsError } = await supabase
+    const todayHel = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Helsinki' })
+
+    // 1. Load messageable bookings (RLS scopes to host's own apartments)
+    const { data: bookingRows, error: bookingsError } = await supabase
+      .from('bookings')
+      .select('id, reference_number, check_in, check_out, status, apartment_id, guests(first_name)')
+      .not('reference_number', 'is', null)
+      .order('check_in', { ascending: false })
+      .limit(200)
+
+    if (bookingsError) {
+      toast('Could not load bookings', 'error')
+      setLoading(false)
+      return
+    }
+
+    const bookings = (bookingRows ?? []) as unknown as BookingRow[]
+
+    // 2. Load messages, newest first; build a map booking_id -> { latestMsg, unread }
+    const { data: msgRows } = await supabase
       .from('messages')
       .select('id, booking_id, sender_role, body, created_at, read_at')
       .order('created_at', { ascending: false })
       .limit(500)
 
-    if (msgsError) {
-      toast('Could not load messages', 'error')
-      setLoading(false)
-      return
-    }
-
-    if (!msgs || msgs.length === 0) {
-      setConversations([])
-      setLoading(false)
-      return
-    }
-
-    const messages = msgs as unknown as RawMessage[]
-
-    // Group by booking_id; msgs are newest-first so the first entry per booking is the latest
-    const groupMap = new Map<string, { latestMsg: RawMessage; unread: number }>()
+    const messages = (msgRows ?? []) as unknown as RawMessage[]
+    const msgMap = new Map<string, { latestMsg: RawMessage; unread: number }>()
     for (const m of messages) {
-      const existing = groupMap.get(m.booking_id)
+      const existing = msgMap.get(m.booking_id)
       if (!existing) {
-        groupMap.set(m.booking_id, {
+        msgMap.set(m.booking_id, {
           latestMsg: m,
           unread: m.sender_role === 'guest' && !m.read_at ? 1 : 0,
         })
@@ -101,40 +110,41 @@ export default function Messages() {
       }
     }
 
-    const bookingIds = [...groupMap.keys()]
-
-    const { data: bookingRows } = await supabase
-      .from('bookings')
-      .select('id, check_in, check_out, apartment_id, guests(first_name)')
-      .in('id', bookingIds)
-
-    const bookings = (bookingRows ?? []) as unknown as BookingRow[]
-
+    // 3. Load apartment names
     const aptIds = [...new Set(bookings.map(b => b.apartment_id))]
     const { data: aptRows } = aptIds.length > 0
       ? await supabase.from('apartments').select('id, name').in('id', aptIds)
       : { data: [] as { id: string; name: string }[] }
-
     const aptMap = new Map(((aptRows ?? []) as { id: string; name: string }[]).map(a => [a.id, a.name]))
-    const bookingMap = new Map(bookings.map(b => [b.id, b]))
 
+    // 4. Build conversations from bookings — hide long-past empty bookings
     const convs: Conversation[] = []
-    for (const [bookingId, { latestMsg, unread }] of groupMap) {
-      const booking = bookingMap.get(bookingId)
+    for (const booking of bookings) {
+      const g = msgMap.get(booking.id)
+      const checkoutOk = booking.check_out >= todayHel
+      if (!g && !checkoutOk) continue
+
       convs.push({
-        bookingId,
-        aptName: aptMap.get(booking?.apartment_id ?? '') ?? 'Property',
-        guestName: booking?.guests?.first_name ?? 'Guest',
-        checkIn: booking?.check_in ?? '',
-        checkOut: booking?.check_out ?? '',
-        lastBody: latestMsg.body,
-        lastAt: latestMsg.created_at,
-        unread,
+        bookingId: booking.id,
+        aptName: aptMap.get(booking.apartment_id) ?? 'Property',
+        guestName: booking.guests?.first_name ?? 'Guest',
+        checkIn: booking.check_in,
+        checkOut: booking.check_out,
+        status: booking.status,
+        reference: booking.reference_number ?? '',
+        lastBody: g ? g.latestMsg.body : null,
+        lastAt: g ? g.latestMsg.created_at : null,
+        unread: g ? g.unread : 0,
       })
     }
 
-    convs.sort((a, b) => b.lastAt.localeCompare(a.lastAt))
-    setConversations(convs)
+    // 5. Two-tier sort: messaged conversations newest-first, then unmessaged by checkIn asc
+    const withMsgs = convs.filter(c => c.lastAt !== null)
+      .sort((a, b) => b.lastAt!.localeCompare(a.lastAt!))
+    const withoutMsgs = convs.filter(c => c.lastAt === null)
+      .sort((a, b) => a.checkIn.localeCompare(b.checkIn))
+
+    setConversations([...withMsgs, ...withoutMsgs])
     setLoading(false)
   }, [toast])
 
@@ -226,7 +236,7 @@ export default function Messages() {
         {conversations.length === 0 ? (
           <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-8 text-center">
             <div className="text-[#ccc] text-3xl mb-2">💬</div>
-            <div className="text-[12px] text-[#aaa]">No messages yet. Guests can write to you from their page.</div>
+            <div className="text-[12px] text-[#aaa]">No current or upcoming guests yet.</div>
           </div>
         ) : (
           <div className="flex flex-col gap-1">
@@ -253,11 +263,17 @@ export default function Messages() {
                     <div className="text-[10px] text-[#999] mb-1 truncate">
                       {c.aptName} · {fmtDate(c.checkIn)} – {fmtDate(c.checkOut)}
                     </div>
-                    <div className="text-[11px] text-[#888] truncate leading-snug">{c.lastBody}</div>
+                    {c.lastBody !== null ? (
+                      <div className="text-[11px] text-[#888] truncate leading-snug">{c.lastBody}</div>
+                    ) : (
+                      <div className="text-[11px] text-[#bbb] italic leading-snug">No messages yet — tap to start</div>
+                    )}
                   </div>
-                  <div className="text-[9px] text-[#bbb] whitespace-nowrap shrink-0 mt-0.5">
-                    {fmtTime(c.lastAt)}
-                  </div>
+                  {c.lastAt !== null && (
+                    <div className="text-[9px] text-[#bbb] whitespace-nowrap shrink-0 mt-0.5">
+                      {fmtTime(c.lastAt)}
+                    </div>
+                  )}
                 </div>
               </button>
             ))}
@@ -287,6 +303,9 @@ export default function Messages() {
                   <div className="text-[10px] text-[#999] truncate">
                     {selected.aptName} · {fmtDate(selected.checkIn)} – {fmtDate(selected.checkOut)}
                   </div>
+                  <div className="text-[10px] text-[#bbb] truncate capitalize">
+                    {selected.status} · {selected.reference}
+                  </div>
                 </div>
               )}
             </div>
@@ -296,7 +315,7 @@ export default function Messages() {
               {threadLoading ? (
                 <div className="flex-1 flex items-center justify-center text-[12px] text-[#aaa]">Loading…</div>
               ) : thread.length === 0 ? (
-                <div className="flex-1 flex items-center justify-center text-[12px] text-[#aaa]">No messages in this conversation yet.</div>
+                <div className="flex-1 flex items-center justify-center text-[12px] text-[#aaa]">No messages yet — send the first message below.</div>
               ) : (
                 <>
                   {thread.map(m => (
