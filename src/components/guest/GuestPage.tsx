@@ -10,6 +10,7 @@ import { resolveImageUrl, FALLBACK_HERO } from '../../lib/imageUtils'
 import InstallPrompt from './InstallPrompt'
 import EventsPage from './EventsPage'
 import ChatBot from './ChatBot'
+import MessageHost from './MessageHost'
 import { ARRIVLY_CONFIG } from '../../config'
 
 interface Host {
@@ -135,6 +136,7 @@ export default function GuestPage() {
   const [pageState, setPageState] = useState<PageState>('loading')
   const [activeTab, setActiveTab] = useState<ActiveTab>('home')
   const [showEvents, setShowEvents] = useState(false)
+  const [showMessages, setShowMessages] = useState(false)
 
   const [guestName, setGuestName] = useState<string | null>(null)
   const [thankYouName, setThankYouName] = useState<string | null>(null)
@@ -815,9 +817,25 @@ export default function GuestPage() {
             </button>
           </div>
 
+          {tokenParam && (
+            <div className="max-w-lg mx-auto px-6 py-8 border-b border-gray-100">
+              <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Message your host</h2>
+              <p className="text-sm text-gray-500 leading-relaxed mb-5">
+                Have a question or need something? Send a message — {brandName} will be notified and reply here.
+              </p>
+              <button
+                onClick={() => setShowMessages(true)}
+                className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold"
+                style={{ background: accentColor }}
+              >
+                Open messages →
+              </button>
+            </div>
+          )}
+
           {host?.whatsapp && (
             <div className="max-w-lg mx-auto px-6 py-8 border-b border-gray-100">
-              <h2 className="text-xl font-medium text-[#1c1c1a] mb-4">Contact host</h2>
+              <h2 className="text-xl font-medium text-[#1c1c1a] mb-4">Or message on WhatsApp</h2>
               <a
                 href={`https://wa.me/${host.whatsapp.replace(/\D/g, '')}`}
                 target="_blank"
@@ -895,6 +913,17 @@ export default function GuestPage() {
           brandName={brandName}
           isOnTrial={isOnTrial}
           onClose={() => setShowEvents(false)}
+        />
+      )}
+
+      {showMessages && (
+        <MessageHost
+          apartmentId={apt.id}
+          token={tokenParam ?? ''}
+          accentColor={accentColor}
+          brandName={brandName}
+          guestName={guestName}
+          onClose={() => setShowMessages(false)}
         />
       )}
 
