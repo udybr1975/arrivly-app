@@ -36,6 +36,7 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
   const [nudgeState, setNudgeState] = useState<NudgeState>(null)
+  const [nudgeDetail, setNudgeDetail] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
   // Ref so the interval callback can see the current sending state without stale closure
   const sendingRef = useRef(false)
@@ -133,6 +134,7 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
 
   async function handleNudgeEnable() {
     if (!mountedRef.current) return
+    setNudgeDetail('')
     setNudgeState('busy')
     const result = await subscribeGuestToPush(apartmentId, token)
     if (!mountedRef.current) return
@@ -146,6 +148,7 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
       setTimeout(() => { if (mountedRef.current) setNudgeState(null) }, 2000)
     } else {
       // Don't set the flag — let the guest retry from the More tab.
+      setNudgeDetail(result.detail ?? '')
       setNudgeState('error')
     }
   }
@@ -279,7 +282,9 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
                     <p className="text-xs text-gray-500">Notifications were blocked</p>
                   )}
                   {nudgeState === 'error' && (
-                    <p className="text-xs text-gray-500">Couldn't turn on — try again from the More tab</p>
+                    <p className="text-xs text-gray-500">
+                      {nudgeDetail ? `Couldn't turn on — ${nudgeDetail}` : "Couldn't turn on — try again from the More tab"}
+                    </p>
                   )}
                 </>
               )}

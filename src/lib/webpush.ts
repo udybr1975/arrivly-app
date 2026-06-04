@@ -5,11 +5,12 @@ export type SubscribeResult =
   | {
       ok: false
       reason: 'unsupported' | 'denied' | 'no-key' | 'subscribe-failed' | 'invalid-subscription' | 'save-failed'
+      detail?: string
     }
 
 type AcquireResult =
   | { ok: true; subscription: { endpoint: string; keys: { p256dh: string; auth: string } } }
-  | { ok: false; reason: 'unsupported' | 'denied' | 'no-key' | 'subscribe-failed' | 'invalid-subscription' }
+  | { ok: false; reason: 'unsupported' | 'denied' | 'no-key' | 'subscribe-failed' | 'invalid-subscription'; detail?: string }
 
 // Encapsulates the browser-side permission + VAPID subscribe flow (no DB writes).
 // Reuses an existing PushSubscription when the VAPID key matches, unsubscribes stale
@@ -45,14 +46,15 @@ async function acquirePushSubscription(): Promise<AcquireResult> {
         applicationServerKey: appServerKey,
       })
     }
-  } catch {
-    return { ok: false, reason: 'subscribe-failed' }
+  } catch (e) {
+    const err = e instanceof Error ? e : null
+    return { ok: false, reason: 'subscribe-failed', detail: err ? `${err.name}: ${err.message.slice(0, 80)}` : 'unknown error' }
   }
 
   const json = subscription.toJSON()
   const { endpoint, keys } = json
   if (!endpoint || !keys?.p256dh || !keys?.auth) {
-    return { ok: false, reason: 'invalid-subscription' }
+    return { ok: false, reason: 'invalid-subscription', detail: 'missing keys' }
   }
 
   return { ok: true, subscription: { endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth } } }
@@ -103,7 +105,7 @@ export async function subscribeGuestToPush(apartmentId: string, token: string): 
         },
       }),
     })
-    if (!res.ok) return { ok: false, reason: 'save-failed' }
+    if (!res.ok) return { ok: false, reason: 'save-failed', detail: `http ${res.status}` }
   } catch {
     return { ok: false, reason: 'save-failed' }
   }

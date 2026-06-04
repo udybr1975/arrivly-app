@@ -91,6 +91,7 @@ function LandingContent() {
 function Landing() {
   const [checking, setChecking] = useState(true)
   const [authed, setAuthed] = useState(false)
+  const [savedGuest, setSavedGuest] = useState<{ apt: string; token: string } | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -99,6 +100,22 @@ function Landing() {
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!cancelled) {
         setAuthed(!!session)
+        if (!session) {
+          const isStandalone =
+            window.matchMedia('(display-mode: standalone)').matches ||
+            (navigator as any).standalone === true
+          if (isStandalone) {
+            try {
+              const raw = localStorage.getItem('arrivly_last_guest')
+              if (raw) {
+                const parsed = JSON.parse(raw)
+                if (parsed?.apt && typeof parsed.apt === 'string' && parsed?.token && typeof parsed.token === 'string') {
+                  setSavedGuest({ apt: parsed.apt, token: parsed.token })
+                }
+              }
+            } catch {}
+          }
+        }
         setChecking(false)
       }
     })
@@ -107,6 +124,7 @@ function Landing() {
 
   if (checking) return <Loader />
   if (authed) return <Navigate to="/dashboard" replace />
+  if (savedGuest) return <Navigate to={`/guest?apt=${savedGuest.apt}&token=${savedGuest.token}`} replace />
   return <LandingContent />
 }
 
