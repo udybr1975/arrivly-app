@@ -23,8 +23,21 @@ export default function Layout() {
   const [email, setEmail] = useState('')
   const [host, setHost] = useState<HostData | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [unread, setUnread] = useState(0)
 
   useEffect(() => {
+    let mounted = true
+    let intervalId: number
+
+    async function countUnread() {
+      const { count } = await supabase
+        .from('messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('sender_role', 'guest')
+        .is('read_at', null)
+      if (mounted) setUnread(count ?? 0)
+    }
+
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
@@ -35,9 +48,33 @@ export default function Layout() {
         .eq('id', user.id)
         .maybeSingle()
       if (data) setHost(data)
+      await countUnread()
+      if (mounted) intervalId = window.setInterval(countUnread, 30_000)
     }
+
+    const handleVisibility = () => { if (document.visibilityState === 'visible') countUnread() }
+    const handleRead = () => countUnread()
+
     load()
+    document.addEventListener('visibilitychange', handleVisibility)
+    window.addEventListener('arrivly:messages-read', handleRead)
+
+    return () => {
+      mounted = false
+      clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', handleVisibility)
+      window.removeEventListener('arrivly:messages-read', handleRead)
+    }
   }, [])
+
+  useEffect(() => {
+    if (!('setAppBadge' in navigator)) return
+    if (unread > 0) {
+      void (navigator as any).setAppBadge(unread)
+    } else {
+      void (navigator as any).clearAppBadge?.()
+    }
+  }, [unread])
 
   async function signOut() {
     const { error } = await supabase.auth.signOut()
@@ -116,6 +153,11 @@ export default function Layout() {
             >
               <span className="text-sm">{emoji}</span>
               {label}
+              {to === '/dashboard/messages' && unread > 0 && (
+                <span className="ml-auto bg-[#1a1a1a] text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+                  {unread}
+                </span>
+              )}
             </NavLink>
           ))}
           <NavLink

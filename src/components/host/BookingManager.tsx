@@ -158,6 +158,7 @@ export default function BookingManager() {
   const [icalText, setIcalText] = useState('')
   const [showAddForm, setShowAddForm] = useState(false)
   const [form, setForm] = useState<AddForm>({ firstName: '', checkIn: '', checkOut: '' })
+  const [unreadByBooking, setUnreadByBooking] = useState<Record<string, number>>({})
 
   // Load all host apartments once on mount; set default selection to first
   useEffect(() => {
@@ -191,8 +192,29 @@ export default function BookingManager() {
         .eq('apartment_id', aptId)
         .order('check_in', { ascending: false })
       if (signal?.cancelled) return
-      setBookings((data as unknown as Booking[]) ?? [])
+      const loaded = (data as unknown as Booking[]) ?? []
+      setBookings(loaded)
       setLoading(false)
+
+      // Fetch unread counts per booking (respects cancellation signal)
+      const ids = loaded.map(b => b.id)
+      if (ids.length > 0) {
+        const { data: unreadRows } = await supabase
+          .from('messages')
+          .select('booking_id')
+          .eq('sender_role', 'guest')
+          .is('read_at', null)
+          .in('booking_id', ids)
+        if (!signal?.cancelled) {
+          const counts: Record<string, number> = {}
+          for (const row of (unreadRows ?? []) as { booking_id: string }[]) {
+            counts[row.booking_id] = (counts[row.booking_id] ?? 0) + 1
+          }
+          setUnreadByBooking(counts)
+        }
+      } else if (!signal?.cancelled) {
+        setUnreadByBooking({})
+      }
     } catch {
       if (!signal?.cancelled) setLoading(false)
     }
@@ -201,7 +223,12 @@ export default function BookingManager() {
   useEffect(() => {
     const signal = { cancelled: false }
     loadBookings(signal)
-    return () => { signal.cancelled = true }
+    const handleRead = () => loadBookings()
+    window.addEventListener('arrivly:messages-read', handleRead)
+    return () => {
+      signal.cancelled = true
+      window.removeEventListener('arrivly:messages-read', handleRead)
+    }
   }, [loadBookings])
 
   async function saveIcalUrls() {
@@ -422,6 +449,11 @@ export default function BookingManager() {
                           <span className="text-[12px] font-semibold text-[#1a1a1a]">
                             {isBlock(b.source) ? 'Blocked' : (b.guests ? b.guests.first_name : 'Guest')}
                           </span>
+                          {!isBlock(b.source) && (unreadByBooking[b.id] ?? 0) > 0 && (
+                            <span className="bg-[#1a1a1a] text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                              {unreadByBooking[b.id]}
+                            </span>
+                          )}
                           {!isBlock(b.source) && <span className={statusPill(b.status)}>{b.status}</span>}
                           <span className="text-[10px] text-[#888] bg-[#f8f6f2] border border-[#ddd8ce] px-2 py-0.5 rounded-full">
                             {sourceLabel(b.source)}
@@ -465,6 +497,11 @@ export default function BookingManager() {
                       <span className="text-[12px] font-semibold text-[#1a1a1a]">
                         {isBlock(b.source) ? 'Blocked' : (b.guests ? b.guests.first_name : 'Guest')}
                       </span>
+                      {!isBlock(b.source) && (unreadByBooking[b.id] ?? 0) > 0 && (
+                        <span className="bg-[#1a1a1a] text-white text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center">
+                          {unreadByBooking[b.id]}
+                        </span>
+                      )}
                       <span className="text-[10px] text-[#888] bg-[#f8f6f2] border border-[#ddd8ce] px-2 py-0.5 rounded-full">
                         {sourceLabel(b.source)}
                       </span>

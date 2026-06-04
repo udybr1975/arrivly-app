@@ -1,4 +1,4 @@
-const CACHE_NAME = 'arrivly-v3'
+const CACHE_NAME = 'arrivly-v4'
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json']
 
 self.addEventListener('install', (event) => {
@@ -97,12 +97,18 @@ self.addEventListener('push', (event) => {
   if (!event.data) return
   let data
   try { data = event.data.json() } catch { return }
+  const notifUrl = typeof data.url === 'string' ? data.url : '/'
   event.waitUntil(
     self.registration.showNotification(data.title || 'Arrivly', {
       body: data.body || '',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',
-      data: { url: data.url || '/' },
+      data: { url: notifUrl },
+    }).then(() => {
+      // Set a dot badge for guest push notifications; host badge is owned by Layout.tsx.
+      if (notifUrl.startsWith('/guest') && 'setAppBadge' in self.navigator) {
+        self.navigator.setAppBadge()
+      }
     })
   )
 })
@@ -114,6 +120,10 @@ self.addEventListener('notificationclick', (event) => {
   const url = typeof rawUrl === 'string' && rawUrl.startsWith('/') && !rawUrl.startsWith('//')
     ? rawUrl
     : '/'
+  // Clear guest app-icon badge on tap; host badge is managed by Layout.tsx.
+  if (url.startsWith('/guest') && 'clearAppBadge' in self.navigator) {
+    self.navigator.clearAppBadge()
+  }
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
       for (const client of windowClients) {

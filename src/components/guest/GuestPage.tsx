@@ -337,6 +337,13 @@ export default function GuestPage() {
     return () => { cancelled = true }
   }, [activeTab, aptId, hostPicks.length, guideCategories])
 
+  // Clear guest app-icon badge as soon as the guest page is active.
+  useEffect(() => {
+    if (pageState !== 'active') return
+    if (!('clearAppBadge' in navigator)) return
+    void (navigator as any).clearAppBadge()
+  }, [pageState])
+
   // &msg=1 deep-link: auto-open the messages thread when arriving from a host push notification.
   useEffect(() => {
     if (msgOpenedRef.current) return
@@ -344,6 +351,7 @@ export default function GuestPage() {
     msgOpenedRef.current = true
     setActiveTab('more')
     setShowMessages(true)
+    if ('clearAppBadge' in navigator) void (navigator as any).clearAppBadge()
   }, [pageState, tokenParam, msgParam])
 
   // Permanent push notification state for the More tab.
@@ -880,7 +888,10 @@ export default function GuestPage() {
                 Have a question or need something? Send a message — {brandName} will be notified and reply here.
               </p>
               <button
-                onClick={() => setShowMessages(true)}
+                onClick={() => {
+                  setShowMessages(true)
+                  if ('clearAppBadge' in navigator) void (navigator as any).clearAppBadge()
+                }}
                 className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold"
                 style={{ background: accentColor }}
               >

@@ -192,6 +192,7 @@ export default function Messages() {
     setConversations(prev =>
       prev.map(c => c.bookingId === bookingId ? { ...c, unread: 0 } : c)
     )
+    window.dispatchEvent(new CustomEvent('arrivly:messages-read'))
   }
 
   async function sendReply() {
