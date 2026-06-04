@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { sendPushToGuest } from './_lib/push.js'
 
 const MAX_BODY = 2000
 
@@ -33,7 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Ownership: booking → apartment → host_id must match verified user.
   const { data: booking } = await admin
     .from('bookings')
-    .select('id, apartment_id')
+    .select('id, apartment_id, reference_number')
     .eq('id', bookingId)
     .maybeSingle()
   if (!booking) return res.status(404).json({ error: 'not_found' })
@@ -55,7 +56,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'send_failed' })
   }
 
-  // TODO: fire guest push notification here once guest push subscriptions exist.
+  if (booking.reference_number) {
+    await sendPushToGuest(admin, booking.id, {
+      title: 'New message from your host',
+      body: truncated.slice(0, 120),
+      url: `/guest?apt=${booking.apartment_id}&token=${booking.reference_number}&msg=1`,
+    })
+  }
 
   const { data: messages, error: fetchError } = await admin
     .from('messages')
