@@ -3,7 +3,7 @@ import { Link, useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import Loader from '../shared/Loader'
-import { resolveImageUrl, uploadImage } from '../../lib/imageUtils'
+import { resolveImageUrl, uploadImage, deleteImage } from '../../lib/imageUtils'
 
 const TABS = [
   { key: 'basic',   label: 'Basic info' },
@@ -274,6 +274,7 @@ export default function PropertySetup() {
     if (!file || !apartmentId || !hostId) return
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { showErr('Use a PNG, JPG or WebP image.'); return }
     if (file.size > 5 * 1024 * 1024) { showErr('Cover photo must be under 5 MB.'); return }
+    const previous = heroImageUrl
     setUploadingHero(true)
     try {
       const path = await uploadImage(file, 'hero', apartmentId)
@@ -281,6 +282,7 @@ export default function PropertySetup() {
       if (error) throw error
       setHeroImageUrl(path)
       showOk()
+      if (previous && previous !== path) void deleteImage(previous)
     } catch (err) {
       showErr(err instanceof Error ? err.message : 'Upload failed')
     } finally {
@@ -290,10 +292,12 @@ export default function PropertySetup() {
 
   async function removeHero() {
     if (!apartmentId || !hostId) return
+    const previous = heroImageUrl
     const { error } = await supabase.from('apartments').update({ hero_image_url: null }).eq('id', apartmentId).eq('host_id', hostId)
     if (error) { showErr(error.message); return }
     setHeroImageUrl(null)
     showOk()
+    void deleteImage(previous)
   }
 
   // ── Tab 2 ──────────────────────────────────────────────────────────────────

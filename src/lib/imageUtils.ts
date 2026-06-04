@@ -21,6 +21,11 @@ const MIME_TO_EXT: Record<string, string> = {
   'image/webp': 'webp',
 }
 
+export async function deleteImage(path: string | null | undefined): Promise<void> {
+  if (!path || path.startsWith('https://')) return  // nothing to delete / city image
+  try { await api.post('/delete-upload', { path }) } catch { /* best-effort, never block */ }
+}
+
 // Storage rejects the host's login token directly on this project (authenticated
 // uploads are seen as anonymous and the write RLS policy refuses them). So a
 // server route authorises the host and returns a one-time signed upload URL

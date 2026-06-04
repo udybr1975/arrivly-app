@@ -3,7 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { ARRIVLY_CONFIG } from '../../config'
 import { useToast } from '../shared/Toast'
 import Loader from '../shared/Loader'
-import { resolveImageUrl, uploadImage } from '../../lib/imageUtils'
+import { resolveImageUrl, uploadImage, deleteImage } from '../../lib/imageUtils'
 
 interface Apartment {
   id: string
@@ -78,6 +78,7 @@ export default function BrandingPanel() {
     if (!file || !hostId) return
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) { toast('Use a PNG, JPG or WebP image.', 'error'); return }
     if (file.size > 2 * 1024 * 1024) { toast('Logo must be under 2 MB.', 'error'); return }
+    const previous = logoUrl
     setUploadingLogo(true)
     try {
       const path = await uploadImage(file, 'logo')
@@ -85,6 +86,7 @@ export default function BrandingPanel() {
       if (error) throw error
       setLogoUrl(path)
       toast('Logo updated', 'success')
+      if (previous && previous !== path) void deleteImage(previous)
     } catch (err) {
       toast(err instanceof Error ? err.message : 'Upload failed', 'error')
     } finally {
@@ -94,10 +96,12 @@ export default function BrandingPanel() {
 
   async function removeLogo() {
     if (!hostId) return
+    const previous = logoUrl
     const { error } = await supabase.from('hosts').update({ logo_url: null }).eq('id', hostId)
     if (error) { toast(error.message, 'error'); return }
     setLogoUrl(null)
     toast('Logo removed', 'success')
+    void deleteImage(previous)
   }
 
   if (loading) return <Loader />
