@@ -5,8 +5,9 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 
 **Pricing:** €19/property/month · 30-day free trial  
 **Stack:** React 19 + Vite + TypeScript + Tailwind CSS · Supabase (auth + DB) · Vercel (host)  
-**Repo:** https://github.com/udybr1975/arrivly  
+**Repo:** https://github.com/udybr1975/arrivly (branch: master)  
 **Supabase project:** ptkabdelgxkgfslfialx (eu-central-1)  
+**Vercel project:** prj_0QUqUs4RqtLJu68IYGpk5KPTiaG6 · team: team_ez8n9ADnf76POLmcotzlykff  
 **Admin email:** udy.bar.yosef@gmail.com  
 **App URL:** https://arrivly.anna-stays.fi
 
@@ -21,9 +22,11 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 | `/dashboard` | Dashboard | protected |
 | `/dashboard/property/:aptId` | PropertySetup | protected |
 | `/dashboard/bookings` | BookingManager | protected |
+| `/dashboard/messages` | Messages | protected |
 | `/dashboard/qr` | QRCodePanel | protected |
 | `/dashboard/branding` | BrandingPanel | protected |
 | `/dashboard/billing` | BillingPanel | protected |
+| `/dashboard/settings` | Settings | protected |
 | `/admin` | SuperAdmin | admin only |
 
 ## Database (Supabase)
@@ -33,6 +36,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - **host_picks** — id, apartment_id, name, category, address, lat, lng, note, display_order, created_at
 - **bookings** — id, apartment_id, guest_id, check_in, check_out, status, reference_number, source, created_at
 - **guests** — id, first_name, last_name, email, created_at
+- **messages** — id, booking_id, apartment_id, sender_role ('guest'|'host'), body, created_at, read_at; RLS: `messages_host_all` scopes to host's own apartments via apartment_id
 - **guide_recommendations** — id, apartment_id, neighborhood, categories (jsonb), generated_at
 - **push_subscriptions** — id, host_id, apartment_id, role, endpoint, p256dh, auth_key, created_at
 - **guest_optins** — id, first_name, email, apartment_id, opted_in_at
@@ -44,10 +48,13 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - `guide_recommendations` — always query with `.maybeSingle()` never `.single()`
 - RLS on `host_picks` joins through `apartments.host_id` — correct, verified
 - `push_subscriptions` has a UNIQUE index on `endpoint` (`push_subscriptions_endpoint_key`) — subscriptions upsert with `onConflict: 'endpoint'`
-- `push_subscriptions` RLS verified (2026-05-31): single ALL policy
-  `push_host_all` `USING (host_id = auth.uid())` with no explicit WITH CHECK —
-  Postgres applies USING as WITH CHECK on ALL policies, so client writes are
-  host-scoped. (Optional: make WITH CHECK explicit for clarity.)
+- `push_subscriptions` RLS verified (2026-05-31): single ALL policy `push_host_all`
+  `USING (host_id = auth.uid())` with no explicit WITH CHECK — Postgres applies USING
+  as WITH CHECK on ALL policies, so client writes are host-scoped.
+- **`push_subscriptions.apartment_id` is NULL for host account-level subscriptions.**
+  Always call `sendPushToHost(db, hostId, payload)` WITHOUT the optional `apartmentId`
+  argument when notifying the host — passing one filters the lookup to zero rows and
+  delivers nothing silently.
 
 ### Image system
 - **Bucket** `apartment-images` — public read; 3 owner-scoped write RLS policies (insert/update/delete), condition `(storage.foldername(name))[1] = auth.uid()`.
@@ -92,259 +99,60 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 
 ---
 
-## Session 1 Status: COMPLETE ✓
-Scaffold, Supabase schema, all API stubs, all UI components (v1).
+## Shipped (Sessions 1–8)
 
-## Session 2 Status: COMPLETE ✓
-Full redesign to cream design system. All 12 screens. App live at arrivly.anna-stays.fi.
+**S1–S2:** Scaffold + Supabase schema + all API stubs + all UI components (v1); full redesign to cream design system, all 12 screens, app live at arrivly.anna-stays.fi.
 
----
+**S3:** GuestPage rewrite — token flow, 4 tabs (Home/Chat/Explore/More), weather widget (wttr.in), WiFi parser, private check-in gating (private `apartment_details` rows only shown to a guest with a valid confirmed booking token), host picks on Explore, AI guide on Explore, share bar, "Powered by Arrivly" footer, three terminal states: expired (token valid but dates past), neutral (no token), thankyou (opted in). BookingManager — add booking form (guest first name + dates → generates ARR-XXXXXX token, deduplication check), real iCal sync (unlimited URLs via `ical_urls` column — one per line; detects Airbnb/VRBO/Booking.com/Guesty/Hostaway/Lodgify, iCal UID deduplication, blocked periods stored as `*_block` source and rendered distinctly). `accent_color` bug fixed in BrandingPanel (was querying `brand_color`, silent save failure). DB migration: replaced `airbnb_ical_url` with `ical_urls` (text, one URL per line). `SUPABASE_SERVICE_ROLE_KEY` added to Vercel env vars.
 
-## Session 3 Progress (May 28, 2026)
+**S4:** PWA icons shipped (icon-192, icon-512, maskable, apple-touch, favicon; manifest + index.html wired). `12fbb12` Geocoding wired into `PropertySetup.saveBasic` — `api/geocode.ts` (Bearer token auth forwarded by `src/lib/api.ts`, 3s AbortController timeout, 250-char input cap, generic errors only — iCal URLs can carry auth tokens so all error messages are scrubbed); dead `src/lib/geocode.ts` (unauthenticated duplicate) deleted; saveBasic shows a gentle notice if geocoding returns no coordinates, save always succeeds. `713b611` `api/rewrite-rules.ts` implemented (was a stub): POST `{ rawRules }` → `{ result }`; auth-gated; gemini-2.5-flash; 10s timeout; 5000-char cap; fallback to raw text on any failure. Note: gemini-2.0-flash retired by Google on 2026-06-01 (404s); migrated to gemini-2.5-flash. Guest page now renders rules stored at save time (no AI call per guest visit). `b6638d6`, `66cdfc6` Maps URL fix: canonical `getDirectionsUrl` helper in `src/lib/maps.ts` (`https://www.google.com/maps/dir/?api=1&destination=LAT,LNG&travelmode=walking`); deleted inline `mapsWalkingUrl` that used wrong path. `f315f45` **Security:** Supabase keys rotated to new API key format (`VITE_SUPABASE_ANON_KEY` = publishable key, `SUPABASE_SERVICE_ROLE_KEY` = secret key, legacy JWT-based API keys disabled, legacy HS256 signing secret revoked — triggered by a real key found in a local dirty `.env.example`; git history of `.env.example` was clean, no public leak). Google Geocoding API key rotated (restricted to Geocoding API only). `GEMINI_API_KEY` added to Vercel (Production) and `.env.local` — server-side only, no `VITE_` prefix. Housekeeping `c714e94`: `.env.example` sanitized to placeholders; `.gitignore` hardened (blocks `.env`, `.env.*`, preserves `!.env.example`); server-only `VITE_` type decls removed from `vite-env.d.ts`; generic geocode errors enforced.
 
-### Completed
-- [x] GuestPage — full rewrite: token flow, 4 tabs (Home/Chat/Explore/More), weather, WiFi parser, private check-in gating, host picks, guide, share bar, "Powered by Arrivly" footer, expired/neutral/thankyou states
-- [x] BookingManager — add booking form (guest name + dates → generates ARR-XXXXXX token), real iCal sync (unlimited URLs via ical_urls column, detects Airbnb/VRBO/Booking/Guesty/Hostaway/Lodgify, blocked periods handled), source labels + colours
-- [x] DB migration — replaced airbnb_ical_url with ical_urls (text, one URL per line)
-- [x] Onboarding redirect loop fixed — finish() now creates blank draft apartment if none exists
-- [x] PropertySetup — My picks tab added (tab 6): add/delete picks, saves to host_picks table
-- [x] BrandingPanel — fixed accent_color bug (was querying brand_color, silent save failure)
-- [x] SUPABASE_SERVICE_ROLE_KEY added to Vercel env vars — unblocks all server-side API routes
+**S5:** Per-property QR codes — `PropertyQRCard` child component; each card owns its own `canvasRef`; download filename includes property name; print matches image to URL. Multi-property editing — `PropertySetup` loads by URL param `/dashboard/property/:aptId`; guard redirects to `/dashboard` on missing/unowned apt (no data leak); form state resets on apt switch; `[aptId]` dep array prevents stale form; OnboardingFlow navigates directly to new property's edit page after creation. Dashboard real counts — Properties metric = real count; Bookings metric host-wide (`.in(aptIds)`); "Edit property" links to specific apt URL; "← Back to properties" link in PropertySetup. Overview consolidation — one rich card per property showing completeness %, Active/Draft pill, per-property booking count, QR/Preview/Edit buttons; `PropertyList.tsx` and bare `/dashboard/property` route removed; all redirects point to `/dashboard`. House rules auto-polish enforced on save — `saveRules` calls `/api/rewrite-rules`, falls back to raw on failure, updates textarea with stored result; manual "Rewrite with AI" button removed. PWA stale-cache fix — sw.js bumped to arrivly-v2; navigation + `/index.html` network-first (cache fallback offline); `/assets/` stays cache-first; unconditional `skipWaiting` removed; SKIP_WAITING message handler added; update-aware registration in main.tsx (reloads once on `controllerchange`, guards against first-install reload). PWA install prompt — `InstallPrompt` component (15s timer); Android one-tap via `beforeinstallprompt`; iOS Safari Share→Add instruction (Chrome/Firefox iOS explicitly excluded); dismissed state in localStorage; shown only on active guest page. Bookings multi-property — apartment dropdown drives list, calendar, iCal panel, and add-booking form; fixed `.limit(1)` single-property bug; cancellation flag prevents stale-request `setBookings` overwrites when user switches apartments quickly; `saveIcalUrls` now has `host_id` guard. Calendar month navigation — `cursor` state replaces frozen `new Date()`; ‹/› navigate via JS Date month±1 (year rollover automatic); today highlighted with ring in current month only.
 
-### Known bugs / tech debt (session 3, updated)
-- [x] ~~QR panel uses single canvasRef~~ — RESOLVED `c01a050`: PropertyQRCard, own canvasRef per property
-- [x] ~~BrandingPanel accent_color typed as `string`~~ — RESOLVED `f9833f6`: now `string | null`
-- [x] ~~appUrl hardcoded in config.ts~~ — RESOLVED `f9833f6`: sourced from VITE_APP_URL with fallback
-- [x] ~~House rules manual-only rewrite~~ — RESOLVED `3af381d`: enforced on save, manual button removed
-- [ ] PWA stale service-worker — RESOLVED in Session 5 (`2c0c1f1`)
+**S6 — Push notifications:**
+- `api/send-push.ts` — Bearer token → `getUser` (anon client); host-scoped by JWT (never trusts client-provided host_id); payload `{title,body,url}` must match sw.js push handler; prunes dead subs on 404/410. VAPID env vars in Vercel (Production): `VITE_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (`mailto:udy.bar.yosef@gmail.com`).
+- `api/_lib/push.ts` — `isPushConfigured()` (lazy singleton VAPID init) + `sendPushToHost(db, hostId, payload, apartmentId?)` (concurrent send; prunes 404/410 scoped by host_id+endpoint+role; never throws; url validated `startsWith('/')` or `https://`). `api/send-push.ts` refactored to delegate to this helper; external API unchanged.
+- Host opt-in at `/dashboard/settings` — `subscribeToPush` returns `SubscribeResult` discriminated union (`unsupported | denied | no-key | subscribe-failed | invalid-subscription | save-failed`); clears existing PushSubscription before re-subscribing (fixes mobile `InvalidStateError` from stale/mismatched-key sub); all paths upsert `onConflict:'endpoint'`, rebinding host_id. `reaffirmSubscription(hostId)` called silently on Settings load — upserts current endpoint so a pruned DB row can't leave the toggle showing "on" while host receives nothing; hostId from server-verified `getUser()`, never localStorage.
+- `subscribeToPush` key-reuse optimisation: reuses an existing PushSubscription when its `applicationServerKey` matches the current VAPID key (byte-compared), so Enable no longer mints a new endpoint and orphans the prior row each time. Key mismatch / unreadable → unsubscribe + fresh subscribe.
+- `VITE_VAPID_PUBLIC_KEY` read server-side (send-push + _lib/push) is INTENTIONAL — it's the public key (browser-safe); Vercel exposes all env vars to functions regardless of prefix. The "fix it" reviewer note is a known false positive.
+- New-booking push from `sync-ical` after `imported > 0` (best-effort, never breaks sync).
+- **Cron triggers** — all guarded by `isCronAuthorized` (`api/_lib/cron.ts`, compares Authorization header to `Bearer <CRON_SECRET>`, fails closed if secret absent; Vercel auto-sends this header to paths listed in `vercel.json crons[]`):
+  - `api/cron-checkout-reminder.ts` — daily `0 6 * * *`; queries `check_out = today UTC`, `status confirmed/completed`, excludes `*_block`, grouped per host; push body matches code, verified live to both devices. `5b01770`
+  - `api/cron-trial-ending.ts` — daily `0 8 * * *`; hosts with `subscription_status='trial'` whose `trial_ends_at` falls on the UTC calendar day exactly 5 days out; fires once via calendar-day window; NOT retry-idempotent (durable fix = `trial_reminder_sent_at` column, deferred to Phase G). `92113a1`
+  - `api/cron-sync-ical.ts` — monthly `0 4 1 * *`; service-role; iterates all apartments with `ical_urls`; aggregated push per host when new bookings land; global 30s maxDuration (needs batching before many hosts). `92113a1`
+  - `api/_lib/ical.ts` — sync core extracted from `sync-ical.ts` (`detectSource`, `parseIcal`, `syncApartmentBookings`); `imported++` only on successful DB insert (no more false push on failed write); interactive route and cron share this one fixed core.
+- **ESM hotfix** `0a1c9cd` — see Lessons. CRON_SECRET rotated after exposure during manual testing (`CRON_SECRET` can only trigger the three cron endpoints — no data read, no destructive action).
+- **Cron live verification (2026-06-02):** checkout-reminder confirmed end-to-end (real push to both host devices, body matched code); trial-ending verified via temporary trial-date nudge on test host (reverted after); sync-ical deployed and locked (real-feed import-triggered push still untested — needs a controllable test iCal feed, deferred). 401-without-bearer confirmed on all three endpoints. Push subscriptions churn correctly: installing the PWA invalidated the prior browser-tab subscription (FCM 410), which `sendPushToHost` auto-pruned; re-enabling inside the installed app registered a fresh endpoint. Notifications deliver with app closed and independent of an active login session.
+- **Security fixes** — sync-ical now requires Bearer token + `apt.host_id === userId` ownership check (was unauthenticated service-role; `apartment_id` is public in guest URLs so anyone could inject bookings into any host's calendar — CRITICAL). Auth session-switch `79b4112`: global `signOut` → on error `signOut({scope:'local'})` + navigate to /login; Login.tsx `signOut({scope:'local'})` before `signInWithPassword` (auto-heals stuck sessions); try/finally.
+- **Mobile layout** `263e0d3` — off-canvas hamburger drawer (top bar z-30, backdrop z-40, drawer z-50; closes on nav-link tap), static `md+` (desktop pixel-identical). a11y: `aria-expanded`/`aria-controls`.
+- **App-open routing** `ce296a6` — `Landing` wrapper reads `getSession()` (local, fast, no flash) and redirects authenticated hosts to `/dashboard` (replace); `/dashboard` stays gated by PrivateRoute's server-validated `getUser()`. A `cancelled` flag guards setState-on-unmount under strict mode.
 
-## Session 3 Status: COMPLETE ✓
-Core host flows working end-to-end. Guest page fully functional with token flow. Bookings addable manually and via iCal. My picks showing on guest Explore tab.
+**S7:** Guide generation fix — `thinkingBudget: 0` in `api/generate-guide.ts`; Sweet home verified at 25 geocoded places across multiple categories. `de3eb37` Explore tab hardening — no longer caches an empty guide; retries on every tab switch until a non-empty guide loads; `cancelled` flag prevents stale setState on tab-switch during in-flight fetch. `95486d8` Service worker arrivly-v3 — cross-origin requests (Supabase, wttr.in, Google Maps) never intercepted or cached (guard at top of fetch handler: `if (url.origin !== self.location.origin) return`; no `event.respondWith` → passes to browser natively); cache version bumped to purge all stale v2 entries on activation; push handler `event.data.json()` wrapped in try/catch; notification URL validated before `openWindow` to prevent protocol-relative open redirect. `6238ae1` AI host picks endpoint — `api/generate-host-picks` + `api/_lib/host-picks.ts`: Gemini prompt identifies local picks by category → each candidate geocoded via `api/_lib/geo.ts` → returns ≤20 candidates with lat/lng + `located: boolean`, NO DB write (client reviews before inserting); auth-gated; apartment ownership verified (403 otherwise). `3da7e00`
 
----
-
-## Session 4 Progress (2026-05-30)
-
-### Completed
-- [x] PWA icon set shipped (icon-192, icon-512, maskable, apple-touch, favicon; manifest + index.html wired). `12fbb12`
-- [x] Geocoding wired into PropertySetup.saveBasic (address → lat/lng on save). `713b611`
-  - api/geocode.ts hardened: Bearer token auth (forwarded by src/lib/api.ts), 3s AbortController timeout, 250-char input cap, generic errors only.
-  - Dead src/lib/geocode.ts (unauthenticated duplicate) deleted.
-  - saveBasic shows a gentle notice if geocoding returns no coordinates; save always succeeds.
-- [x] api/rewrite-rules.ts implemented (was a stub): POST `{ rawRules }` → `{ result }`; auth-gated; @google/genai gemini-2.5-flash; 10s timeout; 5000-char cap; fallback to raw text on any failure. `b6638d6`
-  - Removed a broken unauthenticated fetch from GuestPage — guest page now renders rules stored at save time (no AI call per guest visit).
-  - gemini-2.0-flash retired by Google on 2026-06-01 (404s); switched to gemini-2.5-flash, verified working live. `66cdfc6`
-- [x] Guest "Take me home" and pick "Go" Maps URLs fixed: inline mapsWalkingUrl had wrong path (maps.google.com/dir/ → 404). Deleted; all call-sites import canonical getDirectionsUrl from src/lib/maps.ts (`https://www.google.com/maps/dir/?api=1&destination=LAT,LNG&travelmode=walking`). `f315f45`
-
-## Session 4 Status: COMPLETE ✓
-Geocoding live. House-rules AI rewrite live (gemini-2.5-flash). All guest navigation buttons working. PWA icons shipped.
+**S8:**
+- AI host picks UI — PropertySetup My-picks tab: free-text paste → `/api/generate-host-picks` (token via `api.post`) → editable candidate review list (name/category/address/note, 📍 located / ⚠ not-located indicator, remove) → "Confirm & add N" batch-inserts with `display_order` continuing from max; AI state reset on apartment switch (prevents wrong-apartment insert). Per-candidate "Re-locate from address": edit address → re-call `/api/geocode` (query string passed at call site, not closure; re-locate buttons serialise). Manual "Add a place" card removed (only saved `lat/lng = null`). `081f7eb`, `631d7c0`
+- City events A3 — `api/city-events.ts` (replaced stub): city looked up server-side from DB (authoritative, never trusts a client-supplied city — proven with Helsinki + Barcelona test apartments); gemini-2.5-flash + googleSearch grounding (no `responseMimeType`; fenced-text defensive parse); `thinkingBudget: 0`; `maxOutputTokens: 4096`; 30s race-timeout; 3 retries; key-scrubbed logs; generated fresh on every open (no DB, no cron), next-7-days, "no past events"; prompt targets 10–15 events (integrity guard: include fewer rather than invent); returns `{ error: true }` on any failure. `EventsPage.tsx`: "This week in {city}" modal with loading/error/empty states; event cards are clickable links (official event page if model supplies one, else Google-search fallback); URLs sanitized to `http(s)` on BOTH client (`eventHref`) and server (pre-passthrough strip); mobile overflow fixed. `39ef5c9`, `0a22f04`
+- Guest chatbot A4 — `api/_lib/guest-access.ts`: `resolveGuestAccess(db, apartmentId, token)` returns tier `verified` (token matches a confirmed/completed, in-dates booking for that apartment) or `public`, resolved entirely server-side; `buildGuestSystemInstruction` builds the prompt from `apartment_details` + `host_picks` + `guide_recommendations`, including private detail rows ONLY for the verified tier. This is the single seam Tier 2 extends (new tiers, email+reference) — no change to the endpoint or UI needed. `api/guest-chat.ts`: gemini-2.5-flash + googleSearch + `thinkingBudget: 0`; 2 retries × 20s timeout (≈43s worst case, inside 60s maxDuration); strips `**`; key-scrubbed logs. `ChatBot.tsx`: accent-themed bubbles, seeded greeting, persistent starter-question chips, auto-scroll, graceful error recovery. Browser sends only `{ apartmentId, token, message, history }`; all knowledge gating is server-side; public caller never receives private rows by construction. Verified on Sweet home `ARR-SWEET1`: greets guest by name, answers from private check-in/Wi-Fi details, grounded for neighbourhood. `5a53223`
+- Phase B images — photo hero + accent scrim, accent section headers (`d2bbe37`); host logo upload (BrandingPanel) + per-property cover photo upload (PropertySetup) (`45e1c70`, `9dcc1f6`); Unsplash city default with attribution cached per property (`city_image_url` + `city_image_credit`) (`7da1c85`); Storage signed-URL upload fix via service-role key + `uploadToSignedUrl` in `api/create-upload-url.ts` (`72e8f41`). Auto-delete old hero/logo files on replace + remove shipped in Phase C prep (`1cde275`).
 
 ---
 
-## Security (Session 4 — 2026-05-30)
-- **Supabase keys rotated** — migrated to new API key format. `VITE_SUPABASE_ANON_KEY` is now the publishable key; `SUPABASE_SERVICE_ROLE_KEY` is the secret key. Env var NAMES unchanged, values rotated. Legacy JWT-based API keys disabled; legacy HS256 signing secret revoked. (Triggered by a real key found in a local dirty .env.example; git history of .env.example was clean — no public leak.)
-- **Google Geocoding API key rotated** — restricted to Geocoding API only, old key deleted.
-- **GEMINI_API_KEY added** to Vercel (Production) and .env.local — server-side only, no VITE_ prefix.
-- **Housekeeping** (`c714e94`): .env.example sanitized to placeholders; .gitignore hardened (blocks .env, .env.*, preserves !.env.example); server-only VITE_ type decls removed from vite-env.d.ts; generic geocode errors enforced.
+## Phase C — Communication (IN PROGRESS)
+
+### Done
+- Storage auto-delete old hero/logo files on replace + remove (`1cde275`)
+- `messages` table + RLS `messages_host_all` (migration: `create_messages_table`)
+- `resolveMessagingAccess` in `api/_lib/guest-access.ts` + `api/guest-message.ts` — guest send/list, token-gated, server-resolved booking and apartment_id (`1856abb`)
+- `api/host-message.ts` — host reply, Bearer auth, booking → apartment → host_id ownership chain, returns full thread (`bf56ea3`)
+- Host Messages dashboard at `/dashboard/messages` — inbox grouped by booking, thread view with guest/host bubbles, reply box, two-pane desktop / single-col mobile (`a1399e0`)
+
+### Next
+- Guest "Message host" UI on the guest page + install/notification nudge
+- Guest push subscriptions: add `booking_id` to `push_subscriptions`; bidirectional host↔guest push
+- Unread badges in sidebar nav + app icon badge
+- Resend transactional email: welcome on signup + day-25 trial reminder
 
 ---
-
-## Session 5 Progress (2026-05-30)
-
-### Completed
-- [x] Per-property QR codes — PropertyQRCard child component; each card owns its own canvasRef, download filename includes property name, print matches image to URL. `c01a050`
-- [x] R2 cleanups — `accent_color: string | null` in BrandingPanel; `appUrl` sourced from `VITE_APP_URL` env var with hardcoded fallback; `vite-env.d.ts` tightened to `string | undefined`. `f9833f6`
-- [x] Multi-property editing — PropertySetup loads by URL param `/dashboard/property/:aptId`; guard redirects to `/dashboard` on missing/unowned apt; form state reset on switch; `[aptId]` dep array. OnboardingFlow navigates directly to new property's edit page. `99082fa`
-- [x] Dashboard real counts + back link — Properties metric = real count; Bookings metric host-wide (`.in(aptIds)`); "Edit property" links to specific apt; "← Back to properties" link in PropertySetup; `neighborhood: string | null` type fix. `d6c468f`
-- [x] Overview consolidation — one rich card per property (completeness, Active/Draft pill, per-property booking count, QR/Preview/Edit); "My property" nav item + PropertyList.tsx removed; bare `/dashboard/property` route gone; all redirects point to `/dashboard`. `e491602`
-- [x] House rules: auto-polish enforced on save — manual "Rewrite with AI" button removed; saveRules calls `/api/rewrite-rules`, falls back to raw on failure, updates textarea with stored result. `3af381d`
-- [x] PWA stale-cache fix — sw.js bumped to arrivly-v2; navigation + `/index.html` network-first (cache fallback offline); `/assets/` stays cache-first; unconditional skipWaiting removed; SKIP_WAITING message handler + update-aware registration in main.tsx (reloads once on controllerchange, skips on first install). `2c0c1f1`
-- [x] PWA install prompt — InstallPrompt component (15s timer); Android one-tap via beforeinstallprompt; iOS Safari Share→Add instruction (Chrome/Firefox iOS excluded); dismissed state persisted to localStorage; shown in active guest page only. `2c0c1f1`
-- [x] Bookings multi-property — apartment dropdown (default first, one at a time) drives list, calendar, iCal panel, and add-booking form; fixed `.limit(1)` single-property bug; cancellation flag prevents stale-request overwrites; `saveIcalUrls` now has `host_id` guard. `35e88ba`
-- [x] Calendar month navigation — CalendarView: cursor state replaces frozen `new Date()`; ‹ / › buttons navigate via JS Date month±1 (year rollover automatic); today highlighted with ring in current month only. `c1be4a2`
-
-## Session 5 Status: COMPLETE ✓
-Full multi-property support (overview, bookings, editing). House-rules auto-polish. PWA stale-cache fixed. Calendar navigable.
-
----
-
-## Session 6 Progress (2026-05-31)
-
-### Completed — Priority 4 Push Notifications
-- [x] **4a** — Real `api/send-push.ts` via `web-push`. `71e484b`
-  - Auth-gated: Bearer token → `getUser` (anon client); host-scoped by JWT (never trusts client-provided host_id).
-  - Reads VAPID from env; payload `{title,body,url}` (must match sw.js push handler exactly); prunes dead subs on 404/410.
-  - VAPID env set by Udy in Vercel (Production): `VITE_VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT` (`mailto:udy.bar.yosef@gmail.com`). Verified live (`200 {sent:1}`).
-- [x] **4b** — Host push opt-in. `a8228dc`
-  - Settings page at `/dashboard/settings` (enable/disable) + sidebar nav.
-  - `webpush.ts` hardened (try/catch, null-guard VAPID, safe toJSON, upsert error check, PushManager guard).
-  - DB migration: `create unique index push_subscriptions_endpoint_key on push_subscriptions (endpoint)` — enables upsert `onConflict:'endpoint'`.
-- [x] **Mobile enable fix** — `f495d94`
-  - `subscribeToPush` returns a `SubscribeResult` discriminated union (`unsupported | denied | no-key | subscribe-failed | invalid-subscription | save-failed`) instead of a bare boolean.
-  - Clears any existing PushSubscription before re-subscribing → fixes mobile `InvalidStateError` from a stale/mismatched-key subscription.
-  - Settings shows a specific message per failure reason. Verified working on mobile.
-- [x] **4c-1 + 4c-2** — Server-side send helper + new-booking notification. `a0cc452`
-  - NEW `api/_lib/push.ts` (underscore folder → NOT a Vercel route): `isPushConfigured()` (lazy singleton VAPID init) + `sendPushToHost(db, hostId, payload, apartmentId?)` (concurrent send; prunes 404/410 scoped by host_id+endpoint+role; never throws). url validated to start with `/` or `https://`.
-  - `api/send-push.ts` refactored to delegate lookup+send+prune to the helper; external API unchanged (405/500/401/400/200).
-  - `api/sync-ical.ts`: after the import loop, if `imported > 0`, best-effort `sendPushToHost` ("N new booking(s) synced for {name}", url `/dashboard/bookings`). A push failure can never break a sync. `imported` is a true new-booking count (sync dedupes by iCal UID).
-
-### Completed — Security & fixes
-- [x] **sync-ical auth/ownership gate** — `91b6239` (CRITICAL). Was service-role with NO auth; apartment_id is public (guest URLs) → anyone could inject bookings into any host's calendar. Now requires Bearer token + verifies `apt.host_id === userId` (403 else). Error messages scrubbed (iCal URLs can carry auth tokens).
-- [x] **Auth/session-switch fix** — `79b4112` (CRITICAL). Logging out then into a 2nd account stayed on the 1st until site data cleared. Layout.signOut: global signOut → on error `signOut({scope:'local'})` → navigate to /login; Login.tsx `signOut({scope:'local'})` before signInWithPassword (auto-heals stuck users); try/finally.
-- [x] **Responsive mobile layout** — `263e0d3`. The 170px sidebar (always in-flow) ate ~half the phone width and clipped pages. Now an off-canvas hamburger drawer on mobile (top bar z-30, backdrop z-40, drawer z-50; closes on nav-link tap), static `md+` (desktop pixel-identical). a11y: aria-expanded/aria-controls.
-- [x] **Landing login link** — `b283f3f`. Added "Log in" to the landing hero (was signup-only).
-
-### Verified / closed this session (no code change)
-- push_subscriptions RLS = single `ALL` policy `USING (host_id = auth.uid())` → DELETE correctly gated for RLS clients; sync-ical's service-role prune bypasses RLS and is code-scoped (host_id+endpoint+role). No gap.
-- `VITE_VAPID_PUBLIC_KEY` read server-side (send-push + _lib/push) is INTENTIONAL and correct — it's the public key (browser-safe); Vercel exposes all env vars to functions regardless of prefix. Documented in the helper comment. The "fix it" reviewer note is a false positive.
-
-### Hotfix (2026-05-31) — API routes 500: Node ESM missing import extension
-- [x] **ESM import extension** — `0a1c9cd`. `package.json` `"type":"module"` makes
-  Vercel run every api/ function as native Node ESM, which requires explicit file
-  extensions on relative imports. The 4c helper import `./_lib/push` (no extension)
-  threw `ERR_MODULE_NOT_FOUND` at Lambda startup, so every `send-push` and
-  `sync-ical` request 500'd from `a0cc452` onward (sync-ical surfaced it; send-push
-  was latent — its earlier 200s were on a pre-4c deployment).
-  - Root cause hidden at build: `tsc` uses bundler moduleResolution and `vite build`
-    only builds the frontend, so neither runs api/ through Node's ESM resolver.
-  - Fix: `./_lib/push` → `./_lib/push.js` in `api/sync-ical.ts` and `api/send-push.ts`.
-    tsc maps the `.js` specifier back to the `.ts` source (build stays green); Node
-    resolves the emitted `.js` at runtime.
-  - code-reviewer + security-auditor: both clear. Deployed `dpl_Fz9Hqv…` (READY).
-    Live re-test of an actual iCal sync still pending confirmation.
-
-### Push hardening (2026-05-31) — stop orphan churn + self-heal DB↔browser drift
-- [x] **subscribeToPush reuse** — `e12afd5`. Reuses an existing PushSubscription
-  when its applicationServerKey matches the current VAPID key (byte-compared via
-  applicationServerKeyMatches), so Enable no longer mints a new endpoint and
-  orphans the prior row each time. Key mismatch / unreadable → unsubscribe + fresh
-  subscribe (preserves the mobile InvalidStateError fix). All paths still upsert
-  (onConflict:'endpoint'), rebinding host_id.
-- [x] **reaffirmSubscription(hostId)** — `e12afd5`. Settings calls it silently on
-  load when the browser reports subscribed; upserts the current endpoint so a
-  pruned DB row can't leave the toggle showing "on" while the host receives
-  nothing. hostId from server-verified getUser(), never localStorage.
-- Note: the earlier "re-enable on every login" symptom was already resolved by the
-  ESM hotfix (the churn was a side-effect of the broken state); this change is
-  preventative. Verified live — sync + push working; orphan rows from the broken
-  window self-pruned 4 → 3.
-- [x] **RLS verified (push_subscriptions, 2026-05-31)** — policy `push_host_all`
-  is `FOR ALL USING (host_id = auth.uid())`, RLS enabled. with_check is null, but
-  for an ALL policy Postgres applies USING as the WITH CHECK, so client
-  INSERT/UPDATE are host-scoped (a client cannot write another host's row). Unique
-  index `push_subscriptions_endpoint_key` on (endpoint) confirmed present. Optional
-  clarity hardening: add an explicit `WITH CHECK (host_id = auth.uid())`.
-
-### 4c-3 — Cron-driven push triggers (2026-06-02) ✓
-All cron endpoints are guarded by `isCronAuthorized` (api/_lib/cron.ts): compares the
-Authorization header to `Bearer <CRON_SECRET>`, fails closed if the secret is absent.
-Vercel auto-sends that header to the paths listed in vercel.json `crons[]`.
-
-- **Part 1** `5b01770` — api/_lib/cron.ts (isCronAuthorized) + api/cron-checkout-reminder.ts
-  (daily 06:00 UTC; check_out = today UTC, status confirmed/completed, excludes `*_block`,
-  grouped per host). api/cron-refresh-guides.ts retrofitted with the auth guard.
-- **Part 2** `92113a1` —
-  - api/_lib/ical.ts: sync core extracted from sync-ical.ts (detectSource, parseIcal,
-    syncApartmentBookings). Insert error now CHECKED — `imported++` only on success — so a
-    failed insert can no longer fire a false "new booking" push. The cron and the
-    interactive route share this one fixed core.
-  - api/sync-ical.ts: delegates to `_lib/ical.js`; auth + ownership gate unchanged.
-  - api/cron-sync-ical.ts: monthly (04:00 UTC, 1st). Service-role; iterates apartments with
-    `ical_urls`; one aggregated push per host when new bookings land. Global 30s maxDuration
-    — fine now, needs batching before many hosts.
-  - api/cron-trial-ending.ts: daily (08:00 UTC). Hosts with subscription_status='trial'
-    whose trial_ends_at falls on the UTC day exactly 5 days out. Fires once via a
-    calendar-day window; NOT retry-idempotent (durable fix = a `trial_reminder_sent_at`
-    column, deferred).
-  - vercel.json: `crons[]` now holds all three (checkout `0 6 * * *`, trial `0 8 * * *`,
-    sync `0 4 1 * *`).
-  - code-reviewer + security-auditor clean (VITE_SUPABASE_URL server-side = known false
-    positive; SSRF on iCal fetch = pre-existing debt, now also exercised by the monthly cron).
-
-**Live verification (2026-06-02):**
-- checkout-reminder — confirmed end-to-end: real push to BOTH host devices; body matched code.
-- trial-ending — verified via a temporary trial-date nudge on the test host (reverted after);
-  push delivered to desktop + the installed Android app.
-- sync-ical — deployed and locked; true import-triggered push still untested (needs a
-  controllable test iCal feed, deferred). 401-without-bearer confirmed on all three endpoints.
-- Push subscriptions churn correctly: installing the PWA invalidated the prior browser-tab
-  subscription (FCM 410), which `sendPushToHost` auto-pruned; re-enabling inside the installed
-  app registered a fresh endpoint. Notifications deliver with the app closed and independent of
-  an active login session.
-
-**Security:** CRON_SECRET rotated (Production) + redeployed on 2026-06-02 after the value was
-exposed during manual testing. A leaked CRON_SECRET can only trigger the three cron endpoints
-(no data read, no destructive action).
-
-### App-open routing fix (2026-06-02) `ce296a6`
-The installed PWA always cold-launched on the marketing landing page (`/`) even when the host
-was already logged in — Supabase sessions persist by default (login was never lost; only the
-routing was wrong). Fix (src/App.tsx only): the marketing markup moved to `LandingContent`; a
-new `Landing` wrapper reads `supabase.auth.getSession()` and redirects authenticated users to
-`/dashboard` (replace), else renders `LandingContent`. getSession() (local, fast, no flash) is
-fine for the redirect decision — `/dashboard` stays gated by PrivateRoute's server-validated
-getUser(). A `cancelled` flag guards setState-on-unmount under strict mode. code-reviewer +
-security-auditor clean (no loop, no cross-account leak, no open redirect). Behavioural note: a
-host who abandoned onboarding mid-way now lands on /dashboard rather than the marketing page on
-reopen (correct place; dashboard handles draft state) — add an onboarding-completeness gate
-later only if wanted.
-
-## Session 6 Status: COMPLETE ✓ — Priority 4 (push) done; app-open routing fixed.
-Send path, host opt-in (desktop + mobile), new-booking-on-sync, and all three cron triggers
-are live. Checkout + trial pushes verified on 2 devices (desktop + installed Android app);
-sync-ical deployed + locked (real-feed import push still to be tested). Installed app now
-opens straight to /dashboard for logged-in hosts (`ce296a6`).
-
----
-
-## Session 7 Progress (2026-06-02)
-
-### Completed
-- [x] **Guide generation fix** — gemini-2.5-flash thinking disabled (`thinkingBudget: 0`); guide now populated. Sweet home verified: 25 geocoded places across multiple categories. `de3eb37`
-- [x] **Guest-page Explore hardening** — no longer caches an empty guide; retries on every tab switch until a non-empty guide loads. `cancelled` flag added to prevent stale setState on tab-switch during an in-flight fetch. `95486d8`
-- [x] **Service worker fix (arrivly-v3)** — cross-origin requests (Supabase, wttr.in, Google Maps) are no longer intercepted or cached by the SW. Cache version bumped to v3 to purge all stale v2 entries on activation. Push handler hardened: `event.data.json()` wrapped in try/catch; notification URL validated before `openWindow` to prevent protocol-relative open redirect. `6238ae1`
-
-### Completed (continued)
-- [x] **A2 — AI host picks endpoint** (`api/generate-host-picks` + `api/_lib/host-picks.ts`): Gemini identifies local picks → geocoded via `api/_lib/geo.ts` → categorized; returns candidates (≤20), NO DB write; auth + ownership gated. `3da7e00`
-
-## Session 7 Status: COMPLETE ✓
-
----
-
-## Session 8 Progress (2026-06-03)
-
-### Completed — A2 AI host picks UI
-- [x] **Paste-and-review My-picks UI** — PropertySetup My-picks tab: free-text paste → `/api/generate-host-picks` (token via `api.post`) → editable candidate review list (name/category/address/note, 📍 located / ⚠ not-located indicator, remove) → "Confirm & add N" batch-inserts into `host_picks` with lat/lng + `display_order` continuing from max; clears + reloads on success. AI state reset in `load()` on apartment switch (prevents wrong-apartment insert). `081f7eb`
-- [x] **My-picks cleanup + re-locate** — removed the manual "Add a place" card entirely (it only ever saved `lat/lng = null`; strictly inferior to the AI path) and the stale "geocoded when enabled" note with it. Added per-candidate "Re-locate from address": edit the address, re-call `/api/geocode` to refresh that candidate's pin (flips ⚠ → 📍). Stale-closure fixed (query string passed at call site, not read from closure); re-locate buttons serialise (all disabled while one runs). `631d7c0`
-
-### Verified live (2026-06-03)
-- Sweet home (`d9614d11`): AI identify → confirm saved 4 geocoded picks alongside the pre-existing manual "teller"; re-locate flips a corrected address to 📍 Located.
-- Test Apartment 1 (`aaaaaaaa-…-0001`): same flow verified end-to-end; guest page reachable via `ARR-TEST01` (booking dates moved to 2026-06-02 → 06-09 for testing).
-
-### Completed — A3 AI city events
-- [x] **Grounded city-events endpoint** (`api/city-events.ts`, replaced the stub) — POST `{ apartmentId }`; city looked up server-side from the DB (authoritative, multi-city — never trusts a client city); `gemini-2.5-flash` + `googleSearch` grounding (no `responseMimeType`; fenced-text defensive parse), `thinkingBudget: 0`, `maxOutputTokens: 4096`, 30s race-timeout, 3 retries, key-scrubbed logs. Generated fresh on every open (no DB, no cron), next-7-days, "no past events"; returns `{ error: true }` on any failure. `39ef5c9`
-- [x] **Explore-tab popup** (`src/components/guest/EventsPage.tsx`, replaced the stub; wired in `GuestPage.tsx`) — "This week in {city}" opens a host-accent-themed modal with loading/error/empty states. `39ef5c9`
-- [x] **Refinements** (`0a22f04`) — prompt targets 10–15 events (integrity guard dominant: include fewer rather than invent); event cards are clickable links (official event page if the model supplies one, else a Google-search fallback), URLs sanitized to `http(s)` on BOTH client (`eventHref`) and server (pre-passthrough strip); mobile overflow fixed (title `flex-1 min-w-0 break-words`, price pill capped + truncated, terse-price prompt).
-
-### Verified live — A3 (2026-06-03)
-- Helsinki (Sweet home, `ARR-SWEET1`): real current events, themed, clickable.
-- Barcelona (new test apt `Casa Marco` `bf07680b`, `ARR-BCN001`): dynamic-city path confirmed — Barcelona events for a non-Helsinki city, proving city is read per-apartment (vs Anna's hardcoded Helsinki).
-
-### Completed — A4 guest chatbot
-- [x] **Server-gated access seam** (`api/_lib/guest-access.ts`) — `resolveGuestAccess(db, apartmentId, token)` returns tier `verified` (token matches a confirmed/completed, in-dates booking for that apartment) or `public`, resolved entirely server-side. `buildGuestSystemInstruction` builds the prompt from apartment_details + host_picks + guide_recommendations, including private detail rows ONLY for the verified tier — a public caller never receives them. This is the single seam Tier 2 extends (prospect/paid tiers, email+reference) without touching the endpoint or the UI. `5a53223`
-- [x] **Grounded chat endpoint** (`api/guest-chat.ts`, replaced the stub) — POST `{ apartmentId, token, message, history }`; resolves apartment + tier from the DB, builds the gated context, calls `gemini-2.5-flash` with `googleSearch` + `thinkingBudget: 0`; 2 retries × 20s timeout (≈43s worst case, inside 60s maxDuration); strips `**`; key-scrubbed logs. `5a53223`
-- [x] **ChatBot component** (`src/components/guest/ChatBot.tsx`, replaced the stub; wired into the GuestPage Chat tab) — accent-themed bubbles, seeded greeting, persistent starter-question chips, auto-scroll, graceful error recovery. Browser sends only `{ apartmentId, token, message, history }`; all knowledge gating is server-side. `5a53223` (starter chips made persistent in a follow-up fix)
-
-### Verified live — A4 (2026-06-03)
-- Sweet home (`ARR-SWEET1`, verified): greets the guest by name, answers from private check-in/Wi-Fi details, grounded for the neighbourhood. Public-tier withholding is correct by construction (private rows never enter a public context) and isn't reachable through the Tier-1 UI, since the Chat tab only renders on the token-verified active page.
-
-### Test-data to revert when guest-side testing wraps
-- `ARR-SWEET1` checkout → back to 2026-06-02 (currently 2026-06-05).
-- `ARR-TEST01` → back to original 2026-05-27 → 05-31 (or leave expired).
-- Barcelona test apt `Casa Marco` (`bf07680b`) + guest "Marco" + booking `ARR-BCN001` — created only for the dynamic-city test; delete when done.
-- **Sweet home (`d9614d11`) Storage:** 2 orphaned hero files in the bucket from upload testing; `hero_image_url` is currently `null` (removed after testing). Clean up orphaned files when Storage object deletion is implemented (Phase G).
-
-## Session 8 Status: COMPLETE ✓ — A2 + A3 + A4 + Phase B done & live. Next: Session 9 · Phase C (in-app token-based messaging + Resend transactional email: welcome + day-25 trial reminder).
 
 ## Known notes / minor debt
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
@@ -353,14 +161,12 @@ opens straight to /dashboard for logged-in hosts (`ce296a6`).
 - `api/stripe-webhook.ts` is a stub with NO signature verification — must implement before billing goes live.
 - iCal fetch (`api/_lib/ical.ts`, used by both sync-ical and cron-sync-ical): mild SSRF (no
   private-IP/metadata blocklist on fetched URLs); no per-host rate limit. The monthly cron now
-  exercises this unattended. Insert error is now checked (no more false `imported++`). Tidy SSRF
-  + rate limit before public launch.
+  exercises this unattended. Tidy SSRF + rate limit before public launch.
 - `sendPushToHost` url check uses `startsWith('/')`, which also admits protocol-relative `//host` — only ever set from the host's own send-push request (self-targeted), so negligible.
 - send-push `apartmentId` is not ownership-checked — latent only (lookup forces `host_id = userId`, so a foreign apartmentId matches zero rows).
 - `api/guest-chat.ts` is public (guest-facing) with no rate limit — same posture as `city-events`/`generate-guide`; fold abuse/rate-limiting into Phase G hardening.
 - Mobile drawer a11y follow-ups: Escape-to-close, focus return on close.
-- ~~Push opt-in persistence / orphan rows on re-enable~~ — RESOLVED `e12afd5`
-  (subscribeToPush reuse + reaffirm-on-load); see Session 6 "Push hardening".
+- Message retention: add ~90-day post-checkout cleanup job before public launch (Phase G).
 
 ---
 
@@ -402,6 +208,18 @@ opens straight to /dashboard for logged-in hosts (`ce296a6`).
   is a project-level issue to raise with Supabase support (JWT signing keys) — not required for
   uploads to work, but affects any future direct-Storage client call.
 
+- **api/ relative imports MUST end in `.js`** (e.g. `./_lib/push.js`, `./_lib/ical.js`,
+  `./_lib/cron.js`). `package.json` `"type":"module"` makes Vercel run every api/ function as
+  native Node ESM; extensionless imports compile fine (`tsc` uses bundler moduleResolution and
+  `vite build` only builds the frontend — neither runs api/ through Node's ESM resolver) but
+  throw `ERR_MODULE_NOT_FOUND` at Lambda startup. `tsc` maps `.js` specifiers back to `.ts`
+  source at build time, so the fix is zero-friction. Imports from node_modules are unaffected.
+
+- **Host push subscriptions are stored account-level (`apartment_id = NULL`).** Always call
+  `sendPushToHost(db, hostId, payload)` without the optional `apartmentId` argument when
+  notifying the host. Passing one narrows the subscription lookup to zero rows and delivers
+  nothing silently.
+
 ---
 
 ## Workflow
@@ -412,6 +230,7 @@ Claude in chat NEVER pushes to GitHub. All code changes are delivered as Claude 
 ### Agent policy
 - Append the **code-reviewer** subagent to EVERY code-changing Claude Code prompt — read-only review before commit.
 - Run **security-auditor** for any change touching secrets, auth, RLS, or API routes, and before every production deploy.
+- **Docs-only prompts** (no code, no build) skip build validation and review agents.
 - Use **debugger** only when stuck (~20+ min).
 - Run **dead-code-cleaner** periodically; it writes a report and waits for approval before removing anything.
 - Agents live in `.claude/agents/` and are invoked inside Claude Code by Udy.
@@ -424,7 +243,7 @@ All pricing and plan settings live in `src/config.ts` only.
 Node ESM. ALL relative imports inside api/ MUST include the `.js` extension
 (e.g. `./_lib/push.js`, `./_lib/ical.js`, `./_lib/cron.js`). Extensionless relative
 imports compile fine but throw `ERR_MODULE_NOT_FOUND` at runtime. Imports from
-node_modules are unaffected. This applies to the 4c-3 cron files when they land.
+node_modules are unaffected.
 
 ---
 
@@ -448,31 +267,23 @@ Locked product decisions:
   until billing exists.
 
 Phases:
-- A — Guest-page value (content engines):
-  - **A1 — AI city guide** (generate-guide + cron-refresh-guides): COMPLETE ✓ Live. Guide populated; Sweet home verified at 25 geocoded places. `de3eb37`
-  - **A2 — AI host picks** (generate-host-picks): COMPLETE ✓ Live. Endpoint (`3da7e00`) + paste-and-review UI in PropertySetup My-picks tab (`081f7eb`); manual add-card removed and per-candidate "re-locate from address" added (`631d7c0`). Verified on Sweet home + Test Apartment 1.
-  - **A3 — City events** (city-events): COMPLETE ✓ Live. Grounded `api/city-events` (googleSearch, dynamic city from DB, thinkingBudget 0, 10–15 events, fresh each open, no DB/cron) + Explore-tab popup `EventsPage.tsx` with clickable, https-sanitized event links. Verified Helsinki + Barcelona. `39ef5c9`, `0a22f04`
-  - **A4 — Real guest chatbot** (guest-chat): COMPLETE ✓ Live. Server-gated `api/_lib/guest-access.ts` (verified/public tiers; private apartment_details only for verified) + grounded `api/guest-chat.ts` (gemini-2.5-flash, googleSearch, thinkingBudget 0, 2×20s) + `ChatBot.tsx` in the Chat tab (accent-themed, persistent starter chips). Tier 2 extends `guest-access.ts` only. Verified on Sweet home. `5a53223`
-- B — Guest-page look & feel: COMPLETE ✓ Live.
-  - Photo hero + accent scrim, accent section headers, Take-me-home moved above WiFi, tinted page background. `d2bbe37`, `457fcbe`
-  - Host logo upload (BrandingPanel) + per-property cover photo upload (PropertySetup). `45e1c70`, `9dcc1f6`
-  - By-city default hero via Unsplash with attribution, cached per property (`city_image_url` + `city_image_credit`); env var `UNSPLASH_ACCESS_KEY` (server-side, no VITE_ prefix). `7da1c85`
-  - Image upload auth fix: Storage rejects host JWT → signed URL flow via service-role key (`api/create-upload-url`). `72e8f41`
-- C — Communication: in-app token-based messaging (#3) + Resend transactional email
-  (send-email): welcome + day-25 trial reminder email.
-- D — Superadmin (#1): service-role admin API (superadmin-gated) + wire the existing /admin
+- **A — Guest-page value:** COMPLETE ✓ A1 city guide (`de3eb37`), A2 host picks (`081f7eb`, `631d7c0`), A3 city events (`39ef5c9`, `0a22f04`), A4 guest chatbot (`5a53223`).
+- **B — Guest look & feel:** COMPLETE ✓ Photo hero + accent scrim, logo/cover upload, Unsplash city default with attribution, Storage signed-URL fix. (`d2bbe37`, `45e1c70`, `9dcc1f6`, `7da1c85`, `72e8f41`)
+- **C — Communication:** IN PROGRESS. Token-based in-app messaging + Resend transactional email (welcome + day-25 trial reminder). See Phase C section above.
+- **D — Superadmin:** Service-role admin API (superadmin-gated) + wire the existing `/admin`
   dashboard (currently blind because hosts RLS = own-row-only) + read-only impersonate.
-- E — Billing (Tier-1 Stripe): create-subscription, billing-portal, stripe-webhook (signature
+- **E — Billing (Tier-1 Stripe):** create-subscription, billing-portal, stripe-webhook (signature
   verified), subscription lifecycle, guest-page grace/expired enforcement.
-- F — Tier-2 booking system (#7): full booking (availability → request → approve → pay →
+- **F — Tier-2 booking system:** Full booking (availability → request → approve → pay →
   manage) on the €49 price, referencing Anna's Stays components. Built on working Stripe.
-- G — Pre-launch hardening: cron follow-ups (sync-ical real-feed test, trial idempotency
-  column), iCal SSRF blocklist + rate limit, cron batching/maxDuration at scale, mobile drawer
-  a11y, dead-code sweep, full security audit.
+- **G — Pre-launch hardening:** cron follow-ups (sync-ical real-feed test, trial idempotency
+  `trial_reminder_sent_at` column), iCal SSRF blocklist + rate limit, cron batching/maxDuration
+  at scale, mobile drawer a11y (Escape-to-close, focus return), dead-code sweep, full security
+  audit.
   - Add server-side file-size cap in `api/create-upload-url.ts` (client guards are 5 MB cover /
     2 MB logo; a direct API caller can bypass them).
-  - Delete the previous Storage object on cover/logo replace and remove (`removeHero`/`removeLogo`
-    + replace currently orphan the old file in the bucket).
+  - Auto-delete old Storage objects on cover/logo replace + remove (partially done: `1cde275`).
+  - Message retention: ~90-day cleanup job post-checkout.
 
 Tier-2 architecture stays upgrade-ready throughout (plan-gated component slots; bookings/guests
 schema already supports it).
