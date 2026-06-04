@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
-import { Send, X } from 'lucide-react'
+import { Send, X, Bell } from 'lucide-react'
+import { subscribeGuestToPush, isSubscribed, checkPermission, iosNeedsHomeScreen } from '../../lib/webpush'
 
 interface ThreadMessage {
   id: string
@@ -18,6 +19,8 @@ interface Props {
   onClose: () => void
 }
 
+type NudgeState = null | 'standard' | 'ios' | 'busy' | 'ok' | 'denied' | 'error'
+
 function fmtTime(iso: string): string {
   const d = new Date(iso)
   const today = new Date()
@@ -32,11 +35,14 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
   const [sendError, setSendError] = useState('')
+  const [nudgeState, setNudgeState] = useState<NudgeState>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   // Ref so the interval callback can see the current sending state without stale closure
   const sendingRef = useRef(false)
   const mountedRef = useRef(true)
   useEffect(() => { return () => { mountedRef.current = false } }, [])
+
+  const nudgeKey = `arrivly_guest_push_nudge_${token}`
 
   useEffect(() => {
     if (thread.length > 0 || !threadLoading) {
@@ -85,6 +91,8 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
   async function sendMessage() {
     const text = input.trim()
     if (!text || sending) return
+    // Capture before the await — thread state is stale after the network call resolves.
+    const firstMessage = !thread.some(m => m.sender_role === 'guest')
     setSending(true)
     sendingRef.current = true
     setSendError('')
@@ -100,6 +108,20 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
         setThread(data.messages ?? [])
         setInput('')
       }
+      // First-message push nudge — evaluate eligibility after a successful send.
+      if (firstMessage && localStorage.getItem(nudgeKey) !== '1' && mountedRef.current) {
+        if (iosNeedsHomeScreen()) {
+          setNudgeState('ios')
+        } else if ('PushManager' in window) {
+          const perm = await checkPermission()
+          if (mountedRef.current && perm !== 'denied') {
+            const subscribed = await isSubscribed()
+            if (mountedRef.current && !subscribed) {
+              setNudgeState('standard')
+            }
+          }
+        }
+      }
     } catch {
       // Keep the typed text so the guest can retry; show inline error
       if (mountedRef.current) setSendError('Could not send — please try again.')
@@ -107,6 +129,30 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
       sendingRef.current = false
       if (mountedRef.current) setSending(false)
     }
+  }
+
+  async function handleNudgeEnable() {
+    if (!mountedRef.current) return
+    setNudgeState('busy')
+    const result = await subscribeGuestToPush(apartmentId, token)
+    if (!mountedRef.current) return
+    if (result.ok) {
+      localStorage.setItem(nudgeKey, '1')
+      setNudgeState('ok')
+      setTimeout(() => { if (mountedRef.current) setNudgeState(null) }, 1500)
+    } else if (result.reason === 'denied') {
+      localStorage.setItem(nudgeKey, '1')
+      setNudgeState('denied')
+      setTimeout(() => { if (mountedRef.current) setNudgeState(null) }, 2000)
+    } else {
+      // Don't set the flag — let the guest retry from the More tab.
+      setNudgeState('error')
+    }
+  }
+
+  function handleNudgeDismiss() {
+    localStorage.setItem(nudgeKey, '1')
+    setNudgeState(null)
   }
 
   return (
@@ -182,6 +228,65 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
           </>
         )}
       </div>
+
+      {/* Push nudge — shown above input after first message sent */}
+      {nudgeState !== null && (
+        <div className="shrink-0 px-4 py-3 bg-[#faf9f6] border-t border-gray-100">
+          <div className="flex items-start gap-2.5">
+            <Bell size={15} className="shrink-0 mt-0.5" style={{ color: accentColor }} />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-[#1c1c1a] mb-0.5">Get replies on your phone</p>
+              {nudgeState === 'ios' ? (
+                <>
+                  <p className="text-xs text-gray-500 leading-relaxed mb-2.5">
+                    Add this page to your Home Screen first (Share → Add to Home Screen), then turn on notifications from the More tab.
+                  </p>
+                  <button
+                    onClick={handleNudgeDismiss}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-full text-white border-none cursor-pointer"
+                    style={{ background: accentColor }}
+                  >
+                    Got it
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p className="text-xs text-gray-500 leading-relaxed mb-2.5">
+                    Turn on notifications so you don't miss your host's reply.
+                  </p>
+                  {(nudgeState === 'standard' || nudgeState === 'busy') && (
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleNudgeEnable}
+                        disabled={nudgeState === 'busy'}
+                        className="text-xs font-semibold px-3 py-1.5 rounded-full text-white border-none cursor-pointer disabled:opacity-50"
+                        style={{ background: accentColor }}
+                      >
+                        {nudgeState === 'busy' ? 'Enabling…' : 'Turn on'}
+                      </button>
+                      <button
+                        onClick={handleNudgeDismiss}
+                        className="text-xs text-gray-500 px-3 py-1.5 rounded-full bg-transparent border-none cursor-pointer"
+                      >
+                        Not now
+                      </button>
+                    </div>
+                  )}
+                  {nudgeState === 'ok' && (
+                    <p className="text-xs font-semibold" style={{ color: accentColor }}>Notifications on</p>
+                  )}
+                  {nudgeState === 'denied' && (
+                    <p className="text-xs text-gray-500">Notifications were blocked</p>
+                  )}
+                  {nudgeState === 'error' && (
+                    <p className="text-xs text-gray-500">Couldn't turn on — try again from the More tab</p>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Input */}
       <div className="shrink-0 border-t border-gray-100 px-4 py-3 bg-white">

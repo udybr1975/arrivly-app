@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
   Home, MessageCircle, MapPin, MoreHorizontal,
@@ -12,6 +12,7 @@ import EventsPage from './EventsPage'
 import ChatBot from './ChatBot'
 import MessageHost from './MessageHost'
 import { ARRIVLY_CONFIG } from '../../config'
+import { iosNeedsHomeScreen, subscribeGuestToPush, checkPermission, isSubscribed } from '../../lib/webpush'
 
 interface Host {
   brand_name: string | null
@@ -83,6 +84,7 @@ interface Weather {
 
 type PageState = 'loading' | 'active' | 'thankyou' | 'neutral' | 'expired'
 type ActiveTab = 'home' | 'chat' | 'explore' | 'more'
+type PushNotifState = 'loading' | 'off' | 'on' | 'blocked' | 'ios' | 'unsupported'
 
 function parseWifi(content: string): { network: string; password: string } {
   const netMatch = content.match(/(?:network|wifi\s*name|wi-fi\s*name|ssid|wifi)[:\s]+([^\n\r\/,|]+)/i)
@@ -125,6 +127,7 @@ export default function GuestPage() {
   const [searchParams] = useSearchParams()
   const aptId = searchParams.get('apt')
   const tokenParam = searchParams.get('token')
+  const msgParam = searchParams.get('msg')
 
   const [apartment, setApartment] = useState<Apartment | null>(null)
   const [host, setHost] = useState<Host | null>(null)
@@ -147,6 +150,11 @@ export default function GuestPage() {
   const [copiedWifi, setCopiedWifi] = useState(false)
   const [copiedDoor, setCopiedDoor] = useState(false)
   const [expandedGuideCategory, setExpandedGuideCategory] = useState<string | null>(null)
+
+  const [pushNotifState, setPushNotifState] = useState<PushNotifState>('loading')
+  const [pushNotifBusy, setPushNotifBusy] = useState(false)
+  const [pushNotifError, setPushNotifError] = useState('')
+  const msgOpenedRef = useRef(false)
 
   useEffect(() => {
     if (!aptId) { setLoading(false); setPageState('neutral'); return }
@@ -329,6 +337,39 @@ export default function GuestPage() {
     return () => { cancelled = true }
   }, [activeTab, aptId, hostPicks.length, guideCategories])
 
+  // &msg=1 deep-link: auto-open the messages thread when arriving from a host push notification.
+  useEffect(() => {
+    if (msgOpenedRef.current) return
+    if (pageState !== 'active' || !tokenParam || msgParam !== '1') return
+    msgOpenedRef.current = true
+    setActiveTab('more')
+    setShowMessages(true)
+  }, [pageState, tokenParam, msgParam])
+
+  // Permanent push notification state for the More tab.
+  useEffect(() => {
+    if (activeTab !== 'more' || !tokenParam || pageState !== 'active') return
+    let cancelled = false
+    setPushNotifState('loading')
+    async function computePushState() {
+      if (iosNeedsHomeScreen()) {
+        if (!cancelled) setPushNotifState('ios')
+        return
+      }
+      if (!('PushManager' in window)) {
+        if (!cancelled) setPushNotifState('unsupported')
+        return
+      }
+      const perm = await checkPermission()
+      if (cancelled) return
+      if (perm === 'denied') { setPushNotifState('blocked'); return }
+      const subscribed = await isSubscribed()
+      if (!cancelled) setPushNotifState(subscribed ? 'on' : 'off')
+    }
+    computePushState()
+    return () => { cancelled = true }
+  }, [activeTab, tokenParam, pageState])
+
   const rulesRaw = useMemo(() =>
     details
       .filter(d => /rule|house|policy|policies|guidelines/i.test(d.category ?? ''))
@@ -368,6 +409,21 @@ export default function GuestPage() {
         ? `https://wa.me/${wa}?text=${encodeURIComponent('My guest page: ' + shareUrl)}`
         : `https://wa.me/?text=${encodeURIComponent('My guest page: ' + shareUrl)}`
       window.open(target, '_blank')
+    }
+  }
+
+  async function handleMoreTabPushEnable() {
+    if (!apt || !tokenParam) return
+    setPushNotifBusy(true)
+    setPushNotifError('')
+    const result = await subscribeGuestToPush(apt.id, tokenParam)
+    setPushNotifBusy(false)
+    if (result.ok) {
+      setPushNotifState('on')
+    } else if (result.reason === 'denied') {
+      setPushNotifState('blocked')
+    } else {
+      setPushNotifError('Couldn\'t enable — please try again.')
     }
   }
 
@@ -833,6 +889,54 @@ export default function GuestPage() {
             </div>
           )}
 
+          {tokenParam && pushNotifState !== 'unsupported' && pushNotifState !== 'loading' && (
+            <div className="max-w-lg mx-auto px-6 py-8 border-b border-gray-100">
+              {pushNotifState === 'off' && (
+                <>
+                  <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Get replies on your phone</h2>
+                  <p className="text-sm text-gray-500 leading-relaxed mb-5">
+                    Turn on notifications so you don't miss your host's reply.
+                  </p>
+                  {pushNotifError && (
+                    <p className="text-xs text-red-500 mb-3">{pushNotifError}</p>
+                  )}
+                  <button
+                    onClick={handleMoreTabPushEnable}
+                    disabled={pushNotifBusy}
+                    className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold disabled:opacity-50"
+                    style={{ background: accentColor }}
+                  >
+                    {pushNotifBusy ? 'Enabling…' : 'Turn on notifications →'}
+                  </button>
+                </>
+              )}
+              {pushNotifState === 'on' && (
+                <>
+                  <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Notifications</h2>
+                  <p className="text-sm text-gray-500 leading-relaxed">
+                    Notifications are on — you'll get your host's replies here and as a phone notification.
+                  </p>
+                </>
+              )}
+              {pushNotifState === 'blocked' && (
+                <>
+                  <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Notifications</h2>
+                  <p className="text-sm text-gray-500 leading-relaxed">
+                    Notifications are blocked in your browser settings.
+                  </p>
+                </>
+              )}
+              {pushNotifState === 'ios' && (
+                <>
+                  <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Notifications</h2>
+                  <p className="text-sm text-gray-500 leading-relaxed">
+                    Add this page to your Home Screen (Share → Add to Home Screen) to get notifications.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
           {host?.whatsapp && (
             <div className="max-w-lg mx-auto px-6 py-8 border-b border-gray-100">
               <h2 className="text-xl font-medium text-[#1c1c1a] mb-4">Or message on WhatsApp</h2>
@@ -923,7 +1027,7 @@ export default function GuestPage() {
           accentColor={accentColor}
           brandName={brandName}
           guestName={guestName}
-          onClose={() => setShowMessages(false)}
+          onClose={() => { setShowMessages(false); setActiveTab('more') }}
         />
       )}
 

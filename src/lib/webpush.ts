@@ -7,12 +7,14 @@ export type SubscribeResult =
       reason: 'unsupported' | 'denied' | 'no-key' | 'subscribe-failed' | 'invalid-subscription' | 'save-failed'
     }
 
-export async function checkPermission(): Promise<NotificationPermission> {
-  if (!('Notification' in window)) return 'denied'
-  return Notification.permission
-}
+type AcquireResult =
+  | { ok: true; subscription: { endpoint: string; keys: { p256dh: string; auth: string } } }
+  | { ok: false; reason: 'unsupported' | 'denied' | 'no-key' | 'subscribe-failed' | 'invalid-subscription' }
 
-export async function subscribeToPush(hostId?: string, apartmentId?: string): Promise<SubscribeResult> {
+// Encapsulates the browser-side permission + VAPID subscribe flow (no DB writes).
+// Reuses an existing PushSubscription when the VAPID key matches, unsubscribes stale
+// subs otherwise (the mobile InvalidStateError fix).
+async function acquirePushSubscription(): Promise<AcquireResult> {
   if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
     return { ok: false, reason: 'unsupported' }
   }
@@ -34,16 +36,10 @@ export async function subscribeToPush(hostId?: string, apartmentId?: string): Pr
     const existing = await reg.pushManager.getSubscription()
 
     if (existing && applicationServerKeyMatches(existing, appServerKey)) {
-      // Same VAPID key — reuse the existing subscription so the endpoint stays
-      // stable and no orphaned push_subscriptions row is created.
+      // Same VAPID key — reuse so the endpoint stays stable (no orphaned DB row).
       subscription = existing
     } else {
-      // Key mismatch, unreadable key, or no existing subscription.
-      // Unsubscribe any stale sub first (preserves the mobile InvalidStateError fix),
-      // then subscribe fresh.
-      if (existing) {
-        await existing.unsubscribe()
-      }
+      if (existing) await existing.unsubscribe()
       subscription = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: appServerKey,
@@ -54,26 +50,76 @@ export async function subscribeToPush(hostId?: string, apartmentId?: string): Pr
   }
 
   const json = subscription.toJSON()
-  if (!json.endpoint || !json.keys?.p256dh || !json.keys?.auth) {
+  const { endpoint, keys } = json
+  if (!endpoint || !keys?.p256dh || !keys?.auth) {
     return { ok: false, reason: 'invalid-subscription' }
   }
 
+  return { ok: true, subscription: { endpoint, keys: { p256dh: keys.p256dh, auth: keys.auth } } }
+}
+
+export async function checkPermission(): Promise<NotificationPermission> {
+  if (!('Notification' in window)) return 'denied'
+  return Notification.permission
+}
+
+export async function subscribeToPush(hostId?: string, apartmentId?: string): Promise<SubscribeResult> {
+  const acquired = await acquirePushSubscription()
+  if (!acquired.ok) return acquired
+
+  const { subscription } = acquired
   const { error } = await supabase.from('push_subscriptions').upsert(
     {
       host_id: hostId ?? null,
       apartment_id: apartmentId ?? null,
       role: hostId ? 'host' : 'guest',
-      endpoint: json.endpoint,
-      p256dh: json.keys.p256dh,
-      auth_key: json.keys.auth,
+      endpoint: subscription.endpoint,
+      p256dh: subscription.keys.p256dh,
+      auth_key: subscription.keys.auth,
     },
     { onConflict: 'endpoint' }
   )
-  if (error) {
+  if (error) return { ok: false, reason: 'save-failed' }
+  return { ok: true }
+}
+
+// Guest subscribe — no direct DB write (guests are anon; RLS blocks client writes).
+// POSTs to /api/guest-subscribe which writes with the service-role key server-side.
+export async function subscribeGuestToPush(apartmentId: string, token: string): Promise<SubscribeResult> {
+  const acquired = await acquirePushSubscription()
+  if (!acquired.ok) return acquired
+
+  const { subscription } = acquired
+  try {
+    const res = await fetch('/api/guest-subscribe', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apartmentId,
+        token,
+        subscription: {
+          endpoint: subscription.endpoint,
+          keys: { p256dh: subscription.keys.p256dh, auth: subscription.keys.auth },
+        },
+      }),
+    })
+    if (!res.ok) return { ok: false, reason: 'save-failed' }
+  } catch {
     return { ok: false, reason: 'save-failed' }
   }
 
   return { ok: true }
+}
+
+// Returns true when on iOS Safari but NOT running as a standalone PWA.
+// Mirrors InstallPrompt.tsx exactly — standalone check first, then iOS Safari UA filter.
+export function iosNeedsHomeScreen(): boolean {
+  const standalone =
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as any).standalone === true
+  const ua = navigator.userAgent
+  const iosSafari = /iphone|ipad|ipod/i.test(ua) && !/crios|fxios/i.test(ua)
+  return iosSafari && !standalone
 }
 
 export async function unsubscribeFromPush(hostId?: string): Promise<void> {
