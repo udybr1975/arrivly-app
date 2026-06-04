@@ -16,6 +16,7 @@ import QRCodePanel from './components/host/QRCodePanel'
 import BrandingPanel from './components/host/BrandingPanel'
 import BillingPanel from './components/host/BillingPanel'
 import Settings from './components/host/Settings'
+import Messages from './components/host/Messages'
 import GuestPage from './components/guest/GuestPage'
 import SuperAdmin from './components/admin/SuperAdmin'
 
@@ -130,6 +131,7 @@ export default function App() {
               <Route path="/dashboard/qr" element={<QRCodePanel />} />
               <Route path="/dashboard/branding" element={<BrandingPanel />} />
               <Route path="/dashboard/billing" element={<BillingPanel />} />
+              <Route path="/dashboard/messages" element={<Messages />} />
               <Route path="/dashboard/settings" element={<Settings />} />
             </Route>
           </Route>

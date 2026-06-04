@@ -47,7 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     void sendPushToHost(
       supabase,
       apt.host_id,
-      { title: `New message · ${apt.name}`, body: truncated.slice(0, 120), url: '/dashboard' }
+      { title: `New message · ${apt.name}`, body: truncated.slice(0, 120), url: '/dashboard/messages' }
     )
   }
 
