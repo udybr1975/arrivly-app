@@ -103,6 +103,7 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
   - `7cabced9-4c1e-4607-a00d-3deb755ccdb4` (ARR-TEST01, booking cccccccc-…-0001)
   - `3cfa4dc7-b72c-4a39-976c-669355fc14f0` (ARR-SWEET1, booking f803d95e-…)
 - Date reverts pending: ARR-SWEET1 check_out → 2026-06-02; ARR-TEST01 → original 27–31 May (or delete).
+- 3 guest push subs on ARR-SWEET1 (booking f803d95e) from push testing — old phone `fxoFeLto…`, new-phone tab `dPjCzkTFG…`, new-phone installed app `emdrm-rTQYM…`; decide whether to prune.
 
 ---
 
@@ -144,7 +145,7 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 
 ---
 
-## Phase C — Communication (IN PROGRESS)
+## Phase C — Communication (messaging/push/badges COMPLETE · Resend email pending)
 
 ### Done
 - Storage auto-delete old hero/logo files on replace + remove (`1cde275`)
@@ -155,8 +156,10 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 - `api/guest-subscribe.ts` — public token-gated POST; service-role upsert to `push_subscriptions` (all IDs server-derived from resolved booking; guests cannot write direct — anon RLS blocks). `api/host-message.ts` extended: selects `reference_number`, `await sendPushToGuest(admin, booking.id, ...)` with `&msg=1` deep-link. (`69c01db`)
 - Guest push subscribe UI (`8497496`) — `webpush.ts` refactored: private `acquirePushSubscription()` shared by `subscribeToPush` (host, direct DB) and `subscribeGuestToPush(aptId, token)` (POSTs to `/api/guest-subscribe`); `iosNeedsHomeScreen()` shared helper. First-message nudge in `MessageHost.tsx` (post-send, per-booking localStorage flag, `arrivly_guest_push_nudge_${token}`). More-tab permanent push control in `GuestPage.tsx` (state machine: loading/off/on/blocked/ios/unsupported; resets on each More-tab entry; no turn-off button — guests can't delete their RLS-blocked row). `&msg=1` deep-link: once-guarded effect → `setActiveTab('more')` + `setShowMessages(true)`; `MessageHost.onClose` lands on More tab.
 - Unread badges (`c294bda`) — `Layout.tsx`: sidebar count pill on Messages nav + numeric host app badge (`navigator.setAppBadge(count)`); `countUnread` = exact head-count WHERE sender_role='guest' AND read_at IS NULL (RLS-scoped); refreshed on mount + 30s poll + visibilitychange + `arrivly:messages-read` window event. `Messages.tsx`: dispatches `arrivly:messages-read` after mark-read in `openThread` so Layout recounts live. `BookingManager.tsx`: per-booking dot on Upcoming + Past list cards (not calendar); also listens for `arrivly:messages-read` to clear dots live. `sw.js` bumped v3→v4; push handler sets guest DOT badge (`setAppBadge()` no-arg) for /guest URLs only; notificationclick clears it for /guest URLs only. `GuestPage.tsx`: `clearAppBadge()` on pageState=active, on &msg=1 auto-open, on "Open messages" click.
+- PWA relaunch + push diagnostic (`3dbd8a8`) — Fix 1: `GuestPage.tsx` writes `arrivly_last_guest={apt,token}` to localStorage on the active guest page; `App.tsx` Landing redirects a NOT-authed standalone launch that has a valid saved guest to `/guest?apt=…&token=…`, so an installed guest opens their own page instead of the marketing landing. Fix 2: `webpush.ts` adds optional `detail?: string` to the failure result (subscribe error name+message / `missing keys` / `http <status>`); the GuestPage More-tab control and the MessageHost nudge surface it on screen. Reviewer W1 (clear stale detail on retry), W2 (non-Error throw guard), W4 (try/catch localStorage) applied. iOS caveat: installed-app storage is isolated from Safari, so Fix 1 works on Android, not iOS.
 
 ### Next
+- **Guest More-tab push UX redesign (next):** in a browser tab show an **Install the app** CTA instead of "Turn on notifications"; when running as the installed app (`display-mode: standalone`) show **Turn on notifications** only and hide the install CTA, and prompt to enable on first app launch. Rationale: push subscriptions are PER-CONTEXT — a browser tab and the installed WebAPK each create their own subscription (separate FCM endpoints, DB-verified), so enable where the guest actually uses it. Install-first also matches iOS (push only works from the installed PWA). Pre-launch: soften the raw `AbortError…` text shown to guests to a friendly message.
 - **Prompt 11 — Resend email:** add `resend` dep; `api/_lib/email.ts` (from `Arrivly <hello@anna-stays.fi>`, reply-to info@anna-stays.fi); `api/send-welcome.ts` (after signup); extend `api/cron-trial-ending.ts` to also send day-25 reminder email; add `hosts.trial_reminder_sent_at` column (push+email idempotency); compute real days-left from `trial_ends_at`. `api/send-email.ts` stays as Tier-2 stub.
 
 ---
@@ -234,6 +237,10 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 
 - **Guest badge is DOT-ONLY** (`setAppBadge()` — no arg), set by SW on /guest push, cleared on page open. Persists until next open if the notification is dismissed without tapping. All Badging API calls are guarded (`'setAppBadge' in navigator / self.navigator`) — silent no-op on unsupported platforms.
 
+- **Guest web push is PER-CONTEXT.** A browser tab and the installed WebAPK each hold their OWN push subscription (separate FCM endpoints — verified in `push_subscriptions`). Enabling notifications in a tab does NOT carry into the installed app, and vice-versa; the guest must enable push in the context they actually use. UX implication: in a tab offer **Install the app**; in the installed app offer **Turn on notifications**.
+
+- **`AbortError: Registration failed - push service error` is a device / local-Chrome state, not an app bug.** Diagnosed on a Redmi Note 13 Pro 5G (HyperOS): web push worked for other sites but failed for Arrivly. Tells: permission "allowed", error thrown by `pushManager.subscribe`, and an EMPTY `chrome://gcm-internals` Registration Log = the failure is LOCAL (before any FCM round-trip), not Google-side. Cause was corrupted local notification state tangled with the installed WebAPK's notification delegation ("Managed by Arrivly"). Fix that worked: uninstall the app → Chrome site settings → Delete data and reset permissions → reboot → enable in a clean tab. Treat web push as best-effort — unreliable on Xiaomi/HyperOS and other battery-aggressive Android ROMs; the in-app 15s poll + host-always-notified is the fallback, so a guest device that can't register push still works.
+
 ---
 
 ## Workflow
@@ -283,7 +290,7 @@ Locked product decisions:
 Phases:
 - **A — Guest-page value:** COMPLETE ✓ A1 city guide (`de3eb37`), A2 host picks (`081f7eb`, `631d7c0`), A3 city events (`39ef5c9`, `0a22f04`), A4 guest chatbot (`5a53223`).
 - **B — Guest look & feel:** COMPLETE ✓ Photo hero + accent scrim, logo/cover upload, Unsplash city default with attribution, Storage signed-URL fix. (`d2bbe37`, `45e1c70`, `9dcc1f6`, `7da1c85`, `72e8f41`)
-- **C — Communication:** IN PROGRESS. Token-based in-app messaging + Resend transactional email (welcome + day-25 trial reminder). See Phase C section above.
+- **C — Communication:** Messaging + push + unread badges COMPLETE (`94e1fc0`→`3dbd8a8`); guest More-tab push UX redesign + Resend transactional email (welcome + day-25 trial reminder) remain. See Phase C section above.
 - **D — Superadmin:** Service-role admin API (superadmin-gated) + wire the existing `/admin`
   dashboard (currently blind because hosts RLS = own-row-only) + read-only impersonate.
 - **E — Billing (Tier-1 Stripe):** create-subscription, billing-portal, stripe-webhook (signature
