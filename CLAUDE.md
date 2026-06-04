@@ -38,7 +38,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - **guests** — id, first_name, last_name, email, created_at
 - **messages** — id, booking_id, apartment_id, sender_role ('guest'|'host'), body, created_at, read_at; RLS: `messages_host_all` scopes to host's own apartments via apartment_id
 - **guide_recommendations** — id, apartment_id, neighborhood, categories (jsonb), generated_at
-- **push_subscriptions** — id, host_id, apartment_id, role, endpoint, p256dh, auth_key, created_at
+- **push_subscriptions** — id, host_id, apartment_id, booking_id, role, endpoint, p256dh, auth_key, created_at
 - **guest_optins** — id, first_name, email, apartment_id, opted_in_at
 
 ### Critical DB facts
@@ -55,6 +55,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
   Always call `sendPushToHost(db, hostId, payload)` WITHOUT the optional `apartmentId`
   argument when notifying the host — passing one filters the lookup to zero rows and
   delivers nothing silently.
+- **`push_subscriptions.booking_id`** — nullable UUID; set for guest subscriptions (server-derived from resolved booking in `api/guest-subscribe.ts`); NULL for host subscriptions.
 
 ### Image system
 - **Bucket** `apartment-images` — public read; 3 owner-scoped write RLS policies (insert/update/delete), condition `(storage.foldername(name))[1] = auth.uid()`.
@@ -96,6 +97,12 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 - **Penthouse in the sky** — id: `9b03a763-3ca6-4d1f-946c-d4e1f977d614`, token: `ARR-PENTH1`
 
 **Test guest URL (Test Apartment 1):** `/guest?apt=aaaaaaaa-0000-0000-0000-000000000001&token=ARR-TEST01`
+
+**Pending badge test-data cleanup:**
+- 2 seeded unread guest messages — DELETE after badge testing:
+  - `7cabced9-4c1e-4607-a00d-3deb755ccdb4` (ARR-TEST01, booking cccccccc-…-0001)
+  - `3cfa4dc7-b72c-4a39-976c-669355fc14f0` (ARR-SWEET1, booking f803d95e-…)
+- Date reverts pending: ARR-SWEET1 check_out → 2026-06-02; ARR-TEST01 → original 27–31 May (or delete).
 
 ---
 
@@ -145,12 +152,12 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 - `resolveMessagingAccess` in `api/_lib/guest-access.ts` + `api/guest-message.ts` — guest send/list, token-gated, server-resolved booking and apartment_id (`1856abb`)
 - `api/host-message.ts` — host reply, Bearer auth, booking → apartment → host_id ownership chain, returns full thread (`bf56ea3`)
 - Host Messages dashboard at `/dashboard/messages` — inbox grouped by booking, thread view with guest/host bubbles, reply box, two-pane desktop / single-col mobile (`a1399e0`)
+- `api/guest-subscribe.ts` — public token-gated POST; service-role upsert to `push_subscriptions` (all IDs server-derived from resolved booking; guests cannot write direct — anon RLS blocks). `api/host-message.ts` extended: selects `reference_number`, `await sendPushToGuest(admin, booking.id, ...)` with `&msg=1` deep-link. (`69c01db`)
+- Guest push subscribe UI (`8497496`) — `webpush.ts` refactored: private `acquirePushSubscription()` shared by `subscribeToPush` (host, direct DB) and `subscribeGuestToPush(aptId, token)` (POSTs to `/api/guest-subscribe`); `iosNeedsHomeScreen()` shared helper. First-message nudge in `MessageHost.tsx` (post-send, per-booking localStorage flag, `arrivly_guest_push_nudge_${token}`). More-tab permanent push control in `GuestPage.tsx` (state machine: loading/off/on/blocked/ios/unsupported; resets on each More-tab entry; no turn-off button — guests can't delete their RLS-blocked row). `&msg=1` deep-link: once-guarded effect → `setActiveTab('more')` + `setShowMessages(true)`; `MessageHost.onClose` lands on More tab.
+- Unread badges (`c294bda`) — `Layout.tsx`: sidebar count pill on Messages nav + numeric host app badge (`navigator.setAppBadge(count)`); `countUnread` = exact head-count WHERE sender_role='guest' AND read_at IS NULL (RLS-scoped); refreshed on mount + 30s poll + visibilitychange + `arrivly:messages-read` window event. `Messages.tsx`: dispatches `arrivly:messages-read` after mark-read in `openThread` so Layout recounts live. `BookingManager.tsx`: per-booking dot on Upcoming + Past list cards (not calendar); also listens for `arrivly:messages-read` to clear dots live. `sw.js` bumped v3→v4; push handler sets guest DOT badge (`setAppBadge()` no-arg) for /guest URLs only; notificationclick clears it for /guest URLs only. `GuestPage.tsx`: `clearAppBadge()` on pageState=active, on &msg=1 auto-open, on "Open messages" click.
 
 ### Next
-- Guest "Message host" UI on the guest page + install/notification nudge
-- Guest push subscriptions: add `booking_id` to `push_subscriptions`; bidirectional host↔guest push
-- Unread badges in sidebar nav + app icon badge
-- Resend transactional email: welcome on signup + day-25 trial reminder
+- **Prompt 11 — Resend email:** add `resend` dep; `api/_lib/email.ts` (from `Arrivly <hello@anna-stays.fi>`, reply-to info@anna-stays.fi); `api/send-welcome.ts` (after signup); extend `api/cron-trial-ending.ts` to also send day-25 reminder email; add `hosts.trial_reminder_sent_at` column (push+email idempotency); compute real days-left from `trial_ends_at`. `api/send-email.ts` stays as Tier-2 stub.
 
 ---
 
@@ -167,6 +174,9 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 - `api/guest-chat.ts` is public (guest-facing) with no rate limit — same posture as `city-events`/`generate-guide`; fold abuse/rate-limiting into Phase G hardening.
 - Mobile drawer a11y follow-ups: Escape-to-close, focus return on close.
 - Message retention: add ~90-day post-checkout cleanup job before public launch (Phase G).
+- sw.js `showNotification().then()` — if showNotification rejects, badge is not set and the rejection is swallowed by `event.waitUntil`; low risk, standard SW pattern (W2, `c294bda`).
+- `countUnread` in `Layout.tsx` called directly from event listeners with no mounted guard at call site — safe because `mounted` flag is closed over and listeners are removed on cleanup before it matters; no real bug (W3, `c294bda`).
+- `BookingManager.tsx` `arrivly:messages-read` handler calls `loadBookings()` without a cancellation signal — tiny stale-overwrite race on rapid apartment switching; fold into next BookingManager change.
 
 ---
 
@@ -180,7 +190,7 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 - **`public/sw.js` must NEVER cache cross-origin requests.** Guard at the top of the `fetch`
   handler: `if (url.origin !== self.location.origin) return`. Returning without calling
   `event.respondWith` passes the request to the browser natively — no caching, no interception.
-  Bump `CACHE_NAME` on EVERY `sw.js` change so the activate handler purges stale caches.
+  Bump `CACHE_NAME` on EVERY `sw.js` change so the activate handler purges stale caches. Current value: `'arrivly-v4'` (bumped in `c294bda`).
 
 - **`vercel.json` `functions{}`: never list a specific file pattern alongside the `api/**/*.ts`
   glob** — Vercel rejects overlapping patterns and the build fails. Use one glob, raise its
@@ -219,6 +229,10 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
   `sendPushToHost(db, hostId, payload)` without the optional `apartmentId` argument when
   notifying the host. Passing one narrows the subscription lookup to zero rows and delivers
   nothing silently.
+
+- **Host app-icon badge is numeric and owned by `Layout.tsx`** (`navigator.setAppBadge(count)`). It updates only while the dashboard app is open — the SW deliberately does NOT badge host (/dashboard) pushes, so a closed dashboard icon lags until reopened. The in-app sidebar count pill is the live indicator.
+
+- **Guest badge is DOT-ONLY** (`setAppBadge()` — no arg), set by SW on /guest push, cleared on page open. Persists until next open if the notification is dismissed without tapping. All Badging API calls are guarded (`'setAppBadge' in navigator / self.navigator`) — silent no-op on unsupported platforms.
 
 ---
 
