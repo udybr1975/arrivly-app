@@ -341,12 +341,19 @@ export default function GuestPage() {
     return () => { cancelled = true }
   }, [activeTab, aptId, hostPicks.length, guideCategories])
 
-  // Persist apt+token so the installed PWA relaunches to this guest page, not the landing.
+  // Keep the launch pointer alive exactly while the booking is active; prune it once
+  // the booking ends so a stale pointer can't hijack a later host install.
   useEffect(() => {
-    if (pageState !== 'active' || !aptId || !tokenParam) return
-    try {
-      localStorage.setItem('arrivly_last_guest', JSON.stringify({ apt: aptId, token: tokenParam }))
-    } catch {}
+    if (pageState === 'loading') return
+    if (pageState === 'active' && aptId && tokenParam) {
+      try {
+        localStorage.setItem('arrivly_last_guest', JSON.stringify({ apt: aptId, token: tokenParam }))
+      } catch {}
+    } else if (pageState === 'thankyou' || pageState === 'neutral' || pageState === 'expired') {
+      try {
+        localStorage.removeItem('arrivly_last_guest')
+      } catch {}
+    }
   }, [pageState, aptId, tokenParam])
 
   // Clear guest app-icon badge as soon as the guest page is active.

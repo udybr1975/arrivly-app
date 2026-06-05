@@ -12,6 +12,9 @@ interface BeforeInstallPromptEvent extends Event {
 export function useInstallPrompt() {
   const deferredPrompt = useRef<BeforeInstallPromptEvent | null>(null)
   const [canInstall, setCanInstall] = useState(false)
+  const [installed, setInstalled] = useState(() => {
+    try { return localStorage.getItem('arrivly_installed') === '1' } catch { return false }
+  })
 
   const ua = navigator.userAgent
   const isIOSSafari = /iphone|ipad|ipod/i.test(ua) && !/crios|fxios/i.test(ua)
@@ -26,13 +29,26 @@ export function useInstallPrompt() {
     return () => window.removeEventListener('beforeinstallprompt', handlePrompt)
   }, [])
 
+  useEffect(() => {
+    function handleAppInstalled() {
+      try { localStorage.setItem('arrivly_installed', '1') } catch {}
+      setInstalled(true)
+    }
+    window.addEventListener('appinstalled', handleAppInstalled)
+    return () => window.removeEventListener('appinstalled', handleAppInstalled)
+  }, [])
+
   async function install(): Promise<void> {
     if (!deferredPrompt.current) return
     const prompt = deferredPrompt.current
     deferredPrompt.current = null
     setCanInstall(false)
     prompt.prompt()
-    await prompt.userChoice
+    const choice = await prompt.userChoice
+    if (choice.outcome === 'accepted') {
+      try { localStorage.setItem('arrivly_installed', '1') } catch {}
+      setInstalled(true)
+    }
   }
 
   return {
@@ -40,5 +56,6 @@ export function useInstallPrompt() {
     isIOSSafari,
     standalone: isStandalone(),
     install,
+    installed,
   }
 }

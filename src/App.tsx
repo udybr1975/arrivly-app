@@ -91,6 +91,7 @@ function LandingContent() {
 function Landing() {
   const [checking, setChecking] = useState(true)
   const [authed, setAuthed] = useState(false)
+  const [standalone, setStandalone] = useState(false)
   const [savedGuest, setSavedGuest] = useState<{ apt: string; token: string } | null>(null)
 
   useEffect(() => {
@@ -99,22 +100,23 @@ function Landing() {
     // getUser() for the real server-validated gate on every protected route.
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (!cancelled) {
+        const isStandalone =
+          window.matchMedia('(display-mode: standalone)').matches ||
+          (navigator as any).standalone === true
         setAuthed(!!session)
-        if (!session) {
-          const isStandalone =
-            window.matchMedia('(display-mode: standalone)').matches ||
-            (navigator as any).standalone === true
-          if (isStandalone) {
-            try {
-              const raw = localStorage.getItem('arrivly_last_guest')
-              if (raw) {
-                const parsed = JSON.parse(raw)
-                if (parsed?.apt && typeof parsed.apt === 'string' && parsed?.token && typeof parsed.token === 'string') {
-                  setSavedGuest({ apt: parsed.apt, token: parsed.token })
-                }
+        setStandalone(isStandalone)
+        // savedGuest is intentionally only populated in standalone mode; the render
+        // order (savedGuest before standalone) is correct for both current and future use.
+        if (!session && isStandalone) {
+          try {
+            const raw = localStorage.getItem('arrivly_last_guest')
+            if (raw) {
+              const parsed = JSON.parse(raw)
+              if (parsed?.apt && typeof parsed.apt === 'string' && parsed?.token && typeof parsed.token === 'string') {
+                setSavedGuest({ apt: parsed.apt, token: parsed.token })
               }
-            } catch {}
-          }
+            }
+          } catch {}
         }
         setChecking(false)
       }
@@ -125,6 +127,9 @@ function Landing() {
   if (checking) return <Loader />
   if (authed) return <Navigate to="/dashboard" replace />
   if (savedGuest) return <Navigate to={`/guest?apt=${savedGuest.apt}&token=${savedGuest.token}`} replace />
+  // Installed app (standalone), logged out, no active guest booking → host login.
+  // Create account link lives on the Login page so new hosts are covered too.
+  if (standalone) return <Navigate to="/login" replace />
   return <LandingContent />
 }
 
