@@ -149,6 +149,7 @@ export default function GuestPage() {
 
   const [copiedWifi, setCopiedWifi] = useState(false)
   const [copiedDoor, setCopiedDoor] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
   const [expandedGuideCategory, setExpandedGuideCategory] = useState<string | null>(null)
 
   const [pushNotifState, setPushNotifState] = useState<PushNotifState>('loading')
@@ -958,7 +959,7 @@ export default function GuestPage() {
                 <>
                   <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Get replies on your phone</h2>
                   <p className="text-sm text-gray-500 leading-relaxed mb-5">
-                    Install this page as an app first, then turn on notifications inside the app. That's the only way your phone can alert you to new replies.
+                    To get notified of your host's replies, this page needs to be installed as an app — then you turn on notifications inside it.
                   </p>
                   {canInstall ? (
                     <button
@@ -976,9 +977,21 @@ export default function GuestPage() {
                       Install app →
                     </button>
                   ) : (
-                    <p className="text-sm text-gray-500 leading-relaxed">
-                      Open your browser menu and choose 'Install app' or 'Add to Home Screen'.
-                    </p>
+                    <div>
+                      <button
+                        onClick={() => copyText(window.location.href, setCopiedLink)}
+                        className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold"
+                        style={{ background: accentColor }}
+                      >
+                        {copiedLink ? 'Link copied ✓' : 'Copy link →'}
+                      </button>
+                      <p className="text-sm text-gray-500 mt-4 leading-relaxed">
+                        Best on Chrome: paste this link in Chrome, then tap Install for one-tap notifications.
+                      </p>
+                      <p className="text-xs text-gray-400 mt-2">
+                        In Firefox: tap the ⋮ menu, then 'Install' (or 'Add to Home Screen').
+                      </p>
+                    </div>
                   )}
                 </>
               )}
