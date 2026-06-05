@@ -57,7 +57,7 @@ export default function OnboardingFlow() {
         })
       if (hostErr) throw hostErr
 
-      void api.post('/api/send-welcome', {}).catch(() => {})
+      void api.post('/send-welcome', {}).catch(() => {})
 
       const { data: existing } = await supabase
         .from('apartments')
