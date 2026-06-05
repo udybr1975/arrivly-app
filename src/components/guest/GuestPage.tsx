@@ -12,7 +12,7 @@ import EventsPage from './EventsPage'
 import ChatBot from './ChatBot'
 import MessageHost from './MessageHost'
 import { ARRIVLY_CONFIG } from '../../config'
-import { iosNeedsHomeScreen, subscribeGuestToPush, checkPermission, isSubscribed } from '../../lib/webpush'
+import { iosNeedsHomeScreen, isStandalone, subscribeGuestToPush, checkPermission, isSubscribed } from '../../lib/webpush'
 
 interface Host {
   brand_name: string | null
@@ -84,7 +84,7 @@ interface Weather {
 
 type PageState = 'loading' | 'active' | 'thankyou' | 'neutral' | 'expired'
 type ActiveTab = 'home' | 'chat' | 'explore' | 'more'
-type PushNotifState = 'loading' | 'off' | 'on' | 'blocked' | 'ios' | 'unsupported'
+type PushNotifState = 'loading' | 'off' | 'on' | 'blocked' | 'ios' | 'unsupported' | 'needs-install'
 
 function parseWifi(content: string): { network: string; password: string } {
   const netMatch = content.match(/(?:network|wifi\s*name|wi-fi\s*name|ssid|wifi)[:\s]+([^\n\r\/,|]+)/i)
@@ -154,7 +154,10 @@ export default function GuestPage() {
   const [pushNotifState, setPushNotifState] = useState<PushNotifState>('loading')
   const [pushNotifBusy, setPushNotifBusy] = useState(false)
   const [pushNotifError, setPushNotifError] = useState('')
+  const [canInstall, setCanInstall] = useState(false)
   const msgOpenedRef = useRef(false)
+  const deferredInstallRef = useRef<any>(null)
+  const autopromptFiredRef = useRef(false)
 
   useEffect(() => {
     if (!aptId) { setLoading(false); setPageState('neutral'); return }
@@ -362,7 +365,21 @@ export default function GuestPage() {
     if ('clearAppBadge' in navigator) void (navigator as any).clearAppBadge()
   }, [pageState, tokenParam, msgParam])
 
+  // Capture beforeinstallprompt for the More-tab 'needs-install' CTA.
+  // Both this and InstallPrompt capture the event — a deferred prompt can only be
+  // .prompt()-ed once; whichever surface the guest taps first consumes it.
+  useEffect(() => {
+    function handleInstall(e: Event) {
+      e.preventDefault()
+      deferredInstallRef.current = e
+      setCanInstall(true)
+    }
+    window.addEventListener('beforeinstallprompt', handleInstall)
+    return () => window.removeEventListener('beforeinstallprompt', handleInstall)
+  }, [])
+
   // Permanent push notification state for the More tab.
+  // Order: ios → unsupported → tab(needs-install) → blocked/on/off
   useEffect(() => {
     if (activeTab !== 'more' || !tokenParam || pageState !== 'active') return
     let cancelled = false
@@ -376,6 +393,10 @@ export default function GuestPage() {
         if (!cancelled) setPushNotifState('unsupported')
         return
       }
+      if (!isStandalone()) {
+        if (!cancelled) setPushNotifState('needs-install')
+        return
+      }
       const perm = await checkPermission()
       if (cancelled) return
       if (perm === 'denied') { setPushNotifState('blocked'); return }
@@ -385,6 +406,27 @@ export default function GuestPage() {
     computePushState()
     return () => { cancelled = true }
   }, [activeTab, tokenParam, pageState])
+
+  // First-launch auto-enable when running as the installed PWA.
+  // Fires once per mount (ref guard) and once per booking across relaunches (localStorage flag).
+  useEffect(() => {
+    if (!isStandalone() || !aptId || !tokenParam || pageState !== 'active') return
+    if (autopromptFiredRef.current) return
+    autopromptFiredRef.current = true
+    const flagKey = `arrivly_guest_push_autoprompt_${tokenParam}`
+    let flagSet = false
+    try { flagSet = localStorage.getItem(flagKey) === '1' } catch {}
+    if (flagSet) return
+    async function tryAutoEnable() {
+      const perm = await checkPermission()
+      const subscribed = await isSubscribed()
+      try { localStorage.setItem(flagKey, '1') } catch {}
+      if (perm === 'default' && !subscribed) {
+        handleMoreTabPushEnable()
+      }
+    }
+    tryAutoEnable()
+  }, [pageState, aptId, tokenParam])
 
   const rulesRaw = useMemo(() =>
     details
@@ -439,7 +481,9 @@ export default function GuestPage() {
     } else if (result.reason === 'denied') {
       setPushNotifState('blocked')
     } else {
-      setPushNotifError(result.detail ? `Couldn't enable — ${result.detail}` : "Couldn't enable — please try again.")
+      setPushNotifError(
+        "Your phone couldn't enable notifications — you'll still see replies when you open this page."
+      )
     }
   }
 
@@ -910,6 +954,34 @@ export default function GuestPage() {
 
           {tokenParam && pushNotifState !== 'unsupported' && pushNotifState !== 'loading' && (
             <div className="max-w-lg mx-auto px-6 py-8 border-b border-gray-100">
+              {pushNotifState === 'needs-install' && (
+                <>
+                  <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Get replies on your phone</h2>
+                  <p className="text-sm text-gray-500 leading-relaxed mb-5">
+                    Install this page as an app first, then turn on notifications inside the app. That's the only way your phone can alert you to new replies.
+                  </p>
+                  {canInstall ? (
+                    <button
+                      onClick={async () => {
+                        const prompt = deferredInstallRef.current
+                        if (!prompt) return
+                        deferredInstallRef.current = null
+                        setCanInstall(false)
+                        prompt.prompt()
+                        await prompt.userChoice
+                      }}
+                      className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold"
+                      style={{ background: accentColor }}
+                    >
+                      Install app →
+                    </button>
+                  ) : (
+                    <p className="text-sm text-gray-500 leading-relaxed">
+                      Open your browser menu and choose 'Install app' or 'Add to Home Screen'.
+                    </p>
+                  )}
+                </>
+              )}
               {pushNotifState === 'off' && (
                 <>
                   <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Get replies on your phone</h2>

@@ -113,6 +113,14 @@ export async function subscribeGuestToPush(apartmentId: string, token: string): 
   return { ok: true }
 }
 
+// True when the page is running as an installed PWA (standalone display mode).
+export function isStandalone(): boolean {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    (navigator as any).standalone === true
+  )
+}
+
 // Returns true when on iOS Safari but NOT running as a standalone PWA.
 // Mirrors InstallPrompt.tsx exactly — standalone check first, then iOS Safari UA filter.
 export function iosNeedsHomeScreen(): boolean {
