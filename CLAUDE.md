@@ -32,7 +32,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 | `/admin` | SuperAdmin | admin only |
 
 ## Database (Supabase)
-- **hosts** — id (= auth.uid), name, brand_name, whatsapp, logo_url, accent_color, contact_email, country, city, neighborhood, street, street_number, lat, lng, plan, trial_ends_at, subscription_status, stripe_customer_id, stripe_subscription_id, push_endpoint, created_at
+- **hosts** — id (= auth.uid), name, brand_name, whatsapp, logo_url, accent_color, contact_email, country, city, neighborhood, street, street_number, lat, lng, plan, trial_ends_at, subscription_status, stripe_customer_id, stripe_subscription_id, push_endpoint, welcome_email_sent_at, trial_reminder_sent_at, created_at
 - **apartments** — id, host_id, name, country, city, neighborhood, street, street_number, floor_note, lat, lng, max_guests, description, images[], is_visible, accent_color, ical_urls, hero_image_url, city_image_url, city_image_credit, created_at
 - **apartment_details** — id, apartment_id, category, content, is_private
 - **host_picks** — id, apartment_id, name, category, address, lat, lng, note, display_order, created_at
@@ -42,6 +42,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - **guide_recommendations** — id, apartment_id, neighborhood, categories (jsonb), generated_at
 - **push_subscriptions** — id, host_id, apartment_id, booking_id, role, endpoint, p256dh, auth_key, created_at
 - **guest_optins** — id, first_name, email, apartment_id, opted_in_at
+- **app_settings** — id (always 1), trial_days (int, default 30), updated_at; RLS ON with zero policies (only service-role + SECURITY DEFINER trigger can read/write); `handle_new_user()` reads `trial_days` with hard fallback to 30 so a missing row never breaks signups. Change trial length: `update public.app_settings set trial_days=N, updated_at=now() where id=1;` (new signups only; existing hosts keep their dates). Future superadmin dashboard edits this row.
 
 ### Critical DB facts
 - `apartments.accent_color` — NOT brand_color (common mistake, causes silent save failure)
@@ -130,10 +131,10 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 - New-booking push from `sync-ical` after `imported > 0` (best-effort, never breaks sync).
 - **Cron triggers** — all guarded by `isCronAuthorized` (`api/_lib/cron.ts`, compares Authorization header to `Bearer <CRON_SECRET>`, fails closed if secret absent; Vercel auto-sends this header to paths listed in `vercel.json crons[]`):
   - `api/cron-checkout-reminder.ts` — daily `0 6 * * *`; queries `check_out = today UTC`, `status confirmed/completed`, excludes `*_block`, grouped per host; push body matches code, verified live to both devices. `5b01770`
-  - `api/cron-trial-ending.ts` — daily `0 8 * * *`; hosts with `subscription_status='trial'` whose `trial_ends_at` falls on the UTC calendar day exactly 5 days out; fires once via calendar-day window; NOT retry-idempotent (durable fix = `trial_reminder_sent_at` column, deferred to Phase G). `92113a1`
+  - `api/cron-trial-ending.ts` — daily `0 8 * * *`; hosts with `subscription_status='trial'` and `trial_reminder_sent_at IS NULL` whose `trial_ends_at` falls on the UTC calendar day exactly 5 days out; atomic `trial_reminder_sent_at` claim before sending (Lambda crash cannot cause double-send); computes real `daysLeft` from DB; sends push + Resend email; returns `{ok, eligible, pushed, emailed}`. `92113a1`, updated `3a77595`
   - `api/cron-sync-ical.ts` — monthly `0 4 1 * *`; service-role; iterates all apartments with `ical_urls`; aggregated push per host when new bookings land; global 30s maxDuration (needs batching before many hosts). `92113a1`
   - `api/_lib/ical.ts` — sync core extracted from `sync-ical.ts` (`detectSource`, `parseIcal`, `syncApartmentBookings`); `imported++` only on successful DB insert (no more false push on failed write); interactive route and cron share this one fixed core.
-- **ESM hotfix** `0a1c9cd` — see Lessons. CRON_SECRET rotated after exposure during manual testing (`CRON_SECRET` can only trigger the three cron endpoints — no data read, no destructive action).
+- **ESM hotfix** `0a1c9cd` — see Lessons. CRON_SECRET rotated after exposure during manual testing (`CRON_SECRET` can only trigger the three cron endpoints — no data read, no destructive action). Rotated again 2026-06-05 and redeployed.
 - **Cron live verification (2026-06-02):** checkout-reminder confirmed end-to-end (real push to both host devices, body matched code); trial-ending verified via temporary trial-date nudge on test host (reverted after); sync-ical deployed and locked (real-feed import-triggered push still untested — needs a controllable test iCal feed, deferred). 401-without-bearer confirmed on all three endpoints. Push subscriptions churn correctly: installing the PWA invalidated the prior browser-tab subscription (FCM 410), which `sendPushToHost` auto-pruned; re-enabling inside the installed app registered a fresh endpoint. Notifications deliver with app closed and independent of an active login session.
 - **Security fixes** — sync-ical now requires Bearer token + `apt.host_id === userId` ownership check (was unauthenticated service-role; `apartment_id` is public in guest URLs so anyone could inject bookings into any host's calendar — CRITICAL). Auth session-switch `79b4112`: global `signOut` → on error `signOut({scope:'local'})` + navigate to /login; Login.tsx `signOut({scope:'local'})` before `signInWithPassword` (auto-heals stuck sessions); try/finally.
 - **Mobile layout** `263e0d3` — off-canvas hamburger drawer (top bar z-30, backdrop z-40, drawer z-50; closes on nav-link tap), static `md+` (desktop pixel-identical). a11y: `aria-expanded`/`aria-controls`.
@@ -147,9 +148,11 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 - Guest chatbot A4 — `api/_lib/guest-access.ts`: `resolveGuestAccess(db, apartmentId, token)` returns tier `verified` (token matches a confirmed/completed, in-dates booking for that apartment) or `public`, resolved entirely server-side; `buildGuestSystemInstruction` builds the prompt from `apartment_details` + `host_picks` + `guide_recommendations`, including private detail rows ONLY for the verified tier. This is the single seam Tier 2 extends (new tiers, email+reference) — no change to the endpoint or UI needed. `api/guest-chat.ts`: gemini-2.5-flash + googleSearch + `thinkingBudget: 0`; 2 retries × 20s timeout (≈43s worst case, inside 60s maxDuration); strips `**`; key-scrubbed logs. `ChatBot.tsx`: accent-themed bubbles, seeded greeting, persistent starter-question chips, auto-scroll, graceful error recovery. Browser sends only `{ apartmentId, token, message, history }`; all knowledge gating is server-side; public caller never receives private rows by construction. Verified on Sweet home `ARR-SWEET1`: greets guest by name, answers from private check-in/Wi-Fi details, grounded for neighbourhood. `5a53223`
 - Phase B images — photo hero + accent scrim, accent section headers (`d2bbe37`); host logo upload (BrandingPanel) + per-property cover photo upload (PropertySetup) (`45e1c70`, `9dcc1f6`); Unsplash city default with attribution cached per property (`city_image_url` + `city_image_credit`) (`7da1c85`); Storage signed-URL upload fix via service-role key + `uploadToSignedUrl` in `api/create-upload-url.ts` (`72e8f41`). Auto-delete old hero/logo files on replace + remove shipped in Phase C prep (`1cde275`).
 
+**S9 (2026-06-05):** Transactional email (Phase C close-out) — Resend integration shipped and verified end-to-end. `api/_lib/email.ts` (Resend wrapper `sendEmail()` — never throws, scrubs key, `replyTo`; `welcomeEmail()` + `trialReminderEmail()` builders; sender `hello@anna-stays.fi`, reply-to `info@anna-stays.fi`). `api/send-welcome.ts` (Bearer-gated POST, atomic `welcome_email_sent_at` claim, recipient from DB only, fires fire-and-forget from `OnboardingFlow` at finish). `api/cron-trial-ending.ts` extended: atomic stamp before send, real `daysLeft` from DB, push + email. Dynamic trial length via `public.app_settings.trial_days` (DB-only, `handle_new_user()` reads with fallback 30). `CRON_SECRET` rotated and redeployed. Commits: `3a77595` (feat email) + `53e6460` (welcome path fix).
+
 ---
 
-## Phase C — Communication (messaging/push/badges/PWA install UX COMPLETE · Resend email pending)
+## Phase C — Communication (COMPLETE ✓)
 
 ### Done
 - Storage auto-delete old hero/logo files on replace + remove (`1cde275`)
@@ -166,9 +169,9 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 - Host InstallCard in Settings (`738df0c`) — new `src/lib/useInstallPrompt.ts` (headless hook: `beforeinstallprompt` capture + `install()` + `isIOSSafari`, reuses `isStandalone()`); guest `InstallPrompt.tsx` refactored to consume it; new `src/components/host/InstallCard.tsx` rendered above the Notifications card, hoisted above the push-loading guard.
 - Host-first installed-app routing + booking-scoped pointer + 'already installed' (`9450fe9`) — `App.tsx` Landing order: authed→/dashboard, valid saved guest→/guest, standalone(logged-out,no guest)→/login, else marketing LandingContent. `GuestPage` writes `arrivly_last_guest` on active, deletes on thankyou/neutral/expired. `useInstallPrompt` tracks `installed`; `InstallCard` shows "Arrivly is installed on this device".
 - beforeinstallprompt early-capture + accurate Chromium fallback (`8cdfea1`) — inline `<head>` script in `index.html` captures `beforeinstallprompt`/`appinstalled` into `window.__arrivlyInstall` before the bundle loads; `useInstallPrompt` reads that global. Added `isChromium` (copy only): on Chromium with no one-tap offer, guide to the browser menu → Install / Add to Home screen instead of "open in Chrome".
+- Transactional email (`3a77595`, path fix `53e6460`) — `api/_lib/email.ts` (Resend `sendEmail()` — never throws, scrubs key, `replyTo`; `welcomeEmail()` + `trialReminderEmail()` builders; sender `hello@anna-stays.fi`, reply-to `info@anna-stays.fi`); `api/send-welcome.ts` (Bearer-gated POST, atomic `welcome_email_sent_at` claim, recipient from DB only, rolls stamp back on send failure, fired fire-and-forget from `OnboardingFlow.finish()`); `api/cron-trial-ending.ts` extended: atomic `trial_reminder_sent_at` stamp before send, real `daysLeft`, push + email, returns `{ok, eligible, pushed, emailed}`; `api/send-email.ts` stays Tier-2 stub. `RESEND_API_KEY` env var (server-side, no `VITE_` prefix). Verified end-to-end: welcome stamped, day-25 reminder received at `udy.bar.yosef@gmail.com`.
 
-### Next
-- **Prompt 11 — Resend email (only remaining Phase C item):** add `resend` dep; `api/_lib/email.ts` (from `Arrivly <hello@anna-stays.fi>`, reply-to info@anna-stays.fi); `api/send-welcome.ts` (after signup); extend `api/cron-trial-ending.ts` to also send the day-25 reminder email; add `hosts.trial_reminder_sent_at` column; compute real days-left from `trial_ends_at`. `api/send-email.ts` stays a Tier-2 stub. NEEDS security-auditor (adds `RESEND_API_KEY`).
+**Phase C is 100% complete. Next: Phase D — Superadmin.**
 
 ---
 
@@ -249,6 +252,10 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 
 - **`AbortError: Registration failed - push service error` is a device / local-Chrome state, not an app bug.** Diagnosed on a Redmi Note 13 Pro 5G (HyperOS): web push worked for other sites but failed for Arrivly. Tells: permission "allowed", error thrown by `pushManager.subscribe`, and an EMPTY `chrome://gcm-internals` Registration Log = the failure is LOCAL (before any FCM round-trip), not Google-side. Cause was corrupted local notification state tangled with the installed WebAPK's notification delegation ("Managed by Arrivly"). Fix that worked: uninstall the app → Chrome site settings → Delete data and reset permissions → reboot → enable in a clean tab. Treat web push as best-effort — unreliable on Xiaomi/HyperOS and other battery-aggressive Android ROMs; the in-app 15s poll + host-always-notified is the fallback, so a guest device that can't register push still works.
 
+- **`src/lib/api.ts` already prefixes `BASE = '/api'`** — callers must pass the path **without** a leading `/api` (e.g. `api.post('/send-welcome')`). Passing `/api/send-welcome` produces `/api/api/send-welcome` (404) — silently swallowed by a `.catch(() => {})`. Always check the helper before writing a new call.
+
+- **A Vercel environment-variable change only takes effect after a redeploy.** Adding or rotating a secret in the Vercel dashboard does not hot-reload running functions. Trigger a redeploy (push a commit, or use the Vercel dashboard "Redeploy" button) immediately after any env-var change and confirm the new deployment is READY before testing.
+
 ---
 
 ## Workflow
@@ -298,15 +305,14 @@ Locked product decisions:
 Phases:
 - **A — Guest-page value:** COMPLETE ✓ A1 city guide (`de3eb37`), A2 host picks (`081f7eb`, `631d7c0`), A3 city events (`39ef5c9`, `0a22f04`), A4 guest chatbot (`5a53223`).
 - **B — Guest look & feel:** COMPLETE ✓ Photo hero + accent scrim, logo/cover upload, Unsplash city default with attribution, Storage signed-URL fix. (`d2bbe37`, `45e1c70`, `9dcc1f6`, `7da1c85`, `72e8f41`)
-- **C — Communication:** Messaging + push + unread badges COMPLETE (`94e1fc0`→`3dbd8a8`); guest More-tab push UX redesign + Resend transactional email (welcome + day-25 trial reminder) remain. See Phase C section above.
+- **C — Communication:** COMPLETE ✓ Messaging + push + badges + PWA install UX + transactional email (welcome + day-25 reminder). (`94e1fc0`→`53e6460`)
 - **D — Superadmin:** Service-role admin API (superadmin-gated) + wire the existing `/admin`
   dashboard (currently blind because hosts RLS = own-row-only) + read-only impersonate.
 - **E — Billing (Tier-1 Stripe):** create-subscription, billing-portal, stripe-webhook (signature
   verified), subscription lifecycle, guest-page grace/expired enforcement.
 - **F — Tier-2 booking system:** Full booking (availability → request → approve → pay →
   manage) on the €49 price, referencing Anna's Stays components. Built on working Stripe.
-- **G — Pre-launch hardening:** cron follow-ups (sync-ical real-feed test, trial idempotency
-  `trial_reminder_sent_at` column), iCal SSRF blocklist + rate limit, cron batching/maxDuration
+- **G — Pre-launch hardening:** cron follow-ups (sync-ical real-feed test), iCal SSRF blocklist + rate limit, cron batching/maxDuration
   at scale, mobile drawer a11y (Escape-to-close, focus return), dead-code sweep, full security
   audit.
   - Add server-side file-size cap in `api/create-upload-url.ts` (client guards are 5 MB cover /
