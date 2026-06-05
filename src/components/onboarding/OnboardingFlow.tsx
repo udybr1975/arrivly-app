@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
+import { api } from '../../lib/api'
 
 interface S1 { brandName: string; whatsapp: string; logoFileName: string }
 interface S2 { country: string; city: string; neighborhood: string; street: string; streetNumber: string }
@@ -55,6 +56,8 @@ export default function OnboardingFlow() {
           street_number: s2.streetNumber,
         })
       if (hostErr) throw hostErr
+
+      void api.post('/api/send-welcome', {}).catch(() => {})
 
       const { data: existing } = await supabase
         .from('apartments')
