@@ -1,5 +1,7 @@
 # Arrivly — CLAUDE.md
 
+> **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
+
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
 
@@ -92,6 +94,8 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 **Host: Anna Banana** (udy.bar.yosef@gmail.com) — owns two apartments:
 - **Sweet home** — id: `d9614d11-d573-4ff0-961a-54c5ea37c2bd`, Etu Töölö Helsinki, token: `ARR-SWEET1`. House rules AI-polished.
 - **Test Apartment 1** — id: `aaaaaaaa-0000-0000-0000-000000000001`, Kallio Helsinki, accent #5a1a2a (Wine)
+- **Casa Marco** — `d81e4e89-385a-4886-b461-ba952c78e7f8`, El Born Barcelona, token `ARR-BCN777` (booking 1–5 Jun 2026 ended → thank-you state, guest "Marco").
+- **Maison Lumiere** — `d7f47672-fde5-4da1-91ae-0f9f774732fd`, Le Marais Paris, token `ARR-PAR777` (booking 3–12 Jun 2026 ongoing → active page, guest "Sophie"; has WiFi + rules + private check-in door code 4521).
 
 **Host: Udyni** (udy.baryosef@jchelsinki.fi) — owns:
 - **Penthouse in the sky** — id: `9b03a763-3ca6-4d1f-946c-d4e1f977d614`, token: `ARR-PENTH1`
@@ -145,7 +149,7 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 
 ---
 
-## Phase C — Communication (messaging/push/badges COMPLETE · Resend email pending)
+## Phase C — Communication (messaging/push/badges/PWA install UX COMPLETE · Resend email pending)
 
 ### Done
 - Storage auto-delete old hero/logo files on replace + remove (`1cde275`)
@@ -157,10 +161,14 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 - Guest push subscribe UI (`8497496`) — `webpush.ts` refactored: private `acquirePushSubscription()` shared by `subscribeToPush` (host, direct DB) and `subscribeGuestToPush(aptId, token)` (POSTs to `/api/guest-subscribe`); `iosNeedsHomeScreen()` shared helper. First-message nudge in `MessageHost.tsx` (post-send, per-booking localStorage flag, `arrivly_guest_push_nudge_${token}`). More-tab permanent push control in `GuestPage.tsx` (state machine: loading/off/on/blocked/ios/unsupported; resets on each More-tab entry; no turn-off button — guests can't delete their RLS-blocked row). `&msg=1` deep-link: once-guarded effect → `setActiveTab('more')` + `setShowMessages(true)`; `MessageHost.onClose` lands on More tab.
 - Unread badges (`c294bda`) — `Layout.tsx`: sidebar count pill on Messages nav + numeric host app badge (`navigator.setAppBadge(count)`); `countUnread` = exact head-count WHERE sender_role='guest' AND read_at IS NULL (RLS-scoped); refreshed on mount + 30s poll + visibilitychange + `arrivly:messages-read` window event. `Messages.tsx`: dispatches `arrivly:messages-read` after mark-read in `openThread` so Layout recounts live. `BookingManager.tsx`: per-booking dot on Upcoming + Past list cards (not calendar); also listens for `arrivly:messages-read` to clear dots live. `sw.js` bumped v3→v4; push handler sets guest DOT badge (`setAppBadge()` no-arg) for /guest URLs only; notificationclick clears it for /guest URLs only. `GuestPage.tsx`: `clearAppBadge()` on pageState=active, on &msg=1 auto-open, on "Open messages" click.
 - PWA relaunch + push diagnostic (`3dbd8a8`) — Fix 1: `GuestPage.tsx` writes `arrivly_last_guest={apt,token}` to localStorage on the active guest page; `App.tsx` Landing redirects a NOT-authed standalone launch that has a valid saved guest to `/guest?apt=…&token=…`, so an installed guest opens their own page instead of the marketing landing. Fix 2: `webpush.ts` adds optional `detail?: string` to the failure result (subscribe error name+message / `missing keys` / `http <status>`); the GuestPage More-tab control and the MessageHost nudge surface it on screen. Reviewer W1 (clear stale detail on retry), W2 (non-Error throw guard), W4 (try/catch localStorage) applied. iOS caveat: installed-app storage is isolated from Safari, so Fix 1 works on Android, not iOS.
+- Install-aware guest More-tab push + friendly failure copy (`3f9ceb6`) — `webpush.ts` adds `isStandalone()`; `GuestPage` `PushNotifState` gains `needs-install`; `computePushState` order ios→unsupported→tab(needs-install)→blocked/on/off; captured `beforeinstallprompt` for an in-More Android one-tap install CTA; once-per-booking first-launch auto-enable when standalone; raw `AbortError…` replaced everywhere with a friendly message (More-tab control + `MessageHost` nudge).
+- Non-Chromium install fallback (`41eaece`) — Firefox never fires `beforeinstallprompt`; the guest needs-install no-button branch shows a Copy-link button + "best on Chrome" steer + Firefox menu line (keyed off `canInstall` only, no UA sniff).
+- Host InstallCard in Settings (`738df0c`) — new `src/lib/useInstallPrompt.ts` (headless hook: `beforeinstallprompt` capture + `install()` + `isIOSSafari`, reuses `isStandalone()`); guest `InstallPrompt.tsx` refactored to consume it; new `src/components/host/InstallCard.tsx` rendered above the Notifications card, hoisted above the push-loading guard.
+- Host-first installed-app routing + booking-scoped pointer + 'already installed' (`9450fe9`) — `App.tsx` Landing order: authed→/dashboard, valid saved guest→/guest, standalone(logged-out,no guest)→/login, else marketing LandingContent. `GuestPage` writes `arrivly_last_guest` on active, deletes on thankyou/neutral/expired. `useInstallPrompt` tracks `installed`; `InstallCard` shows "Arrivly is installed on this device".
+- beforeinstallprompt early-capture + accurate Chromium fallback (`8cdfea1`) — inline `<head>` script in `index.html` captures `beforeinstallprompt`/`appinstalled` into `window.__arrivlyInstall` before the bundle loads; `useInstallPrompt` reads that global. Added `isChromium` (copy only): on Chromium with no one-tap offer, guide to the browser menu → Install / Add to Home screen instead of "open in Chrome".
 
 ### Next
-- **Guest More-tab push UX redesign (next):** in a browser tab show an **Install the app** CTA instead of "Turn on notifications"; when running as the installed app (`display-mode: standalone`) show **Turn on notifications** only and hide the install CTA, and prompt to enable on first app launch. Rationale: push subscriptions are PER-CONTEXT — a browser tab and the installed WebAPK each create their own subscription (separate FCM endpoints, DB-verified), so enable where the guest actually uses it. Install-first also matches iOS (push only works from the installed PWA). Pre-launch: soften the raw `AbortError…` text shown to guests to a friendly message.
-- **Prompt 11 — Resend email:** add `resend` dep; `api/_lib/email.ts` (from `Arrivly <hello@anna-stays.fi>`, reply-to info@anna-stays.fi); `api/send-welcome.ts` (after signup); extend `api/cron-trial-ending.ts` to also send day-25 reminder email; add `hosts.trial_reminder_sent_at` column (push+email idempotency); compute real days-left from `trial_ends_at`. `api/send-email.ts` stays as Tier-2 stub.
+- **Prompt 11 — Resend email (only remaining Phase C item):** add `resend` dep; `api/_lib/email.ts` (from `Arrivly <hello@anna-stays.fi>`, reply-to info@anna-stays.fi); `api/send-welcome.ts` (after signup); extend `api/cron-trial-ending.ts` to also send the day-25 reminder email; add `hosts.trial_reminder_sent_at` column; compute real days-left from `trial_ends_at`. `api/send-email.ts` stays a Tier-2 stub. NEEDS security-auditor (adds `RESEND_API_KEY`).
 
 ---
 
