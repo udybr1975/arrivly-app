@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useInstallPrompt } from '../../lib/useInstallPrompt'
 
 export default function InstallCard() {
-  const { canInstall, isIOSSafari, standalone, install, installed } = useInstallPrompt()
+  const { canInstall, isIOSSafari, isChromium, standalone, install, installed } = useInstallPrompt()
   const [copiedLink, setCopiedLink] = useState(false)
   const [busy, setBusy] = useState(false)
 
@@ -37,8 +37,28 @@ export default function InstallCard() {
         <>
           <div className="text-[15px] font-semibold text-white mb-1">Arrivly is installed on this device</div>
           <p className="text-[12px] text-gray-400 leading-relaxed">
-            You're all set — open Arrivly from your home screen. You can turn on notifications below.
+            You&rsquo;re all set — open Arrivly from your home screen. You can turn on notifications below.
           </p>
+        </>
+      ) : isChromium ? (
+        <>
+          <div className="text-[15px] font-semibold text-white mb-1">Install Arrivly on this device</div>
+          <p className="text-[12px] text-gray-400 leading-relaxed mb-4">
+            If you don&rsquo;t see an install prompt here, open the browser menu (&lsquo;⋮&rsquo;, top-right) and
+            choose &lsquo;Add to Home screen&rsquo; or &lsquo;Install app&rsquo;. That installs Arrivly the same way.
+          </p>
+          <button
+            onClick={() => {
+              navigator.clipboard.writeText(window.location.href).then(() => {
+                setCopiedLink(true)
+                setTimeout(() => setCopiedLink(false), 2000)
+              }).catch(() => {})
+            }}
+            className="bg-white text-[#1c1c1a] px-4 py-2 rounded-[8px] text-xs font-semibold hover:opacity-80 transition-opacity"
+          >
+            {copiedLink ? 'Link copied ✓' : 'Copy link'}
+          </button>
+          <p className="text-[11px] text-gray-500 mt-2">Copying the link lets you install on another device.</p>
         </>
       ) : (
         <>

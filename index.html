@@ -11,6 +11,21 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <meta name="apple-mobile-web-app-title" content="Arrivly">
     <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+    <script>
+      (function () {
+        window.__arrivlyInstall = { prompt: null, installed: false };
+        window.addEventListener('beforeinstallprompt', function (e) {
+          e.preventDefault();
+          window.__arrivlyInstall.prompt = e;
+          window.dispatchEvent(new Event('arrivly:installprompt'));
+        });
+        window.addEventListener('appinstalled', function () {
+          window.__arrivlyInstall.installed = true;
+          window.__arrivlyInstall.prompt = null;
+          window.dispatchEvent(new Event('arrivly:installed'));
+        });
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
