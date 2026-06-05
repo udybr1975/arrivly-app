@@ -1,10 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Download, Share } from 'lucide-react'
-
-interface BeforeInstallPromptEvent extends Event {
-  prompt(): Promise<void>
-  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
-}
+import { useInstallPrompt } from '../../lib/useInstallPrompt'
 
 interface Props {
   accentColor: string
@@ -14,55 +10,38 @@ const DISMISSED_KEY = 'arrivly_install_dismissed'
 
 export default function InstallPrompt({ accentColor }: Props) {
   const [visible, setVisible] = useState(false)
-  const [isIOS, setIsIOS] = useState(false)
-  const deferredPrompt = useRef<BeforeInstallPromptEvent | null>(null)
+  const { canInstall, isIOSSafari, standalone, install } = useInstallPrompt()
+  // Mirror canInstall to a ref so the 15s timer reads the current value at fire time
+  // rather than the stale value captured when the effect ran.
+  const canInstallRef = useRef(false)
+  useEffect(() => { canInstallRef.current = canInstall }, [canInstall])
 
   useEffect(() => {
-    if (
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as any).standalone === true
-    ) return
-
+    if (standalone) return
     if (localStorage.getItem(DISMISSED_KEY) === '1') return
 
-    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent)
-    const iosSafari = ios && !/crios|fxios/i.test(navigator.userAgent)
-    setIsIOS(iosSafari)
-
-    const handlePrompt = (e: Event) => {
-      e.preventDefault()
-      deferredPrompt.current = e as BeforeInstallPromptEvent
-    }
-    window.addEventListener('beforeinstallprompt', handlePrompt as EventListener)
-
     const timer = setTimeout(() => {
-      if (deferredPrompt.current || iosSafari) setVisible(true)
+      if (canInstallRef.current || isIOSSafari) setVisible(true)
     }, 15000)
 
-    return () => {
-      clearTimeout(timer)
-      window.removeEventListener('beforeinstallprompt', handlePrompt as EventListener)
-    }
-  }, [])
+    return () => clearTimeout(timer)
+  }, [standalone, isIOSSafari])
 
   function dismiss() {
     localStorage.setItem(DISMISSED_KEY, '1')
     setVisible(false)
   }
 
-  async function install() {
-    if (!deferredPrompt.current) return
-    deferredPrompt.current.prompt()
-    await deferredPrompt.current.userChoice
+  async function handleInstall() {
+    await install()
     dismiss()
-    deferredPrompt.current = null
   }
 
   if (!visible) return null
 
   return (
     <div className="fixed bottom-16 left-4 right-4 z-[35] bg-white border border-[#ddd8ce] rounded-[10px] p-4 shadow-lg">
-      {isIOS ? (
+      {isIOSSafari ? (
         <>
           <div className="flex items-start gap-3 mb-3">
             <Share size={18} className="shrink-0 mt-0.5" style={{ color: accentColor }} />
@@ -97,7 +76,7 @@ export default function InstallPrompt({ accentColor }: Props) {
           </div>
           <div className="flex gap-2">
             <button
-              onClick={install}
+              onClick={handleInstall}
               className="px-4 py-1.5 rounded-[7px] text-xs font-semibold text-white hover:opacity-80 transition-opacity"
               style={{ backgroundColor: accentColor }}
             >

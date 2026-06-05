@@ -3,6 +3,7 @@ import { supabase } from '../../lib/supabase'
 import { useToast } from '../shared/Toast'
 import { checkPermission, subscribeToPush, unsubscribeFromPush, isSubscribed, reaffirmSubscription } from '../../lib/webpush'
 import Loader from '../shared/Loader'
+import InstallCard from './InstallCard'
 
 type PushState = 'loading' | 'off' | 'on' | 'blocked'
 
@@ -70,12 +71,15 @@ export default function Settings() {
     setBusy(false)
   }
 
-  if (pushState === 'loading') return <Loader />
-
   return (
     <div className="max-w-xl">
       <h1 className="text-[17px] font-serif font-light text-[#1a1a1a] mb-4">Settings</h1>
 
+      {/* InstallCard mounts immediately so its beforeinstallprompt listener
+          is registered before the push-loading async resolves. */}
+      <InstallCard />
+
+      {pushState === 'loading' ? <Loader /> : (
       <div className="bg-[#1c1c1a] rounded-[10px] p-5">
         <div className="text-[11px] uppercase tracking-[.08em] text-gray-400 mb-3">Notifications</div>
 
@@ -120,6 +124,7 @@ export default function Settings() {
           </>
         )}
       </div>
+      )}
     </div>
   )
 }
