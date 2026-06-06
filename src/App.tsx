@@ -19,6 +19,7 @@ import Settings from './components/host/Settings'
 import Messages from './components/host/Messages'
 import GuestPage from './components/guest/GuestPage'
 import SuperAdmin from './components/admin/SuperAdmin'
+import { ARRIVLY_CONFIG } from './config'
 
 const FEATURES = [
   { emoji: '📲', title: 'Print one QR', desc: 'Place it in the apartment. Never update it. URL never changes.' },
@@ -91,6 +92,7 @@ function LandingContent() {
 function Landing() {
   const [checking, setChecking] = useState(true)
   const [authed, setAuthed] = useState(false)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const [standalone, setStandalone] = useState(false)
   const [savedGuest, setSavedGuest] = useState<{ apt: string; token: string } | null>(null)
 
@@ -104,6 +106,7 @@ function Landing() {
           window.matchMedia('(display-mode: standalone)').matches ||
           (navigator as any).standalone === true
         setAuthed(!!session)
+        setUserEmail(session?.user?.email ?? null)
         setStandalone(isStandalone)
         // savedGuest is intentionally only populated in standalone mode; the render
         // order (savedGuest before standalone) is correct for both current and future use.
@@ -125,7 +128,7 @@ function Landing() {
   }, [])
 
   if (checking) return <Loader />
-  if (authed) return <Navigate to="/dashboard" replace />
+  if (authed) return <Navigate to={userEmail === ARRIVLY_CONFIG.adminEmail ? '/admin' : '/dashboard'} replace />
   if (savedGuest) return <Navigate to={`/guest?apt=${savedGuest.apt}&token=${savedGuest.token}`} replace />
   // Installed app (standalone), logged out, no active guest booking → host login.
   // Create account link lives on the Login page so new hosts are covered too.

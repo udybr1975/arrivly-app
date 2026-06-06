@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
+import { ARRIVLY_CONFIG } from '../../config'
 
 const NAV = [
   { to: '/dashboard',          label: 'Overview',     emoji: '📊', end: true },
@@ -193,6 +194,22 @@ export default function Layout() {
                 Add card
               </NavLink>
             </div>
+          )}
+          {email === ARRIVLY_CONFIG.adminEmail && (
+            <NavLink
+              to="/admin"
+              onClick={closeMenu}
+              className={({ isActive }) =>
+                `flex items-center gap-[7px] px-[10px] py-[7px] rounded-[7px] text-xs cursor-pointer transition-colors ${
+                  isActive
+                    ? 'bg-white text-[#1a1a1a] font-semibold shadow-[0_1px_2px_rgba(0,0,0,.06)]'
+                    : 'text-[#666] hover:bg-white/60'
+                }`
+              }
+            >
+              <span className="text-sm">🔒</span>
+              ← Admin
+            </NavLink>
           )}
           <button
             onClick={signOut}
