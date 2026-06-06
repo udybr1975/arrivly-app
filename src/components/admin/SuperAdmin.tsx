@@ -47,6 +47,7 @@ interface AdminOverview {
     mrr_cents: number
   }
   plans: PlanRow[]
+  trial_days: number
 }
 
 interface ImpersonateApt {
@@ -86,19 +87,6 @@ interface ImpersonateSnapshot {
   apartments: ImpersonateApt[]
 }
 
-interface UpdateHostResponse {
-  tier: number
-  subscription_status: string
-  trial_ends_at: string | null
-  price_override_cents: number | null
-  discount_percent: number | null
-  discount_until: string | null
-  property_cap_override: number | null
-  effective_price_cents: number
-  plan_label: string | null
-  plan_max_properties: number | null
-}
-
 interface ManageDraft {
   tier: number
   subscription_status: string
@@ -107,6 +95,26 @@ interface ManageDraft {
   discount_until: string
   property_cap_override: string
   extend_days: string
+}
+
+interface AuditEntry {
+  id: string
+  actor_email: string
+  action: string
+  target_host_id: string | null
+  detail: Record<string, unknown> | null
+  created_at: string
+}
+
+interface AuditResponse {
+  entries: AuditEntry[]
+  hostNames: Record<string, string>
+}
+
+interface PlanSettingsTier {
+  tier: number
+  price: string
+  cap: string
 }
 
 type StatusFilter = 'all' | 'trial' | 'active' | 'grace' | 'expired'
@@ -141,6 +149,26 @@ function fmtDate(s: string | null | undefined) {
   return new Date(s).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: '2-digit' })
 }
 
+function auditSummary(action: string, detail: Record<string, unknown> | null): string {
+  if (!detail) return ''
+  if (action === 'update_host') {
+    const patch = (detail.patch as Record<string, unknown>) ?? {}
+    const fields = Object.keys(patch).filter(k => k !== 'trial_ends_at').map(k => k.replace(/_/g, ' '))
+    const trialPatch = 'trial_ends_at' in patch ? ['trial extended'] : []
+    const ext = detail.extend_trial_days ? [`+${detail.extend_trial_days}d`] : []
+    return [...fields, ...trialPatch, ...ext].join(', ') || '—'
+  }
+  if (action === 'update_plans') {
+    const n  = Array.isArray(detail.plans) ? detail.plans.length : 0
+    const td = typeof detail.trial_days === 'number' ? ` · trial: ${detail.trial_days}d` : ''
+    return `${n} tier${n !== 1 ? 's' : ''}${td}`
+  }
+  if (action === 'impersonate_view') {
+    return `${detail.apartments ?? '?'} propert${Number(detail.apartments) !== 1 ? 'ies' : 'y'}`
+  }
+  return ''
+}
+
 export default function SuperAdmin() {
   const navigate = useNavigate()
   const [data, setData] = useState<AdminOverview | null>(null)
@@ -161,6 +189,20 @@ export default function SuperAdmin() {
   const [manageDraft, setManageDraft]     = useState<ManageDraft | null>(null)
   const [manageLoading, setManageLoading] = useState(false)
   const [manageErr, setManageErr]         = useState('')
+
+  // Plan settings state
+  const [showPlanSettings, setShowPlanSettings] = useState(false)
+  const [planTierDrafts, setPlanTierDrafts]     = useState<PlanSettingsTier[]>([])
+  const [trialDaysDraft, setTrialDaysDraft]     = useState('')
+  const [plansLoading, setPlansLoading]         = useState(false)
+  const [plansErr, setPlansErr]                 = useState('')
+  const [plansSaved, setPlansSaved]             = useState(false)
+
+  // Audit log state
+  const [showAudit, setShowAudit]       = useState(false)
+  const [auditData, setAuditData]       = useState<AuditResponse | null>(null)
+  const [auditLoading, setAuditLoading] = useState(false)
+  const [auditErr, setAuditErr]         = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -237,34 +279,34 @@ export default function SuperAdmin() {
       ? null
       : Math.round(parseFloat(manageDraft.price_override_cents) * 100)
     if (newPrice !== null && !Number.isFinite(newPrice)) {
-      setManageErr('Enter a valid price or leave blank'); setManageLoading(false); return
+      setManageErr('Enter a valid price or leave blank'); return
     }
     if (newPrice !== original.price_override_cents) patch.price_override_cents = newPrice
 
     const newDiscount = manageDraft.discount_percent.trim() === ''
       ? null
       : parseInt(manageDraft.discount_percent, 10)
-    if (newDiscount !== null && !Number.isFinite(newDiscount)) {
-      setManageErr('Enter a valid discount % or leave blank'); setManageLoading(false); return
+    if (newDiscount !== null && (!Number.isFinite(newDiscount) || newDiscount < 0 || newDiscount > 100)) {
+      setManageErr('Discount must be 0–100'); return
     }
     if (newDiscount !== original.discount_percent) patch.discount_percent = newDiscount
 
-    const newUntil    = manageDraft.discount_until.trim() || null
-    const origUntil   = original.discount_until ? original.discount_until.slice(0, 10) : null
+    const newUntil  = manageDraft.discount_until.trim() || null
+    const origUntil = original.discount_until ? original.discount_until.slice(0, 10) : null
     if (newUntil !== origUntil) patch.discount_until = newUntil
 
     const newCap = manageDraft.property_cap_override.trim() === ''
       ? null
       : parseInt(manageDraft.property_cap_override, 10)
     if (newCap !== null && !Number.isFinite(newCap)) {
-      setManageErr('Enter a valid property cap or leave blank'); setManageLoading(false); return
+      setManageErr('Enter a valid property cap or leave blank'); return
     }
     if (newCap !== original.property_cap_override) patch.property_cap_override = newCap
 
     const rawExtend  = manageDraft.extend_days.trim()
     const extendDays = rawExtend !== '' ? parseInt(rawExtend, 10) : undefined
     if (extendDays !== undefined && (!Number.isFinite(extendDays) || extendDays < 1)) {
-      setManageErr('Extend days must be a positive number'); setManageLoading(false); return
+      setManageErr('Extend days must be a positive number'); return
     }
 
     if (Object.keys(patch).length === 0 && !extendDays) { closeManage(); return }
@@ -272,30 +314,90 @@ export default function SuperAdmin() {
     setManageLoading(true)
     setManageErr('')
     try {
-      const result = await api.post<UpdateHostResponse>('/admin-update-host', {
+      await api.post('/admin-update-host', {
         host_id: manageHostId,
         patch,
         ...(extendDays ? { extend_trial_days: extendDays } : {}),
       })
-      setData(prev => prev ? {
-        ...prev,
-        hosts: prev.hosts.map(h => h.id === manageHostId ? {
-          ...h,
-          tier:                  result.tier,
-          subscription_status:   result.subscription_status,
-          trial_ends_at:         result.trial_ends_at,
-          price_override_cents:  result.price_override_cents,
-          discount_percent:      result.discount_percent,
-          discount_until:        result.discount_until,
-          property_cap_override: result.property_cap_override,
-          effective_price_cents: result.effective_price_cents,
-        } : h),
-      } : prev)
       closeManage()
+      // Re-fetch to refresh totals, MRR, and days_left (best-effort; stale on failure)
+      try {
+        const fresh = await api.get<AdminOverview>('/admin-overview')
+        setData(fresh)
+      } catch {}
     } catch (e: unknown) {
       setManageErr(e instanceof Error ? e.message : 'Save failed')
     } finally {
       setManageLoading(false)
+    }
+  }
+
+  function togglePlanSettings() {
+    if (!showPlanSettings && data) {
+      setPlanTierDrafts(data.plans.map(p => ({
+        tier:  p.tier,
+        price: p.price_cents % 100 === 0
+          ? String(p.price_cents / 100)
+          : (p.price_cents / 100).toFixed(2),
+        cap:   p.max_properties !== null ? String(p.max_properties) : '',
+      })))
+      setTrialDaysDraft(String(data.trial_days))
+      setPlansErr('')
+      setPlansSaved(false)
+    }
+    setShowPlanSettings(s => !s)
+  }
+
+  async function savePlans() {
+    setPlansErr('')
+    setPlansSaved(false)
+    for (const t of planTierDrafts) {
+      const priceNum = parseFloat(t.price)
+      if (!Number.isFinite(priceNum) || priceNum < 0 || priceNum > 1000) {
+        setPlansErr(`Tier ${t.tier}: price must be 0–1000`); return
+      }
+      if (t.cap.trim() !== '') {
+        const capNum = parseInt(t.cap, 10)
+        if (!Number.isFinite(capNum) || capNum < 1) {
+          setPlansErr(`Tier ${t.tier}: property cap must be at least 1`); return
+        }
+      }
+    }
+    const trialNum = parseInt(trialDaysDraft, 10)
+    if (!Number.isFinite(trialNum) || trialNum < 1 || trialNum > 365) {
+      setPlansErr('Trial days must be 1–365'); return
+    }
+    const plansPayload = planTierDrafts.map(t => ({
+      tier:           t.tier,
+      price_cents:    Math.round(parseFloat(t.price) * 100),
+      max_properties: t.cap.trim() !== '' ? parseInt(t.cap, 10) : null,
+    }))
+    setPlansLoading(true)
+    try {
+      const result = await api.post<{ plans: PlanRow[]; trial_days: number }>(
+        '/admin-plans',
+        { plans: plansPayload, trial_days: trialNum }
+      )
+      setData(prev => prev ? { ...prev, plans: result.plans, trial_days: result.trial_days } : prev)
+      setPlansSaved(true)
+      setTimeout(() => setPlansSaved(false), 3000)
+    } catch (e: unknown) {
+      setPlansErr(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setPlansLoading(false)
+    }
+  }
+
+  async function loadAudit() {
+    setAuditLoading(true)
+    setAuditErr('')
+    try {
+      const result = await api.get<AuditResponse>('/admin-audit')
+      setAuditData(result)
+    } catch (e: unknown) {
+      setAuditErr(e instanceof Error ? e.message : 'Failed to load')
+    } finally {
+      setAuditLoading(false)
     }
   }
 
@@ -319,7 +421,8 @@ export default function SuperAdmin() {
     const previewBase  = manageDraft.price_override_cents.trim() !== ''
       ? Math.round(parseFloat(manageDraft.price_override_cents) * 100)
       : (previewPlan?.price_cents ?? 1900)
-    const previewPct   = manageDraft.discount_percent.trim() !== '' ? parseInt(manageDraft.discount_percent, 10) : 0
+    const rawPct       = manageDraft.discount_percent.trim() !== '' ? parseInt(manageDraft.discount_percent, 10) : 0
+    const previewPct   = Number.isFinite(rawPct) ? Math.max(0, Math.min(100, rawPct)) : 0
     const discActive   = previewPct > 0 &&
       (!manageDraft.discount_until || new Date(manageDraft.discount_until) >= new Date())
     const previewEff   = discActive ? Math.round(previewBase * (1 - previewPct / 100)) : previewBase
@@ -844,6 +947,137 @@ export default function SuperAdmin() {
               </div>
             )
           })}
+        </div>
+
+        {/* Plan settings section */}
+        <div className="mt-6">
+          <button
+            onClick={togglePlanSettings}
+            className="text-[11px] text-[#666] hover:text-[#1a1a1a] transition-colors flex items-center gap-1"
+          >
+            {showPlanSettings ? '▲' : '▼'} Plan settings
+          </button>
+          {showPlanSettings && (
+            <div className="mt-3 bg-white border border-[#ddd8ce] rounded-[10px] p-4">
+              <div className="text-[10px] uppercase tracking-[.06em] text-[#999] mb-3">Plan catalog</div>
+              <div className="space-y-3">
+                {planTierDrafts.map(t => {
+                  const p = plans.find(pl => pl.tier === t.tier)
+                  return (
+                    <div key={t.tier} className="grid grid-cols-[80px_1fr_1fr_64px] items-center gap-2">
+                      <div className="text-[11px] text-[#666]">
+                        Tier {t.tier}
+                        {p?.label && <span className="text-[#aaa] ml-1">({p.label})</span>}
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[10px] text-[#888] pointer-events-none">{ARRIVLY_CONFIG.currencySymbol}</span>
+                        <input
+                          type="number" min={0} max={1000} step="0.01"
+                          value={t.price}
+                          onChange={e => setPlanTierDrafts(prev => prev.map(d => d.tier === t.tier ? { ...d, price: e.target.value } : d))}
+                          className="bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] pl-5 pr-2 py-1.5 text-xs text-[#444] focus:border-[#1a1a1a] focus:outline-none w-full"
+                        />
+                      </div>
+                      <input
+                        type="number" min={1} placeholder="Unlimited"
+                        value={t.cap}
+                        onChange={e => setPlanTierDrafts(prev => prev.map(d => d.tier === t.tier ? { ...d, cap: e.target.value } : d))}
+                        className="bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-2.5 py-1.5 text-xs text-[#444] focus:border-[#1a1a1a] focus:outline-none w-full"
+                      />
+                      <div className="text-[10px] text-[#aaa]">props cap</div>
+                    </div>
+                  )
+                })}
+              </div>
+              <div className="flex items-center gap-2.5 mt-3 pt-3 border-t border-[#f0ede6]">
+                <span className="text-[11px] text-[#666] shrink-0">Default trial</span>
+                <input
+                  type="number" min={1} max={365}
+                  value={trialDaysDraft}
+                  onChange={e => setTrialDaysDraft(e.target.value)}
+                  className="bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-2.5 py-1.5 text-xs text-[#444] focus:border-[#1a1a1a] focus:outline-none w-20"
+                />
+                <span className="text-[11px] text-[#aaa]">days (new signups only)</span>
+              </div>
+              <div className="text-[10px] text-[#aaa] mt-2">
+                Price and cap changes affect projections and future trial length. Existing hosts keep their current dates.
+              </div>
+              {plansErr && (
+                <div className="bg-[#fde4e4] text-[#8a1a1a] text-[11px] rounded-[8px] px-3 py-2 mt-2">{plansErr}</div>
+              )}
+              <div className="flex items-center gap-2 mt-3">
+                <button
+                  onClick={savePlans}
+                  disabled={plansLoading}
+                  className={`bg-[#1a1a1a] text-white px-4 py-1.5 rounded-[7px] text-xs font-semibold transition-opacity ${plansLoading ? 'opacity-50 cursor-wait' : 'hover:opacity-80'}`}
+                >
+                  {plansLoading ? 'Saving…' : 'Save plan settings'}
+                </button>
+                {plansSaved && <span className="text-[11px] text-[#2a5c0a]">Saved</span>}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Activity log section */}
+        <div className="mt-4 pb-8">
+          <button
+            onClick={() => {
+              const opening = !showAudit
+              setShowAudit(opening)
+              if (opening && !auditData && !auditLoading) loadAudit()
+            }}
+            className="text-[11px] text-[#666] hover:text-[#1a1a1a] transition-colors flex items-center gap-1"
+          >
+            {showAudit ? '▲' : '▼'} Activity log
+          </button>
+          {showAudit && (
+            <div className="mt-3">
+              {auditLoading && (
+                <div className="text-[11px] text-[#aaa] text-center py-4">Loading…</div>
+              )}
+              {auditErr && (
+                <div className="bg-[#fde4e4] text-[#8a1a1a] text-[11px] rounded-[8px] px-3 py-2">{auditErr}</div>
+              )}
+              {auditData && auditData.entries.length === 0 && (
+                <div className="text-[11px] text-[#aaa] text-center py-4">No activity yet.</div>
+              )}
+              {auditData && auditData.entries.length > 0 && (
+                <div className="space-y-1.5">
+                  {auditData.entries.map(entry => {
+                    const ACTION_LABEL: Record<string, string> = {
+                      update_host:      'Updated host',
+                      impersonate_view: 'Viewed as',
+                      update_plans:     'Updated plans',
+                    }
+                    const label    = ACTION_LABEL[entry.action] ?? entry.action
+                    const hostName = entry.target_host_id
+                      ? (auditData.hostNames[entry.target_host_id] ?? entry.target_host_id.slice(0, 8))
+                      : '—'
+                    const summary  = auditSummary(entry.action, entry.detail)
+                    const ts       = new Date(entry.created_at)
+                    const timeStr  = ts.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+                    return (
+                      <div key={entry.id} className="bg-white border border-[#ddd8ce] rounded-[9px] px-3 py-2">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <span className="text-[11px] font-medium text-[#1a1a1a]">{label}</span>
+                            <span className="text-[10px] text-[#888] ml-1.5">{hostName}</span>
+                            {summary && (
+                              <div className="text-[10px] text-[#aaa] mt-0.5 truncate">{summary}</div>
+                            )}
+                          </div>
+                          <div className="text-[10px] text-[#aaa] shrink-0 whitespace-nowrap">
+                            {fmtDate(entry.created_at)} {timeStr}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
       </div>

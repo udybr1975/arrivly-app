@@ -21,10 +21,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const db = svc()
   try {
     const [
-      { data: hostRows,    error: hostErr    },
-      { data: planRows,    error: planErr    },
-      { data: aptRows,     error: aptErr     },
-      { data: bookingRows, error: bookingErr },
+      { data: hostRows,    error: hostErr      },
+      { data: planRows,    error: planErr      },
+      { data: aptRows,     error: aptErr       },
+      { data: bookingRows, error: bookingErr   },
+      { data: settingsRow, error: settingsErr  },
     ] = await Promise.all([
       db.from('hosts')
         .select('id, brand_name, name, contact_email, city, subscription_status, tier, is_exempt, trial_ends_at, created_at, price_override_cents, discount_percent, discount_until, property_cap_override')
@@ -32,12 +33,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       db.from('plans').select('*').order('tier'),
       db.from('apartments').select('id, host_id'),
       db.from('bookings').select('apartment_id'),
+      db.from('app_settings').select('trial_days').eq('id', 1).maybeSingle(),
     ])
 
-    if (hostErr)    { console.error('[admin-overview] hosts',    hostErr.message?.slice(0, 120));    return res.status(500).json({ error: 'Query failed' }) }
-    if (planErr)    { console.error('[admin-overview] plans',    planErr.message?.slice(0, 120));    return res.status(500).json({ error: 'Query failed' }) }
-    if (aptErr)     { console.error('[admin-overview] apts',     aptErr.message?.slice(0, 120));     return res.status(500).json({ error: 'Query failed' }) }
-    if (bookingErr) { console.error('[admin-overview] bookings', bookingErr.message?.slice(0, 120)); return res.status(500).json({ error: 'Query failed' }) }
+    if (hostErr)     { console.error('[admin-overview] hosts',    hostErr.message?.slice(0, 120));     return res.status(500).json({ error: 'Query failed' }) }
+    if (planErr)     { console.error('[admin-overview] plans',    planErr.message?.slice(0, 120));     return res.status(500).json({ error: 'Query failed' }) }
+    if (aptErr)      { console.error('[admin-overview] apts',     aptErr.message?.slice(0, 120));      return res.status(500).json({ error: 'Query failed' }) }
+    if (bookingErr)  { console.error('[admin-overview] bookings', bookingErr.message?.slice(0, 120));  return res.status(500).json({ error: 'Query failed' }) }
+    if (settingsErr) { console.error('[admin-overview] settings', settingsErr.message?.slice(0, 120)); return res.status(500).json({ error: 'Query failed' }) }
 
     type PlanRow = { tier: number; price_cents: number; max_properties: number | null; includes_booking: boolean }
     const plans = (planRows ?? []) as PlanRow[]
@@ -96,7 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       mrr_cents,
     }
 
-    return res.status(200).json({ hosts, totals, plans })
+    return res.status(200).json({ hosts, totals, plans, trial_days: settingsRow?.trial_days ?? 30 })
   } catch (e) {
     console.error('[admin-overview] unexpected', (e instanceof Error ? e.message : 'unknown').slice(0, 120))
     return res.status(500).json({ error: 'Internal error' })
