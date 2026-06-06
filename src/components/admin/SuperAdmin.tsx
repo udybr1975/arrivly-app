@@ -9,6 +9,7 @@ import InstallCard from '../host/InstallCard'
 
 interface PlanRow {
   tier: number
+  label: string
   price_cents: number
   max_properties: number | null
   includes_booking: boolean
@@ -85,6 +86,29 @@ interface ImpersonateSnapshot {
   apartments: ImpersonateApt[]
 }
 
+interface UpdateHostResponse {
+  tier: number
+  subscription_status: string
+  trial_ends_at: string | null
+  price_override_cents: number | null
+  discount_percent: number | null
+  discount_until: string | null
+  property_cap_override: number | null
+  effective_price_cents: number
+  plan_label: string | null
+  plan_max_properties: number | null
+}
+
+interface ManageDraft {
+  tier: number
+  subscription_status: string
+  price_override_cents: string
+  discount_percent: string
+  discount_until: string
+  property_cap_override: string
+  extend_days: string
+}
+
 type StatusFilter = 'all' | 'trial' | 'active' | 'grace' | 'expired'
 type SortKey = 'expiring' | 'newest' | 'name'
 
@@ -132,6 +156,12 @@ export default function SuperAdmin() {
   const [impersonateId, setImpersonateId]           = useState<string | null>(null)
   const [impersonateErr, setImpersonateErr]         = useState('')
 
+  // Manage drawer state
+  const [manageHostId, setManageHostId]   = useState<string | null>(null)
+  const [manageDraft, setManageDraft]     = useState<ManageDraft | null>(null)
+  const [manageLoading, setManageLoading] = useState(false)
+  const [manageErr, setManageErr]         = useState('')
+
   useEffect(() => {
     let cancelled = false
     api.get<AdminOverview>('/admin-overview')
@@ -171,6 +201,104 @@ export default function SuperAdmin() {
     setImpersonateErr('')
   }
 
+  function openManage(h: HostEntry) {
+    setManageHostId(h.id)
+    setManageDraft({
+      tier:                   h.tier ?? 1,
+      subscription_status:    h.subscription_status ?? 'trial',
+      price_override_cents:   h.price_override_cents !== null ? String(h.price_override_cents / 100) : '',
+      discount_percent:       h.discount_percent !== null ? String(h.discount_percent) : '',
+      discount_until:         h.discount_until ? h.discount_until.slice(0, 10) : '',
+      property_cap_override:  h.property_cap_override !== null ? String(h.property_cap_override) : '',
+      extend_days:            '',
+    })
+    setManageErr('')
+  }
+
+  function closeManage() {
+    setManageHostId(null)
+    setManageDraft(null)
+    setManageErr('')
+  }
+
+  async function saveManage() {
+    if (!manageHostId || !manageDraft || !data) return
+    const original = data.hosts.find(h => h.id === manageHostId)
+    if (!original) return
+
+    const patch: Record<string, unknown> = {}
+
+    if (manageDraft.tier !== (original.tier ?? 1)) patch.tier = manageDraft.tier
+    if (manageDraft.subscription_status !== original.subscription_status) {
+      patch.subscription_status = manageDraft.subscription_status
+    }
+
+    const newPrice = manageDraft.price_override_cents.trim() === ''
+      ? null
+      : Math.round(parseFloat(manageDraft.price_override_cents) * 100)
+    if (newPrice !== null && !Number.isFinite(newPrice)) {
+      setManageErr('Enter a valid price or leave blank'); setManageLoading(false); return
+    }
+    if (newPrice !== original.price_override_cents) patch.price_override_cents = newPrice
+
+    const newDiscount = manageDraft.discount_percent.trim() === ''
+      ? null
+      : parseInt(manageDraft.discount_percent, 10)
+    if (newDiscount !== null && !Number.isFinite(newDiscount)) {
+      setManageErr('Enter a valid discount % or leave blank'); setManageLoading(false); return
+    }
+    if (newDiscount !== original.discount_percent) patch.discount_percent = newDiscount
+
+    const newUntil    = manageDraft.discount_until.trim() || null
+    const origUntil   = original.discount_until ? original.discount_until.slice(0, 10) : null
+    if (newUntil !== origUntil) patch.discount_until = newUntil
+
+    const newCap = manageDraft.property_cap_override.trim() === ''
+      ? null
+      : parseInt(manageDraft.property_cap_override, 10)
+    if (newCap !== null && !Number.isFinite(newCap)) {
+      setManageErr('Enter a valid property cap or leave blank'); setManageLoading(false); return
+    }
+    if (newCap !== original.property_cap_override) patch.property_cap_override = newCap
+
+    const rawExtend  = manageDraft.extend_days.trim()
+    const extendDays = rawExtend !== '' ? parseInt(rawExtend, 10) : undefined
+    if (extendDays !== undefined && (!Number.isFinite(extendDays) || extendDays < 1)) {
+      setManageErr('Extend days must be a positive number'); setManageLoading(false); return
+    }
+
+    if (Object.keys(patch).length === 0 && !extendDays) { closeManage(); return }
+
+    setManageLoading(true)
+    setManageErr('')
+    try {
+      const result = await api.post<UpdateHostResponse>('/admin-update-host', {
+        host_id: manageHostId,
+        patch,
+        ...(extendDays ? { extend_trial_days: extendDays } : {}),
+      })
+      setData(prev => prev ? {
+        ...prev,
+        hosts: prev.hosts.map(h => h.id === manageHostId ? {
+          ...h,
+          tier:                  result.tier,
+          subscription_status:   result.subscription_status,
+          trial_ends_at:         result.trial_ends_at,
+          price_override_cents:  result.price_override_cents,
+          discount_percent:      result.discount_percent,
+          discount_until:        result.discount_until,
+          property_cap_override: result.property_cap_override,
+          effective_price_cents: result.effective_price_cents,
+        } : h),
+      } : prev)
+      closeManage()
+    } catch (e: unknown) {
+      setManageErr(e instanceof Error ? e.message : 'Save failed')
+    } finally {
+      setManageLoading(false)
+    }
+  }
+
   if (loading) return <Loader />
 
   if (loadErr || !data) {
@@ -180,6 +308,217 @@ export default function SuperAdmin() {
       </div>
     )
   }
+
+  // ── Manage overlay (normal-flow faux-viewport, not position:fixed) ────────
+  if (manageHostId && manageDraft) {
+    const manageHost   = data.hosts.find(h => h.id === manageHostId)
+    const brand        = manageHost ? (manageHost.brand_name ?? manageHost.name ?? '—') : '—'
+    const previewPlan  = data.plans.find(p => p.tier === manageDraft.tier)
+
+    // Live effective price preview
+    const previewBase  = manageDraft.price_override_cents.trim() !== ''
+      ? Math.round(parseFloat(manageDraft.price_override_cents) * 100)
+      : (previewPlan?.price_cents ?? 1900)
+    const previewPct   = manageDraft.discount_percent.trim() !== '' ? parseInt(manageDraft.discount_percent, 10) : 0
+    const discActive   = previewPct > 0 &&
+      (!manageDraft.discount_until || new Date(manageDraft.discount_until) >= new Date())
+    const previewEff   = discActive ? Math.round(previewBase * (1 - previewPct / 100)) : previewBase
+    const previewEuros = previewEff / 100
+    const previewStr   = previewEuros % 1 === 0 ? previewEuros.toFixed(0) : previewEuros.toFixed(2)
+
+    const inputCls = 'bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-3 py-2 text-xs text-[#444] focus:border-[#1a1a1a] focus:outline-none w-full'
+
+    return (
+      <div className="min-h-screen bg-[#f0ede6]">
+        <div className="sticky top-0 z-10 bg-white border-b border-[#ddd8ce] px-4 md:px-8 py-2.5 flex items-center gap-3 shadow-sm">
+          <span className="text-[12px] font-medium text-[#1a1a1a] flex-1 truncate">
+            Manage — <strong>{brand}</strong>
+          </span>
+          <button
+            onClick={closeManage}
+            className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1 rounded-[6px] text-[11px] hover:bg-[#f0ede6] transition-colors shrink-0"
+          >
+            Cancel
+          </button>
+        </div>
+
+        <div className="p-4 md:p-8">
+          <div className="max-w-2xl mx-auto space-y-4">
+
+            {/* Tier & Status */}
+            <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 space-y-3">
+              <div className="text-[10px] uppercase tracking-[.06em] text-[#999]">Account</div>
+              <div>
+                <label className="text-[11px] text-[#666] block mb-1">Tier</label>
+                <select
+                  value={manageDraft.tier}
+                  onChange={e => setManageDraft(d => d && { ...d, tier: parseInt(e.target.value, 10) })}
+                  className={inputCls}
+                >
+                  {[1, 2, 3, 4].map(t => {
+                    const p       = data.plans.find(pl => pl.tier === t)
+                    const capStr  = p?.max_properties ? `${p.max_properties} prop` : 'unlimited'
+                    const priceStr = p ? ` · €${(p.price_cents / 100).toFixed(0)}/mo` : ''
+                    return (
+                      <option key={t} value={t}>
+                        {`Tier ${t}${p ? ` — ${p.label} · ${capStr}${priceStr}` : ''}`}
+                      </option>
+                    )
+                  })}
+                </select>
+              </div>
+              <div>
+                <label className="text-[11px] text-[#666] block mb-1">Lifecycle status</label>
+                <select
+                  value={manageDraft.subscription_status}
+                  onChange={e => setManageDraft(d => d && { ...d, subscription_status: e.target.value })}
+                  className={inputCls}
+                >
+                  {['trial', 'active', 'grace', 'expired'].map(s => (
+                    <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
+                  ))}
+                </select>
+                <div className="text-[10px] text-[#aaa] mt-1">Stripe will drive this automatically once billing is live</div>
+              </div>
+            </div>
+
+            {/* Pricing */}
+            <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 space-y-3">
+              <div className="text-[10px] uppercase tracking-[.06em] text-[#999]">Pricing</div>
+              <div>
+                <label className="text-[11px] text-[#666] block mb-1">Price override</label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[#888] pointer-events-none">{ARRIVLY_CONFIG.currencySymbol}</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={1000}
+                    step="0.01"
+                    placeholder={previewPlan ? `${(previewPlan.price_cents / 100).toFixed(0)} (tier default)` : 'Tier default'}
+                    value={manageDraft.price_override_cents}
+                    onChange={e => setManageDraft(d => d && { ...d, price_override_cents: e.target.value })}
+                    className="bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] pl-6 pr-3 py-2 text-xs text-[#444] focus:border-[#1a1a1a] focus:outline-none w-full"
+                  />
+                </div>
+                <div className="text-[10px] text-[#aaa] mt-0.5">Leave blank to use tier default</div>
+              </div>
+              <div>
+                <label className="text-[11px] text-[#666] block mb-1">Discount</label>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      placeholder="0"
+                      value={manageDraft.discount_percent}
+                      onChange={e => setManageDraft(d => d && { ...d, discount_percent: e.target.value })}
+                      className={inputCls}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-[#aaa] pointer-events-none">%</span>
+                  </div>
+                  <span className="text-[11px] text-[#aaa] self-center whitespace-nowrap">off until</span>
+                  <div className="flex-1">
+                    <input
+                      type="date"
+                      value={manageDraft.discount_until}
+                      onChange={e => setManageDraft(d => d && { ...d, discount_until: e.target.value })}
+                      className={inputCls}
+                    />
+                  </div>
+                </div>
+                <div className="text-[10px] text-[#aaa] mt-0.5">Leave date blank for no expiry</div>
+              </div>
+              <div className="text-[11px] font-medium text-[#1a1a1a]">
+                Effective: {ARRIVLY_CONFIG.currencySymbol}{previewStr}/mo
+                {discActive && (
+                  <span className="text-[#7a4800]"> (after {previewPct}% off)</span>
+                )}
+              </div>
+            </div>
+
+            {/* Limits */}
+            <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 space-y-3">
+              <div className="text-[10px] uppercase tracking-[.06em] text-[#999]">Limits</div>
+              <div>
+                <label className="text-[11px] text-[#666] block mb-1">Property cap override</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={1000}
+                  placeholder={previewPlan?.max_properties ? String(previewPlan.max_properties) : 'Unlimited (tier default)'}
+                  value={manageDraft.property_cap_override}
+                  onChange={e => setManageDraft(d => d && { ...d, property_cap_override: e.target.value })}
+                  className={inputCls}
+                />
+                <div className="text-[10px] text-[#aaa] mt-0.5">Leave blank to use tier default</div>
+              </div>
+            </div>
+
+            {/* Trial extension */}
+            <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 space-y-3">
+              <div className="text-[10px] uppercase tracking-[.06em] text-[#999]">Trial</div>
+              <div className="text-[11px] text-[#666]">
+                Ends: <strong>{manageHost?.trial_ends_at ? fmtDate(manageHost.trial_ends_at) : '—'}</strong>
+              </div>
+              <div>
+                <label className="text-[11px] text-[#666] block mb-1">Extend by</label>
+                <div className="flex gap-2 items-center">
+                  <button
+                    type="button"
+                    onClick={() => setManageDraft(d => d && { ...d, extend_days: '7' })}
+                    className="bg-[#f8f6f2] border border-[#ddd8ce] text-[#444] px-3 py-2 rounded-[8px] text-xs hover:bg-[#f0ede6] transition-colors whitespace-nowrap"
+                  >
+                    +7 days
+                  </button>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    placeholder="N"
+                    value={manageDraft.extend_days}
+                    onChange={e => setManageDraft(d => d && { ...d, extend_days: e.target.value })}
+                    className="bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-3 py-2 text-xs text-[#444] focus:border-[#1a1a1a] focus:outline-none w-20"
+                  />
+                  <span className="text-[11px] text-[#aaa]">days (applied on Save)</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Intent note */}
+            <div className="bg-[#faeeda] rounded-[9px] p-3 text-[11px] text-[#7a4800]">
+              Changes set intent and update MRR — they don't charge the host until billing is live.
+            </div>
+
+            {manageErr && (
+              <div className="bg-[#fde4e4] text-[#8a1a1a] text-[11px] rounded-[8px] px-3 py-2">
+                {manageErr}
+              </div>
+            )}
+
+            <div className="flex gap-2 pb-8">
+              <button
+                onClick={saveManage}
+                disabled={manageLoading}
+                className={`bg-[#1a1a1a] text-white px-4 py-2 rounded-[8px] text-xs font-semibold transition-opacity ${manageLoading ? 'opacity-50 cursor-wait' : 'hover:opacity-80'}`}
+              >
+                {manageLoading ? 'Saving…' : 'Save changes'}
+              </button>
+              <button
+                onClick={closeManage}
+                disabled={manageLoading}
+                className="bg-transparent border border-[#ddd8ce] text-[#444] px-4 py-2 rounded-[8px] text-xs hover:bg-[#f0ede6] transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    )
+  }
+  // ── End manage overlay ───────────────────────────────────────────────────
 
   // ── Impersonate overlay (normal-flow faux-viewport, not position:fixed) ──
   if (impersonateData) {
@@ -477,19 +816,30 @@ export default function SuperAdmin() {
                       )}
                     </div>
                   </div>
-                  <button
-                    onClick={() => viewAs(h.id)}
-                    disabled={impersonateLoading}
-                    className={`bg-transparent border border-[#ddd8ce] px-3 py-1 rounded-[6px] text-[10px] shrink-0 mt-0.5 transition-colors ${
-                      isThisLoading
-                        ? 'text-[#aaa] cursor-wait'
-                        : impersonateLoading
-                          ? 'text-[#aaa] cursor-not-allowed'
-                          : 'text-[#444] hover:bg-[#f0ede6] cursor-pointer'
-                    }`}
-                  >
-                    {isThisLoading ? 'Loading…' : 'View as'}
-                  </button>
+                  <div className="flex gap-1.5 shrink-0 mt-0.5">
+                    {!h.is_exempt && (
+                      <button
+                        onClick={() => openManage(h)}
+                        disabled={impersonateLoading || manageLoading}
+                        className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1 rounded-[6px] text-[10px] hover:bg-[#f0ede6] transition-colors disabled:text-[#aaa] disabled:cursor-not-allowed"
+                      >
+                        Manage
+                      </button>
+                    )}
+                    <button
+                      onClick={() => viewAs(h.id)}
+                      disabled={impersonateLoading || manageLoading}
+                      className={`bg-transparent border border-[#ddd8ce] px-3 py-1 rounded-[6px] text-[10px] transition-colors ${
+                        isThisLoading
+                          ? 'text-[#aaa] cursor-wait'
+                          : (impersonateLoading || manageLoading)
+                            ? 'text-[#aaa] cursor-not-allowed'
+                            : 'text-[#444] hover:bg-[#f0ede6] cursor-pointer'
+                      }`}
+                    >
+                      {isThisLoading ? 'Loading…' : 'View as'}
+                    </button>
+                  </div>
                 </div>
               </div>
             )
