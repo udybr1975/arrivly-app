@@ -43,8 +43,7 @@ export default function OnboardingFlow() {
 
       const { error: hostErr } = await supabase
         .from('hosts')
-        .upsert({
-          id: user.id,
+        .update({
           name: firstName,
           brand_name: s1.brandName,
           whatsapp: s1.whatsapp || null,
@@ -55,6 +54,7 @@ export default function OnboardingFlow() {
           street: s2.street,
           street_number: s2.streetNumber,
         })
+        .eq('id', user.id)
       if (hostErr) throw hostErr
 
       void api.post('/send-welcome', {}).catch(() => {})
@@ -84,7 +84,13 @@ export default function OnboardingFlow() {
 
       navigate(newAptId ? `/dashboard/property/${newAptId}` : '/dashboard')
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : 'Something went wrong')
+      console.error('Onboarding finish failed:', e)
+      const msg =
+        e instanceof Error ? e.message
+        : (e && typeof e === 'object' && 'message' in e)
+          ? String((e as { message: unknown }).message)
+          : 'Something went wrong'
+      setError(msg)
       setSaving(false)
     }
   }
