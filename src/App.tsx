@@ -166,6 +166,10 @@ export default function App() {
           <Route element={<SuperAdminRoute />}>
             <Route path="/admin" element={<SuperAdmin />} />
           </Route>
+
+          {/* Admin convenience redirects — outside all layout trees; /admin still gated by SuperAdminRoute */}
+          <Route path="/superadmin" element={<Navigate to="/admin" replace />} />
+          <Route path="/dashboard/admin" element={<Navigate to="/admin" replace />} />
         </Routes>
       </BrowserRouter>
     </ToastProvider>

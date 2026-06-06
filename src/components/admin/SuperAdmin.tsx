@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { ARRIVLY_CONFIG } from '../../config'
+import { resolveImageUrl } from '../../lib/imageUtils'
 import Loader from '../shared/Loader'
 import InstallCard from '../host/InstallCard'
 
@@ -47,6 +48,35 @@ interface AdminOverview {
   plans: PlanRow[]
 }
 
+interface ImpersonateApt {
+  id: string
+  name: string | null
+  city: string | null
+  is_visible: boolean
+  hero_image_url: string | null
+  accent_color: string | null
+  bookings_count: number
+  host_picks_count: number
+}
+
+interface ImpersonateHost {
+  brand_name: string | null
+  name: string | null
+  contact_email: string | null
+  city: string | null
+  tier: number | null
+  subscription_status: string | null
+  trial_ends_at: string | null
+  accent_color: string | null
+  logo_url: string | null
+  is_exempt: boolean
+}
+
+interface ImpersonateSnapshot {
+  host: ImpersonateHost
+  apartments: ImpersonateApt[]
+}
+
 type StatusFilter = 'all' | 'trial' | 'active' | 'grace' | 'expired'
 type SortKey = 'expiring' | 'newest' | 'name'
 
@@ -88,6 +118,12 @@ export default function SuperAdmin() {
   const [sort, setSort] = useState<SortKey>('expiring')
   const [showExempt, setShowExempt] = useState(false)
 
+  // "View as" impersonate state
+  const [impersonateData, setImpersonateData]       = useState<ImpersonateSnapshot | null>(null)
+  const [impersonateLoading, setImpersonateLoading] = useState(false)
+  const [impersonateId, setImpersonateId]           = useState<string | null>(null)
+  const [impersonateErr, setImpersonateErr]         = useState('')
+
   useEffect(() => {
     let cancelled = false
     api.get<AdminOverview>('/admin-overview')
@@ -107,6 +143,26 @@ export default function SuperAdmin() {
     navigate('/login', { replace: true })
   }
 
+  async function viewAs(hostId: string) {
+    setImpersonateLoading(true)
+    setImpersonateErr('')
+    setImpersonateId(hostId)
+    try {
+      const snap = await api.get<ImpersonateSnapshot>(`/admin-impersonate?host_id=${encodeURIComponent(hostId)}`)
+      setImpersonateData(snap)
+    } catch (e: unknown) {
+      setImpersonateErr(e instanceof Error ? e.message : 'Failed to load snapshot')
+    } finally {
+      setImpersonateLoading(false)
+    }
+  }
+
+  function exitImpersonate() {
+    setImpersonateData(null)
+    setImpersonateId(null)
+    setImpersonateErr('')
+  }
+
   if (loading) return <Loader />
 
   if (loadErr || !data) {
@@ -116,6 +172,96 @@ export default function SuperAdmin() {
       </div>
     )
   }
+
+  // ── Impersonate overlay (normal-flow faux-viewport, not position:fixed) ──
+  if (impersonateData) {
+    const { host, apartments } = impersonateData
+    const brand = host.brand_name ?? host.name ?? '—'
+    return (
+      <div className="min-h-screen bg-[#f0ede6]">
+        {/* Persistent read-only banner — sticky relative to page scroll (not fixed) */}
+        <div className="sticky top-0 z-10 bg-[#faeeda] border-b border-[#d4a847] px-4 md:px-8 py-2.5 flex items-center gap-3 shadow-sm">
+          <span className="text-[12px] font-medium text-[#7a4800] flex-1 min-w-0 truncate">
+            👁 Viewing <strong>{brand}</strong> — read only
+          </span>
+          <button
+            onClick={exitImpersonate}
+            className="bg-[#1a1a1a] text-white px-3 py-1 rounded-[6px] text-[11px] font-semibold hover:opacity-80 transition-opacity shrink-0"
+          >
+            Exit
+          </button>
+        </div>
+
+        <div className="p-4 md:p-8">
+          <div className="max-w-5xl mx-auto space-y-4">
+
+            {/* Host summary — read only, no mutating controls */}
+            <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4">
+              <div className="text-[10px] uppercase tracking-[.06em] text-[#999] mb-2">Host account</div>
+              <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+                <span className="text-[14px] font-semibold text-[#1a1a1a]">{brand}</span>
+                <TierPill tier={host.tier} />
+                <StatusPill status={host.subscription_status} />
+                {host.is_exempt && (
+                  <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#faeeda] text-[#7a4800]">Exempt</span>
+                )}
+              </div>
+              <div className="text-[11px] text-[#666] space-y-0.5">
+                {host.contact_email && <div>{host.contact_email}</div>}
+                {host.city && <div>{host.city}</div>}
+                {host.trial_ends_at && (
+                  <div>Trial ends {fmtDate(host.trial_ends_at)}</div>
+                )}
+              </div>
+            </div>
+
+            {/* Apartments — read only */}
+            <div>
+              <div className="text-[10px] uppercase tracking-[.06em] text-[#999] mb-2">
+                {apartments.length} propert{apartments.length !== 1 ? 'ies' : 'y'}
+              </div>
+              {apartments.length === 0 ? (
+                <div className="text-[12px] text-[#aaa] text-center py-6 bg-white border border-[#ddd8ce] rounded-[10px]">
+                  No properties yet.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {apartments.map(apt => (
+                    <div key={apt.id} className="bg-white border border-[#ddd8ce] rounded-[10px] p-3.5">
+                      <div className="flex items-center gap-3">
+                        {apt.hero_image_url ? (
+                          <img src={resolveImageUrl(apt.hero_image_url)} alt="" className="w-10 h-10 rounded-[7px] object-cover shrink-0" />
+                        ) : (
+                          <div
+                            className="w-10 h-10 rounded-[7px] shrink-0"
+                            style={{ background: apt.accent_color ?? '#1c1c1a' }}
+                          />
+                        )}
+                          <div className="flex-1 min-w-0">
+                            <div className="flex flex-wrap items-center gap-1.5 mb-0.5">
+                              <span className="text-[12px] font-semibold text-[#1a1a1a] truncate">{apt.name ?? '—'}</span>
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 ${apt.is_visible ? 'bg-[#e4f0da] text-[#2a5c0a]' : 'bg-[#ede9e2] text-[#888]'}`}>
+                                {apt.is_visible ? 'Active' : 'Draft'}
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-[#888]">
+                              {apt.city ? `${apt.city} · ` : ''}
+                              {apt.bookings_count} booking{apt.bookings_count !== 1 ? 's' : ''} · {apt.host_picks_count} pick{apt.host_picks_count !== 1 ? 's' : ''}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+          </div>
+        </div>
+      </div>
+    )
+  }
+  // ── End overlay ───────────────────────────────────────────────────────────
 
   // Filter + sort
   let visible = showExempt ? data.hosts : data.hosts.filter(h => !h.is_exempt)
@@ -176,6 +322,13 @@ export default function SuperAdmin() {
             </button>
           </div>
         </div>
+
+        {/* View-as error (shown above metrics, auto-clears on next action) */}
+        {impersonateErr && (
+          <div className="bg-[#fde4e4] text-[#8a1a1a] text-[11px] rounded-[8px] px-3 py-2 mb-3">
+            View as failed: {impersonateErr}
+          </div>
+        )}
 
         {/* PWA install card — hidden automatically when standalone */}
         <InstallCard />
@@ -240,6 +393,7 @@ export default function SuperAdmin() {
             const cap = h.property_cap_override ?? plan?.max_properties
             const capStr = cap == null ? '∞' : String(cap)
             const daysRed = h.days_left !== null && h.days_left <= 7
+            const isThisLoading = impersonateLoading && impersonateId === h.id
 
             return (
               <div key={h.id} className="bg-white border border-[#ddd8ce] rounded-[10px] p-3.5">
@@ -281,11 +435,17 @@ export default function SuperAdmin() {
                     </div>
                   </div>
                   <button
-                    disabled
-                    title="Not yet implemented (Phase D2)"
-                    className="bg-transparent border border-[#ddd8ce] text-[#aaa] px-3 py-1 rounded-[6px] text-[10px] shrink-0 mt-0.5 cursor-not-allowed"
+                    onClick={() => viewAs(h.id)}
+                    disabled={impersonateLoading}
+                    className={`bg-transparent border border-[#ddd8ce] px-3 py-1 rounded-[6px] text-[10px] shrink-0 mt-0.5 transition-colors ${
+                      isThisLoading
+                        ? 'text-[#aaa] cursor-wait'
+                        : impersonateLoading
+                          ? 'text-[#aaa] cursor-not-allowed'
+                          : 'text-[#444] hover:bg-[#f0ede6] cursor-pointer'
+                    }`}
                   >
-                    Impersonate
+                    {isThisLoading ? 'Loading…' : 'View as'}
                   </button>
                 </div>
               </div>
