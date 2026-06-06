@@ -33,7 +33,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 
 ## Database (Supabase)
 - **hosts** — id (= auth.uid), name, brand_name, whatsapp, logo_url, accent_color, contact_email, country, city, neighborhood, street, street_number, lat, lng, plan, trial_ends_at, subscription_status, stripe_customer_id, stripe_subscription_id, push_endpoint, welcome_email_sent_at, trial_reminder_sent_at, tier (int, FK plans.tier), is_exempt (bool, default false), price_override_cents (int nullable), discount_percent (int nullable), discount_until (timestamptz nullable), property_cap_override (int nullable), created_at
-- **plans** — tier (int PK), name, price_cents, max_properties (int nullable = unlimited), includes_booking (bool)
+- **plans** — tier (int PK), label, price_cents, currency, max_properties (int nullable = unlimited), includes_booking (bool), updated_at
 - **apartments** — id, host_id, name, country, city, neighborhood, street, street_number, floor_note, lat, lng, max_guests, description, images[], is_visible, accent_color, ical_urls, hero_image_url, city_image_url, city_image_credit, created_at
 - **apartment_details** — id, apartment_id, category, content, is_private
 - **host_picks** — id, apartment_id, name, category, address, lat, lng, note, display_order, created_at

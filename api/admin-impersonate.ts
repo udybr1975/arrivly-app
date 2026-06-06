@@ -39,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .select('id, name, city, is_visible, hero_image_url, accent_color')
         .eq('host_id', hostId),
       db.from('plans')
-        .select('tier, name, price_cents, max_properties')
+        .select('tier, label, price_cents, max_properties')
         .order('tier'),
     ])
 
@@ -58,7 +58,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!hostRow) return res.status(404).json({ error: 'Host not found' })
 
     // Compute effective price — identical logic to admin-overview.ts
-    type PlanRow = { tier: number; name: string; price_cents: number; max_properties: number | null }
+    type PlanRow = { tier: number; label: string; price_cents: number; max_properties: number | null }
     const plans = (planRows ?? []) as PlanRow[]
     const plan  = plans.find(p => p.tier === (hostRow.tier ?? 1))
     const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -128,7 +128,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       host: {
         ...hostRow,
         effective_price_cents,
-        plan_label:          plan?.name          ?? null,
+        plan_label:          plan?.label          ?? null,
         plan_max_properties: plan?.max_properties ?? null,
       },
       apartments,
