@@ -33,7 +33,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 
 ## Database (Supabase)
 - **hosts** — id (= auth.uid), name, brand_name, whatsapp, logo_url, accent_color, contact_email, country, city, neighborhood, street, street_number, lat, lng, plan, trial_ends_at, subscription_status, stripe_customer_id, stripe_subscription_id, push_endpoint, welcome_email_sent_at, trial_reminder_sent_at, tier (int, FK plans.tier), is_exempt (bool, default false), price_override_cents (int nullable), discount_percent (int nullable), discount_until (timestamptz nullable), property_cap_override (int nullable), created_at
-- **plans** — tier (int PK), label, price_cents, currency, max_properties (int nullable = unlimited), includes_booking (bool), updated_at
+- **plans** — tier (smallint PK 1-4), label, price_cents, currency, max_properties (int nullable = unlimited), includes_booking (bool), updated_at. RLS ON, single SELECT policy for authenticated; writes are service-role only (via api/admin-plans.ts). Edited from the admin Plan settings panel.
 - **apartments** — id, host_id, name, country, city, neighborhood, street, street_number, floor_note, lat, lng, max_guests, description, images[], is_visible, accent_color, ical_urls, hero_image_url, city_image_url, city_image_credit, created_at
 - **apartment_details** — id, apartment_id, category, content, is_private
 - **host_picks** — id, apartment_id, name, category, address, lat, lng, note, display_order, created_at
@@ -44,6 +44,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - **push_subscriptions** — id, host_id, apartment_id, booking_id, role, endpoint, p256dh, auth_key, created_at
 - **guest_optins** — id, first_name, email, apartment_id, opted_in_at
 - **app_settings** — id (always 1), trial_days (int, default 30), updated_at; RLS ON with zero policies (only service-role + SECURITY DEFINER trigger can read/write); `handle_new_user()` reads `trial_days` with hard fallback to 30 so a missing row never breaks signups. Change trial length: `update public.app_settings set trial_days=N, updated_at=now() where id=1;` (new signups only; existing hosts keep their dates). Future superadmin dashboard edits this row.
+- **admin_audit** — id, actor_email, action ('update_host'|'update_plans'|'impersonate_view'), target_host_id (uuid nullable), detail (jsonb), created_at. RLS ON with zero policies (service-role only). Written by the admin endpoints; read by api/admin-audit.ts (last 50). NOTE: edits made by direct SQL (not via an admin endpoint) are intentionally NOT logged here.
 
 ### Critical DB facts
 - `apartments.accent_color` — NOT brand_color (common mistake, causes silent save failure)
@@ -60,6 +61,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
   argument when notifying the host — passing one filters the lookup to zero rows and
   delivers nothing silently.
 - **`push_subscriptions.booking_id`** — nullable UUID; set for guest subscriptions (server-derived from resolved booking in `api/guest-subscribe.ts`); NULL for host subscriptions.
+- **`hosts` server-only columns** — `hosts` has 14 client-updatable profile columns only; `tier`, `is_exempt`, `price_override_cents`, `discount_percent`, `discount_until`, `property_cap_override`, `subscription_status` are server-only (table UPDATE revoked from authenticated+anon, granted on the 14 safe columns). Never write these from the client — only via admin endpoints.
 
 ### Image system
 - **Bucket** `apartment-images` — public read; 3 owner-scoped write RLS policies (insert/update/delete), condition `(storage.foldername(name))[1] = auth.uid()`.
@@ -93,7 +95,7 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 
 ## Test Data (in DB)
 
-**Host: Anna Banana** (udy.bar.yosef@gmail.com) — owns two apartments:
+**Host: Anna Banana** (udy.bar.yosef@gmail.com) — is_exempt (admin account, hidden from the host list by default, excluded from MRR). Owns:
 - **Sweet home** — id: `d9614d11-d573-4ff0-961a-54c5ea37c2bd`, Etu Töölö Helsinki, token: `ARR-SWEET1`. House rules AI-polished.
 - **Test Apartment 1** — id: `aaaaaaaa-0000-0000-0000-000000000001`, Kallio Helsinki, accent #5a1a2a (Wine)
 - **Casa Marco** — `d81e4e89-385a-4886-b461-ba952c78e7f8`, El Born Barcelona, token `ARR-BCN777` (booking 1–5 Jun 2026 ended → thank-you state, guest "Marco").
@@ -101,6 +103,10 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 
 **Host: Udyni** (udy.baryosef@jchelsinki.fi) — owns:
 - **Penthouse in the sky** — id: `9b03a763-3ca6-4d1f-946c-d4e1f977d614`, token: `ARR-PENTH1`
+
+**Host: TLV properties** (udy@tlv.capital) — id `1d5a3b9c-0a41-4585-898f-5095ed6f2350`, 2 apartments, trial ends 2026-07-05, tier 1 (baseline).
+
+**Live plan values are currently TEST values from D3b, not final:** Tier 1 €10/cap 2, Tier 2 €15/cap 7, Tier 3 €25/cap 12, Tier 4 €49/unlimited; `app_settings.trial_days` = 14. Set real values before any real signups.
 
 **Test guest URL (Test Apartment 1):** `/guest?apt=aaaaaaaa-0000-0000-0000-000000000001&token=ARR-TEST01`
 
@@ -309,7 +315,7 @@ Phases:
 - **A — Guest-page value:** COMPLETE ✓ A1 city guide (`de3eb37`), A2 host picks (`081f7eb`, `631d7c0`), A3 city events (`39ef5c9`, `0a22f04`), A4 guest chatbot (`5a53223`).
 - **B — Guest look & feel:** COMPLETE ✓ Photo hero + accent scrim, logo/cover upload, Unsplash city default with attribution, Storage signed-URL fix. (`d2bbe37`, `45e1c70`, `9dcc1f6`, `7da1c85`, `72e8f41`)
 - **C — Communication:** COMPLETE ✓ Messaging + push + badges + PWA install UX + transactional email (welcome + day-25 reminder). (`94e1fc0`→`53e6460`)
-- **D — Superadmin:** COMPLETE ✓ — D1: server-driven overview API + enriched SuperAdmin UI + admin login routing + admin nav link (`b8f41d5`). D2: read-only "View as" snapshot overlay + `admin_audit` table + `/superadmin`+`/dashboard/admin` redirects (`09b9e50`).
+- **D — Superadmin:** COMPLETE ✓ — D1 overview API + UI + admin routing (`b8f41d5`); D2 read-only "View as" + `admin_audit` (`09b9e50`); D2.1 enriched View-as + plans `label` fix (`bf4e318`, `b2015d2`); D3a host Manage drawer + `api/admin-update-host.ts` (tier/status/price/discount/cap/trial extend, 6-key allowlist, audited) (`909dda5`); D3b global Plan-settings panel (`api/admin-plans.ts`, edits tier price+cap and `app_settings.trial_days`) + Activity-log view (`api/admin-audit.ts`) + fixes: MRR/totals re-fetch after Manage save, discount preview clamped 0-100, `mobile-web-app-capable` meta tag (`3fc401d`). Business model: 4 tiers, flat price per tier, dashboard-editable; Tiers 1-3 guest-page at rising caps, Tier 4 adds booking. Lifecycle status and tier are independent dimensions. PRE-STRIPE: all admin edits set intent + move MRR projection only — they charge no one (money/destructive actions wait for E).
 - **E — Billing (Tier-1 Stripe):** create-subscription, billing-portal, stripe-webhook (signature
   verified), subscription lifecycle, guest-page grace/expired enforcement.
 - **F — Tier-2 booking system:** Full booking (availability → request → approve → pay →
