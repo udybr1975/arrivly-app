@@ -70,6 +70,14 @@ interface ImpersonateHost {
   accent_color: string | null
   logo_url: string | null
   is_exempt: boolean
+  created_at: string
+  price_override_cents: number | null
+  discount_percent: number | null
+  discount_until: string | null
+  property_cap_override: number | null
+  effective_price_cents: number
+  plan_label: string | null
+  plan_max_properties: number | null
 }
 
 interface ImpersonateSnapshot {
@@ -182,7 +190,7 @@ export default function SuperAdmin() {
         {/* Persistent read-only banner — sticky relative to page scroll (not fixed) */}
         <div className="sticky top-0 z-10 bg-[#faeeda] border-b border-[#d4a847] px-4 md:px-8 py-2.5 flex items-center gap-3 shadow-sm">
           <span className="text-[12px] font-medium text-[#7a4800] flex-1 min-w-0 truncate">
-            👁 Viewing <strong>{brand}</strong> — read only
+            Viewing <strong>{brand}</strong> — read only
           </span>
           <button
             onClick={exitImpersonate}
@@ -209,9 +217,35 @@ export default function SuperAdmin() {
               <div className="text-[11px] text-[#666] space-y-0.5">
                 {host.contact_email && <div>{host.contact_email}</div>}
                 {host.city && <div>{host.city}</div>}
+                <div>Joined {fmtDate(host.created_at)}</div>
                 {host.trial_ends_at && (
                   <div>Trial ends {fmtDate(host.trial_ends_at)}</div>
                 )}
+                {!host.is_exempt && (() => {
+                  const euros = host.effective_price_cents / 100
+                  const amt   = euros % 1 === 0 ? euros.toFixed(0) : euros.toFixed(2)
+                  const discountActive = !!host.discount_percent &&
+                    (!host.discount_until || new Date(host.discount_until) >= new Date())
+                  const until = host.discount_until ? ` until ${fmtDate(host.discount_until)}` : ''
+                  return (
+                    <div>
+                      {ARRIVLY_CONFIG.currencySymbol}{amt}/mo
+                      {discountActive && (
+                        <span className="text-[#7a4800]">
+                          {' '}({host.discount_percent}% off{until})
+                        </span>
+                      )}
+                      {host.plan_label && (
+                        <span className="text-[#aaa]"> · {host.plan_label}</span>
+                      )}
+                    </div>
+                  )
+                })()}
+                {(() => {
+                  const cap = host.property_cap_override ?? host.plan_max_properties
+                  if (cap === null) return <div className="text-[#aaa]">Unlimited properties</div>
+                  return <div className="text-[#aaa]">{cap} {cap === 1 ? 'property' : 'properties'} max</div>
+                })()}
               </div>
             </div>
 
@@ -248,6 +282,15 @@ export default function SuperAdmin() {
                               {apt.city ? `${apt.city} · ` : ''}
                               {apt.bookings_count} booking{apt.bookings_count !== 1 ? 's' : ''} · {apt.host_picks_count} pick{apt.host_picks_count !== 1 ? 's' : ''}
                             </div>
+                            {/* Public guest page — NO token, opens neutral/no-token state; private check-in details stay gated */}
+                            <a
+                              href={`${ARRIVLY_CONFIG.appUrl}/guest?apt=${apt.id}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[10px] text-[#0c3d70] hover:underline mt-0.5 inline-block"
+                            >
+                              Preview guest page ↗
+                            </a>
                           </div>
                         </div>
                       </div>

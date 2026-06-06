@@ -27,27 +27,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const db = svc()
   try {
     const [
-      { data: hostRow, error: hostErr },
-      { data: aptRows, error: aptErr  },
+      { data: hostRow,  error: hostErr  },
+      { data: aptRows,  error: aptErr   },
+      { data: planRows, error: planErr  },
     ] = await Promise.all([
       db.from('hosts')
-        .select('brand_name, name, contact_email, city, tier, subscription_status, trial_ends_at, accent_color, logo_url, is_exempt')
+        .select('brand_name, name, contact_email, city, tier, subscription_status, trial_ends_at, accent_color, logo_url, is_exempt, created_at, price_override_cents, discount_percent, discount_until, property_cap_override')
         .eq('id', hostId)
         .maybeSingle(),
       db.from('apartments')
         .select('id, name, city, is_visible, hero_image_url, accent_color')
         .eq('host_id', hostId),
+      db.from('plans')
+        .select('tier, name, price_cents, max_properties')
+        .order('tier'),
     ])
 
     if (hostErr) {
-      console.error('[admin-impersonate] host', hostErr.message?.slice(0, 120))
+      console.error('[admin-impersonate] host',  hostErr.message?.slice(0, 120))
       return res.status(500).json({ error: 'Query failed' })
     }
     if (aptErr) {
-      console.error('[admin-impersonate] apts', aptErr.message?.slice(0, 120))
+      console.error('[admin-impersonate] apts',  aptErr.message?.slice(0, 120))
+      return res.status(500).json({ error: 'Query failed' })
+    }
+    if (planErr) {
+      console.error('[admin-impersonate] plans', planErr.message?.slice(0, 120))
       return res.status(500).json({ error: 'Query failed' })
     }
     if (!hostRow) return res.status(404).json({ error: 'Host not found' })
+
+    // Compute effective price — identical logic to admin-overview.ts
+    type PlanRow = { tier: number; name: string; price_cents: number; max_properties: number | null }
+    const plans = (planRows ?? []) as PlanRow[]
+    const plan  = plans.find(p => p.tier === (hostRow.tier ?? 1))
+    const today = new Date(); today.setHours(0, 0, 0, 0)
+    const base  = hostRow.price_override_cents ?? plan?.price_cents ?? 1900
+    let effective_price_cents = base
+    if (hostRow.discount_percent) {
+      const active = !hostRow.discount_until || new Date(hostRow.discount_until) >= today
+      if (active) effective_price_cents = Math.round(base * (1 - hostRow.discount_percent / 100))
+    }
 
     const aptIds: string[] = (aptRows ?? []).map((a: { id: string }) => a.id)
 
@@ -104,7 +124,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
     if (auditErr) console.error('[admin-impersonate] audit', auditErr.message?.slice(0, 120))
 
-    return res.status(200).json({ host: hostRow, apartments })
+    return res.status(200).json({
+      host: {
+        ...hostRow,
+        effective_price_cents,
+        plan_label:          plan?.name          ?? null,
+        plan_max_properties: plan?.max_properties ?? null,
+      },
+      apartments,
+    })
   } catch (e) {
     console.error('[admin-impersonate] unexpected', (e instanceof Error ? e.message : 'unknown').slice(0, 120))
     return res.status(500).json({ error: 'Internal error' })
