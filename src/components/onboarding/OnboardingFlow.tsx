@@ -76,7 +76,7 @@ export default function OnboardingFlow() {
           neighborhood: s2.neighborhood,
           street: s2.street,
           street_number: s2.streetNumber,
-          is_visible: false,
+          is_visible: true,
         }).select('id').maybeSingle()
         if (aptErr) throw aptErr
         newAptId = newApt?.id ?? null
