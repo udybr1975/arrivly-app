@@ -1,7 +1,7 @@
 # Arrivly — CLAUDE.md
 
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD:** f4a89bd (2026-06-08)
+> **Current HEAD:** ec77806 (2026-06-08)
 
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
@@ -64,6 +64,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
   delivers nothing silently.
 - **`push_subscriptions.booking_id`** — nullable UUID; set for guest subscriptions (server-derived from resolved booking in `api/guest-subscribe.ts`); NULL for host subscriptions.
 - **`hosts` server-only columns** — `hosts` has 14 client-updatable profile columns only; `tier`, `is_exempt`, `price_override_cents`, `discount_percent`, `discount_until`, `property_cap_override`, `subscription_status` are server-only (table UPDATE revoked from authenticated+anon, granted on the 14 safe columns). Never write these from the client — only via admin endpoints.
+- **`config.ts` pricing fields (`trialDays`, `pricePerPropertyMonthly`, `maxPropertiesByPlan`) are LEGACY** and superseded by the DB `plans` table + `app_settings.trial_days`. The tier catalogue is DB-driven; never reintroduce hardcoded tier prices. (Cleaning these stale fields out of `config.ts` is a separate minor code tidy.)
 
 ### Image system
 - **Bucket** `apartment-images` — public read; 3 owner-scoped write RLS policies (insert/update/delete), condition `(storage.foldername(name))[1] = auth.uid()`.
@@ -78,8 +79,8 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - **Env var:** `UNSPLASH_ACCESS_KEY` — server-side only (no `VITE_` prefix); used by `api/city-image.ts`.
 
 ## Config
-All pricing and branding settings are in `src/config.ts`. Change there only.
-Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
+Branding settings (colour presets, currency symbol) are in `src/config.ts`. Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
+Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`) — do NOT use `config.ts` pricing fields; they are legacy stubs.
 
 ## Design System
 - Page background: `bg-[#f0ede6]`
@@ -112,7 +113,7 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 
 **Host: TLV properties** (udy@tlv.capital) — id `1d5a3b9c-0a41-4585-898f-5095ed6f2350`, 2 apartments, trial ends 2026-07-05, tier 1 (baseline).
 
-**Live plan values are currently TEST values from D3b, not final:** Tier 1 €10/cap 2, Tier 2 €15/cap 7, Tier 3 €25/cap 12, Tier 4 €49/unlimited; `app_settings.trial_days` = 14. Set real values before any real signups.
+**Live plan values (confirmed S12, hard gate CLOSED):** Tier 1 €10/cap 2, Tier 2 €15/cap 7, Tier 3 €25/cap 12, Tier 4 €49/unlimited; `app_settings.trial_days` = 14. These are the official base values — do not change without explicit decision.
 
 **Test guest URL (Test Apartment 1):** `/guest?apt=aaaaaaaa-0000-0000-0000-000000000001&token=ARR-TEST01`
 
@@ -164,6 +165,8 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 **S10 (2026-06-06):** Phase D1 superadmin dashboard — `api/admin-overview.ts` (GET, Bearer→`getUser`, email===`ADMIN_EMAIL` gate, service-role parallel queries for hosts+plans+apartments+bookings, computed `apartments_count`/`bookings_count`/`effective_price_cents`/`days_left`/`mrr_cents`, returns `{hosts,totals,plans}`). `src/components/admin/SuperAdmin.tsx` full rewrite: calls `api.get('/admin-overview')`, 6 metric tiles (total/trial/active/MRR/grace/expired), filter by status, sort by expiring/newest/name, exempt toggle ("Show my account"), host cards with tier+status pills + days_left (red ≤7) + disabled Impersonate placeholder (Phase D2), "Open my host dashboard →" link, `InstallCard`. `App.tsx` Landing: admin email → `/admin` redirect. `Layout.tsx`: "← Admin" nav link visible to admin only. Commit: `b8f41d5`. Phase D2 read-only impersonate — `api/admin-impersonate.ts` (GET `?host_id=UUID`, same admin gate, UUID regex, service-role snapshot: host fields without Stripe IDs/push_endpoint/tokens, apartments with bookings+picks counts, best-effort audit insert to `admin_audit`). `public.admin_audit` table (migration `phase_d2_admin_audit`: RLS ON, zero policies — service-role only). `SuperAdmin.tsx`: "View as" button enables snapshot fetch; normal-flow faux-viewport overlay with sticky amber "👁 Viewing {brand} — read only" banner + Exit; hero resolved only when non-null (accent swatch otherwise); zero mutating controls. `App.tsx`: `/superadmin` + `/dashboard/admin` both redirect to `/admin`. Commit: `09b9e50`.
 
 **S9 (2026-06-05):** Transactional email (Phase C close-out) — Resend integration shipped and verified end-to-end. `api/_lib/email.ts` (Resend wrapper `sendEmail()` — never throws, scrubs key, `replyTo`; `welcomeEmail()` + `trialReminderEmail()` builders; sender `hello@anna-stays.fi`, reply-to `info@anna-stays.fi`). `api/send-welcome.ts` (Bearer-gated POST, atomic `welcome_email_sent_at` claim, recipient from DB only, fires fire-and-forget from `OnboardingFlow` at finish). `api/cron-trial-ending.ts` extended: atomic stamp before send, real `daysLeft` from DB, push + email. Dynamic trial length via `public.app_settings.trial_days` (DB-only, `handle_new_user()` reads with fallback 30). `CRON_SECRET` rotated and redeployed. Commits: `3a77595` (feat email) + `53e6460` (welcome path fix).
+
+**S12 (2026-06-08):** D4 — host self-tier-selection surface. `BillingPanel.tsx` rewritten to read the `plans` table client-side (`plans_select_authenticated`, USING true) plus the host's own `tier`/`subscription_status`/`trial_ends_at`; renders four tier cards (Starter/Growth/Portfolio/Pro) with capacity as the headline differentiator, Growth flagged most popular, trial banner computed from `trial_ends_at` only (no client `app_settings` dependency). CTAs are disabled "Available at launch" pre-Stripe; "Your plan" shown on the active tier. New `src/lib/tierCopy.ts` holds per-tier presentation copy only (no numbers). New `api/set-tier.ts` is the Phase-E seam: Bearer→`getUser` host-scoped, validates tier 1–4, returns `403 { error: 'billing_not_live' }` and writes nothing until Stripe exists. `config.ts` pricing fields no longer drive the billing tab. Live plan values confirmed as official base values this session; hard gate closed. `ec77806`
 
 **S11 (2026-06-08):** Five targeted fixes + AI extras feature (HEAD `f4a89bd`):
 1. **Onboarding 403 on new-user registration** — `OnboardingFlow.finish()` changed from `.upsert({id,...})` to `.update({...}).eq('id', user.id)`. The D0 column lockdown revoked UPDATE on `hosts.id`; PostgREST included `id` in the ON CONFLICT SET payload → Postgres 42501 → HTTP 403. Removing `id` from the payload fixes it. `bdd5c64`
@@ -328,7 +331,7 @@ Phases:
 - **A — Guest-page value:** COMPLETE ✓ A1 city guide (`de3eb37`), A2 host picks (`081f7eb`, `631d7c0`), A3 city events (`39ef5c9`, `0a22f04`), A4 guest chatbot (`5a53223`).
 - **B — Guest look & feel:** COMPLETE ✓ Photo hero + accent scrim, logo/cover upload, Unsplash city default with attribution, Storage signed-URL fix. (`d2bbe37`, `45e1c70`, `9dcc1f6`, `7da1c85`, `72e8f41`)
 - **C — Communication:** COMPLETE ✓ Messaging + push + badges + PWA install UX + transactional email (welcome + day-25 reminder). (`94e1fc0`→`53e6460`)
-- **D — Superadmin:** COMPLETE ✓ — D1 overview API + UI + admin routing (`b8f41d5`); D2 read-only "View as" + `admin_audit` (`09b9e50`); D2.1 enriched View-as + plans `label` fix (`bf4e318`, `b2015d2`); D3a host Manage drawer + `api/admin-update-host.ts` (tier/status/price/discount/cap/trial extend, 6-key allowlist, audited) (`909dda5`); D3b global Plan-settings panel (`api/admin-plans.ts`, edits tier price+cap and `app_settings.trial_days`) + Activity-log view (`api/admin-audit.ts`) + fixes: MRR/totals re-fetch after Manage save, discount preview clamped 0-100, `mobile-web-app-capable` meta tag (`3fc401d`). Business model: 4 tiers, flat price per tier, dashboard-editable; Tiers 1-3 guest-page at rising caps, Tier 4 adds booking. Lifecycle status and tier are independent dimensions. PRE-STRIPE: all admin edits set intent + move MRR projection only — they charge no one (money/destructive actions wait for E).
+- **D — Superadmin:** COMPLETE ✓ — D1 overview API + UI + admin routing (`b8f41d5`); D2 read-only "View as" + `admin_audit` (`09b9e50`); D2.1 enriched View-as + plans `label` fix (`bf4e318`, `b2015d2`); D3a host Manage drawer + `api/admin-update-host.ts` (tier/status/price/discount/cap/trial extend, 6-key allowlist, audited) (`909dda5`); D3b global Plan-settings panel (`api/admin-plans.ts`, edits tier price+cap and `app_settings.trial_days`) + Activity-log view (`api/admin-audit.ts`) + fixes: MRR/totals re-fetch after Manage save, discount preview clamped 0-100, `mobile-web-app-capable` meta tag (`3fc401d`). Business model: 4 tiers, flat price per tier, dashboard-editable; Tiers 1-3 guest-page at rising caps, Tier 4 adds booking. Lifecycle status and tier are independent dimensions. PRE-STRIPE: all admin edits set intent + move MRR projection only — they charge no one (money/destructive actions wait for E). D4 — billing-tab tier cards (plans read client-side) + `src/lib/tierCopy.ts` + `api/set-tier.ts` inert pre-Stripe seam (403 billing_not_live) (`ec77806`).
 - **E — Billing (Tier-1 Stripe):** create-subscription, billing-portal, stripe-webhook (signature
   verified), subscription lifecycle, guest-page grace/expired enforcement.
 - **F — Tier-2 booking system:** Full booking (availability → request → approve → pay →
@@ -340,18 +343,22 @@ Phases:
     2 MB logo; a direct API caller can bypass them).
   - Auto-delete old Storage objects on cover/logo replace + remove (partially done: `1cde275`).
   - Message retention: ~90-day cleanup job post-checkout.
+- **H — UI/UX design polish:** Dedicated visual-quality pass once all core features work end-to-end; design-system refinement, guest-page + dashboard polish, consistency sweep; mockup-first. Deferred deliberately so polish lands on a stable surface, not a moving one.
+- **I — Monetisation iteration (post-launch, data-driven):** (a) pricing/packaging experiments, annual billing, discounts/referrals, trial-to-paid conversion, churn; (b) third-party experience connectors on the guest-page Explore tab — Viator, GetYourGuide, OpenTable and similar — as BOTH an affiliate-revenue stream AND a tier-differentiation lever. Open decisions to scope before build: revenue model (affiliate-to-Arrivly vs host-share vs split), per-provider partner-programme eligibility/API terms + EU inventory, which tiers unlock them, guest-page placement, server-side key handling. Verify provider terms (don't assume) at scoping.
 
 Tier-2 architecture stays upgrade-ready throughout (plan-gated component slots; bookings/guests
 schema already supports it).
+
+Tier differentiation beyond property caps is a wanted direction (not iterated yet). Future per-tier feature flags follow the existing `plans.includes_booking` precedent (e.g. `includes_experiences`). Do NOT add flags or gate features until the differentiation is iterated with Udy.
 
 ---
 
 ## On the horizon / next steps
 
-> ⚠ **HARD GATE — set real plan values before any real signups.** Still on TEST values from D3b: Tier 1 €10/cap 2, Tier 2 €15/cap 7, Tier 3 €25/cap 12, Tier 4 €49/unlimited; `app_settings.trial_days` = 14. Update via the admin Plan settings panel. Reminder at every session start.
+> ✓ **Plan values confirmed S12 (hard gate CLOSED).** Official base values: Tier 1 €10/cap 2, Tier 2 €15/cap 7, Tier 3 €25/cap 12, Tier 4 €49/unlimited; `app_settings.trial_days` = 14. Do not change without explicit decision.
 
 1. **#1 — Deeper anon bookings close-out** (before go-live): move guest booking-state lookup to a service-role endpoint and drop the `bookings_guest_read` anon policy. Anon key is public so anon can currently enumerate all bookings/guests rows.
-2. **D4 — host self-tier-selection UI** in the billing tab (the surface Stripe plugs into).
+2. ~~**D4 — host self-tier-selection UI**~~ DONE ✓ — billing tab rebuilt with four DB-driven tier cards; `api/set-tier.ts` seam ready for Phase E.
 3. **Phase E — Stripe billing:** create-subscription, billing-portal, stripe-webhook (signature verified), subscription lifecycle, guest-page grace/expired enforcement.
 4. **Add-property flow + property-cap enforcement** — still unbuilt; fold into existing dashboard vs. separate page TBD.
 5. **Live/Draft publish toggle** on the dashboard property card — no UI control exists today; properties created before the `is_visible=true` fix are stuck in Draft and can only be published via DB.
