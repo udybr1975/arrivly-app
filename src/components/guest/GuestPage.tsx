@@ -191,12 +191,10 @@ export default function GuestPage() {
       setApartment(apt)
       setDetails(((detRes.data ?? []) as Detail[]).filter(d => !d.is_private))
 
-      const { data: hostData } = await supabase
-        .from('hosts')
-        .select('brand_name,logo_url,whatsapp,subscription_status')
-        .eq('id', apt.host_id)
-        .maybeSingle()
-      if (hostData) setHost(hostData as Host)
+      const { data: hostRows } = await supabase
+        .rpc('guest_host_card', { p_apartment_id: aptId! })
+      const hostData = (hostRows as Host[] | null)?.[0] ?? null
+      if (hostData) setHost(hostData)
 
       if (hostData?.subscription_status === 'expired') {
         setPageState('expired')
@@ -449,7 +447,7 @@ export default function GuestPage() {
 
   const accentColor = apartment?.accent_color ?? ARRIVLY_CONFIG.colourPresets[0].hex
   const brandName = host?.brand_name ?? 'Your Host'
-  const isOnTrial = host?.subscription_status === 'trial'
+  const showPoweredBy = host?.subscription_status === 'trial' || host?.subscription_status === 'grace'
 
   const wifiDetails = details.filter(d => /wifi|wi-fi|internet|wireless/i.test(d.category ?? ''))
   const wifiParsed = wifiDetails.length > 0
@@ -483,10 +481,10 @@ export default function GuestPage() {
   }
 
   async function handleMoreTabPushEnable() {
-    if (!apt || !tokenParam) return
+    if (!apartment || !tokenParam) return
     setPushNotifBusy(true)
     setPushNotifError('')
-    const result = await subscribeGuestToPush(apt.id, tokenParam)
+    const result = await subscribeGuestToPush(apartment.id, tokenParam)
     setPushNotifBusy(false)
     if (result.ok) {
       setPushNotifState('on')
@@ -552,7 +550,7 @@ export default function GuestPage() {
         <p className="text-sm text-gray-500 max-w-xs leading-relaxed mb-8">
           Welcome. There is no active booking for today — scan your check-in QR code to access your guest page.
         </p>
-        {isOnTrial && (
+        {showPoweredBy && (
           <p className="text-[10px] text-gray-400 mt-8">{ARRIVLY_CONFIG.poweredByText}</p>
         )}
       </div>
@@ -574,7 +572,7 @@ export default function GuestPage() {
             Thank you for your stay. We hope you had a wonderful time.
           </p>
         </div>
-        {isOnTrial && (
+        {showPoweredBy && (
           <p className="text-white/30 text-[10px] text-center pb-6">{ARRIVLY_CONFIG.poweredByText}</p>
         )}
       </div>
@@ -1090,7 +1088,7 @@ export default function GuestPage() {
 
           <div className="max-w-lg mx-auto px-6 py-10 text-center">
             <p className="text-sm font-medium text-gray-400 mb-2">{brandName}</p>
-            {isOnTrial && (
+            {showPoweredBy && (
               <p className="text-[10px] text-gray-300 mt-6">{ARRIVLY_CONFIG.poweredByText}</p>
             )}
           </div>
@@ -1149,7 +1147,7 @@ export default function GuestPage() {
           city={apt.city}
           accentColor={accentColor}
           brandName={brandName}
-          isOnTrial={isOnTrial}
+          isOnTrial={showPoweredBy}
           onClose={() => setShowEvents(false)}
         />
       )}

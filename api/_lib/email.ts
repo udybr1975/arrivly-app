@@ -78,3 +78,63 @@ export function trialReminderEmail(name: string | null, daysLeft: number): { sub
   const text = `Hi ${who},\n\nYour Arrivly trial ends in ${daysLeft} ${dayWord}. Add a payment method to keep your guest page live for your guests.\n\nManage billing: ${APP_URL}/dashboard/billing\n\nArrivly`
   return { subject: `Your Arrivly trial ends in ${daysLeft} ${dayWord}`, html, text }
 }
+
+// Tier names duplicated from src/lib/tierCopy.ts — same cross-boundary pattern as EXTRAS_CATEGORIES.
+const TIER_NAMES: Record<number, string> = {
+  1: 'Starter',
+  2: 'Growth',
+  3: 'Portfolio',
+  4: 'Pro',
+}
+
+export function subscriptionStartedEmail(
+  name: string | null,
+  tier: number,
+): { subject: string; html: string; text: string } {
+  const who = name?.trim() ? name.trim() : 'there'
+  const tierName = TIER_NAMES[tier] ?? `Tier ${tier}`
+  const html = layout(
+    `You're on the ${tierName} plan`,
+    `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
+     <p style="margin:0 0 12px;">You're now subscribed to Arrivly's <strong>${esc(tierName)}</strong> plan — your guest page stays live for every booking.</p>
+     <p style="margin:0;">To upgrade, downgrade, or manage your billing details, visit your dashboard any time.</p>`,
+    'Manage your plan', `${APP_URL}/dashboard/billing`,
+  )
+  const text = `Hi ${who},\n\nYou're now subscribed to Arrivly's ${tierName} plan — your guest page stays live for every booking.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  return { subject: `You're on the ${tierName} plan`, html, text }
+}
+
+export function subscriptionChangedEmail(
+  name: string | null,
+  oldTier: number,
+  newTier: number,
+): { subject: string; html: string; text: string } {
+  const who = name?.trim() ? name.trim() : 'there'
+  const oldName = TIER_NAMES[oldTier] ?? `Tier ${oldTier}`
+  const newName = TIER_NAMES[newTier] ?? `Tier ${newTier}`
+  const direction = newTier > oldTier ? 'upgraded' : 'changed'
+  const html = layout(
+    `Your plan has changed to ${newName}`,
+    `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
+     <p style="margin:0 0 12px;">Your Arrivly plan has been ${direction} from <strong>${esc(oldName)}</strong> to <strong>${esc(newName)}</strong>.</p>
+     <p style="margin:0;">The change is effective immediately. Manage your subscription in your dashboard.</p>`,
+    'Manage your plan', `${APP_URL}/dashboard/billing`,
+  )
+  const text = `Hi ${who},\n\nYour Arrivly plan has been ${direction} from ${oldName} to ${newName}.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  return { subject: `Your Arrivly plan has changed to ${newName}`, html, text }
+}
+
+export function subscriptionCancelledEmail(
+  name: string | null,
+): { subject: string; html: string; text: string } {
+  const who = name?.trim() ? name.trim() : 'there'
+  const html = layout(
+    'Your Arrivly subscription has been cancelled',
+    `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
+     <p style="margin:0 0 12px;">Your Arrivly subscription has been cancelled and your guest page is no longer active.</p>
+     <p style="margin:0;">You can reactivate at any time from your billing settings — your data and property setup are still there.</p>`,
+    'Reactivate your plan', `${APP_URL}/dashboard/billing`,
+  )
+  const text = `Hi ${who},\n\nYour Arrivly subscription has been cancelled and your guest page is no longer active. You can reactivate at any time from your billing settings.\n\nReactivate: ${APP_URL}/dashboard/billing\n\nArrivly`
+  return { subject: 'Your Arrivly subscription has been cancelled', html, text }
+}
