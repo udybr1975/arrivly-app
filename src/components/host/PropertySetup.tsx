@@ -14,6 +14,8 @@ const TABS = [
   { key: 'picks',   label: 'My picks' },
 ] as const
 
+const EXTRAS_CATEGORIES = ['Parking', 'Recycling & Bins', 'Appliances', 'Transport', 'Amenities', 'Safety', 'Good to know']
+
 type Tab = (typeof TABS)[number]['key']
 
 const INPUT = 'w-full bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-3 py-2 text-xs text-[#444] focus:outline-none focus:border-[#1a1a1a] transition-colors'
@@ -48,6 +50,8 @@ export default function PropertySetup() {
   const [extrasContent, setExtrasContent] = useState('')
   const [importing, setImporting] = useState(false)
   const [importResult, setImportResult] = useState('')
+  const [extrasRows, setExtrasRows] = useState<Array<{ id: string; category: string; content: string }>>([])
+  const [extrasLoading, setExtrasLoading] = useState(false)
 
   // Tab 6 — picks
   const [picks, setPicks] = useState<Array<{
@@ -88,6 +92,7 @@ export default function PropertySetup() {
       setRawRules('')
       setExtrasContent('')
       setImportResult('')
+      setExtrasRows([])
       setPasteText('')
       setCandidates([])
       setEnriching(false)
@@ -173,6 +178,23 @@ export default function PropertySetup() {
     if (tab !== 'picks' || !apartmentId) return
     loadPicks()
   }, [tab, apartmentId, loadPicks])
+
+  const loadExtras = useCallback(async () => {
+    if (!apartmentId) return
+    setExtrasLoading(true)
+    const { data } = await supabase
+      .from('apartment_details')
+      .select('id, category, content')
+      .eq('apartment_id', apartmentId)
+      .in('category', EXTRAS_CATEGORIES)
+    setExtrasRows(data ?? [])
+    setExtrasLoading(false)
+  }, [apartmentId])
+
+  useEffect(() => {
+    if (tab !== 'extras' || !apartmentId) return
+    loadExtras()
+  }, [tab, apartmentId, loadExtras])
 
   function showOk() {
     setFeedback({ ok: true, msg: 'Saved ✓' })
@@ -373,11 +395,17 @@ export default function PropertySetup() {
     if (!extrasContent.trim()) return
     if (!apartmentId) { showErr('Save Basic info first'); return }
     setImporting(true)
+    setImportResult('')
     try {
-      await api.post('/bulk-import', { content: extrasContent, apartmentId })
-    } catch { /* stub — result shown regardless */ }
-    setImportResult('Parking · Recycling · Appliances · Transport · Amenities')
-    setImporting(false)
+      const data = await api.post<{ categories: string[] }>('/bulk-import', { apartmentId, content: extrasContent })
+      setImportResult(data.categories.join(' · '))
+      setExtrasContent('')
+      await loadExtras()
+    } catch {
+      showErr('Import failed — please try again')
+    } finally {
+      setImporting(false)
+    }
   }
 
   async function deletePick(id: string) {
@@ -385,6 +413,13 @@ export default function PropertySetup() {
     const { error } = await supabase.from('host_picks').delete().eq('id', id).eq('apartment_id', apartmentId)
     if (error) { showErr(error.message); return }
     await loadPicks()
+  }
+
+  async function deleteExtrasRow(id: string) {
+    if (!apartmentId) return
+    const { error } = await supabase.from('apartment_details').delete().eq('id', id).eq('apartment_id', apartmentId)
+    if (error) { showErr(error.message); return }
+    await loadExtras()
   }
 
   async function enrichPicks() {
@@ -715,33 +750,58 @@ export default function PropertySetup() {
 
       {/* ── Tab 5: Extras ─────────────────────────────────────────────────── */}
       {tab === 'extras' && (
-        <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 space-y-3">
-          <p className="text-[11px] text-[#888]">
-            Paste everything at once. AI identifies topics and splits into categories: Parking, Bins, Appliances, Transport etc.
-          </p>
-          <div>
-            <label className={LABEL}>Paste all your property info here</label>
-            <textarea
-              value={extrasContent}
-              onChange={e => setExtrasContent(e.target.value)}
-              className={`${INPUT} resize-none`}
-              rows={6}
-              placeholder="Parking: Blue zone on Carrer del Rec, max 2h. Bins: grey for general, blue for recycling, yellow for plastic. Washing machine: press button 3 for quick wash…"
-            />
+        <div className="space-y-3">
+          <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 space-y-3">
+            <p className="text-[11px] text-[#888]">
+              Paste everything at once — AI identifies topics and splits into categories.{' '}
+              <strong className="text-[#555]">Importing replaces your current extras.</strong>
+            </p>
+            <div>
+              <label className={LABEL}>Paste all your property info here</label>
+              <textarea
+                value={extrasContent}
+                onChange={e => setExtrasContent(e.target.value)}
+                className={`${INPUT} resize-none`}
+                rows={6}
+                placeholder="Parking: Blue zone on Carrer del Rec, max 2h. Bins: grey for general, blue for recycling, yellow for plastic. Washing machine: press button 3 for quick wash…"
+              />
+            </div>
+            <button onClick={bulkImport} disabled={importing || !extrasContent.trim()} className={BTN_AI}>
+              {importing ? 'Importing…' : '✦ AI bulk import'}
+            </button>
+            {importResult && (
+              <div className="bg-[#e4f0da] border border-[#c5e0b0] rounded-[8px] p-3 text-xs text-[#2a5c0a] leading-relaxed">
+                Imported:{' '}
+                {importResult.split(' · ').map((cat, i, arr) => (
+                  <span key={cat}>
+                    <strong>{cat}</strong>
+                    {i < arr.length - 1 && ' · '}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
-          <button onClick={bulkImport} disabled={importing || !extrasContent.trim()} className={BTN_AI}>
-            {importing ? 'Importing…' : '✦ AI bulk import'}
-          </button>
-          {importResult && (
-            <div className="bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] p-3 text-xs text-[#666] leading-relaxed">
-              AI splits into categories:{' '}
-              {importResult.split(' · ').map((cat, i, arr) => (
-                <span key={cat}>
-                  <strong className="text-[#1a1a1a]">{cat}</strong>
-                  {i < arr.length - 1 && ' · '}
-                </span>
+
+          {extrasLoading ? (
+            <div className="text-[11px] text-[#aaa] text-center py-4">Loading…</div>
+          ) : extrasRows.length === 0 ? (
+            <div className="text-center py-6 text-[#aaa] text-[11px]">No extras yet — paste your property info above to import.</div>
+          ) : (
+            <div className="space-y-2">
+              {extrasRows.map(row => (
+                <div key={row.id} className="bg-white border border-[#ddd8ce] rounded-[10px] px-4 py-3 flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] text-[#999] uppercase tracking-[.06em] mb-0.5">{row.category}</div>
+                    <div className="text-[12px] text-[#1a1a1a] whitespace-pre-line leading-relaxed">{row.content}</div>
+                  </div>
+                  <button
+                    onClick={() => deleteExtrasRow(row.id)}
+                    className="text-[#ccc] hover:text-[#8a1a1a] transition-colors text-xs shrink-0"
+                  >
+                    ✕
+                  </button>
+                </div>
               ))}
-              . Each saved as a separate apartment_details row. You can edit or delete any row after import.
             </div>
           )}
         </div>

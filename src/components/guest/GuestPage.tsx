@@ -110,6 +110,8 @@ function mapsSearchUrl(name: string, address?: string | null): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
 }
 
+const EXTRAS_CATEGORIES = ['Parking', 'Recycling & Bins', 'Appliances', 'Transport', 'Amenities', 'Safety', 'Good to know']
+
 const CATEGORY_COLORS: Record<string, string> = {
   Restaurant: '#c0392b',
   Bar: '#8e44ad',
@@ -458,6 +460,8 @@ export default function GuestPage() {
     d => /check.?in|check.?out|timing|door|code|entry/i.test(d.category ?? '') && d.is_private
   )
 
+  const extras = details.filter(d => EXTRAS_CATEGORIES.includes(d.category))
+
   const copyText = useCallback((text: string, setDone: (v: boolean) => void) => {
     navigator.clipboard.writeText(text).then(() => {
       setDone(true)
@@ -742,6 +746,25 @@ export default function GuestPage() {
               <p className="text-[#1c1c1a] text-sm leading-relaxed whitespace-pre-line">
                 {rulesRaw}
               </p>
+            </div>
+          )}
+
+          {extras.length > 0 && (
+            <div className="max-w-lg mx-auto px-6 py-6 border-t border-gray-100">
+              <h2 className="text-lg font-medium text-[#1c1c1a] mb-4">Good to know</h2>
+              <div className="space-y-4">
+                {EXTRAS_CATEGORIES
+                  .map(cat => extras.find(d => d.category === cat))
+                  .filter((d): d is Detail => d !== undefined)
+                  .map(d => (
+                    <div key={d.id} className="bg-[#faf9f6] border border-gray-100 rounded-lg p-4 shadow-[0_1px_5px_rgba(0,0,0,0.05)]">
+                      <p className="text-[10px] uppercase tracking-widest font-semibold mb-2" style={{ color: accentColor }}>
+                        {d.category}
+                      </p>
+                      <p className="text-sm text-[#1c1c1a] leading-relaxed whitespace-pre-line">{d.content}</p>
+                    </div>
+                  ))}
+              </div>
             </div>
           )}
         </div>
