@@ -21,7 +21,7 @@ export async function sendNtfy({
         'Title': title.replace(/[^\x20-\x7E]/g, '').slice(0, 100),
         'Priority': priority,
       },
-      body: message,
+      body: message.slice(0, 500),
       signal: controller.signal,
     })
   } catch (err) {

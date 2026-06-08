@@ -166,6 +166,10 @@ function auditSummary(action: string, detail: Record<string, unknown> | null): s
   if (action === 'impersonate_view') {
     return `${detail.apartments ?? '?'} propert${Number(detail.apartments) !== 1 ? 'ies' : 'y'}`
   }
+  if (action === 'subscription_event') {
+    const from = detail.from_tier != null ? `T${detail.from_tier}→` : ''
+    return `${detail.event ?? '?'} · ${from}T${detail.to_tier ?? '?'} · ${detail.status ?? '?'}`
+  }
   return ''
 }
 
@@ -1046,9 +1050,10 @@ export default function SuperAdmin() {
                 <div className="space-y-1.5">
                   {auditData.entries.map(entry => {
                     const ACTION_LABEL: Record<string, string> = {
-                      update_host:      'Updated host',
-                      impersonate_view: 'Viewed as',
-                      update_plans:     'Updated plans',
+                      update_host:         'Updated host',
+                      impersonate_view:    'Viewed as',
+                      update_plans:        'Updated plans',
+                      subscription_event:  'Stripe event',
                     }
                     const label    = ACTION_LABEL[entry.action] ?? entry.action
                     const hostName = entry.target_host_id
