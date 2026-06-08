@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabase'
+import { api } from '../../lib/api'
 import { TIER_COPY } from '../../lib/tierCopy'
 import Loader from '../shared/Loader'
 
@@ -28,6 +29,20 @@ export default function BillingPanel() {
   const [plans, setPlans] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
   const [plansError, setPlansError] = useState(false)
+  const [pendingTier, setPendingTier] = useState<number | null>(null)
+  const [ctaError, setCtaError] = useState<string | null>(null)
+  const [managingPortal, setManagingPortal] = useState(false)
+  const [portalError, setPortalError] = useState<string | null>(null)
+  const [checkoutResult, setCheckoutResult] = useState<'success' | 'cancelled' | null>(null)
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const result = params.get('checkout')
+    if (result === 'success' || result === 'cancelled') {
+      setCheckoutResult(result)
+      window.history.replaceState({}, '', window.location.pathname)
+    }
+  }, [])
 
   useEffect(() => {
     async function load() {
@@ -55,6 +70,32 @@ export default function BillingPanel() {
     load()
   }, [])
 
+  async function handleChoosePlan(tier: number) {
+    setPendingTier(tier)
+    setCtaError(null)
+    try {
+      const data = await api.post<{ url: string }>('/create-subscription', { tier })
+      if (!data.url) throw new Error('no checkout url')
+      window.location.href = data.url
+    } catch {
+      setCtaError('Something went wrong. Please try again.')
+      setPendingTier(null)
+    }
+  }
+
+  async function handleManagePortal() {
+    setManagingPortal(true)
+    setPortalError(null)
+    try {
+      const data = await api.post<{ url: string }>('/billing-portal', {})
+      if (!data.url) throw new Error('no portal url')
+      window.location.href = data.url
+    } catch {
+      setPortalError('Could not open the billing portal. Please try again.')
+      setManagingPortal(false)
+    }
+  }
+
   if (loading) return <Loader />
 
   const status = host?.subscription_status ?? 'trial'
@@ -66,10 +107,24 @@ export default function BillingPanel() {
   const trialEndDate = trialEndsAt
     ? new Date(trialEndsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     : null
+  const isManaged = status === 'active' || status === 'grace'
 
   return (
     <div className="max-w-2xl">
       <h1 className="text-[17px] font-serif font-light text-[#1a1a1a] mb-4">Billing</h1>
+
+      {checkoutResult === 'success' && (
+        <div className="bg-[#e4f0da] border border-[#b8d9a0] rounded-[10px] p-4 mb-5">
+          <div className="text-[13px] font-semibold text-[#2a5c0a] mb-0.5">You're all set</div>
+          <div className="text-[11px] text-[#2a5c0a]/80">Thanks — your plan is being set up.</div>
+        </div>
+      )}
+
+      {checkoutResult === 'cancelled' && (
+        <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mb-5">
+          <div className="text-[11px] text-[#888]">Checkout cancelled — no changes were made.</div>
+        </div>
+      )}
 
       {status === 'trial' && host !== null && (
         <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mb-5">
@@ -106,8 +161,23 @@ export default function BillingPanel() {
         </div>
       )}
 
+      {isManaged && (
+        <div className="mb-5">
+          <button
+            onClick={handleManagePortal}
+            disabled={managingPortal}
+            className="bg-[#1a1a1a] text-white rounded-[8px] px-4 py-[10px] text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {managingPortal ? 'Opening…' : 'Manage subscription'}
+          </button>
+          {portalError && (
+            <div className="mt-2 text-[11px] text-[#8a1a1a]">{portalError}</div>
+          )}
+        </div>
+      )}
+
       {plansError && (
-        <div className="bg-[#fde4e4] border border-[#f5c6c6] rounded-[10px] p-4 text-[11px] text-[#8a1a1a]">
+        <div className="bg-[#fde4e4] border border-[#f5c6c6] rounded-[10px] p-4 text-[11px] text-[#8a1a1a] mb-4">
           Could not load plan details — please refresh to try again.
         </div>
       )}
@@ -116,7 +186,7 @@ export default function BillingPanel() {
         {plans.map(plan => {
           const copy = TIER_COPY[plan.tier as 1 | 2 | 3 | 4]
           if (!copy) return null
-          const isCurrentActive = plan.tier === hostTier && status === 'active'
+          const isCurrentPlan = plan.tier === hostTier && (isManaged || status === 'trial')
           const isMostPopular = !!copy.mostPopular
           const sym = currencySymbol(plan.currency)
           const price = `${sym}${(plan.price_cents / 100).toFixed(0)}`
@@ -159,22 +229,34 @@ export default function BillingPanel() {
                 ))}
               </ul>
 
-              {isCurrentActive ? (
-                <div className="w-full text-center text-[11px] font-semibold text-[#1a1a1a] py-2 border border-[#ddd8ce] rounded-[8px] bg-[#f8f6f2]">
-                  Your plan
-                </div>
-              ) : (
+              {plan.tier === 4 ? (
                 <button
                   disabled
                   className="w-full bg-[#1a1a1a] text-white py-2 rounded-[8px] text-xs font-semibold opacity-40 cursor-not-allowed"
                 >
                   Available at launch
                 </button>
+              ) : isCurrentPlan ? (
+                <div className="w-full text-center text-[11px] font-semibold text-[#1a1a1a] py-2 border border-[#ddd8ce] rounded-[8px] bg-[#f8f6f2]">
+                  Your plan
+                </div>
+              ) : (
+                <button
+                  onClick={() => handleChoosePlan(plan.tier)}
+                  disabled={pendingTier !== null}
+                  className="w-full bg-[#1a1a1a] text-white py-2 rounded-[8px] text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {pendingTier === plan.tier ? 'Loading…' : 'Choose plan'}
+                </button>
               )}
             </div>
           )
         })}
       </div>
+
+      {ctaError && (
+        <div className="mt-3 text-[11px] text-[#8a1a1a]">{ctaError}</div>
+      )}
     </div>
   )
 }
