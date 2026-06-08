@@ -8,7 +8,7 @@ export async function sendNtfy({
   priority: 'default' | 'high'
 }): Promise<void> {
   const url = process.env.NTFY_URL
-  if (!url) return
+  if (!url || !url.startsWith('https://')) return
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 5000)
