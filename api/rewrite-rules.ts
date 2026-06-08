@@ -36,10 +36,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'AI not configured' })
 
+  let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const ai = new GoogleGenAI({ apiKey })
 
-    let timer!: ReturnType<typeof setTimeout>
     const timeoutPromise = new Promise<never>((_, reject) => {
       timer = setTimeout(() => reject(new Error('timeout')), 10000)
     })
@@ -47,15 +47,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const generatePromise = ai.models.generateContent({
       model: MODEL,
       contents: trimmed,
-      config: { systemInstruction: SYSTEM_PROMPT },
+      config: {
+        systemInstruction: SYSTEM_PROMPT,
+        thinkingConfig: { thinkingBudget: 0 } as any,
+        maxOutputTokens: 1500,
+      },
     })
 
     const response = await Promise.race([generatePromise, timeoutPromise])
-    clearTimeout(timer)
     const result = response.text?.trim() || trimmed
 
     return res.status(200).json({ result })
-  } catch {
+  } catch (e) {
+    const msg = String((e as Error)?.message ?? e).replace(/key=[^&\s]+/gi, 'key=REDACTED').slice(0, 120)
+    console.error('[rewrite-rules] generateContent failed —', msg)
     return res.status(502).json({ error: 'rewrite failed' })
+  } finally {
+    clearTimeout(timer!)
   }
 }
