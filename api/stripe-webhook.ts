@@ -7,9 +7,18 @@ import {
   subscriptionStartedEmail,
   subscriptionChangedEmail,
   subscriptionCancelledEmail,
+  subscriptionPastDueEmail,
+  adminSubscriptionEventEmail,
 } from './_lib/email.js'
+import { sendPushToHost } from './_lib/push.js'
+import { sendNtfy } from './_lib/ntfy.js'
 
 export const config = { api: { bodyParser: false } }
+
+const ADMIN_EMAIL = 'udy.bar.yosef@gmail.com'
+
+// Tier names duplicated from src/lib/tierCopy.ts — same cross-boundary pattern as EXTRAS_CATEGORIES.
+const TIER_NAMES_W: Record<number, string> = { 1: 'Starter', 2: 'Growth', 3: 'Portfolio', 4: 'Pro' }
 
 function scrubKeys(msg: string): string {
   return msg
@@ -204,36 +213,113 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(500).json({ error: 'DB update exception' })
   }
 
-  // Lifecycle emails — fire-and-forget, never throw
+  // Subscription-change fan-out — parallel, each failure isolated
   const recipientEmail = hostRow.contact_email as string | null
   const hostName = hostRow.name as string | null
   const oldTier = hostRow.tier as number | null
   const oldStatus = hostRow.subscription_status as string | null
   const hadSubscription = !!(hostRow.stripe_subscription_id as string | null)
+  const effectiveNewStatus = newStatus ?? oldStatus
 
-  if (recipientEmail) {
-    try {
-      if (
-        (stripeEvent.type === 'checkout.session.completed' ||
-          stripeEvent.type === 'customer.subscription.created') &&
-        !hadSubscription
-      ) {
-        void sendEmail({ to: recipientEmail, ...subscriptionStartedEmail(hostName, tier) })
-      } else if (
-        stripeEvent.type === 'customer.subscription.updated' &&
-        oldTier !== null &&
-        oldTier !== tier
-      ) {
-        void sendEmail({ to: recipientEmail, ...subscriptionChangedEmail(hostName, oldTier, tier) })
-      } else if (
-        stripeEvent.type === 'customer.subscription.deleted' &&
-        oldStatus !== 'expired'
-      ) {
-        void sendEmail({ to: recipientEmail, ...subscriptionCancelledEmail(hostName) })
-      }
-    } catch {
-      // intentionally swallowed — email failures must not block the webhook response
+  type NoticeType = 'started' | 'upgraded' | 'downgraded' | 'cancelled' | 'grace'
+  let notice: NoticeType | null = null
+  if (
+    !hadSubscription &&
+    (stripeEvent.type === 'checkout.session.completed' ||
+      stripeEvent.type === 'customer.subscription.created')
+  ) {
+    notice = 'started'
+  } else if (hadSubscription && oldTier !== null && tier !== oldTier) {
+    notice = tier > oldTier ? 'upgraded' : 'downgraded'
+  } else if (effectiveNewStatus === 'expired' && oldStatus !== 'expired') {
+    notice = 'cancelled'
+  } else if (effectiveNewStatus === 'grace' && oldStatus !== 'grace') {
+    notice = 'grace'
+  }
+
+  if (notice !== null) {
+    const n = notice  // capture narrowed type for async closures
+    const toTierName = TIER_NAMES_W[tier] ?? `Tier ${tier}`
+    const fromTierName = oldTier !== null ? (TIER_NAMES_W[oldTier] ?? `Tier ${oldTier}`) : null
+
+    const HOST_PUSH: Record<NoticeType, { title: string; body: string }> = {
+      started:    { title: 'Subscription active', body: `You're on the ${toTierName} plan.` },
+      upgraded:   { title: `Upgraded to ${toTierName}`, body: fromTierName ? `Changed from ${fromTierName} to ${toTierName}.` : `Now on ${toTierName}.` },
+      downgraded: { title: `Plan changed to ${toTierName}`, body: fromTierName ? `Changed from ${fromTierName} to ${toTierName}.` : `Now on ${toTierName}.` },
+      cancelled:  { title: 'Subscription cancelled', body: 'Your guest page is no longer active.' },
+      grace:      { title: 'Payment issue', body: 'Your page is still live — please update your card.' },
     }
+    const ADMIN_MSG: Record<NoticeType, string> = {
+      started:    `A host subscribed to ${toTierName}`,
+      upgraded:   `A host upgraded to ${toTierName}`,
+      downgraded: `A host downgraded to ${toTierName}`,
+      cancelled:  'A host cancelled their subscription',
+      grace:      "A host's payment failed",
+    }
+    const { title: hostPushTitle, body: hostPushBody } = HOST_PUSH[n]
+    const adminMsg = ADMIN_MSG[n]
+    const ntfyPriority: 'high' | 'default' = (n === 'grace' || n === 'cancelled') ? 'high' : 'default'
+
+    await Promise.allSettled([
+      // a) billing_notice — server-only JSONB column, service-role write
+      admin.from('hosts').update({
+        billing_notice: { type: n, from_tier: oldTier, to_tier: tier, at: new Date().toISOString() },
+      }).eq('id', hostId),
+
+      // b) host lifecycle email
+      (async () => {
+        if (!recipientEmail) return
+        const tmpl =
+          n === 'started' ? subscriptionStartedEmail(hostName, tier) :
+          n === 'upgraded' || n === 'downgraded' ? subscriptionChangedEmail(hostName, oldTier ?? tier, tier) :
+          n === 'cancelled' ? subscriptionCancelledEmail(hostName) :
+          subscriptionPastDueEmail(hostName)
+        await sendEmail({ to: recipientEmail, ...tmpl })
+      })(),
+
+      // c) host push
+      sendPushToHost(admin, hostId, { title: hostPushTitle, body: hostPushBody, url: '/dashboard/billing' }),
+
+      // d) admin event email
+      sendEmail({
+        to: ADMIN_EMAIL,
+        ...adminSubscriptionEventEmail({
+          event: n,
+          hostName,
+          hostEmail: recipientEmail,
+          hostId,
+          fromTier: oldTier,
+          toTier: tier,
+          status: effectiveNewStatus ?? 'unknown',
+        }),
+      }),
+
+      // e) admin push — resolve admin host row first
+      (async () => {
+        const { data: adminHost } = await admin
+          .from('hosts')
+          .select('id')
+          .eq('contact_email', ADMIN_EMAIL)
+          .maybeSingle()
+        if (!adminHost?.id) return
+        await sendPushToHost(admin, adminHost.id as string, {
+          title: 'Arrivly subscription',
+          body: adminMsg,
+          url: '/admin',
+        })
+      })(),
+
+      // f) ntfy
+      sendNtfy({ title: 'Arrivly', message: adminMsg, priority: ntfyPriority }),
+
+      // g) audit
+      admin.from('admin_audit').insert({
+        actor_email: 'stripe-webhook',
+        action: 'subscription_event',
+        target_host_id: hostId,
+        detail: { event: n, from_tier: oldTier, to_tier: tier, status: effectiveNewStatus, sub_id: sub.id },
+      }),
+    ])
   }
 
   return res.status(200).json({ received: true })

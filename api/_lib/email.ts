@@ -138,3 +138,52 @@ export function subscriptionCancelledEmail(
   const text = `Hi ${who},\n\nYour Arrivly subscription has been cancelled and your guest page is no longer active. You can reactivate at any time from your billing settings.\n\nReactivate: ${APP_URL}/dashboard/billing\n\nArrivly`
   return { subject: 'Your Arrivly subscription has been cancelled', html, text }
 }
+
+export function subscriptionPastDueEmail(
+  name: string | null,
+): { subject: string; html: string; text: string } {
+  const who = name?.trim() ? name.trim() : 'there'
+  const html = layout(
+    'Action needed: payment issue',
+    `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
+     <p style="margin:0 0 12px;">We couldn't charge your payment method. Your Arrivly guest page is still live for now — please update your card soon to avoid any interruption.</p>
+     <p style="margin:0;">Visit your billing settings to update your payment method.</p>`,
+    'Update payment method', `${APP_URL}/dashboard/billing`,
+  )
+  const text = `Hi ${who},\n\nWe couldn't charge your payment method. Your Arrivly guest page is still live for now — please update your card soon to avoid any interruption.\n\nUpdate payment method: ${APP_URL}/dashboard/billing\n\nArrivly`
+  return { subject: 'Action needed: payment issue with your Arrivly subscription', html, text }
+}
+
+interface AdminEventInput {
+  event: string
+  hostName: string | null
+  hostEmail: string | null
+  hostId: string
+  fromTier: number | null
+  toTier: number
+  status: string
+}
+
+export function adminSubscriptionEventEmail(
+  input: AdminEventInput,
+): { subject: string; html: string; text: string } {
+  const { event, hostName, hostEmail, hostId, fromTier, toTier, status } = input
+  const nameLabel = hostName ?? '(unnamed)'
+  const emailLabel = hostEmail ?? '(no email)'
+  const fromTierName = fromTier !== null ? (TIER_NAMES[fromTier] ?? `Tier ${fromTier}`) : 'none'
+  const toTierName = TIER_NAMES[toTier] ?? `Tier ${toTier}`
+  const html = layout(
+    `Subscription event: ${event}`,
+    `<table style="border-collapse:collapse;width:100%;font-size:13px;color:#444;font-family:Arial,Helvetica,sans-serif;">
+       <tr><td style="padding:4px 0;color:#999;width:80px;">Event</td><td style="padding:4px 0;">${esc(event)}</td></tr>
+       <tr><td style="padding:4px 0;color:#999;">Host</td><td style="padding:4px 0;">${esc(nameLabel)}</td></tr>
+       <tr><td style="padding:4px 0;color:#999;">Email</td><td style="padding:4px 0;">${esc(emailLabel)}</td></tr>
+       <tr><td style="padding:4px 0;color:#999;">Host ID</td><td style="padding:4px 0;font-size:11px;font-family:monospace;">${esc(hostId)}</td></tr>
+       <tr><td style="padding:4px 0;color:#999;">Tier</td><td style="padding:4px 0;">${esc(fromTierName)} &rarr; ${esc(toTierName)}</td></tr>
+       <tr><td style="padding:4px 0;color:#999;">Status</td><td style="padding:4px 0;">${esc(status)}</td></tr>
+     </table>`,
+    'Open admin', `${APP_URL}/admin`,
+  )
+  const text = `Arrivly subscription event: ${event}\n\nHost: ${nameLabel} <${emailLabel}>\nHost ID: ${hostId}\nTier: ${fromTierName} -> ${toTierName}\nStatus: ${status}\n\nAdmin: ${APP_URL}/admin`
+  return { subject: `Arrivly: ${nameLabel} ${event}`, html, text }
+}

@@ -4,10 +4,18 @@ import { api } from '../../lib/api'
 import { TIER_COPY } from '../../lib/tierCopy'
 import Loader from '../shared/Loader'
 
+interface BillingNotice {
+  type: 'started' | 'upgraded' | 'downgraded' | 'cancelled' | 'grace'
+  from_tier: number | null
+  to_tier: number
+  at: string
+}
+
 interface HostData {
   tier: number | null
   trial_ends_at: string | null
   subscription_status: string | null
+  billing_notice: BillingNotice | null
 }
 
 interface Plan {
@@ -24,6 +32,25 @@ function currencySymbol(code: string): string {
   return map[code.toLowerCase()] ?? code.toUpperCase()
 }
 
+type BannerStyle = { bg: string; border: string; heading: string; muted: string }
+const GREEN: BannerStyle = { bg: 'bg-[#e4f0da]', border: 'border-[#b8d9a0]', heading: 'text-[#2a5c0a]', muted: 'text-[#2a5c0a]/70' }
+const AMBER: BannerStyle = { bg: 'bg-[#faeeda]', border: 'border-[#e8d0a0]', heading: 'text-[#7a4800]', muted: 'text-[#7a4800]/70' }
+const RED: BannerStyle  = { bg: 'bg-[#fde4e4]', border: 'border-[#f5c6c6]', heading: 'text-[#8a1a1a]', muted: 'text-[#8a1a1a]/70' }
+
+const TIER_NAMES: Record<number, string> = { 1: 'Starter', 2: 'Growth', 3: 'Portfolio', 4: 'Pro' }
+
+function bannerConfig(notice: BillingNotice): { heading: string; body: string; style: BannerStyle } {
+  const from = notice.from_tier !== null ? (TIER_NAMES[notice.from_tier] ?? `Tier ${notice.from_tier}`) : null
+  const to = TIER_NAMES[notice.to_tier] ?? `Tier ${notice.to_tier}`
+  switch (notice.type) {
+    case 'started':    return { heading: `You're on the ${to} plan`, body: 'Your subscription is active.', style: GREEN }
+    case 'upgraded':   return { heading: `Upgraded to ${to}`, body: from ? `Changed from ${from} to ${to}.` : `Now on ${to}.`, style: GREEN }
+    case 'downgraded': return { heading: `Plan changed to ${to}`, body: from ? `Changed from ${from} to ${to}.` : `Now on ${to}.`, style: AMBER }
+    case 'cancelled':  return { heading: 'Subscription cancelled', body: 'Your guest page is no longer active. Reactivate anytime.', style: RED }
+    case 'grace':      return { heading: 'Payment issue', body: 'Your page is still live — please update your card.', style: RED }
+  }
+}
+
 export default function BillingPanel() {
   const [host, setHost] = useState<HostData | null>(null)
   const [plans, setPlans] = useState<Plan[]>([])
@@ -34,6 +61,7 @@ export default function BillingPanel() {
   const [managingPortal, setManagingPortal] = useState(false)
   const [portalError, setPortalError] = useState<string | null>(null)
   const [checkoutResult, setCheckoutResult] = useState<'success' | 'cancelled' | null>(null)
+  const [dismissing, setDismissing] = useState(false)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -51,7 +79,7 @@ export default function BillingPanel() {
       const [{ data: hostData }, { data: plansData, error: plansErr }] = await Promise.all([
         supabase
           .from('hosts')
-          .select('tier, trial_ends_at, subscription_status')
+          .select('tier, trial_ends_at, subscription_status, billing_notice')
           .eq('id', user.id)
           .maybeSingle(),
         supabase
@@ -59,7 +87,7 @@ export default function BillingPanel() {
           .select('tier, label, price_cents, currency, max_properties, includes_booking')
           .order('tier', { ascending: true }),
       ])
-      setHost(hostData)
+      setHost(hostData as HostData | null)
       if (plansErr) {
         setPlansError(true)
       } else {
@@ -96,6 +124,18 @@ export default function BillingPanel() {
     }
   }
 
+  async function handleDismissNotice() {
+    setDismissing(true)
+    try {
+      await api.post('/dismiss-billing-notice', {})
+      setHost(prev => prev ? { ...prev, billing_notice: null } : null)
+    } catch {
+      // swallow — banner stays visible on failure
+    } finally {
+      setDismissing(false)
+    }
+  }
+
   if (loading) return <Loader />
 
   const status = host?.subscription_status ?? 'trial'
@@ -108,10 +148,31 @@ export default function BillingPanel() {
     ? new Date(trialEndsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     : null
   const isManaged = status === 'active' || status === 'grace'
+  const billingNotice = host?.billing_notice ?? null
 
   return (
     <div className="max-w-2xl">
       <h1 className="text-[17px] font-serif font-light text-[#1a1a1a] mb-4">Billing</h1>
+
+      {billingNotice && (() => {
+        const { heading, body, style } = bannerConfig(billingNotice)
+        return (
+          <div className={`${style.bg} border ${style.border} rounded-[10px] p-4 mb-5 flex items-start justify-between gap-3`}>
+            <div>
+              <div className={`text-[13px] font-semibold ${style.heading} mb-0.5`}>{heading}</div>
+              {body && <div className={`text-[11px] ${style.muted}`}>{body}</div>}
+            </div>
+            <button
+              onClick={handleDismissNotice}
+              disabled={dismissing}
+              aria-label="Dismiss"
+              className={`shrink-0 ${style.heading} opacity-50 hover:opacity-100 text-lg leading-none bg-transparent border-none cursor-pointer disabled:cursor-not-allowed`}
+            >
+              &times;
+            </button>
+          </div>
+        )
+      })()}
 
       {checkoutResult === 'success' && (
         <div className="bg-[#e4f0da] border border-[#b8d9a0] rounded-[10px] p-4 mb-5">
