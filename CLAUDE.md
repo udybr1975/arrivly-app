@@ -1,6 +1,7 @@
 # Arrivly — CLAUDE.md
 
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
+> **Current HEAD:** f4a89bd (2026-06-08)
 
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
@@ -51,6 +52,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - `apartments.ical_urls` — single text column, one URL per line, no limit (replaces old airbnb_ical_url)
 - `bookings.reference_number` — is the guest token, used in QR URL
 - `guide_recommendations` — always query with `.maybeSingle()` never `.single()`
+- **`bookings_guest_read` RLS policy** — scoped to `TO anon` (was `TO public`) since migration `scope_bookings_guest_read_to_anon` (S11). anon key is public so anon can still read all booking rows; a service-role endpoint for guest booking-state lookup + dropping this policy is the remaining close-out item before go-live.
 - RLS on `host_picks` joins through `apartments.host_id` — correct, verified
 - `push_subscriptions` has a UNIQUE index on `endpoint` (`push_subscriptions_endpoint_key`) — subscriptions upsert with `onConflict: 'endpoint'`
 - `push_subscriptions` RLS verified (2026-05-31): single ALL policy `push_host_all`
@@ -102,7 +104,11 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 - **Maison Lumiere** — `d7f47672-fde5-4da1-91ae-0f9f774732fd`, Le Marais Paris, token `ARR-PAR777` (booking 3–12 Jun 2026 ongoing → active page, guest "Sophie"; has WiFi + rules + private check-in door code 4521).
 
 **Host: Udyni** (udy.baryosef@jchelsinki.fi) — owns:
-- **Penthouse in the sky** — id: `9b03a763-3ca6-4d1f-946c-d4e1f977d614`, token: `ARR-PENTH1`
+- **Penthouse in the sky** — id: `9b03a763-3ca6-4d1f-946c-d4e1f977d614`, is_visible=true; test booking `ARR-PHTEST`, guest Liam, Jun 8–12 2026 (active); extras + guide + polished rules present.
+
+**Host: Anna** (anna.humalainen@gmail.com) — new test host added S11. Owns:
+- **Anna Stays** — id: `eab1e358-…`, Vantaa/Hakunila, is_visible=true.
+(Earlier test host `eed9860a` fully deleted from DB in S11.)
 
 **Host: TLV properties** (udy@tlv.capital) — id `1d5a3b9c-0a41-4585-898f-5095ed6f2350`, 2 apartments, trial ends 2026-07-05, tier 1 (baseline).
 
@@ -158,6 +164,13 @@ Colour presets for BrandingPanel are in `ARRIVLY_CONFIG.colourPresets`.
 **S10 (2026-06-06):** Phase D1 superadmin dashboard — `api/admin-overview.ts` (GET, Bearer→`getUser`, email===`ADMIN_EMAIL` gate, service-role parallel queries for hosts+plans+apartments+bookings, computed `apartments_count`/`bookings_count`/`effective_price_cents`/`days_left`/`mrr_cents`, returns `{hosts,totals,plans}`). `src/components/admin/SuperAdmin.tsx` full rewrite: calls `api.get('/admin-overview')`, 6 metric tiles (total/trial/active/MRR/grace/expired), filter by status, sort by expiring/newest/name, exempt toggle ("Show my account"), host cards with tier+status pills + days_left (red ≤7) + disabled Impersonate placeholder (Phase D2), "Open my host dashboard →" link, `InstallCard`. `App.tsx` Landing: admin email → `/admin` redirect. `Layout.tsx`: "← Admin" nav link visible to admin only. Commit: `b8f41d5`. Phase D2 read-only impersonate — `api/admin-impersonate.ts` (GET `?host_id=UUID`, same admin gate, UUID regex, service-role snapshot: host fields without Stripe IDs/push_endpoint/tokens, apartments with bookings+picks counts, best-effort audit insert to `admin_audit`). `public.admin_audit` table (migration `phase_d2_admin_audit`: RLS ON, zero policies — service-role only). `SuperAdmin.tsx`: "View as" button enables snapshot fetch; normal-flow faux-viewport overlay with sticky amber "👁 Viewing {brand} — read only" banner + Exit; hero resolved only when non-null (accent swatch otherwise); zero mutating controls. `App.tsx`: `/superadmin` + `/dashboard/admin` both redirect to `/admin`. Commit: `09b9e50`.
 
 **S9 (2026-06-05):** Transactional email (Phase C close-out) — Resend integration shipped and verified end-to-end. `api/_lib/email.ts` (Resend wrapper `sendEmail()` — never throws, scrubs key, `replyTo`; `welcomeEmail()` + `trialReminderEmail()` builders; sender `hello@anna-stays.fi`, reply-to `info@anna-stays.fi`). `api/send-welcome.ts` (Bearer-gated POST, atomic `welcome_email_sent_at` claim, recipient from DB only, fires fire-and-forget from `OnboardingFlow` at finish). `api/cron-trial-ending.ts` extended: atomic stamp before send, real `daysLeft` from DB, push + email. Dynamic trial length via `public.app_settings.trial_days` (DB-only, `handle_new_user()` reads with fallback 30). `CRON_SECRET` rotated and redeployed. Commits: `3a77595` (feat email) + `53e6460` (welcome path fix).
+
+**S11 (2026-06-08):** Five targeted fixes + AI extras feature (HEAD `f4a89bd`):
+1. **Onboarding 403 on new-user registration** — `OnboardingFlow.finish()` changed from `.upsert({id,...})` to `.update({...}).eq('id', user.id)`. The D0 column lockdown revoked UPDATE on `hosts.id`; PostgREST included `id` in the ON CONFLICT SET payload → Postgres 42501 → HTTP 403. Removing `id` from the payload fixes it. `bdd5c64`
+2. **New properties created hidden** — `OnboardingFlow` apartments insert now `is_visible: true`. `guest-chat`, `guest-message`, and `guest-subscribe` all 404 on `is_visible=false`, making every brand-new host's property fully dead until a manual DB flip. `5acdd77`
+3. **CRITICAL cross-tenant leak in Messages tab** — `bookings_guest_read` RLS policy was `USING(true) TO public`, so every authenticated host could see all hosts' bookings via the messages booking lookup. Fixed via migration `scope_bookings_guest_read_to_anon` (`ALTER POLICY ... TO anon`). Verified: a host now sees only their own bookings (2 of 35). **NOTE:** anon key is public so anon can still enumerate all bookings/guests — deeper close-out (service-role endpoint for guest booking-state + drop the policy) is required before go-live.
+4. **House rules stored raw** — `api/rewrite-rules.ts` was missing `thinkingConfig: {thinkingBudget: 0}`; gemini-2.5-flash spent its output budget thinking and returned empty text on longer inputs, so the fallback stored raw unpolished rules. Added `thinkingBudget: 0`, raised `maxOutputTokens` 1024→1500, key-scrubbed `console.error` on 502, `clearTimeout` moved to `finally`. `219700d`
+5. **AI bulk extras built end-to-end** (was stub + fake UI). `api/bulk-import.ts`: auth + ownership check + Gemini JSON categorisation (`thinkingBudget: 0`, `maxOutputTokens: 2048`, `responseMimeType: application/json`) + replace-scoped-to-EXTRAS_CATEGORIES insert (DELETE only fires when `valid.length > 0` — no silent data wipe on empty parse). `PropertySetup` Extras tab: `loadExtras` on tab open, bulk import wired to real API response, deletable list with `apartment_id` guard. `GuestPage` home tab: "Good to know" section after house rules in `EXTRAS_CATEGORIES` order. `EXTRAS_CATEGORIES = ['Parking','Recycling & Bins','Appliances','Transport','Amenities','Safety','Good to know']` — duplicated intentionally across `api/bulk-import.ts`, `PropertySetup.tsx`, `GuestPage.tsx` (no cross-boundary import). `f4a89bd`
 
 ---
 
@@ -330,3 +343,19 @@ Phases:
 
 Tier-2 architecture stays upgrade-ready throughout (plan-gated component slots; bookings/guests
 schema already supports it).
+
+---
+
+## On the horizon / next steps
+
+> ⚠ **HARD GATE — set real plan values before any real signups.** Still on TEST values from D3b: Tier 1 €10/cap 2, Tier 2 €15/cap 7, Tier 3 €25/cap 12, Tier 4 €49/unlimited; `app_settings.trial_days` = 14. Update via the admin Plan settings panel. Reminder at every session start.
+
+1. **#1 — Deeper anon bookings close-out** (before go-live): move guest booking-state lookup to a service-role endpoint and drop the `bookings_guest_read` anon policy. Anon key is public so anon can currently enumerate all bookings/guests rows.
+2. **D4 — host self-tier-selection UI** in the billing tab (the surface Stripe plugs into).
+3. **Phase E — Stripe billing:** create-subscription, billing-portal, stripe-webhook (signature verified), subscription lifecycle, guest-page grace/expired enforcement.
+4. **Add-property flow + property-cap enforcement** — still unbuilt; fold into existing dashboard vs. separate page TBD.
+5. **Live/Draft publish toggle** on the dashboard property card — no UI control exists today; properties created before the `is_visible=true` fix are stuck in Draft and can only be published via DB.
+6. **Auto-generate guide on first property save/publish** — new properties start with an empty guide.
+7. **Guide hardening:** treat a 0-place result as a soft failure — don't overwrite a good guide with an empty one; surface a retry to the host.
+8. **Cosmetic:** Dashboard "City guide" completeness indicator is hardcoded to "–" (`check(false)`).
+9. **Latent:** `GuestPage.handleMoreTabPushEnable` references `apt` before its declaration in the render scope (safe at runtime — only called after render completes; replace with `apartment` on next GuestPage touch).
