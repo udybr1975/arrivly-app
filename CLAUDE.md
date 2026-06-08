@@ -1,7 +1,7 @@
 # Arrivly — CLAUDE.md
 
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD:** 23a4abd (2026-06-08)
+> **Current HEAD:** 1de4d2a (2026-06-09)
 
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
@@ -33,7 +33,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 | `/admin` | SuperAdmin | admin only |
 
 ## Database (Supabase)
-- **hosts** — id (= auth.uid), name, brand_name, whatsapp, logo_url, accent_color, contact_email, country, city, neighborhood, street, street_number, lat, lng, plan, trial_ends_at, subscription_status, stripe_customer_id, stripe_subscription_id, current_period_end (timestamptz, server-only — webhook/service-role writes only), push_endpoint, welcome_email_sent_at, trial_reminder_sent_at, tier (int, FK plans.tier), is_exempt (bool, default false), price_override_cents (int nullable), discount_percent (int nullable), discount_until (timestamptz nullable), property_cap_override (int nullable), created_at
+- **hosts** — id (= auth.uid), name, brand_name, whatsapp, logo_url, accent_color, contact_email, country, city, neighborhood, street, street_number, lat, lng, plan, trial_ends_at, subscription_status, stripe_customer_id, stripe_subscription_id, current_period_end (timestamptz, server-only — webhook/service-role writes only), push_endpoint, welcome_email_sent_at, trial_reminder_sent_at, tier (int, FK plans.tier), is_exempt (bool, default false), price_override_cents (int nullable), discount_percent (int nullable), discount_until (timestamptz nullable), property_cap_override (int nullable), billing_notice (jsonb nullable — server-only write, SELECT readable by authenticated; shape: `{ type, from_tier, to_tier, at }`), created_at
 - **plans** — tier (smallint PK 1-4), label, price_cents, currency, max_properties (int nullable = unlimited), includes_booking (bool), updated_at. RLS ON, single SELECT policy for authenticated; writes are service-role only (via api/admin-plans.ts). Edited from the admin Plan settings panel.
 - **apartments** — id, host_id, name, country, city, neighborhood, street, street_number, floor_note, lat, lng, max_guests, description, images[], is_visible, accent_color, ical_urls, hero_image_url, city_image_url, city_image_credit, created_at
 - **apartment_details** — id, apartment_id, category, content, is_private
@@ -45,7 +45,10 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - **push_subscriptions** — id, host_id, apartment_id, booking_id, role, endpoint, p256dh, auth_key, created_at
 - **guest_optins** — id, first_name, email, apartment_id, opted_in_at
 - **app_settings** — id (always 1), trial_days (int, default 30), updated_at; RLS ON with zero policies (only service-role + SECURITY DEFINER trigger can read/write); `handle_new_user()` reads `trial_days` with hard fallback to 30 so a missing row never breaks signups. Change trial length: `update public.app_settings set trial_days=N, updated_at=now() where id=1;` (new signups only; existing hosts keep their dates). Future superadmin dashboard edits this row.
-- **admin_audit** — id, actor_email, action ('update_host'|'update_plans'|'impersonate_view'), target_host_id (uuid nullable), detail (jsonb), created_at. RLS ON with zero policies (service-role only). Written by the admin endpoints; read by api/admin-audit.ts (last 50). NOTE: edits made by direct SQL (not via an admin endpoint) are intentionally NOT logged here.
+- **admin_audit** — id, actor_email, action ('update_host'|'update_plans'|'impersonate_view'|'subscription_event'), target_host_id (uuid nullable), detail (jsonb), created_at. RLS ON with zero policies (service-role only). Written by the admin endpoints and stripe-webhook; read by api/admin-audit.ts (last 50). NOTE: edits made by direct SQL (not via an admin endpoint) are intentionally NOT logged here.
+
+### DB functions
+- **`guest_host_card(p_apartment_id uuid)`** — SECURITY DEFINER, granted to anon+authenticated. Returns setof (brand_name, logo_url, whatsapp, subscription_status) for visible apartments. Used by GuestPage to read host branding without requiring anon SELECT on the hosts table. Added S13.
 
 ### Critical DB facts
 - `apartments.accent_color` — NOT brand_color (common mistake, causes silent save failure)
@@ -63,7 +66,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
   argument when notifying the host — passing one filters the lookup to zero rows and
   delivers nothing silently.
 - **`push_subscriptions.booking_id`** — nullable UUID; set for guest subscriptions (server-derived from resolved booking in `api/guest-subscribe.ts`); NULL for host subscriptions.
-- **`hosts` server-only columns** — `hosts` has 14 client-updatable profile columns only; `tier`, `is_exempt`, `price_override_cents`, `discount_percent`, `discount_until`, `property_cap_override`, `subscription_status` are server-only (table UPDATE revoked from authenticated+anon, granted on the 14 safe columns). Never write these from the client — only via admin endpoints.
+- **`hosts` server-only columns** — `hosts` has 14 client-updatable profile columns only; `tier`, `is_exempt`, `price_override_cents`, `discount_percent`, `discount_until`, `property_cap_override`, `subscription_status`, `billing_notice` are server-only for WRITE (table UPDATE revoked from authenticated+anon on these columns). `billing_notice` IS SELECT-readable by authenticated (needed for BillingPanel). Never write server-only columns from the client — only via admin endpoints or the stripe-webhook (service-role).
 - **`config.ts` pricing fields (`trialDays`, `pricePerPropertyMonthly`, `maxPropertiesByPlan`) are LEGACY** and superseded by the DB `plans` table + `app_settings.trial_days`. The tier catalogue is DB-driven; never reintroduce hardcoded tier prices. (Cleaning these stale fields out of `config.ts` is a separate minor code tidy.)
 
 ### Image system
@@ -177,6 +180,28 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 4. **House rules stored raw** — `api/rewrite-rules.ts` was missing `thinkingConfig: {thinkingBudget: 0}`; gemini-2.5-flash spent its output budget thinking and returned empty text on longer inputs, so the fallback stored raw unpolished rules. Added `thinkingBudget: 0`, raised `maxOutputTokens` 1024→1500, key-scrubbed `console.error` on 502, `clearTimeout` moved to `finally`. `219700d`
 5. **AI bulk extras built end-to-end** (was stub + fake UI). `api/bulk-import.ts`: auth + ownership check + Gemini JSON categorisation (`thinkingBudget: 0`, `maxOutputTokens: 2048`, `responseMimeType: application/json`) + replace-scoped-to-EXTRAS_CATEGORIES insert (DELETE only fires when `valid.length > 0` — no silent data wipe on empty parse). `PropertySetup` Extras tab: `loadExtras` on tab open, bulk import wired to real API response, deletable list with `apartment_id` guard. `GuestPage` home tab: "Good to know" section after house rules in `EXTRAS_CATEGORIES` order. `EXTRAS_CATEGORIES = ['Parking','Recycling & Bins','Appliances','Transport','Amenities','Safety','Good to know']` — duplicated intentionally across `api/bulk-import.ts`, `PropertySetup.tsx`, `GuestPage.tsx` (no cross-boundary import). `f4a89bd`
 
+**S13 (2026-06-09):** Phase E2 + E2.1 shipped and verified; Gemini retry hardened. HEAD `1de4d2a`.
+
+**Phase E2 — Stripe webhook + lifecycle emails + guest enforcement** (`bb077e6`):
+- `api/stripe-webhook.ts` — full implementation: raw-body stream read (`config: { api: { bodyParser: false } }`), `webhooks.constructEvent()` signature verification, `app=arrivly` isolation on the live-retrieved subscription (not the event payload — prevents tampered-replay bypass), `mapStatus()` (trialing→trial, active→active, incomplete/past_due/unpaid/paused→grace, canceled/incomplete_expired→expired), UUID-validated `sub.metadata.host_id` with `stripe_customer_id` fallback, service-role write of `tier`/`subscription_status`/`current_period_end`. Basil-proof period end: reads `sub.items.data[0].current_period_end` with `sub.current_period_end` root fallback (Stripe Basil API 2025-03-31 moved the field to items; this account's webhook version is post-Basil).
+- `api/_lib/email.ts` — added `subscriptionStartedEmail`, `subscriptionChangedEmail`, `subscriptionCancelledEmail`, `subscriptionPastDueEmail`, `adminSubscriptionEventEmail`. Local `TIER_NAMES` map follows the cross-boundary duplication pattern.
+- `src/components/guest/GuestPage.tsx` — host fetch replaced with `supabase.rpc('guest_host_card', { p_apartment_id })` (SECURITY DEFINER — anon SELECT on `hosts` was returning zero rows, so expired-enforcement never fired before this fix). `showPoweredBy = trial || grace` (grace page stays live). Silent push bug fixed: `handleMoreTabPushEnable` now uses `apartment` state instead of stale closure `apt`.
+- DB: `guest_host_card(p_apartment_id uuid)` SECURITY DEFINER function added (anon+authenticated); `hosts.billing_notice` jsonb column added (authenticated UPDATE revoked; SELECT readable).
+
+**Phase E2.1 — Subscription-change notification fan-out** (`a18f9ec` + fixes `0348c36`, `0f39980`):
+- Webhook detects transition type (started/upgraded/downgraded/cancelled/grace) from pre-write host row vs. new state. Routine renewals send nothing. On a real transition, fans out via `Promise.allSettled` to 7 channels: (a) `hosts.billing_notice` DB write, (b) host lifecycle email, (c) host push → `/dashboard/billing`, (d) admin event email to udy.bar.yosef@gmail.com, (e) admin push → `/admin`, (f) ntfy, (g) `admin_audit` insert (`action='subscription_event'`).
+- New `api/_lib/ntfy.ts` — POST to `NTFY_URL`; `https://`-only scheme guard; ASCII-only `Title`/`Priority` headers (non-ASCII causes ByteString errors on Vercel); 500-char body cap; 5s timeout; never throws. `NTFY_URL` = `https://ntfy.sh/arrivly-subscription-plan-99` (set in Vercel Production).
+- New `api/dismiss-billing-notice.ts` — Bearer→anon `getUser`; service-role nulls `billing_notice`; host can only clear their own row.
+- `src/components/host/BillingPanel.tsx` — dismissible green/amber/red `billing_notice` banner above the checkout banners; `handleDismissNotice` optimistically clears on success.
+- `src/components/admin/SuperAdmin.tsx` — activity log `auditSummary()` and `ACTION_LABEL` extended for `subscription_event` rows.
+- Webhook test scenarios: Scenario 2 (upgrade) and Scenario 3 (downgrade) PASSED. Scenarios 1 (started) and 4 (cancel) still pending.
+
+**AI reliability — transient retry** (`1de4d2a`):
+- Diagnosed: rewrite-rules and generate-guide were intermittently 502-ing with identical code. Temporary diagnostic logging (commit `4573bc5`) confirmed transient Gemini 5xx — same key+model succeeded minutes later; Google status was green.
+- New `api/_lib/retry.ts` — `withRetry<T>(fn, opts)`: exponential backoff, retries 429/5xx/AbortError/network keywords, throws immediately on non-transient 4xx.
+- `api/rewrite-rules.ts` — diagnostic removed; per-attempt AbortController 10s + `withRetry({ retries: 2 })` → max ~31.8s worst case (within 60s maxDuration).
+- `api/_lib/guide.ts` — same pattern; per-attempt timeout 20s + `withRetry({ retries: 1 })` → max ~58.6s worst case (2 × 20s + 600ms delay + ~18s geocoding — within 60s maxDuration).
+
 ---
 
 ## Phase C — Communication (COMPLETE ✓)
@@ -206,7 +231,6 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
 - `BookingCalendar.tsx` is an unused stub; the real calendar is `CalendarView` inside `BookingManager.tsx`.
 - QR scans metric on Overview still shows "—" (not wired to any data source).
-- `api/stripe-webhook.ts` is a stub with NO signature verification — must implement before billing goes live.
 - iCal fetch (`api/_lib/ical.ts`, used by both sync-ical and cron-sync-ical): mild SSRF (no
   private-IP/metadata blocklist on fetched URLs); no per-host rate limit. The monthly cron now
   exercises this unattended. Tidy SSRF + rate limit before public launch.
@@ -218,6 +242,8 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - sw.js `showNotification().then()` — if showNotification rejects, badge is not set and the rejection is swallowed by `event.waitUntil`; low risk, standard SW pattern (W2, `c294bda`).
 - `countUnread` in `Layout.tsx` called directly from event listeners with no mounted guard at call site — safe because `mounted` flag is closed over and listeners are removed on cleanup before it matters; no real bug (W3, `c294bda`).
 - `BookingManager.tsx` `arrivly:messages-read` handler calls `loadBookings()` without a cancellation signal — tiny stale-overwrite race on rapid apartment switching; fold into next BookingManager change.
+- **Guide: upsert fires even on empty parse result** — a 0-place guide silently overwrites a previously good guide. Gate the upsert on `placeCount > 0` (see next steps #7).
+- **BillingPanel "Manage subscription" only shows for active/grace** — a trialing subscriber (status='trial', has stripe_subscription_id) cannot reach the portal. Fix: gate on `stripe_subscription_id` presence (see next steps #2).
 
 ---
 
@@ -283,6 +309,14 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 
 - **A Vercel environment-variable change only takes effect after a redeploy.** Adding or rotating a secret in the Vercel dashboard does not hot-reload running functions. Trigger a redeploy (push a commit, or use the Vercel dashboard "Redeploy" button) immediately after any env-var change and confirm the new deployment is READY before testing.
 
+- **Stripe Basil API (2025-03-31) moved `current_period_end` off the subscription root onto `sub.items.data[0]`**. Read item-level with a root fallback: `(sub.items?.data?.[0] as any)?.current_period_end ?? (sub as any).current_period_end ?? null`. Use `as any` casts deliberately — the installed Stripe SDK types and the account's runtime API version differ.
+
+- **Stripe webhooks on Vercel require a raw body stream.** Set `export const config = { api: { bodyParser: false } }` and read the body manually with a stream-to-Buffer collector. `webhooks.constructEvent()` rejects any pre-parsed body.
+
+- **Subscribing via Stripe Checkout starts the subscription in `trialing` status, not `active`.** `subscription_status` stays `'trial'` (not `'active'`) until the trial converts at the trial end date. This is expected — not a webhook bug. The `BillingPanel` trial banner is driven by `trial_ends_at` from the DB, not by `subscription_status`.
+
+- **Gemini throws transient 5xx errors intermittently.** Wrap all `ai.models.generateContent()` calls with `withRetry` (`api/_lib/retry.ts`). Size the per-attempt AbortController timeout and retry count to fit within the function's `maxDuration` (e.g. 3 × 10s for rewrite-rules, 2 × 20s for guide).
+
 ---
 
 ## Workflow
@@ -293,6 +327,7 @@ Claude in chat NEVER pushes to GitHub. All code changes are delivered as Claude 
 ### Agent policy
 - Append the **code-reviewer** subagent to EVERY code-changing Claude Code prompt — read-only review before commit.
 - Run **security-auditor** for any change touching secrets, auth, RLS, or API routes, and before every production deploy.
+- **ORDERING RULE (hard):** Do NOT commit or push until BOTH code-reviewer and security-auditor have completed AND every must-fix item they raise has been applied. Never run reviewers as background non-blocking before a push.
 - **Docs-only prompts** (no code, no build) skip build validation and review agents.
 - Use **debugger** only when stuck (~20+ min).
 - Run **dead-code-cleaner** periodically; it writes a report and waits for approval before removing anything.
@@ -334,7 +369,7 @@ Phases:
 - **B — Guest look & feel:** COMPLETE ✓ Photo hero + accent scrim, logo/cover upload, Unsplash city default with attribution, Storage signed-URL fix. (`d2bbe37`, `45e1c70`, `9dcc1f6`, `7da1c85`, `72e8f41`)
 - **C — Communication:** COMPLETE ✓ Messaging + push + badges + PWA install UX + transactional email (welcome + day-25 reminder). (`94e1fc0`→`53e6460`)
 - **D — Superadmin:** COMPLETE ✓ — D1 overview API + UI + admin routing (`b8f41d5`); D2 read-only "View as" + `admin_audit` (`09b9e50`); D2.1 enriched View-as + plans `label` fix (`bf4e318`, `b2015d2`); D3a host Manage drawer + `api/admin-update-host.ts` (tier/status/price/discount/cap/trial extend, 6-key allowlist, audited) (`909dda5`); D3b global Plan-settings panel (`api/admin-plans.ts`, edits tier price+cap and `app_settings.trial_days`) + Activity-log view (`api/admin-audit.ts`) + fixes: MRR/totals re-fetch after Manage save, discount preview clamped 0-100, `mobile-web-app-capable` meta tag (`3fc401d`). Business model: 4 tiers, flat price per tier, dashboard-editable; Tiers 1-3 guest-page at rising caps, Tier 4 adds booking. Lifecycle status and tier are independent dimensions. PRE-STRIPE: all admin edits set intent + move MRR projection only — they charge no one (money/destructive actions wait for E). D4 — billing-tab tier cards (plans read client-side) + `src/lib/tierCopy.ts` + `api/set-tier.ts` inert pre-Stripe seam (403 billing_not_live) (`ec77806`).
-- **E — Billing (Tier-1 Stripe):** E1 DONE ✓ (`23a4abd`) — create-subscription + billing-portal + `api/_lib/stripe.ts`, verified in Stripe TEST sandbox. E2 PENDING — stripe-webhook (raw-body signature verify, `app=arrivly` isolation, idempotent, sync tier/status/`current_period_end`), three lifecycle emails, guest-page grace/expired enforcement.
+- **E — Billing (Tier-1 Stripe):** E1 DONE ✓ (`23a4abd`) — create-subscription + billing-portal + `api/_lib/stripe.ts`, verified in Stripe TEST sandbox. E2 DONE ✓ (`bb077e6`) — stripe-webhook (raw-body, signature verify, Arrivly isolation, idempotent sync); lifecycle emails; guest-page host fetch via SECURITY DEFINER RPC; `showPoweredBy` = trial || grace. E2.1 DONE ✓ (`a18f9ec`) — 7-channel subscription-change fan-out; dismissible `billing_notice` banner; ntfy live. **Remaining before billing goes live:** complete 360 webhook test (Scenarios 1+4 pending); fix "Manage subscription" button for trialing subscribers; set live Stripe keys/prices/webhook.
 - **F — Tier-2 booking system:** Full booking (availability → request → approve → pay →
   manage) on the €49 price, referencing Anna's Stays components. Built on working Stripe.
 - **G — Pre-launch hardening:** cron follow-ups (sync-ical real-feed test), iCal SSRF blocklist + rate limit, cron batching/maxDuration
@@ -359,11 +394,12 @@ Tier differentiation beyond property caps is a wanted direction (not iterated ye
 > ✓ **Plan values confirmed S12 (hard gate CLOSED).** Official base values: Tier 1 €10/cap 2, Tier 2 €15/cap 7, Tier 3 €25/cap 12, Tier 4 €49/unlimited; `app_settings.trial_days` = 14. Do not change without explicit decision.
 
 1. **#1 — Deeper anon bookings close-out** (before go-live): move guest booking-state lookup to a service-role endpoint and drop the `bookings_guest_read` anon policy. Anon key is public so anon can currently enumerate all bookings/guests rows.
-2. ~~**D4 — host self-tier-selection UI**~~ DONE ✓ — billing tab rebuilt with four DB-driven tier cards; `api/set-tier.ts` seam ready for Phase E.
-3. **Phase E2 — Stripe webhook + emails + guest-page enforcement** (E1 shipped `23a4abd`): rewrite `api/stripe-webhook.ts` with raw-body signature verification, ignore any event not tagged `app=arrivly`, idempotent handling, service-role sync of tier/status/`current_period_end`; add three transactional emails (welcome-with-tiers, upgrade/downgrade confirmation, cancellation acknowledgement); enforce `subscription_status` on the guest page (live while paid/trialing, reminder in grace, neutral page when expired). `STRIPE_WEBHOOK_SECRET` still to be set in Vercel at webhook registration.
-4. **Add-property flow + property-cap enforcement** — still unbuilt; fold into existing dashboard vs. separate page TBD.
-5. **Live/Draft publish toggle** on the dashboard property card — no UI control exists today; properties created before the `is_visible=true` fix are stuck in Draft and can only be published via DB.
-6. **Auto-generate guide on first property save/publish** — new properties start with an empty guide.
-7. **Guide hardening:** treat a 0-place result as a soft failure — don't overwrite a good guide with an empty one; surface a retry to the host.
-8. **Cosmetic:** Dashboard "City guide" completeness indicator is hardcoded to "–" (`check(false)`).
-9. **Latent:** `GuestPage.handleMoreTabPushEnable` references `apt` before its declaration in the render scope (safe at runtime — only called after render completes; replace with `apartment` on next GuestPage touch).
+2. **BUG — "Manage subscription" not shown for trialing subscribers.** `BillingPanel` gates the button on `status === 'active' || status === 'grace'`, but a host who completed Checkout is in `subscription_status = 'trial'` (Stripe Checkout trial). They cannot reach the portal to cancel or manage. Fix: gate on `stripe_subscription_id` being present; also confirm the Stripe billing portal has cancellation enabled.
+3. **Complete 360 webhook test** — Scenarios 2 (upgrade T1→T2) and 3 (downgrade T2→T1) PASSED. Scenarios 1 (new subscription → started notice) and 4 (cancel → expired + guest page expired screen) still pending. Scenario 4 currently requires the Stripe dashboard (BUG #2 blocks in-app cancellation).
+4. **E2.1 advanced test-clock scenarios** — 5 (payment failure → grace) and 6 (renewal → no fan-out/silence).
+5. **Add-property flow + property-cap enforcement** — still unbuilt; fold into existing dashboard vs. separate page TBD.
+6. **Live/Draft publish toggle** on the dashboard property card — no UI control exists today; properties created before the `is_visible=true` fix are stuck in Draft and can only be published via DB.
+7. **Guide hardening:** treat a 0-place result as a soft failure — don't overwrite a good guide with an empty one (`placeCount > 0` guard before upsert); surface a retry to the host.
+8. **Signup → card-at-onboarding (product decision pending):** collect card + choose tier during signup so trials convert automatically. Open decisions: hard vs soft card requirement; trial vs immediate charge; which tiers at signup. Also: drive trial clock from the Stripe subscription (not a second app clock), and add EU/Finland auto-renewal disclosure. Build AFTER 360 test passes.
+9. **Live Stripe keys** — when ready to go live: create live products/prices/webhook in Stripe, set `STRIPE_SECRET_KEY`/`STRIPE_PRICE_TIER_*`/`STRIPE_WEBHOOK_SECRET` to live values in Vercel, redeploy.
+10. **Cosmetic:** Dashboard "City guide" completeness indicator is hardcoded to "–" (`check(false)`).
