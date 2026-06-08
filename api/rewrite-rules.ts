@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { GoogleGenAI } from '@google/genai'
+import { withRetry } from './_lib/retry.js'
 
 const MODEL = 'gemini-2.5-flash'
 
@@ -36,50 +37,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'AI not configured' })
 
-  let timer: ReturnType<typeof setTimeout> | undefined
   try {
     const ai = new GoogleGenAI({ apiKey })
 
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error('timeout')), 10000)
-    })
+    const generate = async () => {
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 10000)
+      try {
+        return await ai.models.generateContent({
+          model: MODEL,
+          contents: trimmed,
+          config: {
+            systemInstruction: SYSTEM_PROMPT,
+            thinkingConfig: { thinkingBudget: 0 } as any,
+            maxOutputTokens: 1500,
+            abortSignal: controller.signal,
+          },
+        })
+      } finally {
+        clearTimeout(timer)
+      }
+    }
 
-    const generatePromise = ai.models.generateContent({
-      model: MODEL,
-      contents: trimmed,
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        thinkingConfig: { thinkingBudget: 0 } as any,
-        maxOutputTokens: 1500,
-      },
-    })
-
-    const response = await Promise.race([generatePromise, timeoutPromise])
+    const response = await withRetry(generate, { retries: 2, baseDelayMs: 600 })
     const result = response.text?.trim() || trimmed
-
     return res.status(200).json({ result })
   } catch (e) {
-    // TEMPORARY DIAGNOSTIC — remove after root-causing the Gemini 502.
-    // Value-first log lines so they survive Vercel log truncation. Key-scrubbed.
-    const scrub = (s: string): string =>
-      s
-        .replace(/AIza[0-9A-Za-z_\-]{10,}/g, 'AIza_REDACTED')
-        .replace(/key=[^&\s]+/gi, 'key=REDACTED')
-    const err = e as any
-    const status = String(err?.status ?? err?.code ?? '')
-    const name = String(err?.name ?? '')
-    let full = ''
-    try {
-      full = JSON.stringify(err, Object.getOwnPropertyNames(Object(err)))
-    } catch {
-      full = String(err)
-    }
-    console.error(`GEMINIDIAG ${status || '?'} ${name || '?'} model=${MODEL}`)
-    console.error('GEMINIDIAGMSG ' + scrub(String(err?.message ?? err)).slice(0, 800))
-    console.error('GEMINIDIAGFULL ' + scrub(full).slice(0, 1500))
-    if (err?.cause) console.error('GEMINIDIAGCAUSE ' + scrub(String(err.cause)).slice(0, 500))
+    const msg = String((e as Error)?.message ?? e)
+      .replace(/AIza[0-9A-Za-z_\-]{10,}/g, 'AIza_REDACTED')
+      .replace(/key=[^&\s]+/gi, 'key=REDACTED')
+      .slice(0, 160)
+    console.error('[rewrite-rules] generateContent failed —', msg)
     return res.status(502).json({ error: 'rewrite failed' })
-  } finally {
-    clearTimeout(timer!)
   }
 }

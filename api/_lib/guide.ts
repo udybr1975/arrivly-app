@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { geocodeAddress } from './geo.js'
+import { withRetry } from './retry.js'
 
 export interface GuideResult {
   placeCount: number
@@ -68,37 +69,41 @@ export async function generateGuideForApartment(
 
   const ai = new GoogleGenAI({ apiKey })
 
-  let timer!: ReturnType<typeof setTimeout>
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => reject(new Error('timeout')), 30000)
-  })
-
-  const generatePromise = ai.models.generateContent({
-    model: MODEL,
-    contents: buildPrompt(apt),
-    config: {
-      responseMimeType: 'application/json',
-      thinkingConfig: { thinkingBudget: 0 },   // disable thinking — was eating the output budget
-      maxOutputTokens: 8192,
-    },
-  })
+  const generate = async () => {
+    const controller = new AbortController()
+    // 20s per attempt: 2 attempts × 20s + 600ms delay + ~18s geocoding ≈ 58.6s < 60s maxDuration
+    const timer = setTimeout(() => controller.abort(), 20000)
+    try {
+      return await ai.models.generateContent({
+        model: MODEL,
+        contents: buildPrompt(apt),
+        config: {
+          responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 0 },   // disable thinking — was eating the output budget
+          maxOutputTokens: 8192,
+          abortSignal: controller.signal,
+        },
+      })
+    } finally {
+      clearTimeout(timer)
+    }
+  }
 
   let raw = ''
   let finishReason: string | undefined
   try {
-    const response = await Promise.race([generatePromise, timeoutPromise])
-    clearTimeout(timer)
+    const response = await withRetry(generate, { retries: 1, baseDelayMs: 600 })
     raw = response.text?.trim() ?? ''
     finishReason = response.candidates?.[0]?.finishReason
       ? String(response.candidates[0].finishReason)
       : undefined
   } catch (e) {
-    clearTimeout(timer)
     raw = ''
     // Truncate + scrub: the GenAI SDK can embed the API key in error/request-URL strings
     const msg = String((e as Error)?.message ?? e)
+      .replace(/AIza[0-9A-Za-z_\-]{10,}/g, 'AIza_REDACTED')
       .replace(/key=[^&\s]+/gi, 'key=REDACTED')
-      .slice(0, 120)
+      .slice(0, 160)
     console.error('[guide] generate threw', { aptId: apt.id, msg })
   }
 
