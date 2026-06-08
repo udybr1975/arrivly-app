@@ -59,8 +59,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({ result })
   } catch (e) {
-    const msg = String((e as Error)?.message ?? e).replace(/key=[^&\s]+/gi, 'key=REDACTED').slice(0, 120)
-    console.error('[rewrite-rules] generateContent failed —', msg)
+    // TEMPORARY DIAGNOSTIC — remove after root-causing the Gemini 502.
+    // Value-first log lines so they survive Vercel log truncation. Key-scrubbed.
+    const scrub = (s: string): string =>
+      s
+        .replace(/AIza[0-9A-Za-z_\-]{10,}/g, 'AIza_REDACTED')
+        .replace(/key=[^&\s]+/gi, 'key=REDACTED')
+    const err = e as any
+    const status = String(err?.status ?? err?.code ?? '')
+    const name = String(err?.name ?? '')
+    let full = ''
+    try {
+      full = JSON.stringify(err, Object.getOwnPropertyNames(Object(err)))
+    } catch {
+      full = String(err)
+    }
+    console.error(`GEMINIDIAG ${status || '?'} ${name || '?'} model=${MODEL}`)
+    console.error('GEMINIDIAGMSG ' + scrub(String(err?.message ?? err)).slice(0, 800))
+    console.error('GEMINIDIAGFULL ' + scrub(full).slice(0, 1500))
+    if (err?.cause) console.error('GEMINIDIAGCAUSE ' + scrub(String(err.cause)).slice(0, 500))
     return res.status(502).json({ error: 'rewrite failed' })
   } finally {
     clearTimeout(timer!)
