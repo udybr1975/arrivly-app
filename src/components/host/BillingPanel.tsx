@@ -16,6 +16,7 @@ interface HostData {
   trial_ends_at: string | null
   subscription_status: string | null
   billing_notice: BillingNotice | null
+  stripe_subscription_id: string | null
 }
 
 interface Plan {
@@ -79,7 +80,7 @@ export default function BillingPanel() {
       const [{ data: hostData }, { data: plansData, error: plansErr }] = await Promise.all([
         supabase
           .from('hosts')
-          .select('tier, trial_ends_at, subscription_status, billing_notice')
+          .select('tier, trial_ends_at, subscription_status, billing_notice, stripe_subscription_id')
           .eq('id', user.id)
           .maybeSingle(),
         supabase
@@ -148,6 +149,7 @@ export default function BillingPanel() {
     ? new Date(trialEndsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
     : null
   const isManaged = status === 'active' || status === 'grace'
+  const hasSubscription = !!host?.stripe_subscription_id
   const billingNotice = host?.billing_notice ?? null
 
   return (
@@ -222,7 +224,7 @@ export default function BillingPanel() {
         </div>
       )}
 
-      {isManaged && (
+      {hasSubscription && (
         <div className="mb-5">
           <button
             onClick={handleManagePortal}
