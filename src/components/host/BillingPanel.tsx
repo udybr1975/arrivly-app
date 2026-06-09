@@ -54,14 +54,12 @@ function parseApiError(err: unknown): string {
   if (!code) {
     const msg = String((err as Error)?.message ?? '')
     if (msg.includes('not_switchable')) code = 'not_switchable'
-    else if (msg.includes('pending_change_in_progress')) code = 'pending_change_in_progress'
     else if (msg.includes('already_on_tier')) code = 'already_on_tier'
     else if (msg.includes('no_subscription')) code = 'no_subscription'
     else if (msg.includes('booking_tier_unavailable')) code = 'booking_tier_unavailable'
   }
   switch (code) {
     case 'not_switchable': return "This plan can't be changed right now. If a payment is overdue, update your card first."
-    case 'pending_change_in_progress': return "You already have a scheduled plan change — undo it first, then cancel."
     case 'already_on_tier': return "You're already on this plan."
     case 'no_subscription': return "No active subscription found."
     case 'booking_tier_unavailable': return "This tier is not yet available."
@@ -289,7 +287,7 @@ export default function BillingPanel() {
     : trialEndDate ?? 'the end of your current period'
   const chooseMode = !hasSubscription || status === 'expired'
   const manageMode = !chooseMode
-  const locked = manageMode && (pendingTier !== null || cancelPending)
+  const locked = manageMode && cancelPending
   const billingNotice = host?.billing_notice ?? null
 
   return (
@@ -401,7 +399,7 @@ export default function BillingPanel() {
               disabled={undoPending}
               className={`shrink-0 text-[11px] font-semibold border rounded-[7px] px-2.5 py-1 ${AMBER.btn} disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap`}
             >
-              {undoPending ? 'Undoing…' : 'Undo change'}
+              {undoPending ? 'Undoing…' : 'Cancel scheduled change'}
             </button>
           </div>
         )
@@ -438,7 +436,6 @@ export default function BillingPanel() {
             ? 'Unlimited properties'
             : `Up to ${plan.max_properties} ${plan.max_properties === 1 ? 'property' : 'properties'}`
           const isCurrentTier = manageMode && plan.tier === hostTier
-          const isScheduledTier = manageMode && pendingTier !== null && plan.tier === pendingTier && plan.tier !== hostTier
           const borderCls = isMostPopular ? 'border-2 border-[#1a1a1a]' : 'border border-[#ddd8ce]'
           const ringCls = isCurrentTier ? 'ring-2 ring-[#1a1a1a]/15' : ''
 
@@ -491,10 +488,6 @@ export default function BillingPanel() {
                 <div className="w-full text-center text-[11px] font-semibold text-[#1a1a1a] py-2 border border-[#ddd8ce] rounded-[8px] bg-[#f8f6f2]">
                   Current plan
                 </div>
-              ) : isScheduledTier ? (
-                <div className="w-full text-center text-[11px] font-medium text-[#888] py-2 border border-[#ddd8ce] rounded-[8px] bg-[#f8f6f2] cursor-default">
-                  Scheduled · {periodEndDate}
-                </div>
               ) : (
                 <button
                   onClick={() => { setActionError(null); setModal({ kind: 'switch', tier: plan.tier }) }}
@@ -515,14 +508,11 @@ export default function BillingPanel() {
           <div>
             <button
               onClick={() => { setActionError(null); setModal({ kind: 'cancel' }) }}
-              disabled={locked}
+              disabled={cancelPending}
               className="text-[11px] font-medium text-[#8a1a1a] border border-[#f5c6c6] rounded-[8px] px-3 py-2 bg-transparent hover:bg-[#fde4e4] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Cancel subscription
             </button>
-            {locked && (
-              <div className="text-[10px] text-[#888] mt-1.5">Undo the scheduled change first</div>
-            )}
           </div>
           <button
             onClick={handlePaymentPortal}
@@ -564,12 +554,17 @@ export default function BillingPanel() {
                 modalCopy = <>You'll move to {mCopy.name} now and we'll charge the prorated difference for the rest of this period. Your renewal date stays the same.</>
                 confirmLabel = 'Upgrade now'
               } else {
-                modalCopy = <>
-                  Your plan will change from {hCopy?.name ?? 'your current plan'} ({hPrice}) to {mCopy.name} ({mPrice}) at the start of your next billing period — {periodEndDate}. You keep {hCopy?.name ?? 'your current plan'} until then, and you won't be charged now.
-                  {hostTier !== null && mTier < hostTier && mPlan && (
-                    <> Note: {mCopy.name} covers up to {mPlan.max_properties !== null ? mPlan.max_properties : 'unlimited'} properties — make sure you're within that by {periodEndDate}.</>
-                  )}
-                </>
+                const isRetarget = status === 'active' && pendingTier !== null && !isUp
+                modalCopy = isRetarget ? (
+                  <>Your scheduled change will switch to {mCopy.name} ({mPrice}), effective {periodEndDate}. You stay on {hCopy?.name ?? 'your current plan'} until then.</>
+                ) : (
+                  <>
+                    Your plan will change from {hCopy?.name ?? 'your current plan'} ({hPrice}) to {mCopy.name} ({mPrice}) at the start of your next billing period — {periodEndDate}. You keep {hCopy?.name ?? 'your current plan'} until then, and you won't be charged now.
+                    {hostTier !== null && mTier < hostTier && mPlan && (
+                      <> Note: {mCopy.name} covers up to {mPlan.max_properties !== null ? mPlan.max_properties : 'unlimited'} properties — make sure you're within that by {periodEndDate}.</>
+                    )}
+                  </>
+                )
                 confirmLabel = 'Confirm switch'
               }
 

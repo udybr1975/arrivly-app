@@ -103,9 +103,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ resumed: true })
     }
 
-    // If a pending tier-change schedule is attached, reject — host must cancel the pending change first
+    // If a pending tier-change schedule is attached, release it first (release-then-cancel).
+    // Partial-failure mode: if the schedule releases but the subsequent cancel_at_period_end
+    // update throws, the host sees a 500 and can retry — the retry hits !sub.schedule and
+    // proceeds normally to set cancel_at_period_end. The released schedule cannot be re-attached,
+    // but that is acceptable since the intent is cancellation.
+    let hadPendingChange = false
     if (sub.schedule) {
-      return res.status(409).json({ error: 'pending_change_in_progress' })
+      const scheduleId: string = typeof sub.schedule === 'string'
+        ? sub.schedule
+        : (sub.schedule as { id: string }).id
+      await stripe.subscriptionSchedules.release(scheduleId)
+      const { error: dbErrPend } = await admin.from('hosts').update({ pending_tier: null }).eq('id', userId)
+      if (dbErrPend) console.error('[cancel-subscription] pending_tier clear failed:', String(dbErrPend.message).slice(0, 120))
+      hadPendingChange = true
     }
 
     await stripe.subscriptions.update(sub.id, { cancel_at_period_end: true })
@@ -125,7 +136,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await Promise.allSettled([
       ...(contactEmailC ? [sendEmail({
         to: contactEmailC,
-        ...subscriptionScheduledCancelEmail(hostNameC, cancelAt),
+        ...subscriptionScheduledCancelEmail(hostNameC, cancelAt, { alsoCancelledScheduledChange: hadPendingChange }),
       })] : []),
       sendEmail({
         to: ADMIN_EMAIL,
