@@ -8,12 +8,15 @@ export async function sendNtfy({
   priority: 'default' | 'high'
 }): Promise<void> {
   const url = process.env.NTFY_URL
-  if (!url || !url.startsWith('https://')) return
+  if (!url || !url.startsWith('https://')) {
+    console.log('[ntfy] skipped — NTFY_URL not configured')
+    return
+  }
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 5000)
   try {
-    await fetch(url, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain',
@@ -24,6 +27,7 @@ export async function sendNtfy({
       body: message.slice(0, 500),
       signal: controller.signal,
     })
+    console.log('[ntfy] sent status', res.status)
   } catch (err) {
     console.error(
       '[ntfy] send error:',

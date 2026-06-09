@@ -4,6 +4,7 @@ import Stripe from 'stripe'
 import { getStripe, tierForPriceId, ARRIVLY_STRIPE_METADATA } from './_lib/stripe.js'
 import {
   sendEmail,
+  formatMoney,
   subscriptionStartedEmail,
   subscriptionChangedEmail,
   subscriptionCancelledEmail,
@@ -116,7 +117,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Retrieve live subscription — idempotency + out-of-order safety
   let sub: Stripe.Subscription
   try {
-    sub = await getStripe().subscriptions.retrieve(subId)
+    sub = await getStripe().subscriptions.retrieve(subId, { expand: ['latest_invoice'] })
   } catch (err) {
     console.error('[stripe-webhook] subscription retrieve error:', scrubKeys(String((err as Error).message ?? '')))
     return res.status(500).json({ error: 'Failed to retrieve subscription' })
@@ -187,6 +188,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ? new Date(periodEndUnix * 1000).toISOString()
     : null
 
+  // Pricing data for email enrichment — Stripe item price is already expanded
+  const subPrice = sub.items.data[0]?.price as Stripe.Price | null
+  const priceCentsFromStripe: number | null = subPrice?.unit_amount ?? null
+  const currencyFromStripe: string | null = subPrice?.currency ?? null
+  const latestInvoice = sub.latest_invoice as Stripe.Invoice | null
+  const amountChargedCents: number | null = latestInvoice?.amount_paid ?? null
+
   const customerId = typeof sub.customer === 'string'
     ? sub.customer
     : (sub.customer as Stripe.Customer | Stripe.DeletedCustomer).id
@@ -253,6 +261,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const toTierName = TIER_NAMES_W[tier] ?? `Tier ${tier}`
       const fromTierName = oldTier !== null ? (TIER_NAMES_W[oldTier] ?? `Tier ${oldTier}`) : null
 
+      // Resolve safe price — Stripe item is the primary source; DB plans is the fallback
+      let priceCents = priceCentsFromStripe
+      let currency = currencyFromStripe
+      if (priceCents === null || currency === null) {
+        const { data: planFallback } = await admin
+          .from('plans')
+          .select('price_cents, currency')
+          .eq('tier', tier)
+          .maybeSingle()
+        priceCents = priceCents ?? ((planFallback as any)?.price_cents ?? null)
+        currency = currency ?? ((planFallback as any)?.currency ?? null)
+      }
+      const safePriceCents = priceCents ?? 0
+      const safeCurrency = currency ?? 'eur'
+      const safeRenewalIso = currentPeriodEnd ?? new Date().toISOString()
+
       const HOST_PUSH: Record<NoticeType, { title: string; body: string }> = {
         started:    { title: 'Subscription active', body: `You're on the ${toTierName} plan.` },
         upgraded:   { title: `Upgraded to ${toTierName}`, body: fromTierName ? `Changed from ${fromTierName} to ${toTierName}.` : `Now on ${toTierName}.` },
@@ -281,10 +305,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         (async () => {
           if (!recipientEmail) return
           const tmpl =
-            n === 'started' ? subscriptionStartedEmail(hostName, tier) :
-            n === 'upgraded' || n === 'downgraded' ? subscriptionChangedEmail(hostName, oldTier ?? tier, tier) :
-            n === 'cancelled' ? subscriptionCancelledEmail(hostName) :
-            subscriptionPastDueEmail(hostName)
+            n === 'started'
+              ? subscriptionStartedEmail(hostName, tier, { priceCents: safePriceCents, currency: safeCurrency, nextPaymentIso: safeRenewalIso })
+              : n === 'upgraded' || n === 'downgraded'
+              ? subscriptionChangedEmail(hostName, oldTier ?? tier, tier, {
+                  priceCents: safePriceCents,
+                  currency: safeCurrency,
+                  renewalIso: safeRenewalIso,
+                  amountChargedCents: n === 'upgraded' ? amountChargedCents : undefined,
+                })
+              : n === 'cancelled'
+              ? subscriptionCancelledEmail(hostName, { endedIso: currentPeriodEnd })
+              : subscriptionPastDueEmail(hostName)
           await sendEmail({ to: recipientEmail, ...tmpl })
         })(),
 
@@ -302,6 +334,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             fromTier: oldTier,
             toTier: tier,
             status: effectiveNewStatus ?? 'unknown',
+            priceCents: safePriceCents,
+            currency: safeCurrency,
+            amountChargedCents: n === 'upgraded' ? amountChargedCents : null,
+            renewalIso: safeRenewalIso,
           }),
         }),
 
@@ -320,8 +356,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           })
         })(),
 
-        // f) ntfy
-        sendNtfy({ title: 'Arrivly', message: adminMsg, priority: ntfyPriority }),
+        // f) ntfy — enriched for upgrades with charged amount (guard > 0 so €0 proration shows plain text)
+        sendNtfy({
+          title: 'Arrivly',
+          message: n === 'upgraded' && amountChargedCents != null && amountChargedCents > 0
+            ? `A host upgraded to ${toTierName} — ${formatMoney(amountChargedCents, safeCurrency)} charged, ${formatMoney(safePriceCents, safeCurrency)}/mo`
+            : adminMsg,
+          priority: ntfyPriority,
+        }),
 
         // g) audit
         admin.from('admin_audit').insert({

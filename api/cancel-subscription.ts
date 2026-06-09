@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { getStripe, ARRIVLY_STRIPE_METADATA } from './_lib/stripe.js'
 import { sendEmail, subscriptionScheduledCancelEmail, subscriptionResumedEmail, adminSubscriptionRequestEmail } from './_lib/email.js'
+import { sendNtfy } from './_lib/ntfy.js'
 
 const ADMIN_EMAIL = 'udy.bar.yosef@gmail.com'
 
@@ -52,21 +53,51 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       if (dbErrRes) console.error('[cancel-subscription] cancel_at_period_end clear failed:', String(dbErrRes.message).slice(0, 120))
       const contactEmailR = host.contact_email as string | null
       const currentTierR = host.tier as number | null
+      const resumePeriodEndUnix: number | null =
+        (sub.items?.data?.[0] as any)?.current_period_end ??
+        (sub as any).current_period_end ??
+        null
+      const renewalIsoR = resumePeriodEndUnix
+        ? new Date(resumePeriodEndUnix * 1000).toISOString()
+        : new Date().toISOString()
+      let resumePriceCents: number | null = null
+      let resumeCurrency: string | null = null
+      if (currentTierR !== null) {
+        const { data: resumePlanData } = await admin
+          .from('plans')
+          .select('price_cents, currency')
+          .eq('tier', currentTierR)
+          .maybeSingle()
+        resumePriceCents = (resumePlanData as any)?.price_cents ?? null
+        resumeCurrency = (resumePlanData as any)?.currency ?? null
+      }
+      const hostNameR = host.name as string | null
       await Promise.allSettled([
         ...(contactEmailR ? [sendEmail({
           to: contactEmailR,
-          ...subscriptionResumedEmail((host.name as string | null)),
+          ...subscriptionResumedEmail(hostNameR, {
+            priceCents: resumePriceCents,
+            currency: resumeCurrency,
+            renewalIso: renewalIsoR,
+          }),
         })] : []),
         sendEmail({
           to: ADMIN_EMAIL,
           ...adminSubscriptionRequestEmail({
             event: 'resumed',
-            hostName: (host.name as string | null),
+            hostName: hostNameR,
             hostEmail: contactEmailR,
             hostId: userId,
             fromTier: currentTierR,
             toTier: currentTierR,
+            priceCents: resumePriceCents,
+            currency: resumeCurrency,
           }),
+        }),
+        sendNtfy({
+          title: 'Arrivly',
+          message: `${hostNameR ?? 'A host'} resumed their subscription`,
+          priority: 'default',
         }),
       ])
       return res.status(200).json({ resumed: true })
@@ -90,22 +121,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       : null
 
     const contactEmailC = host.contact_email as string | null
+    const hostNameC = host.name as string | null
     await Promise.allSettled([
       ...(contactEmailC ? [sendEmail({
         to: contactEmailC,
-        ...subscriptionScheduledCancelEmail((host.name as string | null), cancelAt),
+        ...subscriptionScheduledCancelEmail(hostNameC, cancelAt),
       })] : []),
       sendEmail({
         to: ADMIN_EMAIL,
         ...adminSubscriptionRequestEmail({
           event: 'scheduled_cancel',
-          hostName: (host.name as string | null),
+          hostName: hostNameC,
           hostEmail: contactEmailC,
           hostId: userId,
           fromTier: (host.tier as number | null),
           toTier: null,
           effectiveAt: cancelAt,
         }),
+      }),
+      sendNtfy({
+        title: 'Arrivly',
+        message: `${hostNameC ?? 'A host'} scheduled a cancellation${cancelAt ? ` — effective ${cancelAt.split('T')[0]}` : ''}`,
+        priority: 'high',
       }),
     ])
 

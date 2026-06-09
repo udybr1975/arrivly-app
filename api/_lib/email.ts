@@ -54,6 +54,21 @@ function layout(heading: string, bodyHtml: string, ctaLabel: string, ctaUrl: str
 </div>`
 }
 
+// ─── Shared formatting helpers ───
+
+function formatDateLong(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+const CURRENCY_SYMBOLS: Record<string, string> = { eur: '€', usd: '$', gbp: '£' }
+
+export function formatMoney(cents: number, currency: string): string {
+  const sym = CURRENCY_SYMBOLS[currency.toLowerCase()] ?? currency.toUpperCase()
+  return `${sym}${(cents / 100).toFixed(2)}`
+}
+
+// ─── Onboarding emails ───
+
 export function welcomeEmail(name: string | null): { subject: string; html: string; text: string } {
   const who = name?.trim() ? name.trim() : 'there'
   const html = layout(
@@ -79,6 +94,8 @@ export function trialReminderEmail(name: string | null, daysLeft: number): { sub
   return { subject: `Your Arrivly trial ends in ${daysLeft} ${dayWord}`, html, text }
 }
 
+// ─── Webhook apply-time builders ───
+
 // Tier names duplicated from src/lib/tierCopy.ts — same cross-boundary pattern as EXTRAS_CATEGORIES.
 const TIER_NAMES: Record<number, string> = {
   1: 'Starter',
@@ -90,17 +107,20 @@ const TIER_NAMES: Record<number, string> = {
 export function subscriptionStartedEmail(
   name: string | null,
   tier: number,
+  opts: { priceCents: number; currency: string; nextPaymentIso: string },
 ): { subject: string; html: string; text: string } {
   const who = name?.trim() ? name.trim() : 'there'
   const tierName = TIER_NAMES[tier] ?? `Tier ${tier}`
+  const price = formatMoney(opts.priceCents, opts.currency)
+  const nextDate = formatDateLong(opts.nextPaymentIso)
   const html = layout(
     `You're on the ${tierName} plan`,
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0 0 12px;">You're now subscribed to Arrivly's <strong>${esc(tierName)}</strong> plan — your guest page stays live for every booking.</p>
+     <p style="margin:0 0 12px;"><strong>${esc(tierName)}</strong> — ${esc(price)}/month. No charge during your trial; your first payment of <strong>${esc(price)}</strong> will be on ${esc(nextDate)}.</p>
      <p style="margin:0;">To upgrade, downgrade, or manage your billing details, visit your dashboard any time.</p>`,
     'Manage your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\nYou're now subscribed to Arrivly's ${tierName} plan — your guest page stays live for every booking.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  const text = `Hi ${who},\n\n${tierName} — ${price}/month. No charge during your trial; your first payment of ${price} will be on ${nextDate}.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
   return { subject: `You're on the ${tierName} plan`, html, text }
 }
 
@@ -108,34 +128,47 @@ export function subscriptionChangedEmail(
   name: string | null,
   oldTier: number,
   newTier: number,
+  opts: { priceCents: number; currency: string; renewalIso: string; amountChargedCents?: number | null },
 ): { subject: string; html: string; text: string } {
   const who = name?.trim() ? name.trim() : 'there'
   const oldName = TIER_NAMES[oldTier] ?? `Tier ${oldTier}`
   const newName = TIER_NAMES[newTier] ?? `Tier ${newTier}`
-  const direction = newTier > oldTier ? 'upgraded' : 'changed'
-  const html = layout(
-    `Your plan has changed to ${newName}`,
-    `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0 0 12px;">Your Arrivly plan has been ${direction} from <strong>${esc(oldName)}</strong> to <strong>${esc(newName)}</strong>.</p>
-     <p style="margin:0;">The change is effective immediately. Manage your subscription in your dashboard.</p>`,
-    'Manage your plan', `${APP_URL}/dashboard/billing`,
-  )
-  const text = `Hi ${who},\n\nYour Arrivly plan has been ${direction} from ${oldName} to ${newName}.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  const price = formatMoney(opts.priceCents, opts.currency)
+  const renewalDate = formatDateLong(opts.renewalIso)
+  let bodyHtml: string
+  let bodyText: string
+  if (opts.amountChargedCents != null) {
+    const charged = formatMoney(opts.amountChargedCents, opts.currency)
+    bodyHtml = `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
+     <p style="margin:0;">Your Arrivly plan has been upgraded from <strong>${esc(oldName)}</strong> to <strong>${esc(newName)}</strong>, effective now. We charged <strong>${esc(charged)}</strong> today for the rest of this billing period. Your plan is ${esc(price)}/month, renewing ${esc(renewalDate)}.</p>`
+    bodyText = `Hi ${who},\n\nYour Arrivly plan has been upgraded from ${oldName} to ${newName}, effective now. We charged ${charged} today for the rest of this billing period. Your plan is ${price}/month, renewing ${renewalDate}.`
+  } else {
+    bodyHtml = `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
+     <p style="margin:0;">Your Arrivly plan has been changed from <strong>${esc(oldName)}</strong> to <strong>${esc(newName)}</strong>. Your plan is ${esc(price)}/month from ${esc(renewalDate)}.</p>`
+    bodyText = `Hi ${who},\n\nYour Arrivly plan has been changed from ${oldName} to ${newName}. Your plan is ${price}/month from ${renewalDate}.`
+  }
+  const html = layout(`Your plan has changed to ${newName}`, bodyHtml, 'Manage your plan', `${APP_URL}/dashboard/billing`)
+  const text = `${bodyText}\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
   return { subject: `Your Arrivly plan has changed to ${newName}`, html, text }
 }
 
 export function subscriptionCancelledEmail(
   name: string | null,
+  opts?: { endedIso?: string | null },
 ): { subject: string; html: string; text: string } {
   const who = name?.trim() ? name.trim() : 'there'
+  const endedNoteHtml = opts?.endedIso
+    ? `<p style="margin:0 0 12px;">Your subscription ended on <strong>${esc(formatDateLong(opts.endedIso))}</strong>.</p>`
+    : ''
+  const endedNoteText = opts?.endedIso ? `Your subscription ended on ${formatDateLong(opts.endedIso)}.\n\n` : ''
   const html = layout(
     'Your Arrivly subscription has been cancelled',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0 0 12px;">Your Arrivly subscription has been cancelled and your guest page is no longer active.</p>
+     ${endedNoteHtml}<p style="margin:0 0 12px;">Your Arrivly subscription has been cancelled and your guest page is no longer active.</p>
      <p style="margin:0;">You can reactivate at any time from your billing settings — your data and property setup are still there.</p>`,
     'Reactivate your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\nYour Arrivly subscription has been cancelled and your guest page is no longer active. You can reactivate at any time from your billing settings.\n\nReactivate: ${APP_URL}/dashboard/billing\n\nArrivly`
+  const text = `Hi ${who},\n\n${endedNoteText}Your Arrivly subscription has been cancelled and your guest page is no longer active. You can reactivate at any time from your billing settings.\n\nReactivate: ${APP_URL}/dashboard/billing\n\nArrivly`
   return { subject: 'Your Arrivly subscription has been cancelled', html, text }
 }
 
@@ -154,6 +187,8 @@ export function subscriptionPastDueEmail(
   return { subject: 'Action needed: payment issue with your Arrivly subscription', html, text }
 }
 
+// ─── Admin webhook apply-time email ───
+
 interface AdminEventInput {
   event: string
   hostName: string | null
@@ -162,63 +197,78 @@ interface AdminEventInput {
   fromTier: number | null
   toTier: number
   status: string
+  priceCents?: number | null
+  currency?: string | null
+  amountChargedCents?: number | null
+  renewalIso?: string | null
 }
 
 export function adminSubscriptionEventEmail(
   input: AdminEventInput,
 ): { subject: string; html: string; text: string } {
-  const { event, hostName, hostEmail, hostId, fromTier, toTier, status } = input
+  const { event, hostName, hostEmail, hostId, fromTier, toTier, status,
+          priceCents, currency, amountChargedCents, renewalIso } = input
   const nameLabel = hostName ?? '(unnamed)'
   const emailLabel = hostEmail ?? '(no email)'
   const fromTierName = fromTier !== null ? (TIER_NAMES[fromTier] ?? `Tier ${fromTier}`) : 'none'
   const toTierName = TIER_NAMES[toTier] ?? `Tier ${toTier}`
+  const priceRow = priceCents != null && currency
+    ? `<tr><td style="padding:4px 0;color:#999;">New price</td><td style="padding:4px 0;">${esc(formatMoney(priceCents, currency))}/month</td></tr>`
+    : ''
+  const chargedRow = amountChargedCents != null && currency
+    ? `<tr><td style="padding:4px 0;color:#999;">Amount charged</td><td style="padding:4px 0;">${esc(formatMoney(amountChargedCents, currency))}</td></tr>`
+    : ''
+  const renewalRow = renewalIso
+    ? `<tr><td style="padding:4px 0;color:#999;">Renewal</td><td style="padding:4px 0;">${esc(formatDateLong(renewalIso))}</td></tr>`
+    : ''
   const html = layout(
     `Subscription event: ${event}`,
     `<table style="border-collapse:collapse;width:100%;font-size:13px;color:#444;font-family:Arial,Helvetica,sans-serif;">
-       <tr><td style="padding:4px 0;color:#999;width:80px;">Event</td><td style="padding:4px 0;">${esc(event)}</td></tr>
+       <tr><td style="padding:4px 0;color:#999;width:90px;">Event</td><td style="padding:4px 0;">${esc(event)}</td></tr>
        <tr><td style="padding:4px 0;color:#999;">Host</td><td style="padding:4px 0;">${esc(nameLabel)}</td></tr>
        <tr><td style="padding:4px 0;color:#999;">Email</td><td style="padding:4px 0;">${esc(emailLabel)}</td></tr>
        <tr><td style="padding:4px 0;color:#999;">Host ID</td><td style="padding:4px 0;font-size:11px;font-family:monospace;">${esc(hostId)}</td></tr>
        <tr><td style="padding:4px 0;color:#999;">Tier</td><td style="padding:4px 0;">${esc(fromTierName)} &rarr; ${esc(toTierName)}</td></tr>
        <tr><td style="padding:4px 0;color:#999;">Status</td><td style="padding:4px 0;">${esc(status)}</td></tr>
+       ${priceRow}${chargedRow}${renewalRow}
      </table>`,
     'Open admin', `${APP_URL}/admin`,
   )
-  const text = `Arrivly subscription event: ${event}\n\nHost: ${nameLabel} <${emailLabel}>\nHost ID: ${hostId}\nTier: ${fromTierName} -> ${toTierName}\nStatus: ${status}\n\nAdmin: ${APP_URL}/admin`
+  const priceText = priceCents != null && currency ? `New price: ${formatMoney(priceCents, currency)}/month\n` : ''
+  const chargedText = amountChargedCents != null && currency ? `Amount charged: ${formatMoney(amountChargedCents, currency)}\n` : ''
+  const renewalText = renewalIso ? `Renewal: ${formatDateLong(renewalIso)}\n` : ''
+  const text = `Arrivly subscription event: ${event}\n\nHost: ${nameLabel} <${emailLabel}>\nHost ID: ${hostId}\nTier: ${fromTierName} -> ${toTierName}\nStatus: ${status}\n${priceText}${chargedText}${renewalText}\nAdmin: ${APP_URL}/admin`
   return { subject: `Arrivly: ${nameLabel} ${event}`, html, text }
 }
 
 // ─── Request-time builders (sent immediately on host action; distinct from webhook apply-time) ───
-
-function formatDateLong(iso: string): string {
-  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-}
 
 export function subscriptionScheduledChangeEmail(
   name: string | null,
   fromTier: number,
   toTier: number,
   effectiveAtIso: string,
-  opts?: { propertyCount?: number; newCap?: number | null },
+  opts: { priceCents: number; currency: string; propertyCount?: number; newCap?: number | null },
 ): { subject: string; html: string; text: string } {
   const who = name?.trim() ? name.trim() : 'there'
   const fromName = TIER_NAMES[fromTier] ?? `Tier ${fromTier}`
   const toName = TIER_NAMES[toTier] ?? `Tier ${toTier}`
   const date = formatDateLong(effectiveAtIso)
-  const overCap = opts?.newCap != null && opts?.propertyCount != null && opts.propertyCount > opts.newCap
+  const price = formatMoney(opts.priceCents, opts.currency)
+  const overCap = opts.newCap != null && opts.propertyCount != null && opts.propertyCount > opts.newCap
   const capNoteHtml = overCap
-    ? ` ${esc(toName)} covers up to ${opts!.newCap} ${opts!.newCap === 1 ? 'property' : 'properties'}. You have ${opts!.propertyCount}, so remove ${opts!.propertyCount - opts!.newCap!} before ${esc(date)} to stay within ${esc(toName)}.`
+    ? ` ${esc(toName)} covers up to ${opts.newCap} ${opts.newCap === 1 ? 'property' : 'properties'}. You have ${opts.propertyCount}, so remove ${opts.propertyCount! - opts.newCap!} before ${esc(date)} to stay within ${esc(toName)}.`
     : ''
   const capNoteText = overCap
-    ? ` ${toName} covers up to ${opts!.newCap} properties. You have ${opts!.propertyCount}, so remove ${opts!.propertyCount - opts!.newCap!} before ${date} to stay within ${toName}.`
+    ? ` ${toName} covers up to ${opts.newCap} properties. You have ${opts.propertyCount}, so remove ${opts.propertyCount! - opts.newCap!} before ${date} to stay within ${toName}.`
     : ''
   const html = layout(
     'Your plan change is scheduled',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0;">Your plan will change from <strong>${esc(fromName)}</strong> to <strong>${esc(toName)}</strong> on <strong>${esc(date)}</strong>. You stay on ${esc(fromName)} until then — no charge now.${capNoteHtml}</p>`,
+     <p style="margin:0;">Your plan will change to <strong>${esc(toName)}</strong> (${esc(price)}/month) on <strong>${esc(date)}</strong>. You stay on ${esc(fromName)} until then — no charge now.${capNoteHtml}</p>`,
     'Manage your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\nYour plan will change from ${fromName} to ${toName} on ${date}. You stay on ${fromName} until then — no charge now.${capNoteText}\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  const text = `Hi ${who},\n\nYour plan will change to ${toName} (${price}/month) on ${date}. You stay on ${fromName} until then — no charge now.${capNoteText}\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
   return { subject: `Your plan change to ${toName} is scheduled`, html, text }
 }
 
@@ -228,45 +278,63 @@ export function subscriptionScheduledCancelEmail(
 ): { subject: string; html: string; text: string } {
   const who = name?.trim() ? name.trim() : 'there'
   const dateStr = effectiveAtIso ? formatDateLong(effectiveAtIso) : 'the end of your current period'
+  const noChargeHtml = effectiveAtIso
+    ? `<p style="margin:0 0 12px;">No further charges after ${esc(dateStr)}.</p>`
+    : ''
+  const noChargeText = effectiveAtIso ? `No further charges after ${dateStr}.\n\n` : ''
   const html = layout(
     'Your cancellation is scheduled',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0;">Your Arrivly subscription will end on <strong>${esc(dateStr)}</strong>. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.</p>`,
+     <p style="margin:0 0 12px;">Your Arrivly subscription will end on <strong>${esc(dateStr)}</strong>. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.</p>
+     ${noChargeHtml}`,
     'Manage your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\nYour Arrivly subscription will end on ${dateStr}. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  const text = `Hi ${who},\n\nYour Arrivly subscription will end on ${dateStr}. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.\n\n${noChargeText}Manage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
   return { subject: 'Your Arrivly cancellation is scheduled', html, text }
 }
 
 export function subscriptionChangeRevertedEmail(
   name: string | null,
   currentTier: number,
+  opts: { priceCents: number; currency: string; renewalIso: string },
 ): { subject: string; html: string; text: string } {
   const who = name?.trim() ? name.trim() : 'there'
   const currentName = TIER_NAMES[currentTier] ?? `Tier ${currentTier}`
+  const price = formatMoney(opts.priceCents, opts.currency)
+  const renewalDate = formatDateLong(opts.renewalIso)
   const html = layout(
     'Your scheduled change was cancelled',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0;">Your scheduled plan change has been cancelled. You'll stay on <strong>${esc(currentName)}</strong> — nothing changes at renewal.</p>`,
+     <p style="margin:0;">Your scheduled plan change has been cancelled. You'll stay on <strong>${esc(currentName)}</strong> (${esc(price)}/month), renewing ${esc(renewalDate)}. Nothing changes.</p>`,
     'Manage your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\nYour scheduled plan change has been cancelled. You'll stay on ${currentName} — nothing changes at renewal.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  const text = `Hi ${who},\n\nYour scheduled plan change has been cancelled. You'll stay on ${currentName} (${price}/month), renewing ${renewalDate}. Nothing changes.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
   return { subject: 'Your scheduled Arrivly plan change was cancelled', html, text }
 }
 
 export function subscriptionResumedEmail(
   name: string | null,
+  opts?: { priceCents?: number | null; currency?: string | null; renewalIso?: string | null },
 ): { subject: string; html: string; text: string } {
   const who = name?.trim() ? name.trim() : 'there'
+  const hasPricing = opts?.priceCents != null && opts?.currency
+  const priceHtml = hasPricing
+    ? ` renews at <strong>${esc(formatMoney(opts!.priceCents!, opts!.currency!))}/month</strong>${opts?.renewalIso ? ` on ${esc(formatDateLong(opts.renewalIso))}` : ''}`
+    : ''
+  const priceText = hasPricing
+    ? ` renews at ${formatMoney(opts!.priceCents!, opts!.currency!)}/month${opts?.renewalIso ? ` on ${formatDateLong(opts.renewalIso)}` : ''}`
+    : ''
   const html = layout(
     'Your subscription is active again',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0;">Your cancellation has been undone. Your Arrivly subscription will renew as normal.</p>`,
+     <p style="margin:0;">Your cancellation has been undone. Your Arrivly subscription${priceHtml}.</p>`,
     'Manage your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\nYour cancellation has been undone. Your Arrivly subscription will renew as normal.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  const text = `Hi ${who},\n\nYour cancellation has been undone. Your Arrivly subscription${priceText}.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
   return { subject: 'Your Arrivly subscription is active again', html, text }
 }
+
+// ─── Admin request-time email ───
 
 interface AdminRequestInput {
   event: 'scheduled_downgrade' | 'scheduled_cancel' | 'reverted' | 'resumed'
@@ -276,6 +344,8 @@ interface AdminRequestInput {
   fromTier: number | null
   toTier: number | null
   effectiveAt?: string | null
+  priceCents?: number | null
+  currency?: string | null
 }
 
 const HUMAN_EVENT: Record<string, string> = {
@@ -288,13 +358,17 @@ const HUMAN_EVENT: Record<string, string> = {
 export function adminSubscriptionRequestEmail(
   input: AdminRequestInput,
 ): { subject: string; html: string; text: string } {
-  const { event, hostName, hostEmail, hostId, fromTier, toTier, effectiveAt } = input
+  const { event, hostName, hostEmail, hostId, fromTier, toTier, effectiveAt, priceCents, currency } = input
   const nameLabel = hostName ?? '(unnamed)'
   const emailLabel = hostEmail ?? '(no email)'
   const humanEvent = HUMAN_EVENT[event] ?? event
   const fromTierName = fromTier !== null ? (TIER_NAMES[fromTier] ?? `Tier ${fromTier}`) : 'n/a'
   const toTierName = toTier !== null ? (TIER_NAMES[toTier] ?? `Tier ${toTier}`) : 'n/a'
   const effectiveLabel = effectiveAt ? formatDateLong(effectiveAt) : 'immediate'
+  const priceRow = priceCents != null && currency
+    ? `<tr><td style="padding:4px 0;color:#999;">New price</td><td style="padding:4px 0;">${esc(formatMoney(priceCents, currency))}/month</td></tr>`
+    : ''
+  const priceText = priceCents != null && currency ? `New price: ${formatMoney(priceCents, currency)}/month\n` : ''
   const html = layout(
     `Request: ${humanEvent}`,
     `<table style="border-collapse:collapse;width:100%;font-size:13px;color:#444;font-family:Arial,Helvetica,sans-serif;">
@@ -303,11 +377,12 @@ export function adminSubscriptionRequestEmail(
        <tr><td style="padding:4px 0;color:#999;">Email</td><td style="padding:4px 0;">${esc(emailLabel)}</td></tr>
        <tr><td style="padding:4px 0;color:#999;">Host ID</td><td style="padding:4px 0;font-size:11px;font-family:monospace;">${esc(hostId)}</td></tr>
        <tr><td style="padding:4px 0;color:#999;">Tier</td><td style="padding:4px 0;">${esc(fromTierName)} &rarr; ${esc(toTierName)}</td></tr>
+       ${priceRow}
        <tr><td style="padding:4px 0;color:#999;">Timing</td><td style="padding:4px 0;">Requested</td></tr>
        <tr><td style="padding:4px 0;color:#999;">Effective</td><td style="padding:4px 0;">${esc(effectiveLabel)}</td></tr>
      </table>`,
     'Open admin', `${APP_URL}/admin`,
   )
-  const text = `Arrivly request: ${nameLabel} ${humanEvent}\n\nHost: ${nameLabel} <${emailLabel}>\nHost ID: ${hostId}\nTier: ${fromTierName} -> ${toTierName}\nTiming: Requested\nEffective: ${effectiveLabel}\n\nAdmin: ${APP_URL}/admin`
+  const text = `Arrivly request: ${nameLabel} ${humanEvent}\n\nHost: ${nameLabel} <${emailLabel}>\nHost ID: ${hostId}\nTier: ${fromTierName} -> ${toTierName}\n${priceText}Timing: Requested\nEffective: ${effectiveLabel}\n\nAdmin: ${APP_URL}/admin`
   return { subject: `Arrivly: ${nameLabel} ${humanEvent}`, html, text }
 }

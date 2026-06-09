@@ -2,9 +2,11 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
 import { getStripe, priceIdForTier, tierForPriceId, ARRIVLY_STRIPE_METADATA } from './_lib/stripe.js'
-import { sendEmail, subscriptionScheduledChangeEmail, subscriptionChangeRevertedEmail, adminSubscriptionRequestEmail } from './_lib/email.js'
+import { sendEmail, formatMoney, subscriptionScheduledChangeEmail, subscriptionChangeRevertedEmail, adminSubscriptionRequestEmail } from './_lib/email.js'
+import { sendNtfy } from './_lib/ntfy.js'
 
 const ADMIN_EMAIL = 'udy.bar.yosef@gmail.com'
+const TIER_NAMES_C: Record<number, string> = { 1: 'Starter', 2: 'Growth', 3: 'Portfolio', 4: 'Pro' }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -105,21 +107,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const { error: dbErrR } = await admin.from('hosts').update({ pending_tier: null }).eq('id', userId)
         if (dbErrR) console.error('[change-plan] pending_tier clear failed:', String(dbErrR.message).slice(0, 120))
         const contactEmail = host.contact_email as string | null
+        const hostNameR = host.name as string | null
+        const renewalIsoR = periodEndUnix
+          ? new Date(periodEndUnix * 1000).toISOString()
+          : new Date().toISOString()
+        const { data: currentPlanData } = await admin
+          .from('plans')
+          .select('price_cents, currency')
+          .eq('tier', currentTier)
+          .maybeSingle()
+        const revertPriceCents = (currentPlanData as any)?.price_cents ?? 0
+        const revertCurrency = (currentPlanData as any)?.currency ?? 'eur'
         await Promise.allSettled([
           ...(contactEmail ? [sendEmail({
             to: contactEmail,
-            ...subscriptionChangeRevertedEmail((host.name as string | null), currentTier),
+            ...subscriptionChangeRevertedEmail(hostNameR, currentTier, {
+              priceCents: revertPriceCents,
+              currency: revertCurrency,
+              renewalIso: renewalIsoR,
+            }),
           })] : []),
           sendEmail({
             to: ADMIN_EMAIL,
             ...adminSubscriptionRequestEmail({
               event: 'reverted',
-              hostName: (host.name as string | null),
+              hostName: hostNameR,
               hostEmail: contactEmail,
               hostId: userId,
               fromTier: pendingTier,
               toTier: currentTier,
+              priceCents: revertPriceCents,
+              currency: revertCurrency,
             }),
+          }),
+          sendNtfy({
+            title: 'Arrivly',
+            message: `${hostNameR ?? 'A host'} undid a scheduled change — staying on ${TIER_NAMES_C[currentTier] ?? `Tier ${currentTier}`}`,
+            priority: 'default',
           }),
         ])
         return res.status(200).json({ mode: 'reverted' })
@@ -209,36 +233,46 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         const effectiveAt = new Date(phaseEndDate * 1000).toISOString()
 
-        // Query cap data and send request-time emails
+        // Query cap + price data and send request-time emails
         const [{ data: newPlanData }, { count: aptCount }] = await Promise.all([
-          admin.from('plans').select('max_properties').eq('tier', newTier).maybeSingle(),
+          admin.from('plans').select('max_properties, price_cents, currency').eq('tier', newTier).maybeSingle(),
           admin.from('apartments').select('id', { count: 'exact', head: true }).eq('host_id', userId),
         ])
         const newCap = (newPlanData as any)?.max_properties ?? null
+        const newPlanPriceCents = (newPlanData as any)?.price_cents ?? 0
+        const newPlanCurrency = (newPlanData as any)?.currency ?? 'eur'
         const propertyCount = aptCount ?? 0
         const contactEmailD = host.contact_email as string | null
+        const hostNameD = host.name as string | null
         await Promise.allSettled([
           ...(contactEmailD ? [sendEmail({
             to: contactEmailD,
             ...subscriptionScheduledChangeEmail(
-              (host.name as string | null),
+              hostNameD,
               currentTier,
               newTier,
               effectiveAt,
-              { propertyCount, newCap },
+              { priceCents: newPlanPriceCents, currency: newPlanCurrency, propertyCount, newCap },
             ),
           })] : []),
           sendEmail({
             to: ADMIN_EMAIL,
             ...adminSubscriptionRequestEmail({
               event: 'scheduled_downgrade',
-              hostName: (host.name as string | null),
+              hostName: hostNameD,
               hostEmail: contactEmailD,
               hostId: userId,
               fromTier: currentTier,
               toTier: newTier,
               effectiveAt,
+              priceCents: newPlanPriceCents,
+              currency: newPlanCurrency,
             }),
+          }),
+          sendNtfy({
+            title: 'Arrivly',
+            message: `${hostNameD ?? 'A host'} scheduled a downgrade to ${TIER_NAMES_C[newTier] ?? `Tier ${newTier}`} (${formatMoney(newPlanPriceCents, newPlanCurrency)}/mo) — effective ${effectiveAt.split('T')[0]}`,
+            priority: 'default',
           }),
         ])
 
