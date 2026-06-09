@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { TIER_COPY } from '../../lib/tierCopy'
@@ -17,6 +17,9 @@ interface HostData {
   subscription_status: string | null
   billing_notice: BillingNotice | null
   stripe_subscription_id: string | null
+  current_period_end: string | null
+  pending_tier: number | null
+  cancel_at_period_end: boolean | null
 }
 
 interface Plan {
@@ -28,21 +31,63 @@ interface Plan {
   includes_booking: boolean
 }
 
+type ModalState = { kind: 'switch'; tier: number } | { kind: 'cancel' } | null
+
 function currencySymbol(code: string): string {
   const map: Record<string, string> = { eur: '€', usd: '$', gbp: '£' }
   return map[code.toLowerCase()] ?? code.toUpperCase()
 }
 
-type BannerStyle = { bg: string; border: string; heading: string; muted: string }
-const GREEN: BannerStyle = { bg: 'bg-[#e4f0da]', border: 'border-[#b8d9a0]', heading: 'text-[#2a5c0a]', muted: 'text-[#2a5c0a]/70' }
-const AMBER: BannerStyle = { bg: 'bg-[#faeeda]', border: 'border-[#e8d0a0]', heading: 'text-[#7a4800]', muted: 'text-[#7a4800]/70' }
-const RED: BannerStyle  = { bg: 'bg-[#fde4e4]', border: 'border-[#f5c6c6]', heading: 'text-[#8a1a1a]', muted: 'text-[#8a1a1a]/70' }
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+}
 
-const TIER_NAMES: Record<number, string> = { 1: 'Starter', 2: 'Growth', 3: 'Portfolio', 4: 'Pro' }
+function priceForTier(tier: number, plans: Plan[]): string {
+  const plan = plans.find(p => p.tier === tier)
+  if (!plan) return ''
+  return `${currencySymbol(plan.currency)}${(plan.price_cents / 100).toFixed(0)}/mo`
+}
+
+function parseApiError(err: unknown): string {
+  let code: string | undefined
+  try { code = JSON.parse((err as Error).message)?.error } catch {}
+  if (!code) {
+    const msg = String((err as Error)?.message ?? '')
+    if (msg.includes('not_switchable')) code = 'not_switchable'
+    else if (msg.includes('pending_change_in_progress')) code = 'pending_change_in_progress'
+    else if (msg.includes('already_on_tier')) code = 'already_on_tier'
+    else if (msg.includes('no_subscription')) code = 'no_subscription'
+    else if (msg.includes('booking_tier_unavailable')) code = 'booking_tier_unavailable'
+  }
+  switch (code) {
+    case 'not_switchable': return "This plan can't be changed right now. If a payment is overdue, update your card first."
+    case 'pending_change_in_progress': return "You already have a scheduled plan change — undo it first, then cancel."
+    case 'already_on_tier': return "You're already on this plan."
+    case 'no_subscription': return "No active subscription found."
+    case 'booking_tier_unavailable': return "This tier is not yet available."
+    default: return 'Something went wrong. Please try again.'
+  }
+}
+
+type BannerStyle = { bg: string; border: string; heading: string; muted: string; btn: string }
+const GREEN: BannerStyle = {
+  bg: 'bg-[#e4f0da]', border: 'border-[#b8d9a0]', heading: 'text-[#2a5c0a]', muted: 'text-[#2a5c0a]/70',
+  btn: 'border-[#2a5c0a]/40 text-[#2a5c0a] hover:bg-[#2a5c0a]/10',
+}
+const AMBER: BannerStyle = {
+  bg: 'bg-[#faeeda]', border: 'border-[#e8d0a0]', heading: 'text-[#7a4800]', muted: 'text-[#7a4800]/70',
+  btn: 'border-[#7a4800]/40 text-[#7a4800] hover:bg-[#7a4800]/10',
+}
+const RED: BannerStyle = {
+  bg: 'bg-[#fde4e4]', border: 'border-[#f5c6c6]', heading: 'text-[#8a1a1a]', muted: 'text-[#8a1a1a]/70',
+  btn: 'border-[#8a1a1a]/40 text-[#8a1a1a] hover:bg-[#8a1a1a]/10',
+}
+
+const TIER_NAMES_LOCAL: Record<number, string> = { 1: 'Starter', 2: 'Growth', 3: 'Portfolio', 4: 'Pro' }
 
 function bannerConfig(notice: BillingNotice): { heading: string; body: string; style: BannerStyle } {
-  const from = notice.from_tier !== null ? (TIER_NAMES[notice.from_tier] ?? `Tier ${notice.from_tier}`) : null
-  const to = TIER_NAMES[notice.to_tier] ?? `Tier ${notice.to_tier}`
+  const from = notice.from_tier !== null ? (TIER_NAMES_LOCAL[notice.from_tier] ?? `Tier ${notice.from_tier}`) : null
+  const to = TIER_NAMES_LOCAL[notice.to_tier] ?? `Tier ${notice.to_tier}`
   switch (notice.type) {
     case 'started':    return { heading: `You're on the ${to} plan`, body: 'Your subscription is active.', style: GREEN }
     case 'upgraded':   return { heading: `Upgraded to ${to}`, body: from ? `Changed from ${from} to ${to}.` : `Now on ${to}.`, style: GREEN }
@@ -52,17 +97,25 @@ function bannerConfig(notice: BillingNotice): { heading: string; body: string; s
   }
 }
 
+const SELECT_FIELDS =
+  'tier, trial_ends_at, subscription_status, billing_notice, stripe_subscription_id, current_period_end, pending_tier, cancel_at_period_end'
+
 export default function BillingPanel() {
   const [host, setHost] = useState<HostData | null>(null)
   const [plans, setPlans] = useState<Plan[]>([])
   const [loading, setLoading] = useState(true)
   const [plansError, setPlansError] = useState(false)
-  const [pendingTier, setPendingTier] = useState<number | null>(null)
-  const [ctaError, setCtaError] = useState<string | null>(null)
-  const [managingPortal, setManagingPortal] = useState(false)
-  const [portalError, setPortalError] = useState<string | null>(null)
   const [checkoutResult, setCheckoutResult] = useState<'success' | 'cancelled' | null>(null)
   const [dismissing, setDismissing] = useState(false)
+  const [modal, setModal] = useState<ModalState>(null)
+  const [choosingTier, setChoosingTier] = useState<number | null>(null)
+  const [switchPending, setSwitchPending] = useState(false)
+  const [undoPending, setUndoPending] = useState(false)
+  const [cancelActionPending, setCancelActionPending] = useState(false)
+  const [resumeActionPending, setResumeActionPending] = useState(false)
+  const [portalPending, setPortalPending] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const modalRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -74,54 +127,122 @@ export default function BillingPanel() {
   }, [])
 
   useEffect(() => {
+    if (modal && modalRef.current) modalRef.current.focus()
+  }, [modal])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape' && modal) { setModal(null); setActionError(null) }
+    }
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [modal])
+
+  useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
       const [{ data: hostData }, { data: plansData, error: plansErr }] = await Promise.all([
-        supabase
-          .from('hosts')
-          .select('tier, trial_ends_at, subscription_status, billing_notice, stripe_subscription_id')
-          .eq('id', user.id)
-          .maybeSingle(),
-        supabase
-          .from('plans')
-          .select('tier, label, price_cents, currency, max_properties, includes_booking')
-          .order('tier', { ascending: true }),
+        supabase.from('hosts').select(SELECT_FIELDS).eq('id', user.id).maybeSingle(),
+        supabase.from('plans').select('tier, label, price_cents, currency, max_properties, includes_booking').order('tier', { ascending: true }),
       ])
       setHost(hostData as HostData | null)
-      if (plansErr) {
-        setPlansError(true)
-      } else {
-        setPlans(plansData ?? [])
-      }
+      if (plansErr) setPlansError(true)
+      else setPlans(plansData ?? [])
       setLoading(false)
     }
     load()
   }, [])
 
+  async function refetchHost() {
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) return
+    const { data } = await supabase.from('hosts').select(SELECT_FIELDS).eq('id', user.id).maybeSingle()
+    setHost(data as HostData | null)
+  }
+
+  // --- Actions ---
+
   async function handleChoosePlan(tier: number) {
-    setPendingTier(tier)
-    setCtaError(null)
+    setChoosingTier(tier)
+    setActionError(null)
     try {
       const data = await api.post<{ url: string }>('/create-subscription', { tier })
       if (!data.url) throw new Error('no checkout url')
       window.location.href = data.url
-    } catch {
-      setCtaError('Something went wrong. Please try again.')
-      setPendingTier(null)
+    } catch (err) {
+      setActionError(parseApiError(err))
+      setChoosingTier(null)
     }
   }
 
-  async function handleManagePortal() {
-    setManagingPortal(true)
-    setPortalError(null)
+  async function handleSwitch(tier: number) {
+    setSwitchPending(true)
+    setActionError(null)
+    try {
+      await api.post('/change-plan', { tier })
+      setModal(null)
+      await refetchHost()
+    } catch (err) {
+      setActionError(parseApiError(err))
+    } finally {
+      setSwitchPending(false)
+    }
+  }
+
+  async function handleUndoSwitch() {
+    const currentTier = host?.tier
+    if (currentTier == null) return
+    setUndoPending(true)
+    setActionError(null)
+    try {
+      await api.post('/change-plan', { tier: currentTier })
+      await refetchHost()
+    } catch (err) {
+      setActionError(parseApiError(err))
+    } finally {
+      setUndoPending(false)
+    }
+  }
+
+  async function handleCancel() {
+    setCancelActionPending(true)
+    setActionError(null)
+    try {
+      await api.post('/cancel-subscription', {})
+      setModal(null)
+      await refetchHost()
+    } catch (err) {
+      setActionError(parseApiError(err))
+    } finally {
+      setCancelActionPending(false)
+    }
+  }
+
+  async function handleResume() {
+    setResumeActionPending(true)
+    setActionError(null)
+    try {
+      await api.post('/cancel-subscription', { resume: true })
+      await refetchHost()
+    } catch (err) {
+      setActionError(parseApiError(err))
+    } finally {
+      setResumeActionPending(false)
+    }
+  }
+
+  async function handlePaymentPortal() {
+    setPortalPending(true)
+    setActionError(null)
     try {
       const data = await api.post<{ url: string }>('/billing-portal', {})
       if (!data.url) throw new Error('no portal url')
       window.location.href = data.url
-    } catch {
-      setPortalError('Could not open the billing portal. Please try again.')
-      setManagingPortal(false)
+    } catch (err) {
+      setActionError(parseApiError(err))
+    } finally {
+      setPortalPending(false)
     }
   }
 
@@ -139,23 +260,31 @@ export default function BillingPanel() {
 
   if (loading) return <Loader />
 
+  // --- Derived state ---
   const status = host?.subscription_status ?? 'trial'
   const hostTier = host?.tier ?? null
+  const hasSubscription = !!host?.stripe_subscription_id
+  const pendingTier = (host?.pending_tier ?? null) as number | null
+  const cancelPending = host?.cancel_at_period_end === true
   const trialEndsAt = host?.trial_ends_at ?? null
+  const trialEndDate = trialEndsAt ? formatDate(trialEndsAt) : null
   const trialRemaining = trialEndsAt
     ? Math.max(0, Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / 86_400_000))
     : 0
-  const trialEndDate = trialEndsAt
-    ? new Date(trialEndsAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
-    : null
-  const isManaged = status === 'active' || status === 'grace'
-  const hasSubscription = !!host?.stripe_subscription_id
+  const periodEndDate = host?.current_period_end
+    ? formatDate(host.current_period_end)
+    : trialEndDate ?? 'the end of your current period'
+  const chooseMode = !hasSubscription || status === 'expired'
+  const manageMode = !chooseMode
+  const locked = manageMode && (pendingTier !== null || cancelPending)
   const billingNotice = host?.billing_notice ?? null
+  const isDeferred = status === 'active' || status === 'grace'
 
   return (
     <div className="max-w-2xl">
       <h1 className="text-[17px] font-serif font-light text-[#1a1a1a] mb-4">Billing</h1>
 
+      {/* Dismissible billing_notice banner from webhook */}
       {billingNotice && (() => {
         const { heading, body, style } = bannerConfig(billingNotice)
         return (
@@ -176,19 +305,20 @@ export default function BillingPanel() {
         )
       })()}
 
+      {/* Checkout result banners */}
       {checkoutResult === 'success' && (
         <div className="bg-[#e4f0da] border border-[#b8d9a0] rounded-[10px] p-4 mb-5">
           <div className="text-[13px] font-semibold text-[#2a5c0a] mb-0.5">You're all set</div>
           <div className="text-[11px] text-[#2a5c0a]/80">Thanks — your plan is being set up.</div>
         </div>
       )}
-
       {checkoutResult === 'cancelled' && (
         <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mb-5">
           <div className="text-[11px] text-[#888]">Checkout cancelled — no changes were made.</div>
         </div>
       )}
 
+      {/* Status banners */}
       {status === 'trial' && host !== null && (
         <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mb-5">
           <div className="flex items-center justify-between mb-1">
@@ -203,7 +333,6 @@ export default function BillingPanel() {
           </div>
         </div>
       )}
-
       {status === 'active' && (
         <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mb-5">
           <div className="flex items-center gap-2">
@@ -214,55 +343,92 @@ export default function BillingPanel() {
           </div>
         </div>
       )}
-
       {(status === 'grace' || status === 'expired') && (
-        <div className="bg-[#fde4e4] border border-[#f5c6c6] rounded-[10px] p-4 mb-5">
-          <div className="text-[13px] font-semibold text-[#8a1a1a] mb-1">
+        <div className={`${RED.bg} border ${RED.border} rounded-[10px] p-4 mb-5`}>
+          <div className={`text-[13px] font-semibold ${RED.heading} mb-1`}>
             {status === 'grace' ? 'Payment failed — grace period' : 'Subscription inactive'}
           </div>
-          <div className="text-[11px] text-[#8a1a1a]/70">Add a payment method to restore access.</div>
+          <div className={`text-[11px] ${RED.muted}`}>Add a payment method to restore access.</div>
         </div>
       )}
 
-      {hasSubscription && (
-        <div className="mb-5">
+      {/* Cancel-pending banner (shown when cancelPending; wins over pending-tier if both set) */}
+      {cancelPending && (
+        <div className={`${AMBER.bg} border ${AMBER.border} rounded-[10px] p-4 mb-5 flex items-start justify-between gap-3`}>
+          <div>
+            <div className={`text-[13px] font-semibold ${AMBER.heading} mb-0.5`}>Subscription ending</div>
+            <div className={`text-[11px] ${AMBER.muted}`}>
+              Your subscription cancels on {periodEndDate}. Your guest pages stay live until then.
+            </div>
+          </div>
           <button
-            onClick={handleManagePortal}
-            disabled={managingPortal}
-            className="bg-[#1a1a1a] text-white rounded-[8px] px-4 py-[10px] text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+            onClick={handleResume}
+            disabled={resumeActionPending}
+            className={`shrink-0 text-[11px] font-semibold border rounded-[7px] px-2.5 py-1 ${AMBER.btn} disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap`}
           >
-            {managingPortal ? 'Opening…' : 'Manage subscription'}
+            {resumeActionPending ? 'Resuming…' : 'Resume subscription'}
           </button>
-          {portalError && (
-            <div className="mt-2 text-[11px] text-[#8a1a1a]">{portalError}</div>
-          )}
         </div>
       )}
 
+      {/* Pending tier-change banner (only when cancel is not set) */}
+      {!cancelPending && pendingTier !== null && (() => {
+        const pCopy = TIER_COPY[pendingTier as 1 | 2 | 3 | 4]
+        const hCopy = hostTier !== null ? TIER_COPY[hostTier as 1 | 2 | 3 | 4] : null
+        return (
+          <div className={`${AMBER.bg} border ${AMBER.border} rounded-[10px] p-4 mb-5 flex items-start justify-between gap-3`}>
+            <div>
+              <div className={`text-[13px] font-semibold ${AMBER.heading} mb-0.5`}>Plan change scheduled</div>
+              <div className={`text-[11px] ${AMBER.muted}`}>
+                Switching to {pCopy?.name ?? `Tier ${pendingTier}`} on {periodEndDate}.
+                {hCopy && ` You stay on ${hCopy.name} until then.`}
+              </div>
+            </div>
+            <button
+              onClick={handleUndoSwitch}
+              disabled={undoPending}
+              className={`shrink-0 text-[11px] font-semibold border rounded-[7px] px-2.5 py-1 ${AMBER.btn} disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap`}
+            >
+              {undoPending ? 'Undoing…' : 'Undo change'}
+            </button>
+          </div>
+        )
+      })()}
+
+      {/* Plan load error */}
       {plansError && (
-        <div className="bg-[#fde4e4] border border-[#f5c6c6] rounded-[10px] p-4 text-[11px] text-[#8a1a1a] mb-4">
+        <div className={`${RED.bg} border ${RED.border} rounded-[10px] p-4 text-[11px] ${RED.heading} mb-4`}>
           Could not load plan details — please refresh to try again.
         </div>
       )}
 
+      {/* Non-modal action error */}
+      {actionError && !modal && (
+        <div className={`${RED.bg} border ${RED.border} rounded-[10px] p-3 mb-4 text-[11px] ${RED.heading}`}>
+          {actionError}
+        </div>
+      )}
+
+      {/* Plan cards */}
       <div className="grid grid-cols-2 gap-3">
         {plans.map(plan => {
           const copy = TIER_COPY[plan.tier as 1 | 2 | 3 | 4]
           if (!copy) return null
-          const isCurrentPlan = plan.tier === hostTier && (isManaged || status === 'trial')
           const isMostPopular = !!copy.mostPopular
           const sym = currencySymbol(plan.currency)
           const price = `${sym}${(plan.price_cents / 100).toFixed(0)}`
           const capacity = plan.max_properties === null
             ? 'Unlimited properties'
             : `Up to ${plan.max_properties} ${plan.max_properties === 1 ? 'property' : 'properties'}`
+          const isCurrentTier = manageMode && plan.tier === hostTier
+          const isScheduledTier = manageMode && pendingTier !== null && plan.tier === pendingTier && plan.tier !== hostTier
+          const borderCls = isMostPopular ? 'border-2 border-[#1a1a1a]' : 'border border-[#ddd8ce]'
+          const ringCls = isCurrentTier ? 'ring-2 ring-[#1a1a1a]/15' : ''
 
           return (
             <div
               key={plan.tier}
-              className={`bg-white rounded-[10px] p-4 flex flex-col relative ${
-                isMostPopular ? 'border-2 border-[#1a1a1a]' : 'border border-[#ddd8ce]'
-              }`}
+              className={`bg-white rounded-[10px] p-4 flex flex-col relative ${borderCls} ${ringCls}`}
             >
               {isMostPopular && (
                 <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#1a1a1a] text-white text-[10px] font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap">
@@ -293,23 +459,32 @@ export default function BillingPanel() {
               </ul>
 
               {plan.tier === 4 ? (
-                <button
-                  disabled
-                  className="w-full bg-[#1a1a1a] text-white py-2 rounded-[8px] text-xs font-semibold opacity-40 cursor-not-allowed"
-                >
+                <button disabled className="w-full bg-[#1a1a1a] text-white py-2 rounded-[8px] text-xs font-semibold opacity-40 cursor-not-allowed">
                   Available at launch
                 </button>
-              ) : isCurrentPlan ? (
+              ) : chooseMode ? (
+                <button
+                  onClick={() => handleChoosePlan(plan.tier)}
+                  disabled={choosingTier !== null}
+                  className="w-full bg-[#1a1a1a] text-white py-2 rounded-[8px] text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {choosingTier === plan.tier ? 'Loading…' : 'Choose plan'}
+                </button>
+              ) : isCurrentTier ? (
                 <div className="w-full text-center text-[11px] font-semibold text-[#1a1a1a] py-2 border border-[#ddd8ce] rounded-[8px] bg-[#f8f6f2]">
-                  Your plan
+                  Current plan
+                </div>
+              ) : isScheduledTier ? (
+                <div className="w-full text-center text-[11px] font-medium text-[#888] py-2 border border-[#ddd8ce] rounded-[8px] bg-[#f8f6f2] cursor-default">
+                  Scheduled · {periodEndDate}
                 </div>
               ) : (
                 <button
-                  onClick={() => handleChoosePlan(plan.tier)}
-                  disabled={pendingTier !== null}
-                  className="w-full bg-[#1a1a1a] text-white py-2 rounded-[8px] text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => { setActionError(null); setModal({ kind: 'switch', tier: plan.tier }) }}
+                  disabled={locked}
+                  className="w-full bg-[#1a1a1a] text-white py-2 rounded-[8px] text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  {pendingTier === plan.tier ? 'Loading…' : 'Choose plan'}
+                  {plan.tier > (hostTier ?? 0) ? 'Upgrade' : 'Downgrade'}
                 </button>
               )}
             </div>
@@ -317,8 +492,123 @@ export default function BillingPanel() {
         })}
       </div>
 
-      {ctaError && (
-        <div className="mt-3 text-[11px] text-[#8a1a1a]">{ctaError}</div>
+      {/* Manage footer */}
+      {manageMode && (
+        <div className="mt-5 flex items-start justify-between gap-4">
+          <div>
+            <button
+              onClick={() => { setActionError(null); setModal({ kind: 'cancel' }) }}
+              disabled={locked}
+              className="text-[11px] font-medium text-[#8a1a1a] border border-[#f5c6c6] rounded-[8px] px-3 py-2 bg-transparent hover:bg-[#fde4e4] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Cancel subscription
+            </button>
+            {locked && (
+              <div className="text-[10px] text-[#888] mt-1.5">Undo the scheduled change first</div>
+            )}
+          </div>
+          <button
+            onClick={handlePaymentPortal}
+            disabled={portalPending}
+            className="text-[11px] text-[#888] hover:text-[#444] underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {portalPending ? 'Opening…' : 'Payment method & receipts →'}
+          </button>
+        </div>
+      )}
+
+      {/* Confirmation modal */}
+      {modal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30">
+          <div
+            ref={modalRef}
+            role="dialog"
+            aria-modal="true"
+            tabIndex={-1}
+            className="bg-[#f8f6f2] rounded-[12px] border border-[#ddd8ce] p-6 max-w-sm w-full shadow-xl outline-none"
+          >
+
+            {modal.kind === 'switch' && (() => {
+              const mTier = modal.tier
+              const mCopy = TIER_COPY[mTier as 1 | 2 | 3 | 4]
+              const mPlan = plans.find(p => p.tier === mTier)
+              const mPrice = priceForTier(mTier, plans)
+              const hCopy = hostTier !== null ? TIER_COPY[hostTier as 1 | 2 | 3 | 4] : null
+              const hPrice = hostTier !== null ? priceForTier(hostTier, plans) : ''
+              const isUp = mTier > (hostTier ?? 0)
+              if (!mCopy) return null
+              return (
+                <>
+                  <h2 className="text-[15px] font-serif font-light text-[#1a1a1a] mb-3">
+                    {isUp ? `Upgrade to ${mCopy.name}?` : `Switch to ${mCopy.name}?`}
+                  </h2>
+                  <p className="text-[12px] text-[#555] leading-relaxed mb-4">
+                    {isDeferred ? (
+                      <>
+                        Your plan will change from {hCopy?.name ?? 'your current plan'} ({hPrice}) to {mCopy.name} ({mPrice}) at the start of your next billing period — {periodEndDate}. You keep {hCopy?.name ?? 'your current plan'} until then, and you won't be charged now.
+                        {hostTier !== null && mTier < hostTier && mPlan && (
+                          <> Note: {mCopy.name} covers up to {mPlan.max_properties !== null ? mPlan.max_properties : 'unlimited'} properties — make sure you're within that by {periodEndDate}.</>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        You'll move to {mCopy.name} now. You're still in your free trial{trialEndDate ? ` until ${trialEndDate}` : ''}, so you won't be charged today — your first payment will be at the {mCopy.name} price ({mPrice}).
+                      </>
+                    )}
+                  </p>
+                  {actionError && (
+                    <div className={`text-[11px] ${RED.heading} mb-3`}>{actionError}</div>
+                  )}
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      onClick={() => { setModal(null); setActionError(null) }}
+                      disabled={switchPending}
+                      className="text-[12px] text-[#444] border border-[#ddd8ce] rounded-[8px] px-4 py-2 bg-white hover:bg-[#f8f6f2] transition-colors disabled:opacity-50"
+                    >
+                      Keep {hCopy?.name ?? 'current plan'}
+                    </button>
+                    <button
+                      onClick={() => handleSwitch(mTier)}
+                      disabled={switchPending}
+                      className="text-[12px] text-white bg-[#1a1a1a] rounded-[8px] px-4 py-2 font-semibold hover:bg-[#333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {switchPending ? 'Confirming…' : isDeferred ? 'Confirm switch' : 'Confirm'}
+                    </button>
+                  </div>
+                </>
+              )
+            })()}
+
+            {modal.kind === 'cancel' && (
+              <>
+                <h2 className="text-[15px] font-serif font-light text-[#1a1a1a] mb-3">Cancel subscription?</h2>
+                <p className="text-[12px] text-[#555] leading-relaxed mb-4">
+                  Your guest pages stay live until {periodEndDate} (the end of your billing period). After that, visitors see a "temporarily unavailable" screen until you resubscribe. You can resubscribe anytime.
+                </p>
+                {actionError && (
+                  <div className={`text-[11px] ${RED.heading} mb-3`}>{actionError}</div>
+                )}
+                <div className="flex gap-2 justify-end">
+                  <button
+                    onClick={() => { setModal(null); setActionError(null) }}
+                    disabled={cancelActionPending}
+                    className="text-[12px] text-[#444] border border-[#ddd8ce] rounded-[8px] px-4 py-2 bg-white hover:bg-[#f8f6f2] transition-colors disabled:opacity-50"
+                  >
+                    Keep subscription
+                  </button>
+                  <button
+                    onClick={handleCancel}
+                    disabled={cancelActionPending}
+                    className="text-[12px] text-white bg-[#8a1a1a] rounded-[8px] px-4 py-2 font-semibold hover:bg-[#a02020] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {cancelActionPending ? 'Cancelling…' : 'Cancel plan'}
+                  </button>
+                </div>
+              </>
+            )}
+
+          </div>
+        </div>
       )}
     </div>
   )
