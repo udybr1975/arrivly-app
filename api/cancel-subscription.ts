@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { getStripe, ARRIVLY_STRIPE_METADATA } from './_lib/stripe.js'
+import { sendEmail, subscriptionScheduledCancelEmail, subscriptionResumedEmail, adminSubscriptionRequestEmail } from './_lib/email.js'
+
+const ADMIN_EMAIL = 'udy.bar.yosef@gmail.com'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -29,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { data: host } = await admin
       .from('hosts')
-      .select('stripe_subscription_id')
+      .select('stripe_subscription_id, name, contact_email, tier')
       .eq('id', userId)
       .maybeSingle()
 
@@ -47,6 +50,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       await stripe.subscriptions.update(sub.id, { cancel_at_period_end: false })
       const { error: dbErrRes } = await admin.from('hosts').update({ cancel_at_period_end: false }).eq('id', userId)
       if (dbErrRes) console.error('[cancel-subscription] cancel_at_period_end clear failed:', String(dbErrRes.message).slice(0, 120))
+      const contactEmailR = host.contact_email as string | null
+      const currentTierR = host.tier as number | null
+      await Promise.allSettled([
+        ...(contactEmailR ? [sendEmail({
+          to: contactEmailR,
+          ...subscriptionResumedEmail((host.name as string | null)),
+        })] : []),
+        sendEmail({
+          to: ADMIN_EMAIL,
+          ...adminSubscriptionRequestEmail({
+            event: 'resumed',
+            hostName: (host.name as string | null),
+            hostEmail: contactEmailR,
+            hostId: userId,
+            fromTier: currentTierR,
+            toTier: currentTierR,
+          }),
+        }),
+      ])
       return res.status(200).json({ resumed: true })
     }
 
@@ -66,6 +88,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const cancelAt = periodEndUnix
       ? new Date(periodEndUnix * 1000).toISOString()
       : null
+
+    const contactEmailC = host.contact_email as string | null
+    await Promise.allSettled([
+      ...(contactEmailC ? [sendEmail({
+        to: contactEmailC,
+        ...subscriptionScheduledCancelEmail((host.name as string | null), cancelAt),
+      })] : []),
+      sendEmail({
+        to: ADMIN_EMAIL,
+        ...adminSubscriptionRequestEmail({
+          event: 'scheduled_cancel',
+          hostName: (host.name as string | null),
+          hostEmail: contactEmailC,
+          hostId: userId,
+          fromTier: (host.tier as number | null),
+          toTier: null,
+          effectiveAt: cancelAt,
+        }),
+      }),
+    ])
 
     return res.status(200).json({ cancel_at: cancelAt })
 

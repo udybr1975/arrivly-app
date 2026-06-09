@@ -65,6 +65,7 @@ function parseApiError(err: unknown): string {
     case 'already_on_tier': return "You're already on this plan."
     case 'no_subscription': return "No active subscription found."
     case 'booking_tier_unavailable': return "This tier is not yet available."
+    case 'payment_failed': return "Your card couldn't be charged for the upgrade, so your plan wasn't changed. Update your payment method and try again."
     default: return 'Something went wrong. Please try again.'
   }
 }
@@ -115,7 +116,10 @@ export default function BillingPanel() {
   const [resumeActionPending, setResumeActionPending] = useState(false)
   const [portalPending, setPortalPending] = useState(false)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [upgradeProcessing, setUpgradeProcessing] = useState(false)
   const modalRef = useRef<HTMLDivElement>(null)
+  const mountedRef = useRef(true)
+  useEffect(() => { return () => { mountedRef.current = false } }, [])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -180,9 +184,18 @@ export default function BillingPanel() {
     setSwitchPending(true)
     setActionError(null)
     try {
-      await api.post('/change-plan', { tier })
+      const data = await api.post<{ mode: string; effective_at?: string }>('/change-plan', { tier })
       setModal(null)
       await refetchHost()
+      if (data.mode === 'immediate') {
+        setUpgradeProcessing(true)
+        setTimeout(async () => {
+          if (mountedRef.current) {
+            await refetchHost()
+            setUpgradeProcessing(false)
+          }
+        }, 3000)
+      }
     } catch (err) {
       setActionError(parseApiError(err))
     } finally {
@@ -278,7 +291,6 @@ export default function BillingPanel() {
   const manageMode = !chooseMode
   const locked = manageMode && (pendingTier !== null || cancelPending)
   const billingNotice = host?.billing_notice ?? null
-  const isDeferred = status === 'active' || status === 'grace'
 
   return (
     <div className="max-w-2xl">
@@ -409,6 +421,11 @@ export default function BillingPanel() {
         </div>
       )}
 
+      {/* Upgrade processing indicator */}
+      {upgradeProcessing && (
+        <div className="text-[11px] text-[#888] mb-4">Upgrade processing — your plan will update shortly.</div>
+      )}
+
       {/* Plan cards */}
       <div className="grid grid-cols-2 gap-3">
         {plans.map(plan => {
@@ -537,24 +554,32 @@ export default function BillingPanel() {
               const hPrice = hostTier !== null ? priceForTier(hostTier, plans) : ''
               const isUp = mTier > (hostTier ?? 0)
               if (!mCopy) return null
+
+              let modalCopy
+              let confirmLabel: string
+              if (status === 'trial') {
+                modalCopy = <>You'll move to {mCopy.name} now. You're still in your free trial{trialEndDate ? ` until ${trialEndDate}` : ''}, so you won't be charged today — your first payment will be at the {mCopy.name} price ({mPrice}).</>
+                confirmLabel = 'Confirm'
+              } else if (status === 'active' && isUp) {
+                modalCopy = <>You'll move to {mCopy.name} now and we'll charge the prorated difference for the rest of this period. Your renewal date stays the same.</>
+                confirmLabel = 'Upgrade now'
+              } else {
+                modalCopy = <>
+                  Your plan will change from {hCopy?.name ?? 'your current plan'} ({hPrice}) to {mCopy.name} ({mPrice}) at the start of your next billing period — {periodEndDate}. You keep {hCopy?.name ?? 'your current plan'} until then, and you won't be charged now.
+                  {hostTier !== null && mTier < hostTier && mPlan && (
+                    <> Note: {mCopy.name} covers up to {mPlan.max_properties !== null ? mPlan.max_properties : 'unlimited'} properties — make sure you're within that by {periodEndDate}.</>
+                  )}
+                </>
+                confirmLabel = 'Confirm switch'
+              }
+
               return (
                 <>
                   <h2 className="text-[15px] font-serif font-light text-[#1a1a1a] mb-3">
                     {isUp ? `Upgrade to ${mCopy.name}?` : `Switch to ${mCopy.name}?`}
                   </h2>
                   <p className="text-[12px] text-[#555] leading-relaxed mb-4">
-                    {isDeferred ? (
-                      <>
-                        Your plan will change from {hCopy?.name ?? 'your current plan'} ({hPrice}) to {mCopy.name} ({mPrice}) at the start of your next billing period — {periodEndDate}. You keep {hCopy?.name ?? 'your current plan'} until then, and you won't be charged now.
-                        {hostTier !== null && mTier < hostTier && mPlan && (
-                          <> Note: {mCopy.name} covers up to {mPlan.max_properties !== null ? mPlan.max_properties : 'unlimited'} properties — make sure you're within that by {periodEndDate}.</>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        You'll move to {mCopy.name} now. You're still in your free trial{trialEndDate ? ` until ${trialEndDate}` : ''}, so you won't be charged today — your first payment will be at the {mCopy.name} price ({mPrice}).
-                      </>
-                    )}
+                    {modalCopy}
                   </p>
                   {actionError && (
                     <div className={`text-[11px] ${RED.heading} mb-3`}>{actionError}</div>
@@ -572,7 +597,7 @@ export default function BillingPanel() {
                       disabled={switchPending}
                       className="text-[12px] text-white bg-[#1a1a1a] rounded-[8px] px-4 py-2 font-semibold hover:bg-[#333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
-                      {switchPending ? 'Confirming…' : isDeferred ? 'Confirm switch' : 'Confirm'}
+                      {switchPending ? 'Confirming…' : confirmLabel}
                     </button>
                   </div>
                 </>

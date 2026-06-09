@@ -2,6 +2,9 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
 import { getStripe, priceIdForTier, tierForPriceId, ARRIVLY_STRIPE_METADATA } from './_lib/stripe.js'
+import { sendEmail, subscriptionScheduledChangeEmail, subscriptionChangeRevertedEmail, adminSubscriptionRequestEmail } from './_lib/email.js'
+
+const ADMIN_EMAIL = 'udy.bar.yosef@gmail.com'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -34,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { data: host } = await admin
       .from('hosts')
-      .select('stripe_subscription_id, subscription_status, tier, pending_tier')
+      .select('stripe_subscription_id, subscription_status, tier, pending_tier, name, contact_email')
       .eq('id', userId)
       .maybeSingle()
 
@@ -90,7 +93,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     } else if (sub.status === 'active') {
       if (newTier === currentTier) {
-        // Revert a previously-scheduled change: release the schedule so the sub continues as-is
+        // B-1) Revert: release the schedule so the sub continues as-is, then send emails
         const rawSchedule = sub.schedule as Stripe.SubscriptionSchedule | string | null
         const scheduleId: string | null =
           rawSchedule === null ? null
@@ -101,60 +104,146 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         const { error: dbErrR } = await admin.from('hosts').update({ pending_tier: null }).eq('id', userId)
         if (dbErrR) console.error('[change-plan] pending_tier clear failed:', String(dbErrR.message).slice(0, 120))
+        const contactEmail = host.contact_email as string | null
+        await Promise.allSettled([
+          ...(contactEmail ? [sendEmail({
+            to: contactEmail,
+            ...subscriptionChangeRevertedEmail((host.name as string | null), currentTier),
+          })] : []),
+          sendEmail({
+            to: ADMIN_EMAIL,
+            ...adminSubscriptionRequestEmail({
+              event: 'reverted',
+              hostName: (host.name as string | null),
+              hostEmail: contactEmail,
+              hostId: userId,
+              fromTier: pendingTier,
+              toTier: currentTier,
+            }),
+          }),
+        ])
         return res.status(200).json({ mode: 'reverted' })
-      }
 
-      // Defer the switch to the next period boundary via a subscription schedule
-      let schedule: Stripe.SubscriptionSchedule
-      const rawSchedule = sub.schedule as Stripe.SubscriptionSchedule | string | null
-      if (!rawSchedule) {
-        schedule = await stripe.subscriptionSchedules.create({ from_subscription: sub.id })
-      } else if (typeof rawSchedule === 'string') {
-        schedule = await stripe.subscriptionSchedules.retrieve(rawSchedule)
+      } else if (newTier > currentTier) {
+        // B-2) Upgrade: apply immediately with proration; no request-time email (webhook fans out on apply)
+        // Release any pending downgrade schedule first
+        const rawSchedule = sub.schedule as Stripe.SubscriptionSchedule | string | null
+        if (rawSchedule) {
+          const scheduleId = typeof rawSchedule === 'string' ? rawSchedule : (rawSchedule as Stripe.SubscriptionSchedule).id
+          await stripe.subscriptionSchedules.release(scheduleId)
+          // Note: if payment then fails, the pending downgrade schedule is gone but tier is unchanged (acceptable, low-frequency)
+        }
+        try {
+          await stripe.subscriptions.update(sub.id, {
+            items: [{ id: currentItemId, price: priceIdForTier(newTier) }],
+            proration_behavior: 'always_invoice',
+            payment_behavior: 'error_if_incomplete',
+            metadata: {
+              ...(sub.metadata as Record<string, string>),
+              app: ARRIVLY_STRIPE_METADATA.app,
+              tier: String(newTier),
+            },
+          })
+        } catch (upgradeErr) {
+          const isPaymentErr =
+            (upgradeErr as any)?.type === 'card_error' ||
+            (upgradeErr as any)?.code === 'card_declined' ||
+            (upgradeErr as any)?.code === 'invoice_payment_failed' ||
+            (upgradeErr as any)?.statusCode === 402
+          if (isPaymentErr) return res.status(402).json({ error: 'payment_failed' })
+          throw upgradeErr
+        }
+        // Webhook writes tier after payment confirms; clear only pending_tier here
+        const { error: dbErrU } = await admin.from('hosts').update({ pending_tier: null }).eq('id', userId)
+        if (dbErrU) console.error('[change-plan] pending_tier clear failed:', String(dbErrU.message).slice(0, 120))
+        return res.status(200).json({ mode: 'immediate' })
+
       } else {
-        schedule = rawSchedule
+        // B-3) Downgrade: defer via subscription schedule, then send emails
+        let schedule: Stripe.SubscriptionSchedule
+        const rawSchedule = sub.schedule as Stripe.SubscriptionSchedule | string | null
+        if (!rawSchedule) {
+          schedule = await stripe.subscriptionSchedules.create({ from_subscription: sub.id })
+        } else if (typeof rawSchedule === 'string') {
+          schedule = await stripe.subscriptionSchedules.retrieve(rawSchedule)
+        } else {
+          schedule = rawSchedule
+        }
+
+        // Use the schedule's own first phase verbatim so phase 1 ends at the REAL
+        // current-period boundary (end_date). iterations:1 from a historical start_date
+        // was applying the new price immediately in production.
+        const p0 = schedule.phases[0]
+        if (!p0) {
+          return res.status(409).json({ error: 'schedule_phase_unavailable' })
+        }
+        const p0Items = p0.items.map(item => ({
+          price: typeof item.price === 'string' ? item.price : (item.price as Stripe.Price).id,
+          quantity: item.quantity ?? 1,
+        }))
+        const rawEndDate = p0.end_date as number | null | undefined
+        const fallbackEndDate = Math.floor(Date.now() / 1000) + 2592000
+        const phaseEndDate: number = rawEndDate ?? periodEndUnix ?? fallbackEndDate
+        if (phaseEndDate === fallbackEndDate) {
+          console.warn('[change-plan] phaseEndDate fallback triggered — using now+30d; sub:', sub.id)
+        }
+
+        await stripe.subscriptionSchedules.update(schedule.id, {
+          phases: [
+            {
+              items: p0Items,
+              start_date: p0.start_date as any,
+              end_date: phaseEndDate as any,
+            },
+            {
+              items: [{ price: priceIdForTier(newTier), quantity: 1 }],
+              metadata: { app: ARRIVLY_STRIPE_METADATA.app, host_id: userId, tier: String(newTier) },
+            },
+          ],
+          end_behavior: 'release',
+          metadata: { app: ARRIVLY_STRIPE_METADATA.app, host_id: userId },
+        })
+
+        const { error: dbErrS } = await admin.from('hosts').update({ pending_tier: newTier }).eq('id', userId)
+        if (dbErrS) console.error('[change-plan] pending_tier set failed:', String(dbErrS.message).slice(0, 120))
+
+        const effectiveAt = new Date(phaseEndDate * 1000).toISOString()
+
+        // Query cap data and send request-time emails
+        const [{ data: newPlanData }, { count: aptCount }] = await Promise.all([
+          admin.from('plans').select('max_properties').eq('tier', newTier).maybeSingle(),
+          admin.from('apartments').select('id', { count: 'exact', head: true }).eq('host_id', userId),
+        ])
+        const newCap = (newPlanData as any)?.max_properties ?? null
+        const propertyCount = aptCount ?? 0
+        const contactEmailD = host.contact_email as string | null
+        await Promise.allSettled([
+          ...(contactEmailD ? [sendEmail({
+            to: contactEmailD,
+            ...subscriptionScheduledChangeEmail(
+              (host.name as string | null),
+              currentTier,
+              newTier,
+              effectiveAt,
+              { propertyCount, newCap },
+            ),
+          })] : []),
+          sendEmail({
+            to: ADMIN_EMAIL,
+            ...adminSubscriptionRequestEmail({
+              event: 'scheduled_downgrade',
+              hostName: (host.name as string | null),
+              hostEmail: contactEmailD,
+              hostId: userId,
+              fromTier: currentTier,
+              toTier: newTier,
+              effectiveAt,
+            }),
+          }),
+        ])
+
+        return res.status(200).json({ mode: 'scheduled', effective_at: effectiveAt })
       }
-
-      // Use the schedule's own first phase verbatim so phase 1 ends at the REAL
-      // current-period boundary (end_date). iterations:1 from a historical start_date
-      // was applying the new price immediately in production.
-      const p0 = schedule.phases[0]
-      if (!p0) {
-        return res.status(409).json({ error: 'schedule_phase_unavailable' })
-      }
-      const p0Items = p0.items.map(item => ({
-        price: typeof item.price === 'string' ? item.price : (item.price as Stripe.Price).id,
-        quantity: item.quantity ?? 1,
-      }))
-      const rawEndDate = p0.end_date as number | null | undefined
-      const fallbackEndDate = Math.floor(Date.now() / 1000) + 2592000
-      const phaseEndDate: number = rawEndDate ?? periodEndUnix ?? fallbackEndDate
-      if (phaseEndDate === fallbackEndDate) {
-        console.warn('[change-plan] phaseEndDate fallback triggered — using now+30d; sub:', sub.id)
-      }
-
-      await stripe.subscriptionSchedules.update(schedule.id, {
-        phases: [
-          {
-            items: p0Items,
-            start_date: p0.start_date as any,
-            end_date: phaseEndDate as any,
-          },
-          {
-            items: [{ price: priceIdForTier(newTier), quantity: 1 }],
-            metadata: { app: ARRIVLY_STRIPE_METADATA.app, host_id: userId, tier: String(newTier) },
-          },
-        ],
-        end_behavior: 'release',
-        metadata: { app: ARRIVLY_STRIPE_METADATA.app, host_id: userId },
-      })
-
-      const { error: dbErrS } = await admin.from('hosts').update({ pending_tier: newTier }).eq('id', userId)
-      if (dbErrS) console.error('[change-plan] pending_tier set failed:', String(dbErrS.message).slice(0, 120))
-
-      const effectiveAt = new Date(phaseEndDate * 1000).toISOString()
-
-      return res.status(200).json({ mode: 'scheduled', effective_at: effectiveAt })
 
     } else {
       // grace / past_due / expired / canceled — must fix payment or re-subscribe first

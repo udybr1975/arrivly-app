@@ -187,3 +187,127 @@ export function adminSubscriptionEventEmail(
   const text = `Arrivly subscription event: ${event}\n\nHost: ${nameLabel} <${emailLabel}>\nHost ID: ${hostId}\nTier: ${fromTierName} -> ${toTierName}\nStatus: ${status}\n\nAdmin: ${APP_URL}/admin`
   return { subject: `Arrivly: ${nameLabel} ${event}`, html, text }
 }
+
+// ─── Request-time builders (sent immediately on host action; distinct from webhook apply-time) ───
+
+function formatDateLong(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+export function subscriptionScheduledChangeEmail(
+  name: string | null,
+  fromTier: number,
+  toTier: number,
+  effectiveAtIso: string,
+  opts?: { propertyCount?: number; newCap?: number | null },
+): { subject: string; html: string; text: string } {
+  const who = name?.trim() ? name.trim() : 'there'
+  const fromName = TIER_NAMES[fromTier] ?? `Tier ${fromTier}`
+  const toName = TIER_NAMES[toTier] ?? `Tier ${toTier}`
+  const date = formatDateLong(effectiveAtIso)
+  const overCap = opts?.newCap != null && opts?.propertyCount != null && opts.propertyCount > opts.newCap
+  const capNoteHtml = overCap
+    ? ` ${esc(toName)} covers up to ${opts!.newCap} ${opts!.newCap === 1 ? 'property' : 'properties'}. You have ${opts!.propertyCount}, so remove ${opts!.propertyCount - opts!.newCap!} before ${esc(date)} to stay within ${esc(toName)}.`
+    : ''
+  const capNoteText = overCap
+    ? ` ${toName} covers up to ${opts!.newCap} properties. You have ${opts!.propertyCount}, so remove ${opts!.propertyCount - opts!.newCap!} before ${date} to stay within ${toName}.`
+    : ''
+  const html = layout(
+    'Your plan change is scheduled',
+    `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
+     <p style="margin:0;">Your plan will change from <strong>${esc(fromName)}</strong> to <strong>${esc(toName)}</strong> on <strong>${esc(date)}</strong>. You stay on ${esc(fromName)} until then — no charge now.${capNoteHtml}</p>`,
+    'Manage your plan', `${APP_URL}/dashboard/billing`,
+  )
+  const text = `Hi ${who},\n\nYour plan will change from ${fromName} to ${toName} on ${date}. You stay on ${fromName} until then — no charge now.${capNoteText}\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  return { subject: `Your plan change to ${toName} is scheduled`, html, text }
+}
+
+export function subscriptionScheduledCancelEmail(
+  name: string | null,
+  effectiveAtIso: string | null,
+): { subject: string; html: string; text: string } {
+  const who = name?.trim() ? name.trim() : 'there'
+  const dateStr = effectiveAtIso ? formatDateLong(effectiveAtIso) : 'the end of your current period'
+  const html = layout(
+    'Your cancellation is scheduled',
+    `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
+     <p style="margin:0;">Your Arrivly subscription will end on <strong>${esc(dateStr)}</strong>. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.</p>`,
+    'Manage your plan', `${APP_URL}/dashboard/billing`,
+  )
+  const text = `Hi ${who},\n\nYour Arrivly subscription will end on ${dateStr}. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  return { subject: 'Your Arrivly cancellation is scheduled', html, text }
+}
+
+export function subscriptionChangeRevertedEmail(
+  name: string | null,
+  currentTier: number,
+): { subject: string; html: string; text: string } {
+  const who = name?.trim() ? name.trim() : 'there'
+  const currentName = TIER_NAMES[currentTier] ?? `Tier ${currentTier}`
+  const html = layout(
+    'Your scheduled change was cancelled',
+    `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
+     <p style="margin:0;">Your scheduled plan change has been cancelled. You'll stay on <strong>${esc(currentName)}</strong> — nothing changes at renewal.</p>`,
+    'Manage your plan', `${APP_URL}/dashboard/billing`,
+  )
+  const text = `Hi ${who},\n\nYour scheduled plan change has been cancelled. You'll stay on ${currentName} — nothing changes at renewal.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  return { subject: 'Your scheduled Arrivly plan change was cancelled', html, text }
+}
+
+export function subscriptionResumedEmail(
+  name: string | null,
+): { subject: string; html: string; text: string } {
+  const who = name?.trim() ? name.trim() : 'there'
+  const html = layout(
+    'Your subscription is active again',
+    `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
+     <p style="margin:0;">Your cancellation has been undone. Your Arrivly subscription will renew as normal.</p>`,
+    'Manage your plan', `${APP_URL}/dashboard/billing`,
+  )
+  const text = `Hi ${who},\n\nYour cancellation has been undone. Your Arrivly subscription will renew as normal.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  return { subject: 'Your Arrivly subscription is active again', html, text }
+}
+
+interface AdminRequestInput {
+  event: 'scheduled_downgrade' | 'scheduled_cancel' | 'reverted' | 'resumed'
+  hostName: string | null
+  hostEmail: string | null
+  hostId: string
+  fromTier: number | null
+  toTier: number | null
+  effectiveAt?: string | null
+}
+
+const HUMAN_EVENT: Record<string, string> = {
+  scheduled_downgrade: 'scheduled a downgrade',
+  scheduled_cancel: 'scheduled a cancellation',
+  reverted: 'undid a scheduled change',
+  resumed: 'resumed their subscription',
+}
+
+export function adminSubscriptionRequestEmail(
+  input: AdminRequestInput,
+): { subject: string; html: string; text: string } {
+  const { event, hostName, hostEmail, hostId, fromTier, toTier, effectiveAt } = input
+  const nameLabel = hostName ?? '(unnamed)'
+  const emailLabel = hostEmail ?? '(no email)'
+  const humanEvent = HUMAN_EVENT[event] ?? event
+  const fromTierName = fromTier !== null ? (TIER_NAMES[fromTier] ?? `Tier ${fromTier}`) : 'n/a'
+  const toTierName = toTier !== null ? (TIER_NAMES[toTier] ?? `Tier ${toTier}`) : 'n/a'
+  const effectiveLabel = effectiveAt ? formatDateLong(effectiveAt) : 'immediate'
+  const html = layout(
+    `Request: ${humanEvent}`,
+    `<table style="border-collapse:collapse;width:100%;font-size:13px;color:#444;font-family:Arial,Helvetica,sans-serif;">
+       <tr><td style="padding:4px 0;color:#999;width:90px;">Event</td><td style="padding:4px 0;">${esc(humanEvent)}</td></tr>
+       <tr><td style="padding:4px 0;color:#999;">Host</td><td style="padding:4px 0;">${esc(nameLabel)}</td></tr>
+       <tr><td style="padding:4px 0;color:#999;">Email</td><td style="padding:4px 0;">${esc(emailLabel)}</td></tr>
+       <tr><td style="padding:4px 0;color:#999;">Host ID</td><td style="padding:4px 0;font-size:11px;font-family:monospace;">${esc(hostId)}</td></tr>
+       <tr><td style="padding:4px 0;color:#999;">Tier</td><td style="padding:4px 0;">${esc(fromTierName)} &rarr; ${esc(toTierName)}</td></tr>
+       <tr><td style="padding:4px 0;color:#999;">Timing</td><td style="padding:4px 0;">Requested</td></tr>
+       <tr><td style="padding:4px 0;color:#999;">Effective</td><td style="padding:4px 0;">${esc(effectiveLabel)}</td></tr>
+     </table>`,
+    'Open admin', `${APP_URL}/admin`,
+  )
+  const text = `Arrivly request: ${nameLabel} ${humanEvent}\n\nHost: ${nameLabel} <${emailLabel}>\nHost ID: ${hostId}\nTier: ${fromTierName} -> ${toTierName}\nTiming: Requested\nEffective: ${effectiveLabel}\n\nAdmin: ${APP_URL}/admin`
+  return { subject: `Arrivly: ${nameLabel} ${humanEvent}`, html, text }
+}
