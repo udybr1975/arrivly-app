@@ -275,6 +275,7 @@ export function subscriptionScheduledChangeEmail(
 export function subscriptionScheduledCancelEmail(
   name: string | null,
   effectiveAtIso: string | null,
+  opts?: { alsoCancelledScheduledChange?: boolean },
 ): { subject: string; html: string; text: string } {
   const who = name?.trim() ? name.trim() : 'there'
   const dateStr = effectiveAtIso ? formatDateLong(effectiveAtIso) : 'the end of your current period'
@@ -282,14 +283,20 @@ export function subscriptionScheduledCancelEmail(
     ? `<p style="margin:0 0 12px;">No further charges after ${esc(dateStr)}.</p>`
     : ''
   const noChargeText = effectiveAtIso ? `No further charges after ${dateStr}.\n\n` : ''
+  const alsoHtml = opts?.alsoCancelledScheduledChange
+    ? `<p style="margin:0 0 12px;">Your previously scheduled plan change has also been cancelled.</p>`
+    : ''
+  const alsoText = opts?.alsoCancelledScheduledChange
+    ? 'Your previously scheduled plan change has also been cancelled.\n\n'
+    : ''
   const html = layout(
     'Your cancellation is scheduled',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
      <p style="margin:0 0 12px;">Your Arrivly subscription will end on <strong>${esc(dateStr)}</strong>. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.</p>
-     ${noChargeHtml}`,
+     ${alsoHtml}${noChargeHtml}`,
     'Manage your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\nYour Arrivly subscription will end on ${dateStr}. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.\n\n${noChargeText}Manage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  const text = `Hi ${who},\n\nYour Arrivly subscription will end on ${dateStr}. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.\n\n${alsoText}${noChargeText}Manage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
   return { subject: 'Your Arrivly cancellation is scheduled', html, text }
 }
 
