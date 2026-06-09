@@ -226,104 +226,112 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const effectiveNewStatus = newStatus ?? oldStatus
 
   type NoticeType = 'started' | 'upgraded' | 'downgraded' | 'cancelled' | 'grace'
+  const liveNow = effectiveNewStatus === 'active' || effectiveNewStatus === 'trial'
   let notice: NoticeType | null = null
-  if (
-    !hadSubscription &&
-    (stripeEvent.type === 'checkout.session.completed' ||
-      stripeEvent.type === 'customer.subscription.created')
-  ) {
-    notice = 'started'
-  } else if (hadSubscription && oldTier !== null && tier !== oldTier) {
-    notice = tier > oldTier ? 'upgraded' : 'downgraded'
-  } else if (effectiveNewStatus === 'expired' && oldStatus !== 'expired') {
-    notice = 'cancelled'
+  if (effectiveNewStatus === 'expired' && oldStatus !== 'expired') {
+    notice = 'cancelled'                       // a cancellation is ALWAYS a cancellation
   } else if (effectiveNewStatus === 'grace' && oldStatus !== 'grace') {
     notice = 'grace'
+  } else if (liveNow && (oldStatus === 'expired' || oldStatus == null || !hadSubscription)) {
+    notice = 'started'                         // fresh subscribe OR re-subscribe after expiry
+  } else if (liveNow && oldTier !== null && tier !== oldTier) {
+    notice = tier > oldTier ? 'upgraded' : 'downgraded'   // only on a LIVE sub
   }
 
   if (notice !== null) {
-    const n = notice  // capture narrowed type for async closures
-    const toTierName = TIER_NAMES_W[tier] ?? `Tier ${tier}`
-    const fromTierName = oldTier !== null ? (TIER_NAMES_W[oldTier] ?? `Tier ${oldTier}`) : null
+    // 'null' literal distinguishes absent period-end from empty string in the sig
+    const noticeSig = `${tier}|${effectiveNewStatus}|${currentPeriodEnd ?? 'null'}`
+    const { data: claimRows, error: claimErr } = await admin
+      .from('hosts')
+      .update({ last_billing_notice_sig: noticeSig })
+      .eq('id', hostId)
+      .neq('last_billing_notice_sig', noticeSig)   // column is NOT NULL default '' — no null pitfalls
+      .select('id')
+    if (claimErr) console.error('[stripe-webhook] notice claim error:', scrubKeys(String(claimErr.message ?? '')))
+    if (!claimErr && (claimRows?.length ?? 0) > 0) {
+      const n = notice  // capture narrowed type for async closures
+      const toTierName = TIER_NAMES_W[tier] ?? `Tier ${tier}`
+      const fromTierName = oldTier !== null ? (TIER_NAMES_W[oldTier] ?? `Tier ${oldTier}`) : null
 
-    const HOST_PUSH: Record<NoticeType, { title: string; body: string }> = {
-      started:    { title: 'Subscription active', body: `You're on the ${toTierName} plan.` },
-      upgraded:   { title: `Upgraded to ${toTierName}`, body: fromTierName ? `Changed from ${fromTierName} to ${toTierName}.` : `Now on ${toTierName}.` },
-      downgraded: { title: `Plan changed to ${toTierName}`, body: fromTierName ? `Changed from ${fromTierName} to ${toTierName}.` : `Now on ${toTierName}.` },
-      cancelled:  { title: 'Subscription cancelled', body: 'Your guest page is no longer active.' },
-      grace:      { title: 'Payment issue', body: 'Your page is still live — please update your card.' },
-    }
-    const ADMIN_MSG: Record<NoticeType, string> = {
-      started:    `A host subscribed to ${toTierName}`,
-      upgraded:   `A host upgraded to ${toTierName}`,
-      downgraded: `A host downgraded to ${toTierName}`,
-      cancelled:  'A host cancelled their subscription',
-      grace:      "A host's payment failed",
-    }
-    const { title: hostPushTitle, body: hostPushBody } = HOST_PUSH[n]
-    const adminMsg = ADMIN_MSG[n]
-    const ntfyPriority: 'high' | 'default' = (n === 'grace' || n === 'cancelled') ? 'high' : 'default'
+      const HOST_PUSH: Record<NoticeType, { title: string; body: string }> = {
+        started:    { title: 'Subscription active', body: `You're on the ${toTierName} plan.` },
+        upgraded:   { title: `Upgraded to ${toTierName}`, body: fromTierName ? `Changed from ${fromTierName} to ${toTierName}.` : `Now on ${toTierName}.` },
+        downgraded: { title: `Plan changed to ${toTierName}`, body: fromTierName ? `Changed from ${fromTierName} to ${toTierName}.` : `Now on ${toTierName}.` },
+        cancelled:  { title: 'Subscription cancelled', body: 'Your guest page is no longer active.' },
+        grace:      { title: 'Payment issue', body: 'Your page is still live — please update your card.' },
+      }
+      const ADMIN_MSG: Record<NoticeType, string> = {
+        started:    `A host subscribed to ${toTierName}`,
+        upgraded:   `A host upgraded to ${toTierName}`,
+        downgraded: `A host downgraded to ${toTierName}`,
+        cancelled:  'A host cancelled their subscription',
+        grace:      "A host's payment failed",
+      }
+      const { title: hostPushTitle, body: hostPushBody } = HOST_PUSH[n]
+      const adminMsg = ADMIN_MSG[n]
+      const ntfyPriority: 'high' | 'default' = (n === 'grace' || n === 'cancelled') ? 'high' : 'default'
 
-    await Promise.allSettled([
-      // a) billing_notice — server-only JSONB column, service-role write
-      admin.from('hosts').update({
-        billing_notice: { type: n, from_tier: oldTier, to_tier: tier, at: new Date().toISOString() },
-      }).eq('id', hostId),
+      await Promise.allSettled([
+        // a) billing_notice — server-only JSONB column, service-role write
+        admin.from('hosts').update({
+          billing_notice: { type: n, from_tier: oldTier, to_tier: tier, at: new Date().toISOString() },
+        }).eq('id', hostId),
 
-      // b) host lifecycle email
-      (async () => {
-        if (!recipientEmail) return
-        const tmpl =
-          n === 'started' ? subscriptionStartedEmail(hostName, tier) :
-          n === 'upgraded' || n === 'downgraded' ? subscriptionChangedEmail(hostName, oldTier ?? tier, tier) :
-          n === 'cancelled' ? subscriptionCancelledEmail(hostName) :
-          subscriptionPastDueEmail(hostName)
-        await sendEmail({ to: recipientEmail, ...tmpl })
-      })(),
+        // b) host lifecycle email
+        (async () => {
+          if (!recipientEmail) return
+          const tmpl =
+            n === 'started' ? subscriptionStartedEmail(hostName, tier) :
+            n === 'upgraded' || n === 'downgraded' ? subscriptionChangedEmail(hostName, oldTier ?? tier, tier) :
+            n === 'cancelled' ? subscriptionCancelledEmail(hostName) :
+            subscriptionPastDueEmail(hostName)
+          await sendEmail({ to: recipientEmail, ...tmpl })
+        })(),
 
-      // c) host push
-      sendPushToHost(admin, hostId, { title: hostPushTitle, body: hostPushBody, url: '/dashboard/billing' }),
+        // c) host push
+        sendPushToHost(admin, hostId, { title: hostPushTitle, body: hostPushBody, url: '/dashboard/billing' }),
 
-      // d) admin event email
-      sendEmail({
-        to: ADMIN_EMAIL,
-        ...adminSubscriptionEventEmail({
-          event: n,
-          hostName,
-          hostEmail: recipientEmail,
-          hostId,
-          fromTier: oldTier,
-          toTier: tier,
-          status: effectiveNewStatus ?? 'unknown',
+        // d) admin event email
+        sendEmail({
+          to: ADMIN_EMAIL,
+          ...adminSubscriptionEventEmail({
+            event: n,
+            hostName,
+            hostEmail: recipientEmail,
+            hostId,
+            fromTier: oldTier,
+            toTier: tier,
+            status: effectiveNewStatus ?? 'unknown',
+          }),
         }),
-      }),
 
-      // e) admin push — resolve admin host row first
-      (async () => {
-        const { data: adminHost } = await admin
-          .from('hosts')
-          .select('id')
-          .eq('contact_email', ADMIN_EMAIL)
-          .maybeSingle()
-        if (!adminHost?.id) return
-        await sendPushToHost(admin, adminHost.id as string, {
-          title: 'Arrivly subscription',
-          body: adminMsg,
-          url: '/admin',
-        })
-      })(),
+        // e) admin push — resolve admin host row first
+        (async () => {
+          const { data: adminHost } = await admin
+            .from('hosts')
+            .select('id')
+            .eq('contact_email', ADMIN_EMAIL)
+            .maybeSingle()
+          if (!adminHost?.id) return
+          await sendPushToHost(admin, adminHost.id as string, {
+            title: 'Arrivly subscription',
+            body: adminMsg,
+            url: '/admin',
+          })
+        })(),
 
-      // f) ntfy
-      sendNtfy({ title: 'Arrivly', message: adminMsg, priority: ntfyPriority }),
+        // f) ntfy
+        sendNtfy({ title: 'Arrivly', message: adminMsg, priority: ntfyPriority }),
 
-      // g) audit
-      admin.from('admin_audit').insert({
-        actor_email: 'stripe-webhook',
-        action: 'subscription_event',
-        target_host_id: hostId,
-        detail: { event: n, from_tier: oldTier, to_tier: tier, status: effectiveNewStatus, sub_id: sub.id },
-      }),
-    ])
+        // g) audit
+        admin.from('admin_audit').insert({
+          actor_email: 'stripe-webhook',
+          action: 'subscription_event',
+          target_host_id: hostId,
+          detail: { event: n, from_tier: oldTier, to_tier: tier, status: effectiveNewStatus, sub_id: sub.id },
+        }),
+      ])
+    }
   }
 
   return res.status(200).json({ received: true })
