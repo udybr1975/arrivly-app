@@ -169,7 +169,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Read host row BEFORE writing for transition detection
   const { data: hostRow } = await admin
     .from('hosts')
-    .select('tier,subscription_status,stripe_subscription_id,contact_email,name')
+    .select('tier,subscription_status,stripe_subscription_id,contact_email,name,pending_tier')
     .eq('id', hostId)
     .maybeSingle()
 
@@ -195,9 +195,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     stripe_customer_id: customerId,
     stripe_subscription_id: sub.id,
     tier,
+    cancel_at_period_end: !!sub.cancel_at_period_end,
   }
   if (currentPeriodEnd !== null) updatePayload.current_period_end = currentPeriodEnd
   if (newStatus !== null) updatePayload.subscription_status = newStatus
+  if (tier === (hostRow.pending_tier as number | null) || newStatus === 'expired') {
+    updatePayload.pending_tier = null
+  }
 
   try {
     const { error: updateErr } = await admin
