@@ -115,14 +115,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         schedule = rawSchedule
       }
 
-      const phaseStartDate: number | 'now' = schedule.current_phase?.start_date ?? 'now'
+      // Use the schedule's own first phase verbatim so phase 1 ends at the REAL
+      // current-period boundary (end_date). iterations:1 from a historical start_date
+      // was applying the new price immediately in production.
+      const p0 = schedule.phases[0]
+      if (!p0) {
+        return res.status(409).json({ error: 'schedule_phase_unavailable' })
+      }
+      const p0Items = p0.items.map(item => ({
+        price: typeof item.price === 'string' ? item.price : (item.price as Stripe.Price).id,
+        quantity: item.quantity ?? 1,
+      }))
+      const rawEndDate = p0.end_date as number | null | undefined
+      const fallbackEndDate = Math.floor(Date.now() / 1000) + 2592000
+      const phaseEndDate: number = rawEndDate ?? periodEndUnix ?? fallbackEndDate
+      if (phaseEndDate === fallbackEndDate) {
+        console.warn('[change-plan] phaseEndDate fallback triggered — using now+30d; sub:', sub.id)
+      }
 
       await stripe.subscriptionSchedules.update(schedule.id, {
         phases: [
           {
-            items: [{ price: currentPriceId, quantity: 1 }],
-            start_date: phaseStartDate as any,
-            iterations: 1,
+            items: p0Items,
+            start_date: p0.start_date as any,
+            end_date: phaseEndDate as any,
           },
           {
             items: [{ price: priceIdForTier(newTier), quantity: 1 }],
@@ -136,9 +152,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const { error: dbErrS } = await admin.from('hosts').update({ pending_tier: newTier }).eq('id', userId)
       if (dbErrS) console.error('[change-plan] pending_tier set failed:', String(dbErrS.message).slice(0, 120))
 
-      const effectiveAt = periodEndUnix
-        ? new Date(periodEndUnix * 1000).toISOString()
-        : null
+      const effectiveAt = new Date(phaseEndDate * 1000).toISOString()
 
       return res.status(200).json({ mode: 'scheduled', effective_at: effectiveAt })
 
