@@ -1,7 +1,7 @@
 # Arrivly — CLAUDE.md
 
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD:** 0c4e245 (2026-06-10, S16)
+> **Current HEAD:** dad5bd2 (Session 17, Jun 10–11 2026)
 
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
@@ -222,6 +222,20 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - **Request-time confirmation emails** (`a67c50d`) — host + admin emails fire at the moment of scheduled change / undo / cancel / resume (apply-time webhook email unchanged). NOTE: request-time deferred actions do NOT write `admin_audit` — only the webhook does; verify those via inbox/ntfy, not the audit trail.
 - **Verified live (S15):** immediate upgrade produced a real prorated invoice + single `upgraded` audit row; re-target / cancel-with-schedule / resume all cleaned up (no orphan schedule, `pending_tier` cleared). End state: test host Tier 2, active, no pending change.
 
+**S17 (2026-06-10–11):** Owner/admin guest-page preview, private check-in details fix, preview fidelity. HEAD `dad5bd2`.
+- **`06b3168` — server-gated owner/admin preview (`?preview=1`):**
+  - `api/guest-preview.ts` — GET, Bearer-gated (anon `getUser`); validates `?apt=` UUID; authorizes owner (`user.id === apt.host_id`) OR admin email via `authorizePreview()`; THEN builds service-role client; returns full page payload: apartment, host card, ALL `apartment_details` (incl. `is_private=true`), host picks, guide. Works for drafts (`is_visible=false`). Read-only, no audit insert.
+  - `api/_lib/guest-access.ts` — `GuestTier` extended with `'owner'`; pure `authorizePreview()` helper added; `buildGuestSystemInstruction` private-inclusion checks changed from `tier === 'verified'` → `tier !== 'public'` (owner is treated like verified for context; chat path never produces `'owner'` yet — forward-compat only).
+  - `GuestPage.tsx` — `?preview=1` bypasses the booking/token flow entirely, populates state from `api/guest-preview`, sample guest name `'Alex'`, persistent "Preview — what your guests see" banner with Exit; guest side effects suppressed (push, `arrivly_last_guest` pointer, `InstallPrompt`); `shareUrl` strips `?preview` param so shared links are clean. A stranger appending `?preview=1` falls through to the normal neutral page.
+  - Dashboard "👁 Preview guest page" + SuperAdmin "Preview guest page ↗" links now append `&preview=1`. QR-code URLs, share URLs, and all real guest-facing URLs unchanged.
+- **`dad5bd2` — fixed a LATENT PRODUCTION BUG + preview fidelity:**
+  - **Bug:** Private check-in details (`is_private=true`) NEVER rendered on the live guest page for any guest — the page fetches `apartment_details` as anon, RLS strips private rows (`apt_details_guest_read` USING `is_private = false`), and the check-in card filters for `d.is_private === true`, so it was always empty. Guests could only get door codes via the chatbot (server-side). Existed since S3.
+  - **Fix:** `api/guest-details.ts` — new unauthenticated GET endpoint where the booking token IS the credential (same pattern as `guest-chat.ts`); validates `apt` (UUID regex) + `token` (`/^[A-Za-z0-9-]{4,32}$/`); calls `resolveGuestAccess` (confirmed/completed booking, in-dates, Helsinki timezone); returns ONLY `is_private=true` rows for the verified apartment; generic `403 { error: 'forbidden' }` on every non-verified path — no enumeration signal. `GuestPage.tsx` verified-token branch fetches private rows via plain `fetch()` (guests have no auth session — see Lessons); merges with `publicRows` (pre-filtered to `!is_private` before the `try` so the client-side guard is never bypassed); `Array.isArray(priv)` guard before spreading; graceful degradation — any failure falls back to public-only rows.
+  - **Preview fidelity (B1):** Chat tab static "Sample conversation" — real WiFi details from `wifiParsed`, accent-coloured guest bubbles, disabled input bar.
+  - **Preview fidelity (B2):** More tab inert "Message your host" + "Get replies on your phone" cards in `preview && (...)` blocks alongside existing `tokenParam && (...)` blocks; "Available to your guests during their stay." caption. Real-guest rendering byte-identical to before.
+- **Deliberately parked:** owner-tier chat in preview is static sample only — live AI chat is not enabled in preview mode.
+- **Test data:** Udyni's 3 bookings deleted + 4 orphan guest rows cleared (clean billing test host).
+
 **S16 (2026-06-10):** Signup-with-card, onboarding retired, guide fix, 360 test complete. HEAD `0c4e245`.
 - **Signup-with-card** (`7b64d8c`) — new flow: register (first name, email, password, brand name, terms) → mandatory plan step (`ChoosePlan.tsx`; tiers 1-3 selectable, tier 4 "coming soon"; card captured via Stripe Checkout, no charge until the 14-day trial ends) → dashboard. `create-subscription.ts` gained `flow:'signup'|'billing'` (success/cancel URLs built server-side, no client URL injection). `PrivateRoute.tsx` guard: non-exempt host with no `stripe_subscription_id` → `/choose-plan` (bypass for `/choose-plan` and `?checkout=success`). Host-level location dropped — per-property location is authoritative.
 - **Onboarding retired + dashboard welcome** (`d0a2ea1` build-broke → hotfix `bdc92b6`) — removed `/onboarding` route + OnboardingFlow + the 3 stub files; dashboard empty-state greeting + "Add my first property" CTA (creates a blank apartment name=brand_name, is_visible=true); one-time dismissible welcome modal gated on `hosts.welcome_seen_at`. **Lesson:** validate with `npm run build` (`tsc -b && vite build`), NOT `tsc --noEmit` — they differ here (a `.catch()` on a Supabase builder passed `--noEmit` but failed `tsc -b`, breaking the deploy). All future prompts validate with `npm run build`.
@@ -350,6 +364,10 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 
 - **`api.post` / `api.get` throw `new Error(rawResponseText)` on non-2xx.** To extract a typed error code in a component: `JSON.parse(err.message)?.error`. This is the only safe pattern — the error body may not be valid JSON (network errors, Vercel 5xx HTML), so always wrap in try/catch with a JSON.parse guard.
 
+- **Guests have no auth session — `src/lib/api.ts` attaches the logged-in Bearer.** Guest-page calls to token-gated endpoints (e.g. `api/guest-details`, `api/guest-message`) must use plain `fetch()`, NOT `api.get()` / `api.post()`. Using `api.get` from a guest page would send a null/empty Bearer header — the endpoint would behave differently from its intended unauthenticated path.
+
+- **Anything the guest page must show from `is_private=true` rows needs a server endpoint with the booking token as the credential.** Anon RLS on `apartment_details` blocks private rows at the DB layer (`apt_details_guest_read USING (is_private = false)`), so client-side filtering after an anon query can never surface them — the rows simply aren't in the HTTP response. The only safe pattern is a token-verified server endpoint (using `resolveGuestAccess`) that calls the service-role client and returns only the private rows for the verified booking.
+
 ---
 
 ## Workflow
@@ -427,10 +445,10 @@ Tier differentiation beyond property caps is a wanted direction (not iterated ye
 > ✓ Plan values confirmed (hard gate CLOSED): T1 €10/cap 2, T2 €15/cap 7, T3 €25/cap 12, T4 €49/unlimited; trial_days = 14.
 > **DECISION (S16): finish Phase I BEFORE flipping Stripe to live. Flip-to-live is the LAST step — after F → G → H → I.**
 
-Pre-live work, in priority order (Udy-set, S16):
+Pre-live work, in priority order (Udy-set, S16; updated S17):
 
-1. **Demo / preview guest page (NEW, top).** A host who adds a property can't see the guest page without manually adding a booking (no booking → neutral page). Build a real preview: a `?preview=1` mode that, ONLY when the viewer is authenticated and either owns the apartment or is admin (checked server-side via `api/_lib/guest-access.ts`, new "owner" tier), renders the full real guest page from the property data (hero, branding, WiFi, rules, guide, picks, extras), bypassing the booking requirement, with a "Preview — what your guests see" banner. Strangers appending `?preview=1` get nothing. Open design choices: show private check-in details in preview? generic vs sample greeting.
-2. **Admin "View as" guest page broken (NEW).** `/admin` "View as" doesn't render the guest page. Fix via the same preview mechanism (admin gate instead of ownership).
+1. ~~**Demo / preview guest page.**~~ **DONE S17** (`06b3168`, `dad5bd2`) — `?preview=1` server-gated; owner + admin; full real page incl. private details; fidelity (sample chat, inert More-tab cards).
+2. ~~**Admin "View as" guest page broken.**~~ **DONE S17** (`06b3168`) — fixed via same preview mechanism; SuperAdmin "Preview guest page ↗" link added.
 3. **Multi-property add + plan-cap enforcement.** "Add another property" is still a disabled "coming soon" card; nothing enforces caps (T1=2, T2=7, T3=12, T4=unlimited). Most significant unbuilt product piece — caps are what the tiers sell.
 4. **Live/Draft publish toggle.** No publish/unpublish UI; new properties created visible; drafts can only be flipped in the DB.
 5. **Guest-data security close-out.** Anon key can read every host's bookings/guests rows. Move guest booking-state lookup to a service-role endpoint and drop the `bookings_guest_read` anon policy. Before real guest data lands.
