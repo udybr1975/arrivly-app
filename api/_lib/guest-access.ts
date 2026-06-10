@@ -1,7 +1,18 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-export type GuestTier = 'verified' | 'public'
+export type GuestTier = 'verified' | 'public' | 'owner'
 export interface GuestAccess { tier: GuestTier; guestName: string | null }
+
+export function authorizePreview(
+  apartmentHostId: string,
+  userId: string,
+  userEmail: string | null | undefined,
+  adminEmail: string
+): { ok: boolean; isOwner: boolean; isAdmin: boolean } {
+  const isOwner = userId === apartmentHostId
+  const isAdmin = userEmail === adminEmail
+  return { ok: isOwner || isAdmin, isOwner, isAdmin }
+}
 
 export interface ApartmentCtx {
   id: string
@@ -93,7 +104,7 @@ export async function buildGuestSystemInstruction(
     .from('apartment_details')
     .select('category, content, is_private')
     .eq('apartment_id', apt.id)
-  const details = (detailRows ?? []).filter(d => access.tier === 'verified' || !d.is_private)
+  const details = (detailRows ?? []).filter(d => access.tier !== 'public' || !d.is_private)
 
   const { data: picks } = await db
     .from('host_picks')
@@ -108,7 +119,7 @@ export async function buildGuestSystemInstruction(
     .maybeSingle()
 
   const detailsBlock = details.length
-    ? details.map(d => `[${d.category}]${d.is_private && access.tier !== 'verified' ? ' (private)' : ''} ${d.content}`).join('\n')
+    ? details.map(d => `[${d.category}]${d.is_private && access.tier === 'public' ? ' (private)' : ''} ${d.content}`).join('\n')
     : 'No apartment details on file yet.'
 
   const picksBlock = (picks ?? []).length
@@ -128,10 +139,10 @@ export async function buildGuestSystemInstruction(
   }
 
   const where = [apt.neighborhood, apt.city, apt.country].filter(Boolean).join(', ')
-  const guestLine = access.tier === 'verified' && access.guestName
+  const guestLine = access.tier !== 'public' && access.guestName
     ? `The guest's name is ${access.guestName}. You may greet them by name on your first reply.`
     : ''
-  const privacyRule = access.tier === 'verified'
+  const privacyRule = access.tier !== 'public'
     ? `This is a VERIFIED guest currently staying here. You may share every apartment detail, including check-in instructions, door codes, Wi-Fi, and the address.`
     : `This is a PUBLIC visitor, not a verified guest. You only have public information. If asked for private details (door code, Wi-Fi password, exact address, check-in instructions), politely explain those are shared with confirmed guests once their stay is verified, and offer to help with anything else. Never guess or invent private details.`
 

@@ -291,7 +291,7 @@ export default function Dashboard() {
                       📲 QR code
                     </Link>
                     <a
-                      href={`/guest?apt=${apt.id}`}
+                      href={`/guest?apt=${apt.id}&preview=1`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1.5 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors"

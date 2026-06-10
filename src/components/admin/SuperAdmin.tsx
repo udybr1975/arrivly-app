@@ -728,9 +728,9 @@ export default function SuperAdmin() {
                               {apt.city ? `${apt.city} · ` : ''}
                               {apt.bookings_count} booking{apt.bookings_count !== 1 ? 's' : ''} · {apt.host_picks_count} pick{apt.host_picks_count !== 1 ? 's' : ''}
                             </div>
-                            {/* Public guest page — NO token, opens neutral/no-token state; private check-in details stay gated */}
+                            {/* Owner/admin preview — real full page (incl. private details), ?preview=1 server-gated */}
                             <a
-                              href={`${ARRIVLY_CONFIG.appUrl}/guest?apt=${apt.id}`}
+                              href={`${ARRIVLY_CONFIG.appUrl}/guest?apt=${apt.id}&preview=1`}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="text-[10px] text-[#0c3d70] hover:underline mt-0.5 inline-block"

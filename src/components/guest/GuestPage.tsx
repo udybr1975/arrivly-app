@@ -13,6 +13,7 @@ import ChatBot from './ChatBot'
 import MessageHost from './MessageHost'
 import { ARRIVLY_CONFIG } from '../../config'
 import { iosNeedsHomeScreen, isStandalone, subscribeGuestToPush, checkPermission, isSubscribed } from '../../lib/webpush'
+import { api } from '../../lib/api'
 
 interface Host {
   brand_name: string | null
@@ -111,6 +112,7 @@ function mapsSearchUrl(name: string, address?: string | null): string {
 }
 
 const EXTRAS_CATEGORIES = ['Parking', 'Recycling & Bins', 'Appliances', 'Transport', 'Amenities', 'Safety', 'Good to know']
+const PREVIEW_SAMPLE_NAME = 'Alex'
 
 const CATEGORY_COLORS: Record<string, string> = {
   Restaurant: '#c0392b',
@@ -130,6 +132,7 @@ export default function GuestPage() {
   const aptId = searchParams.get('apt')
   const tokenParam = searchParams.get('token')
   const msgParam = searchParams.get('msg')
+  const preview = searchParams.get('preview') === '1'
 
   const [apartment, setApartment] = useState<Apartment | null>(null)
   const [host, setHost] = useState<Host | null>(null)
@@ -164,6 +167,29 @@ export default function GuestPage() {
 
   useEffect(() => {
     if (!aptId) { setLoading(false); setPageState('neutral'); return }
+
+    if (preview) {
+      let cancelled = false
+      api.get<{ apartment: Apartment; host: Host; details: Detail[]; hostPicks: HostPick[]; guide: Record<string, unknown> }>(`/guest-preview?apt=${aptId}`)
+        .then(payload => {
+          if (cancelled) return
+          setApartment(payload.apartment)
+          setHost(payload.host)
+          setDetails(payload.details)
+          setHostPicks(payload.hostPicks)
+          const cats = payload.guide as GuideCategories
+          if (cats && Object.keys(cats).length > 0) setGuideCategories(cats)
+          setGuestName(PREVIEW_SAMPLE_NAME)
+          setPageState('active')
+          setLoading(false)
+        })
+        .catch(() => {
+          if (cancelled) return
+          setPageState('neutral')
+          setLoading(false)
+        })
+      return () => { cancelled = true }
+    }
 
     async function fetchData() {
       const tzNow = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Helsinki' })
@@ -308,10 +334,11 @@ export default function GuestPage() {
     }
 
     fetchData()
-  }, [aptId, tokenParam])
+  }, [aptId, tokenParam, preview])
 
   useEffect(() => {
     if (activeTab !== 'explore' || !aptId) return
+    if (preview) return
     if (guideCategories) return
 
     let cancelled = false
@@ -339,7 +366,7 @@ export default function GuestPage() {
     fetchExplore()
 
     return () => { cancelled = true }
-  }, [activeTab, aptId, hostPicks.length, guideCategories])
+  }, [activeTab, aptId, hostPicks.length, guideCategories, preview])
 
   // Keep the launch pointer alive exactly while the booking is active; prune it once
   // the booking ends so a stale pointer can't hijack a later host install.
@@ -467,7 +494,13 @@ export default function GuestPage() {
     })
   }, [])
 
-  const shareUrl = typeof window !== 'undefined' ? window.location.href : ''
+  const shareUrl = (() => {
+    if (typeof window === 'undefined') return ''
+    if (!preview) return window.location.href
+    const u = new URL(window.location.href)
+    u.searchParams.delete('preview')
+    return u.toString()
+  })()
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({ title: brandName, url: shareUrl }).catch(() => {})
@@ -593,6 +626,18 @@ export default function GuestPage() {
 
   return (
     <div className="min-h-screen bg-[#fbfaf7] font-sans">
+
+      {preview && (
+        <div className="fixed top-0 left-0 right-0 z-50 bg-[#1a1a1a] text-white text-[11px] py-2 px-4 flex items-center justify-center gap-3">
+          <span className="tracking-wide">Preview — what your guests see</span>
+          <button
+            onClick={() => { try { window.close() } catch { history.back() } }}
+            className="text-white/60 hover:text-white text-[10px] uppercase tracking-widest bg-white/10 px-2 py-0.5 rounded border border-white/20 cursor-pointer"
+          >
+            Exit
+          </button>
+        </div>
+      )}
 
       {activeTab === 'home' && (
         <div className="pb-28" style={{ background: `linear-gradient(to bottom, ${accentColor}1a, #fbfaf7 360px)` }}>
@@ -770,14 +815,24 @@ export default function GuestPage() {
 
       {activeTab === 'chat' && (
         <div style={{ height: 'calc(100vh - 56px)' }}>
-          <ChatBot
-            apartmentId={apt.id}
-            token={tokenParam ?? ''}
-            accentColor={accentColor}
-            brandName={brandName}
-            guestName={guestName}
-            city={apt.city}
-          />
+          {preview ? (
+            <div className="h-full flex flex-col items-center justify-center px-8 text-center">
+              <MessageCircle size={32} className="mb-4 text-gray-200" />
+              <p className="text-sm font-medium text-[#1c1c1a] mb-1">Chat is available to your guests</p>
+              <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
+                Guests can ask questions about the apartment and neighbourhood — powered by AI.
+              </p>
+            </div>
+          ) : (
+            <ChatBot
+              apartmentId={apt.id}
+              token={tokenParam ?? ''}
+              accentColor={accentColor}
+              brandName={brandName}
+              guestName={guestName}
+              city={apt.city}
+            />
+          )}
         </div>
       )}
 
@@ -1007,7 +1062,7 @@ export default function GuestPage() {
                   ) : (
                     <div>
                       <button
-                        onClick={() => copyText(window.location.href, setCopiedLink)}
+                        onClick={() => copyText(shareUrl, setCopiedLink)}
                         className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold"
                         style={{ background: accentColor }}
                       >
@@ -1163,7 +1218,7 @@ export default function GuestPage() {
         />
       )}
 
-      <InstallPrompt accentColor={accentColor} />
+      {!preview && <InstallPrompt accentColor={accentColor} />}
 
     </div>
   )
