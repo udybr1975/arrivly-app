@@ -150,8 +150,14 @@ export default function QRCodePanel() {
       setApts(prev => prev.map(a =>
         a.id === aptId ? { ...a, guide_refreshed_at: new Date().toISOString() } : a
       ))
-    } catch {
-      setRefreshErrors(prev => ({ ...prev, [aptId]: 'Refresh failed. Try again.' }))
+    } catch (e) {
+      let msg = 'Refresh failed. Try again.'
+      try {
+        if (JSON.parse((e as Error).message)?.error === 'guide_empty') {
+          msg = 'No places were generated this time. Please try again.'
+        }
+      } catch { /* keep generic message */ }
+      setRefreshErrors(prev => ({ ...prev, [aptId]: msg }))
     } finally {
       setRefreshing(prev => { const s = new Set(prev); s.delete(aptId); return s })
     }

@@ -38,7 +38,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // maxDuration at many apartments. Batching is a Phase G follow-up.
   for (const apt of apartments) {
     try {
-      await generateGuideForApartment(supabase, {
+      const { placeCount } = await generateGuideForApartment(supabase, {
         id: apt.id,
         street: apt.street,
         street_number: apt.street_number,
@@ -46,7 +46,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         city: apt.city,
         country: apt.country,
       })
-      refreshed++
+      if (placeCount > 0) refreshed++
+      else errors.push(`${apt.id}: no places (kept previous)`)
     } catch {
       errors.push(`${apt.name ?? apt.id}: failed`)
     }

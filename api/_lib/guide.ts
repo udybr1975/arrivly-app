@@ -177,6 +177,10 @@ export async function generateGuideForApartment(
       finishReason: finishReason ?? null,
       sample: raw.slice(0, 200),
     })
+    // Transient Gemini failure (timeout / 5xx / empty). Do NOT upsert — overwriting an existing
+    // guide with {} would wipe a previously-good guide. Leave any existing row intact and let the
+    // caller surface a retryable error.
+    return { placeCount: 0 }
   }
 
   const { error: upsertErr } = await db.from('guide_recommendations').upsert(

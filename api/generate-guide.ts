@@ -44,6 +44,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       city: apt.city,
       country: apt.country,
     })
+    if (placeCount === 0) {
+      // Generation produced nothing usable; the lib left any existing guide intact. 503 +
+      // guide_empty so the client shows a clear "try again" (a manual retry reliably works).
+      return res.status(503).json({ error: 'guide_empty', message: 'No recommendations were generated. Please try again.' })
+    }
     return res.status(200).json({ ok: true, placeCount })
   } catch {
     return res.status(500).json({ error: 'Guide generation failed' })
