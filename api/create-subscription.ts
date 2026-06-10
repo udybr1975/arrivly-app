@@ -4,6 +4,22 @@ import { getStripe, priceIdForTier, ARRIVLY_STRIPE_METADATA } from './_lib/strip
 
 const APP_URL = process.env.VITE_APP_URL ?? 'https://arrivly.anna-stays.fi'
 
+type Flow = 'signup' | 'billing'
+const VALID_FLOWS: Flow[] = ['signup', 'billing']
+
+function buildUrls(flow: Flow): { successUrl: string; cancelUrl: string } {
+  if (flow === 'signup') {
+    return {
+      successUrl: `${APP_URL}/dashboard?checkout=success`,
+      cancelUrl: `${APP_URL}/choose-plan?checkout=cancelled`,
+    }
+  }
+  return {
+    successUrl: `${APP_URL}/dashboard/billing?checkout=success`,
+    cancelUrl: `${APP_URL}/dashboard/billing?checkout=cancelled`,
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -21,13 +37,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (authError || !authData.user) return res.status(401).json({ error: 'Unauthorized' })
   const userId = authData.user.id
 
-  const { tier } = (req.body ?? {}) as { tier?: unknown }
+  const { tier, flow: rawFlow } = (req.body ?? {}) as { tier?: unknown; flow?: unknown }
+
   if (!Number.isInteger(tier) || (tier as number) < 1 || (tier as number) > 4) {
     return res.status(400).json({ error: 'tier must be an integer 1–4' })
   }
   if ((tier as number) === 4) {
     return res.status(403).json({ error: 'booking_tier_unavailable' })
   }
+
+  const flow: Flow = VALID_FLOWS.includes(rawFlow as Flow) ? (rawFlow as Flow) : 'billing'
+  const { successUrl, cancelUrl } = buildUrls(flow)
 
   try {
     const admin = createClient(supabaseUrl, serviceKey)
@@ -82,8 +102,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...(trialEnd !== undefined ? { trial_end: trialEnd } : {}),
       },
       payment_method_collection: 'always',
-      success_url: `${APP_URL}/dashboard/billing?checkout=success`,
-      cancel_url: `${APP_URL}/dashboard/billing?checkout=cancelled`,
+      success_url: successUrl,
+      cancel_url: cancelUrl,
     })
 
     return res.status(200).json({ url: session.url })

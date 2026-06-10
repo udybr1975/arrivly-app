@@ -1,19 +1,64 @@
 import { useEffect, useState } from 'react'
-import { Navigate, Outlet } from 'react-router-dom'
+import { Navigate, Outlet, useLocation } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import Loader from './Loader'
 
+interface HostMin {
+  stripe_subscription_id: string | null
+  is_exempt: boolean | null
+}
+
 export default function PrivateRoute() {
+  const location = useLocation()
   const [loading, setLoading] = useState(true)
   const [authed, setAuthed] = useState(false)
+  const [host, setHost] = useState<HostMin | null | undefined>(undefined)
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setAuthed(!!user)
-      setLoading(false)
-    })
+    let cancelled = false
+    async function check() {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (cancelled) return
+      if (!user) {
+        setAuthed(false)
+        setHost(null)
+        setLoading(false)
+        return
+      }
+      setAuthed(true)
+      const { data } = await supabase
+        .from('hosts')
+        .select('stripe_subscription_id, is_exempt')
+        .eq('id', user.id)
+        .maybeSingle()
+      if (!cancelled) {
+        setHost(data as HostMin | null)
+        setLoading(false)
+      }
+    }
+    check()
+    return () => { cancelled = true }
   }, [])
 
   if (loading) return <Loader />
-  return authed ? <Outlet /> : <Navigate to="/login" replace />
+  if (!authed) return <Navigate to="/login" replace />
+
+  const params = new URLSearchParams(location.search)
+  const onChoosePlan = location.pathname === '/choose-plan'
+  // Just returned from Stripe Checkout; webhook writes the sub id a moment later.
+  // Scoped to /dashboard only — other protected paths should still require a plan.
+  const returnedFromCheckout =
+    params.get('checkout') === 'success' && location.pathname === '/dashboard'
+
+  // A null host row (DB row not yet created or query failed) is treated as needsPlan:
+  // better to land on /choose-plan than to show a broken dashboard.
+  // undefined = still loading (handled above); null = row absent; HostMin = row found.
+  const needsPlan = host === null
+    || (host !== undefined && host.is_exempt !== true && !host.stripe_subscription_id)
+
+  if (needsPlan && !onChoosePlan && !returnedFromCheckout) {
+    return <Navigate to="/choose-plan" replace />
+  }
+
+  return <Outlet />
 }
