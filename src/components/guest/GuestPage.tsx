@@ -264,7 +264,18 @@ export default function GuestPage() {
               return
             }
 
-            setDetails((detRes.data ?? []) as Detail[])
+            const publicRows = ((detRes.data ?? []) as Detail[]).filter(d => !d.is_private)
+            try {
+              const r = await fetch(`/api/guest-details?apt=${encodeURIComponent(aptId!)}&token=${encodeURIComponent(activeToken)}`)
+              if (r.ok) {
+                const { details: priv } = await r.json()
+                setDetails([...publicRows, ...(Array.isArray(priv) ? priv as Detail[] : [])])
+              } else {
+                setDetails(publicRows)
+              }
+            } catch {
+              setDetails(publicRows)
+            }
 
             if (bk.guest_id) {
               const { data: gd } = await supabase
@@ -480,6 +491,16 @@ export default function GuestPage() {
   const wifiParsed = wifiDetails.length > 0
     ? parseWifi(wifiDetails.map(d => d.content).join('\n'))
     : null
+
+  const previewWifiReply: string = (() => {
+    if (!wifiParsed) return "Your WiFi details are on the Home tab — tap over there to see them."
+    const parts: string[] = []
+    if (wifiParsed.network) parts.push(`network ${wifiParsed.network}`)
+    if (wifiParsed.password) parts.push(`password ${wifiParsed.password}`)
+    return parts.length
+      ? `Of course — ${parts.join(', ')}. It's also on your Home tab.`
+      : "Your WiFi details are on the Home tab — tap over there to see them."
+  })()
 
   const checkinDetails = details.filter(
     d => /check.?in|check.?out|timing|door|code|entry/i.test(d.category ?? '') && d.is_private
@@ -816,12 +837,52 @@ export default function GuestPage() {
       {activeTab === 'chat' && (
         <div style={{ height: 'calc(100vh - 56px)' }}>
           {preview ? (
-            <div className="h-full flex flex-col items-center justify-center px-8 text-center">
-              <MessageCircle size={32} className="mb-4 text-gray-200" />
-              <p className="text-sm font-medium text-[#1c1c1a] mb-1">Chat is available to your guests</p>
-              <p className="text-xs text-gray-400 max-w-xs leading-relaxed">
-                Guests can ask questions about the apartment and neighbourhood — powered by AI.
-              </p>
+            <div className="h-full flex flex-col bg-[#fbfaf7]">
+              <div className="shrink-0 px-5 pt-5 pb-3 border-b border-gray-100">
+                <p className="text-[10px] uppercase tracking-widest text-gray-400 text-center">Sample conversation</p>
+              </div>
+              <div className="flex-1 overflow-y-auto px-4 py-5 space-y-3">
+                <div className="flex justify-end">
+                  <div
+                    className="max-w-[75%] rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-white"
+                    style={{ background: accentColor }}
+                  >
+                    Hi! What&apos;s the WiFi password?
+                  </div>
+                </div>
+                <div className="flex justify-start">
+                  <div className="max-w-[75%] rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm bg-white text-[#1c1c1a] shadow-sm">
+                    {previewWifiReply}
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <div
+                    className="max-w-[75%] rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-white"
+                    style={{ background: accentColor }}
+                  >
+                    Any good coffee nearby?
+                  </div>
+                </div>
+                <div className="flex justify-start">
+                  <div className="max-w-[75%] rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm bg-white text-[#1c1c1a] shadow-sm">
+                    Happy to help — I know the neighbourhood well and your host&apos;s picks are in Explore.
+                  </div>
+                </div>
+              </div>
+              <div className="shrink-0 flex items-center gap-2 px-4 py-3 border-t border-gray-100 bg-white">
+                <input
+                  disabled
+                  placeholder="Guests can type here…"
+                  className="flex-1 bg-[#f8f6f2] border border-[#ddd8ce] rounded-full px-4 py-2 text-sm text-gray-400 outline-none cursor-default"
+                />
+                <button
+                  disabled
+                  className="shrink-0 px-4 py-2 rounded-full text-white text-xs font-semibold border-none opacity-50 cursor-default"
+                  style={{ background: accentColor }}
+                >
+                  Send
+                </button>
+              </div>
             </div>
           ) : (
             <ChatBot
@@ -1122,6 +1183,39 @@ export default function GuestPage() {
                 </>
               )}
             </div>
+          )}
+
+          {preview && (
+            <>
+              <div className="max-w-lg mx-auto px-6 py-8 border-b border-gray-100">
+                <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Message your host</h2>
+                <p className="text-sm text-gray-500 leading-relaxed mb-5">
+                  Have a question or need something? Send a message — {brandName} will be notified and reply here.
+                </p>
+                <button
+                  disabled
+                  className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-default font-semibold opacity-50"
+                  style={{ background: accentColor }}
+                >
+                  Open messages →
+                </button>
+                <p className="text-[11px] text-gray-400 mt-3 text-center">Available to your guests during their stay.</p>
+              </div>
+              <div className="max-w-lg mx-auto px-6 py-8 border-b border-gray-100">
+                <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Get replies on your phone</h2>
+                <p className="text-sm text-gray-500 leading-relaxed mb-5">
+                  Turn on notifications so you don&apos;t miss your host&apos;s reply.
+                </p>
+                <button
+                  disabled
+                  className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-default font-semibold opacity-50"
+                  style={{ background: accentColor }}
+                >
+                  Turn on notifications →
+                </button>
+                <p className="text-[11px] text-gray-400 mt-3 text-center">Available to your guests during their stay.</p>
+              </div>
+            </>
           )}
 
           {host?.whatsapp && (
