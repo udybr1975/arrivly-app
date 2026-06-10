@@ -98,11 +98,13 @@ export default function Dashboard() {
   async function dismissWelcome() {
     setShowWelcome(false)
     const { data: { user } } = await supabase.auth.getUser()
-    if (user) {
-      void supabase.from('hosts')
+    if (!user) return
+    try {
+      await supabase.from('hosts')
         .update({ welcome_seen_at: new Date().toISOString() })
         .eq('id', user.id)
-        .catch(() => {})
+    } catch {
+      // non-blocking: the modal is already closed; a failed flag write is harmless
     }
   }
 
