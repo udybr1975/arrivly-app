@@ -8,7 +8,6 @@ import SuperAdminRoute from './components/shared/SuperAdminRoute'
 import Layout from './components/shared/Layout'
 import Login from './components/auth/Login'
 import Signup from './components/auth/Signup'
-import OnboardingFlow from './components/onboarding/OnboardingFlow'
 import ChoosePlan from './components/host/ChoosePlan'
 import Dashboard from './components/host/Dashboard'
 import PropertySetup from './components/host/PropertySetup'
@@ -150,7 +149,6 @@ export default function App() {
 
           {/* Protected host routes */}
           <Route element={<PrivateRoute />}>
-            <Route path="/onboarding" element={<OnboardingFlow />} />
             <Route path="/choose-plan" element={<ChoosePlan />} />
             <Route element={<Layout />}>
               <Route path="/dashboard" element={<Dashboard />} />
