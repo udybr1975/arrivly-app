@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { generateGuideForApartment } from './_lib/guide.js'
+import { generateGreetingBlurb } from './_lib/greeting.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
@@ -30,7 +31,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .from('apartments')
     .select('id, host_id, street, street_number, neighborhood, city, country')
     .eq('id', apartment_id)
-    .single()
+    .maybeSingle()
 
   if (aptErr || !apt) return res.status(404).json({ error: 'Apartment not found' })
   if (apt.host_id !== userId) return res.status(403).json({ error: 'Forbidden' })
@@ -49,6 +50,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       // guide_empty so the client shows a clear "try again" (a manual retry reliably works).
       return res.status(503).json({ error: 'guide_empty', message: 'No recommendations were generated. Please try again.' })
     }
+
+    // Regenerate the neighbourhood blurb alongside the guide. Best-effort: a blurb
+    // failure must never change the guide's HTTP response.
+    try {
+      await generateGreetingBlurb(supabase, {
+        id: apt.id,
+        street: apt.street,
+        street_number: apt.street_number,
+        neighborhood: apt.neighborhood,
+        city: apt.city,
+        country: apt.country,
+      })
+    } catch (e) {
+      console.warn('[generate-guide] blurb failed (non-fatal)',
+        (e instanceof Error ? e.message : String(e)).slice(0, 120))
+    }
+
     return res.status(200).json({ ok: true, placeCount })
   } catch {
     return res.status(500).json({ error: 'Guide generation failed' })
