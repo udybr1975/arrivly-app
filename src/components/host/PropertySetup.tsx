@@ -313,6 +313,9 @@ export default function PropertySetup() {
     }
     setSaving(false)
     if (wasNew && savedId) {
+      // Fire-and-forget: generate guide + greeting_blurb for the brand-new property.
+      // Navigation is not blocked — the host lands on the edit page while generation runs in the background.
+      void api.post('/generate-guide', { apartment_id: savedId }).catch(() => {})
       navigate(`/dashboard/property/${savedId}`, { replace: true })
     }
   }

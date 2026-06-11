@@ -36,6 +36,7 @@ interface Apartment {
   hero_image_url: string | null
   city_image_url: string | null
   city_image_credit: string | null
+  greeting_blurb: string | null
 }
 
 interface Detail {
@@ -114,6 +115,22 @@ function mapsSearchUrl(name: string, address?: string | null): string {
 const EXTRAS_CATEGORIES = ['Parking', 'Recycling & Bins', 'Appliances', 'Transport', 'Amenities', 'Safety', 'Good to know']
 const PREVIEW_SAMPLE_NAME = 'Alex'
 
+function getDayPart(): 'morning' | 'afternoon' | 'evening' | 'night' {
+  const h = new Date().getHours()
+  if (h >= 5 && h <= 10) return 'morning'
+  if (h >= 11 && h <= 16) return 'afternoon'
+  if (h >= 17 && h <= 21) return 'evening'
+  return 'night'
+}
+
+function getTimeSalutation(): string {
+  const h = new Date().getHours()
+  if (h >= 5 && h <= 10) return 'Good morning'
+  if (h >= 11 && h <= 16) return 'Good afternoon'
+  if (h >= 17 && h <= 21) return 'Good evening'
+  return 'Welcome'
+}
+
 const CATEGORY_COLORS: Record<string, string> = {
   Restaurant: '#c0392b',
   Bar: '#8e44ad',
@@ -150,6 +167,7 @@ export default function GuestPage() {
   const [thankYouName, setThankYouName] = useState<string | null>(null)
 
   const [weather, setWeather] = useState<Weather | null>(null)
+  const [dailySuggestion, setDailySuggestion] = useState<string | null>(null)
   const [guideLoading, setGuideLoading] = useState(false)
 
   const [copiedWifi, setCopiedWifi] = useState(false)
@@ -203,7 +221,7 @@ export default function GuestPage() {
       const [aptRes, detRes] = await Promise.all([
         supabase
           .from('apartments')
-          .select('id,host_id,name,neighborhood,city,country,lat,lng,accent_color,max_guests,hero_image_url,city_image_url,city_image_credit')
+          .select('id,host_id,name,neighborhood,city,country,lat,lng,accent_color,max_guests,hero_image_url,city_image_url,city_image_credit,greeting_blurb')
           .eq('id', aptId!)
           .maybeSingle(),
         supabase
@@ -286,8 +304,10 @@ export default function GuestPage() {
               if (gd?.first_name) setGuestName(gd.first_name)
             }
 
-            const loc = encodeURIComponent(`${apt.neighborhood}, ${apt.city}`)
-            fetch(`https://wttr.in/${loc}?format=j1`)
+            const weatherUrl = apt.lat != null && apt.lng != null
+              ? `https://wttr.in/${apt.lat},${apt.lng}?format=j1`
+              : `https://wttr.in/${encodeURIComponent(`${apt.neighborhood}, ${apt.city}`)}?format=j1`
+            fetch(weatherUrl)
               .then(r => r.json())
               .then(data => {
                 const cur = data.current_condition?.[0]
@@ -551,13 +571,31 @@ export default function GuestPage() {
     }
   }
 
-  const weatherSentence: string | null = weather
-    ? weather.isOutdoorWeather
-      ? 'A great day to explore — check the guide below for ideas. '
-      : /rain|storm/.test(weather.condition.toLowerCase())
-        ? 'A perfect day for a cosy café or museum. '
-        : null
-    : null
+  // Progressive enhancement: fetch a personalised time/weather-aware suggestion for the hero.
+  // Keyed on weather so the call includes current conditions if available; server caches by
+  // (apartment, date, day_part) so a second call after weather loads returns the cached row.
+  // Skip in preview mode (no verified token → server always returns null anyway).
+  useEffect(() => {
+    if (preview) return
+    if (pageState !== 'active') return
+    if (!aptId || !tokenParam) return
+    // Plain fetch — guests have no auth session; api.post would attach a null Bearer header
+    // which is harmless but violates the guest-page convention (see CLAUDE.md lessons).
+    fetch('/api/daily-greeting', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        apt: aptId,
+        token: tokenParam,
+        day_part: getDayPart(),
+        temp: weather?.temp ?? null,
+        condition: weather?.condition ?? null,
+      }),
+    })
+      .then(r => r.json())
+      .then((r: { suggestion: string | null }) => setDailySuggestion(r.suggestion))
+      .catch(() => {})
+  }, [aptId, tokenParam, weather, preview, pageState])
 
   if (loading) {
     return (
@@ -636,6 +674,17 @@ export default function GuestPage() {
   // pageState === 'active'
   const apt = apartment!
 
+  const salutation = getTimeSalutation()
+  const blurb = apt.greeting_blurb?.trim()
+    || `You're in ${apt.neighborhood} — a wonderful part of ${apt.city} to explore.`
+  const staticWeatherLine: string | null = weather
+    ? weather.isOutdoorWeather
+      ? 'A lovely day to be out and about — the guide below has ideas.'
+      : /rain|storm|drizzle|shower/.test(weather.condition.toLowerCase())
+        ? "A cosy day to explore the neighbourhood's indoor gems."
+        : 'A fine day to wander and see where the streets take you.'
+    : null
+
   // Hero precedence: host upload → cached by-city image (with credit) → static fallback.
   const heroSrc = apt.hero_image_url
     ? resolveImageUrl(apt.hero_image_url)
@@ -695,15 +744,15 @@ export default function GuestPage() {
 
           <div className="max-w-lg mx-auto px-6 pt-8 pb-4">
             <p className="text-[#1c1c1a] text-base leading-relaxed">
-              {guestName ? `Dear ${guestName},` : 'Dear guest,'}
+              {salutation}{guestName ? `, ${guestName}` : ''},
             </p>
             <p className="text-[#1c1c1a] text-base leading-relaxed mt-3">
-              {'Your apartment is ready and we hope you feel right at home. '}
-              {weather && `Outside it's ${weather.temp}°C and ${weather.condition} ${weather.icon}. `}
-              {weatherSentence}
+              {blurb + ' '}
+              {weather && `Outside right now it's ${weather.temp}°C and ${weather.condition} ${weather.icon}. `}
+              {dailySuggestion ? dailySuggestion : (staticWeatherLine ?? '')}
             </p>
             <p className="text-[#1c1c1a] text-base leading-relaxed mt-3">
-              If you need anything during your stay, open the Chat tab and ask.
+              If you need anything during your stay, open the Chat tab and ask — I&apos;m here.
             </p>
             <div className="mt-5 flex justify-end">
               <p className="text-sm italic" style={{ color: accentColor }}>— {brandName}</p>
