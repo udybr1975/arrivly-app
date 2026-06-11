@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from 'react'
 import { Link, useParams, useNavigate } from 'react-router-dom'
+import { Lock } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import Loader from '../shared/Loader'
 import { resolveImageUrl, uploadImage, deleteImage } from '../../lib/imageUtils'
+import { useToast } from '../shared/Toast'
 
 const TABS = [
   { key: 'basic',   label: 'Basic info' },
@@ -26,6 +28,7 @@ const BTN_AI = 'bg-[#1a1a1a] text-white px-4 py-2 rounded-[8px] text-xs font-sem
 export default function PropertySetup() {
   const { aptId } = useParams<{ aptId: string }>()
   const navigate = useNavigate()
+  const { toast } = useToast()
   const [tab, setTab] = useState<Tab>('basic')
   const [apartmentId, setApartmentId] = useState<string | null>(null)
   const [hostId, setHostId] = useState<string | null>(null)
@@ -80,6 +83,11 @@ export default function PropertySetup() {
   }>>([])
   const [savingPicks, setSavingPicks] = useState(false)
 
+  const basicComplete =
+    !!basic.name.trim() && !!basic.country.trim() && !!basic.city.trim() &&
+    !!basic.neighborhood.trim() && !!basic.street.trim() &&
+    !!basic.streetNumber.trim() && Number(basic.maxGuests) >= 1
+
   useEffect(() => {
     async function load() {
       if (!aptId) { navigate('/dashboard'); return }
@@ -103,6 +111,13 @@ export default function PropertySetup() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
       setHostId(user.id)
+
+      if (aptId === 'new') {
+        setApartmentId(null)
+        setTab('basic')
+        setLoading(false)
+        return
+      }
 
       const { data: apt } = await supabase
         .from('apartments')
@@ -207,10 +222,11 @@ export default function PropertySetup() {
 
   // ── Tab 1 ──────────────────────────────────────────────────────────────────
   async function saveBasic() {
-    if (!basic.name.trim()) return
+    if (!basicComplete) return
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { showErr('Not logged in'); setSaving(false); return }
+    const wasNew = !apartmentId
 
     const fields: {
       name: string
@@ -266,10 +282,18 @@ export default function PropertySetup() {
     } else {
       const { data, error } = await supabase
         .from('apartments')
-        .insert({ host_id: user.id, ...fields })
+        .insert({ host_id: user.id, is_visible: true, ...fields })
         .select('id')
         .maybeSingle()
-      if (error || !data) { showErr(error?.message ?? 'Could not create property'); setSaving(false); return }
+      if (error || !data) {
+        if (error?.message?.includes('property_cap_reached')) {
+          showErr("You've reached your plan's property limit. Upgrade your plan to add more properties.")
+        } else {
+          showErr(error?.message ?? 'Could not create property')
+        }
+        setSaving(false)
+        return
+      }
       setApartmentId(data.id)
       savedId = data.id
     }
@@ -288,6 +312,9 @@ export default function PropertySetup() {
       showOk()
     }
     setSaving(false)
+    if (wasNew && savedId) {
+      navigate(`/dashboard/property/${savedId}`, { replace: true })
+    }
   }
 
   async function handleHeroFile(e: ChangeEvent<HTMLInputElement>) {
@@ -506,19 +533,29 @@ export default function PropertySetup() {
 
       {/* Tab bar */}
       <div className="flex gap-1.5 flex-wrap mb-4">
-        {TABS.map(t => (
-          <button
-            key={t.key}
-            onClick={() => { setTab(t.key); setFeedback(null) }}
-            className={`px-3 py-1.5 rounded-[7px] text-xs font-medium transition-colors border ${
-              tab === t.key
-                ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]'
-                : 'bg-transparent border-[#ddd8ce] text-[#666] hover:bg-[#f0ede6]'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
+        {TABS.map(t => {
+          const locked = apartmentId === null && t.key !== 'basic'
+          return (
+            <button
+              key={t.key}
+              onClick={() => {
+                if (locked) { toast('Save your basic info first to unlock this tab', 'info'); return }
+                setTab(t.key)
+                setFeedback(null)
+              }}
+              className={`px-3 py-1.5 rounded-[7px] text-xs font-medium transition-colors border ${
+                tab === t.key
+                  ? 'bg-[#1a1a1a] text-white border-[#1a1a1a]'
+                  : 'bg-transparent border-[#ddd8ce] text-[#666] hover:bg-[#f0ede6]'
+              }${locked ? ' opacity-40 cursor-not-allowed' : ''}`}
+            >
+              <span className="inline-flex items-center gap-1">
+                {t.label}
+                {locked && <Lock size={11} />}
+              </span>
+            </button>
+          )
+        })}
       </div>
 
       {/* Save feedback */}
@@ -569,7 +606,7 @@ export default function PropertySetup() {
               />
             </div>
             <div>
-              <label className={LABEL}>Max guests</label>
+              <label className={LABEL}>Max guests <span className="text-red-500 normal-case">*</span></label>
               <input
                 type="number"
                 min={1}
@@ -580,7 +617,7 @@ export default function PropertySetup() {
               />
             </div>
             <div>
-              <label className={LABEL}>Country</label>
+              <label className={LABEL}>Country <span className="text-red-500 normal-case">*</span></label>
               <input
                 value={basic.country}
                 onChange={e => setBasic(p => ({ ...p, country: e.target.value }))}
@@ -589,7 +626,7 @@ export default function PropertySetup() {
               />
             </div>
             <div>
-              <label className={LABEL}>City</label>
+              <label className={LABEL}>City <span className="text-red-500 normal-case">*</span></label>
               <input
                 value={basic.city}
                 onChange={e => setBasic(p => ({ ...p, city: e.target.value }))}
@@ -598,7 +635,7 @@ export default function PropertySetup() {
               />
             </div>
             <div>
-              <label className={LABEL}>Neighbourhood</label>
+              <label className={LABEL}>Neighbourhood <span className="text-red-500 normal-case">*</span></label>
               <input
                 value={basic.neighborhood}
                 onChange={e => setBasic(p => ({ ...p, neighborhood: e.target.value }))}
@@ -607,7 +644,7 @@ export default function PropertySetup() {
               />
             </div>
             <div>
-              <label className={LABEL}>Street name</label>
+              <label className={LABEL}>Street name <span className="text-red-500 normal-case">*</span></label>
               <input
                 value={basic.street}
                 onChange={e => setBasic(p => ({ ...p, street: e.target.value }))}
@@ -616,7 +653,7 @@ export default function PropertySetup() {
               />
             </div>
             <div>
-              <label className={LABEL}>Street number</label>
+              <label className={LABEL}>Street number <span className="text-red-500 normal-case">*</span></label>
               <input
                 value={basic.streetNumber}
                 onChange={e => setBasic(p => ({ ...p, streetNumber: e.target.value }))}
@@ -637,7 +674,7 @@ export default function PropertySetup() {
           <div className="bg-[#e4f0da] rounded-[7px] px-3 py-2 text-[11px] text-[#2a5c0a] leading-[1.6]">
             Full address enables a hyper-local AI guide for your exact street. Coordinates geocoded once and stored.
           </div>
-          <button onClick={saveBasic} disabled={saving || !basic.name.trim()} className={BTN_DARK}>
+          <button onClick={saveBasic} disabled={saving || !basicComplete} className={BTN_DARK}>
             {saving ? 'Saving…' : 'Save'}
           </button>
         </div>

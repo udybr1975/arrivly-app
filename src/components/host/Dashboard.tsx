@@ -31,9 +31,6 @@ export default function Dashboard() {
   const [bookingCountByApt, setBookingCountByApt] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
   const [showWelcome, setShowWelcome] = useState(false)
-  const [creatingApt, setCreatingApt] = useState(false)
-  const [createError, setCreateError] = useState('')
-  const [capError, setCapError] = useState(false)
   const welcomeRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -126,35 +123,8 @@ export default function Dashboard() {
     }
   }
 
-  async function createProperty() {
-    if (creatingApt) return
-    setCreatingApt(true)
-    setCreateError('')
-    setCapError(false)
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) { setCreatingApt(false); return }
-
-    const aptName = list.length === 0
-      ? (hostData?.brand_name?.trim() || 'My property')
-      : 'New property'
-
-    const { data: newApt, error: aptErr } = await supabase
-      .from('apartments')
-      .insert({ host_id: user.id, name: aptName, is_visible: true })
-      .select('id')
-      .maybeSingle()
-
-    if (aptErr || !(newApt as { id?: string } | null)?.id) {
-      if (aptErr?.message?.includes('property_cap_reached')) {
-        setCapError(true)
-      } else {
-        setCreateError('Could not create property. Please try again.')
-      }
-      setCreatingApt(false)
-      return
-    }
-
-    navigate(`/dashboard/property/${(newApt as { id: string }).id}`)
+  function createProperty() {
+    navigate('/dashboard/property/new')
   }
 
   if (loading) return <Loader />
@@ -212,11 +182,10 @@ export default function Dashboard() {
               Add your first property to generate it.
             </p>
             <button
-              onClick={async () => { await dismissWelcome(); void createProperty() }}
-              disabled={creatingApt}
-              className="w-full bg-[#1a1a1a] text-white rounded-[8px] py-2.5 text-xs font-semibold hover:opacity-80 transition-opacity disabled:opacity-40 mb-2"
+              onClick={async () => { await dismissWelcome(); createProperty() }}
+              className="w-full bg-[#1a1a1a] text-white rounded-[8px] py-2.5 text-xs font-semibold hover:opacity-80 transition-opacity mb-2"
             >
-              {creatingApt ? 'Creating…' : 'Add my first property →'}
+              Add my first property →
             </button>
             <button
               onClick={() => void dismissWelcome()}
@@ -240,17 +209,11 @@ export default function Dashboard() {
                 Your guest page is one step away. Add your first property and Arrivly will
                 generate a personalised page for every scan.
               </p>
-              {createError && (
-                <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 mb-4">
-                  {createError}
-                </p>
-              )}
               <button
-                onClick={() => void createProperty()}
-                disabled={creatingApt}
-                className="bg-[#1a1a1a] text-white px-5 py-2.5 rounded-[8px] text-xs font-semibold hover:opacity-80 transition-opacity disabled:opacity-40"
+                onClick={createProperty}
+                className="bg-[#1a1a1a] text-white px-5 py-2.5 rounded-[8px] text-xs font-semibold hover:opacity-80 transition-opacity"
               >
-                {creatingApt ? 'Creating…' : 'Add my first property →'}
+                Add my first property →
               </button>
             </div>
 
@@ -344,7 +307,7 @@ export default function Dashboard() {
             })}
 
             {/* Add property — active or at-cap */}
-            {atCap || capError ? (
+            {atCap ? (
               <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mb-3">
                 <div className="text-[13px] font-semibold text-[#1a1a1a] mb-1.5">
                   You've reached your plan's property limit{effectiveCap !== null ? ` (${list.length} of ${effectiveCap})` : ''}.
@@ -362,19 +325,11 @@ export default function Dashboard() {
               </div>
             ) : (
               <>
-                {createError && (
-                  <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 mb-3">
-                    {createError}
-                  </p>
-                )}
                 <button
-                  onClick={() => void createProperty()}
-                  disabled={creatingApt}
-                  className={`w-full border border-dashed border-[#ccc] rounded-[10px] p-4 flex items-center justify-center hover:bg-white/60 transition-colors disabled:opacity-60 disabled:cursor-not-allowed bg-transparent cursor-pointer ${effectiveCap !== null ? 'mb-1' : 'mb-3'}`}
+                  onClick={createProperty}
+                  className={`w-full border border-dashed border-[#ccc] rounded-[10px] p-4 flex items-center justify-center hover:bg-white/60 transition-colors bg-transparent cursor-pointer ${effectiveCap !== null ? 'mb-1' : 'mb-3'}`}
                 >
-                  <span className="text-[12px] text-[#aaa]">
-                    {creatingApt ? 'Creating…' : '+ Add another property'}
-                  </span>
+                  <span className="text-[12px] text-[#aaa]">+ Add another property</span>
                 </button>
                 {effectiveCap !== null && (
                   <p className="text-[10px] text-[#aaa] text-center mb-3">
