@@ -16,12 +16,16 @@ interface HostData {
   name: string | null
   brand_name: string | null
   welcome_seen_at: string | null
+  tier: number | null
+  is_exempt: boolean | null
+  property_cap_override: number | null
 }
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const [list, setList] = useState<Apartment[]>([])
   const [hostData, setHostData] = useState<HostData | null>(null)
+  const [planMaxProperties, setPlanMaxProperties] = useState<number | null>(null)
   const [bookingTotal, setBookingTotal] = useState(0)
   const [completenessByApt, setCompletenessByApt] = useState<Map<string, Set<string>>>(new Map())
   const [bookingCountByApt, setBookingCountByApt] = useState<Map<string, number>>(new Map())
@@ -29,6 +33,7 @@ export default function Dashboard() {
   const [showWelcome, setShowWelcome] = useState(false)
   const [creatingApt, setCreatingApt] = useState(false)
   const [createError, setCreateError] = useState('')
+  const [capError, setCapError] = useState(false)
   const welcomeRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -38,7 +43,7 @@ export default function Dashboard() {
 
       const { data: hd } = await supabase
         .from('hosts')
-        .select('trial_ends_at, name, brand_name, welcome_seen_at')
+        .select('trial_ends_at, name, brand_name, welcome_seen_at, tier, is_exempt, property_cap_override')
         .eq('id', user.id)
         .maybeSingle()
 
@@ -52,6 +57,19 @@ export default function Dashboard() {
       setHostData(hd as HostData | null)
       setList(aList)
       setShowWelcome(!(hd as HostData | null)?.welcome_seen_at)
+
+      // Fetch the plan's property cap (exempt hosts are always unlimited; skip if tier unset)
+      const hdTyped = hd as HostData | null
+      if (hdTyped && !hdTyped.is_exempt && hdTyped.tier !== null) {
+        const { data: planRow } = await supabase
+          .from('plans')
+          .select('max_properties')
+          .eq('tier', hdTyped.tier)
+          .maybeSingle()
+        setPlanMaxProperties(
+          (planRow as { max_properties: number | null } | null)?.max_properties ?? null
+        )
+      }
 
       if (aList.length > 0) {
         const aptIds = aList.map((a: Apartment) => a.id)
@@ -108,14 +126,18 @@ export default function Dashboard() {
     }
   }
 
-  async function createFirstProperty() {
+  async function createProperty() {
     if (creatingApt) return
     setCreatingApt(true)
     setCreateError('')
+    setCapError(false)
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { setCreatingApt(false); return }
 
-    const aptName = hostData?.brand_name?.trim() || 'My property'
+    const aptName = list.length === 0
+      ? (hostData?.brand_name?.trim() || 'My property')
+      : 'New property'
+
     const { data: newApt, error: aptErr } = await supabase
       .from('apartments')
       .insert({ host_id: user.id, name: aptName, is_visible: true })
@@ -123,7 +145,11 @@ export default function Dashboard() {
       .maybeSingle()
 
     if (aptErr || !(newApt as { id?: string } | null)?.id) {
-      setCreateError('Could not create property. Please try again.')
+      if (aptErr?.message?.includes('property_cap_reached')) {
+        setCapError(true)
+      } else {
+        setCreateError('Could not create property. Please try again.')
+      }
       setCreatingApt(false)
       return
     }
@@ -144,6 +170,14 @@ export default function Dashboard() {
   const check = (ok: boolean) => ok
     ? <span className="text-[#2a5c0a]">✓</span>
     : <span className="text-[#ccc]">–</span>
+
+  // Mirrors the DB trigger logic exactly:
+  // effectiveCap = is_exempt ? unlimited : (property_cap_override ?? plans.max_properties)
+  const effectiveCap: number | null = hostData?.is_exempt
+    ? null
+    : (hostData?.property_cap_override ?? planMaxProperties)
+
+  const atCap = effectiveCap !== null && list.length >= effectiveCap
 
   return (
     <>
@@ -178,7 +212,7 @@ export default function Dashboard() {
               Add your first property to generate it.
             </p>
             <button
-              onClick={async () => { await dismissWelcome(); void createFirstProperty() }}
+              onClick={async () => { await dismissWelcome(); void createProperty() }}
               disabled={creatingApt}
               className="w-full bg-[#1a1a1a] text-white rounded-[8px] py-2.5 text-xs font-semibold hover:opacity-80 transition-opacity disabled:opacity-40 mb-2"
             >
@@ -212,7 +246,7 @@ export default function Dashboard() {
                 </p>
               )}
               <button
-                onClick={() => void createFirstProperty()}
+                onClick={() => void createProperty()}
                 disabled={creatingApt}
                 className="bg-[#1a1a1a] text-white px-5 py-2.5 rounded-[8px] text-xs font-semibold hover:opacity-80 transition-opacity disabled:opacity-40"
               >
@@ -309,10 +343,46 @@ export default function Dashboard() {
               )
             })}
 
-            {/* Add property (dashed) */}
-            <div className="border border-dashed border-[#ccc] rounded-[10px] p-4 mb-3 flex items-center justify-center cursor-pointer hover:bg-white/60 transition-colors">
-              <span className="text-[12px] text-[#aaa]">+ Add another property · coming soon</span>
-            </div>
+            {/* Add property — active or at-cap */}
+            {atCap || capError ? (
+              <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mb-3">
+                <div className="text-[13px] font-semibold text-[#1a1a1a] mb-1.5">
+                  You've reached your plan's property limit{effectiveCap !== null ? ` (${list.length} of ${effectiveCap})` : ''}.
+                </div>
+                <p className="text-[12px] text-[#666] leading-relaxed mb-3">
+                  If you're enjoying Arrivly and want to bring the same guest experience to more
+                  of your properties, upgrading your plan takes less than a minute.
+                </p>
+                <Link
+                  to="/dashboard/billing"
+                  className="inline-block bg-[#1a1a1a] text-white rounded-[8px] px-4 py-[10px] text-xs font-semibold hover:opacity-80 transition-opacity"
+                >
+                  Upgrade plan →
+                </Link>
+              </div>
+            ) : (
+              <>
+                {createError && (
+                  <p className="text-[11px] text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2 mb-3">
+                    {createError}
+                  </p>
+                )}
+                <button
+                  onClick={() => void createProperty()}
+                  disabled={creatingApt}
+                  className={`w-full border border-dashed border-[#ccc] rounded-[10px] p-4 flex items-center justify-center hover:bg-white/60 transition-colors disabled:opacity-60 disabled:cursor-not-allowed bg-transparent cursor-pointer ${effectiveCap !== null ? 'mb-1' : 'mb-3'}`}
+                >
+                  <span className="text-[12px] text-[#aaa]">
+                    {creatingApt ? 'Creating…' : '+ Add another property'}
+                  </span>
+                </button>
+                {effectiveCap !== null && (
+                  <p className="text-[10px] text-[#aaa] text-center mb-3">
+                    {list.length} of {effectiveCap} properties used
+                  </p>
+                )}
+              </>
+            )}
 
             {/* Coming soon */}
             <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4">
