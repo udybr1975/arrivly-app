@@ -203,10 +203,6 @@ export default function QRCodePanel() {
         ))}
       </div>
 
-      {/* Dashed add card */}
-      <div className="border border-dashed border-[#ccc] rounded-[10px] p-4 mt-3 flex items-center justify-center cursor-pointer hover:bg-white/60 transition-colors">
-        <span className="text-[12px] text-[#aaa]">+ Add another property · coming soon</span>
-      </div>
     </div>
   )
 }
