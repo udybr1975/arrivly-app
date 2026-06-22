@@ -64,7 +64,7 @@ export async function generateGuideForApartment(
   db: SupabaseClient,
   apt: AptInput
 ): Promise<GuideResult> {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY_GUIDES || process.env.GEMINI_API_KEY
   if (!apiKey) throw new Error('GEMINI_API_KEY not configured')
 
   const ai = new GoogleGenAI({ apiKey })
