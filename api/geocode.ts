@@ -1,12 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-
-interface GoogleGeocodeResult {
-  status: string
-  results: Array<{
-    geometry: { location: { lat: number; lng: number } }
-  }>
-}
+import { geocodeAddress } from './_lib/geo.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -27,26 +21,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const trimmed = address.trim()
   if (trimmed.length > 250) return res.status(400).json({ error: 'address too long' })
 
-  const apiKey = process.env.GOOGLE_GEOCODING_API_KEY
-  if (!apiKey) return res.status(500).json({ error: 'Geocoding not configured' })
-
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 3000)
-
-  try {
-    const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(trimmed)}&key=${apiKey}`
-    const response = await fetch(url, { signal: controller.signal })
-    const geoData = await response.json() as GoogleGeocodeResult
-
-    if (geoData.status !== 'OK' || !geoData.results[0]) {
-      return res.status(200).json({ error: 'Address not found' })
-    }
-
-    const { lat, lng } = geoData.results[0].geometry.location
-    return res.status(200).json({ lat, lng })
-  } catch {
-    return res.status(500).json({ error: 'Geocoding request failed' })
-  } finally {
-    clearTimeout(timeout)
-  }
+  const coords = await geocodeAddress(trimmed)
+  if (coords) return res.status(200).json(coords)
+  return res.status(200).json({ error: 'Address not found' })
 }
