@@ -1100,6 +1100,26 @@ export default function GuestPage() {
                 )}
               </>
             )}
+            <p className="text-[10px] text-gray-400 text-center mt-8">
+              Location data ©{' '}
+              <a
+                href="https://www.openstreetmap.org/copyright"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
+              >
+                OpenStreetMap contributors
+              </a>{' '}
+              · Geocoding by{' '}
+              <a
+                href="https://locationiq.com"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hover:underline"
+              >
+                LocationIQ
+              </a>
+            </p>
           </div>
         </div>
       )}
