@@ -1,87 +1,82 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-import { GoogleGenAI } from '@google/genai'
+import { generateCityEvents } from './_lib/city-events.js'
+
+// PUBLIC guest read path. Cache-first: ~all guests hit a DB read only. The ONLY way
+// to trigger a Gemini call is to be the first caller for an uncached apartment
+// (lazy first-fill), and that path is rate-limited. The daily cron pre-fills the
+// cache for apartments with current/upcoming bookings, so most apartments are warm.
+// Returns the cached payload ({ week, categories }) or { error: true } — unchanged
+// shape, so the guest EventsPage needs no change.
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const MODEL = 'gemini-2.5-flash'
-const fmt = (d: Date) => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+// Best-effort, per-instance rate limiter — backstop on the LAZY-FILL (Gemini) path
+// only. Cached reads (the hot path) are never limited. Keyed by apartmentId+IP.
+const RL_MAX = 5
+const RL_WINDOW_MS = 60_000
+const rlHits = new Map<string, { count: number; windowStart: number }>()
+function rateLimited(key: string, now: number): boolean {
+  const entry = rlHits.get(key)
+  if (!entry || now - entry.windowStart >= RL_WINDOW_MS) {
+    rlHits.set(key, { count: 1, windowStart: now })
+    return false
+  }
+  entry.count += 1
+  return entry.count > RL_MAX
+}
+function clientIp(req: VercelRequest): string {
+  const xff = req.headers['x-forwarded-for']
+  const first = Array.isArray(xff) ? xff[0] : xff
+  if (first) return first.split(',')[0].trim()
+  return req.socket?.remoteAddress ?? 'unknown'
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const { apartmentId } = (req.body ?? {}) as { apartmentId?: string }
-  if (!apartmentId || typeof apartmentId !== 'string') return res.status(400).json({ error: 'apartmentId required' })
+  if (!apartmentId || typeof apartmentId !== 'string') {
+    return res.status(400).json({ error: 'apartmentId required' })
+  }
 
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) { console.error('[city-events] GEMINI_API_KEY not set'); return res.status(200).json({ error: true }) }
-
-  // Authoritative city from DB — never trust a client-supplied city.
+  // Authoritative apartment from DB — never trust a client-supplied city.
   const { data: apt, error: aptErr } = await supabase
     .from('apartments')
     .select('id, city, country, is_visible')
     .eq('id', apartmentId)
     .maybeSingle()
-  if (aptErr || !apt || apt.is_visible === false || !apt.city) return res.status(200).json({ error: true })
-
-  const now = new Date()
-  const until = new Date(now); until.setDate(now.getDate() + 7)
-  const today = fmt(now)
-  const untilStr = fmt(until)
-  const city = (apt.city ?? '').slice(0, 80)
-  const country = (apt.country ?? '').slice(0, 80)
-  const place = country ? `${city}, ${country}` : city
-
-  const prompt =
-    `Today is ${today}. Use web search to find as many real, specific events as you can verify happening in ${place} ` +
-    `between ${today} and ${untilStr} — the next 7 days only. Aim for at least 10 and up to 15. ` +
-    `Include concerts, exhibitions, markets, festivals, sports, theatre, food and nightlife with real venues and dates. ` +
-    `Do NOT include past events, generic "things to do", duplicates, or anything you cannot verify is scheduled in this window. ` +
-    `Accuracy matters more than quantity — include fewer rather than invent or pad. ` +
-    `Return ONLY raw JSON — no markdown, no code fences — shaped exactly as: ` +
-    `{"week":"${today} – ${untilStr}","categories":[{"name":"This week","events":[{"title":"","venue":"","date":"","desc":"","price":"","url":""}]}]}. ` +
-    `Each event: title (name), venue (place), date (day or date within the window), desc (one short sentence), ` +
-    `price (very short, e.g. "Free" or "€20" — max ~12 characters, no parentheses or notes), ` +
-    `url (the official event or ticket page if you are confident it is correct, otherwise an empty string — never invent a URL). ` +
-    `If you cannot verify any real events, return {"week":"${today} – ${untilStr}","categories":[]}.`
-
-  const ai = new GoogleGenAI({ apiKey })
-  const MAX_RETRIES = 3
-  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
-    try {
-      if (attempt > 1) await new Promise(r => setTimeout(r, attempt * 2000))
-      let timer!: ReturnType<typeof setTimeout>
-      try {
-        const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 30000) })
-        const gen = ai.models.generateContent({
-          model: MODEL,
-          contents: prompt,
-          // googleSearch grounding: cannot be combined with responseMimeType JSON,
-          // so we parse fenced text defensively (same pattern as Anna's grounded admin events).
-          config: { tools: [{ googleSearch: {} }] as any, thinkingConfig: { thinkingBudget: 0 } as any, maxOutputTokens: 4096 },
-        })
-        const response = await Promise.race([gen, timeout])
-        const raw = (response.text || '').replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim()
-        const parsed = JSON.parse(raw)
-        if (parsed && typeof parsed === 'object' && Array.isArray(parsed.categories)) {
-          const SAFE_SCHEME = /^https?:\/\//i
-          parsed.categories.forEach((cat: any) => {
-            cat.events?.forEach((ev: any) => {
-              if (ev.url && !SAFE_SCHEME.test(String(ev.url).trim())) ev.url = ''
-            })
-          })
-          return res.status(200).json(parsed)
-        }
-      } finally {
-        clearTimeout(timer!)
-      }
-    } catch (e) {
-      const msg = String((e as Error)?.message ?? e).replace(/key=[^&\s]+/gi, 'key=REDACTED').slice(0, 120)
-      console.warn(`[city-events] attempt ${attempt} failed — ${msg}`)
-    }
+  if (aptErr || !apt || apt.is_visible === false || !apt.city) {
+    return res.status(200).json({ error: true })
   }
-  return res.status(200).json({ error: true })
+
+  // Hot path: serve the cache row directly, no Gemini.
+  const { data: cached } = await supabase
+    .from('city_events_cache')
+    .select('payload')
+    .eq('apartment_id', apartmentId)
+    .maybeSingle()
+  if (cached?.payload) return res.status(200).json(cached.payload)
+
+  // Lazy first-fill: rate-limit (this is the only Gemini-touching guest path).
+  if (rateLimited(`${apartmentId}:${clientIp(req)}`, Date.now())) {
+    return res.status(429).json({ error: true })
+  }
+
+  const { payload } = await generateCityEvents({ id: apt.id, city: apt.city, country: apt.country })
+  if (!payload) return res.status(200).json({ error: true })
+
+  // Cache only a real result — never persist an empty/failed generation.
+  const { error: upErr } = await supabase
+    .from('city_events_cache')
+    .upsert(
+      { apartment_id: apartmentId, payload, generated_at: new Date().toISOString() },
+      { onConflict: 'apartment_id' }
+    )
+  if (upErr) console.error('[city-events] cache upsert failed —', upErr.message?.slice(0, 120))
+
+  return res.status(200).json(payload)
 }

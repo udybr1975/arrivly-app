@@ -19,6 +19,9 @@ interface PropertyQRCardProps {
   refreshing: boolean
   refreshingAll: boolean
   refreshError: string | null
+  onRefreshEvents: () => void
+  refreshingEvents: boolean
+  eventsMsg: { text: string; ok: boolean } | null
 }
 
 function guestUrl(aptId: string, secret: string | null) {
@@ -33,7 +36,13 @@ function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'qr'
 }
 
-function PropertyQRCard({ apt, onRefresh, refreshing, refreshingAll, refreshError }: PropertyQRCardProps) {
+function hoursAgoLabel(iso: string): string {
+  const h = Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000)
+  if (!Number.isFinite(h) || h < 1) return 'just now'
+  return `${h}h ago`
+}
+
+function PropertyQRCard({ apt, onRefresh, refreshing, refreshingAll, refreshError, onRefreshEvents, refreshingEvents, eventsMsg }: PropertyQRCardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const url = guestUrl(apt.id, apt.qr_secret)
 
@@ -104,9 +113,19 @@ function PropertyQRCard({ apt, onRefresh, refreshing, refreshingAll, refreshErro
           >
             {refreshing ? 'Refreshing…' : '↻ Refresh guide'}
           </button>
+          <button
+            onClick={onRefreshEvents}
+            disabled={refreshingEvents}
+            className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1.5 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors disabled:opacity-50"
+          >
+            {refreshingEvents ? 'Refreshing…' : '↻ Refresh events'}
+          </button>
         </div>
         {refreshError && (
           <div className="text-[10px] text-[#c44] mt-1.5">{refreshError}</div>
+        )}
+        {eventsMsg && (
+          <div className={`text-[10px] mt-1.5 ${eventsMsg.ok ? 'text-[#2a5c0a]' : 'text-[#c44]'}`}>{eventsMsg.text}</div>
         )}
       </div>
     </div>
@@ -126,6 +145,8 @@ export default function QRCodePanel() {
   const [refreshing, setRefreshing] = useState<Set<string>>(new Set())
   const [refreshErrors, setRefreshErrors] = useState<Record<string, string>>({})
   const [refreshingAll, setRefreshingAll] = useState(false)
+  const [refreshingEvents, setRefreshingEvents] = useState<Set<string>>(new Set())
+  const [eventsMsgs, setEventsMsgs] = useState<Record<string, { text: string; ok: boolean }>>({})
 
   useEffect(() => {
     async function load() {
@@ -179,6 +200,40 @@ export default function QRCodePanel() {
     }
   }
 
+  async function refreshEvents(aptId: string) {
+    setRefreshingEvents(prev => new Set(prev).add(aptId))
+    setEventsMsgs(prev => { const n = { ...prev }; delete n[aptId]; return n })
+    try {
+      const r = await api.post<{ refreshed: boolean; reason?: string; generated_at?: string }>(
+        '/refresh-events', { apartment_id: aptId }
+      )
+      if (r.refreshed) {
+        setEventsMsgs(prev => ({ ...prev, [aptId]: { text: 'Events refreshed.', ok: true } }))
+      } else if (r.reason === 'fresh') {
+        const ago = r.generated_at ? hoursAgoLabel(r.generated_at) : ''
+        setEventsMsgs(prev => ({
+          ...prev,
+          [aptId]: { text: `Events are up to date${ago ? ` (refreshed ${ago})` : ''}.`, ok: true },
+        }))
+      } else {
+        setEventsMsgs(prev => ({
+          ...prev,
+          [aptId]: { text: "Couldn't refresh right now — please try again later.", ok: false },
+        }))
+      }
+    } catch (e) {
+      let text = "Couldn't refresh right now — please try again later."
+      try {
+        if (JSON.parse((e as Error).message)?.error === 'rate_limited') {
+          text = 'Please wait a moment before refreshing again.'
+        }
+      } catch { /* keep generic message */ }
+      setEventsMsgs(prev => ({ ...prev, [aptId]: { text, ok: false } }))
+    } finally {
+      setRefreshingEvents(prev => { const s = new Set(prev); s.delete(aptId); return s })
+    }
+  }
+
   async function refreshAllGuides() {
     setRefreshingAll(true)
     for (const apt of apts) {
@@ -215,6 +270,9 @@ export default function QRCodePanel() {
             refreshing={refreshing.has(apt.id)}
             refreshingAll={refreshingAll}
             refreshError={refreshErrors[apt.id] ?? null}
+            onRefreshEvents={() => refreshEvents(apt.id)}
+            refreshingEvents={refreshingEvents.has(apt.id)}
+            eventsMsg={eventsMsgs[apt.id] ?? null}
           />
         ))}
       </div>
