@@ -29,6 +29,19 @@ const FEATURES = [
 ]
 
 function LandingContent() {
+  const [pricing, setPricing] = useState({ trialDays: 14, fromPriceEuros: 10, currency: 'eur' })
+
+  useEffect(() => {
+    let alive = true
+    fetch('/api/public-pricing')
+      .then(r => (r.ok ? r.json() : null))
+      .then(data => {
+        if (alive && data && typeof data.trialDays === 'number') setPricing(data)
+      })
+      .catch(() => {})
+    return () => { alive = false }
+  }, [])
+
   return (
     <div className="min-h-screen bg-[#f0ede6]">
       <div className="max-w-4xl mx-auto">
@@ -49,7 +62,7 @@ function LandingContent() {
               to="/signup"
               className="bg-white text-[#1c1c1a] px-5 py-2.5 rounded-[8px] text-[13px] font-semibold font-serif hover:bg-gray-100 transition-colors"
             >
-              Start free — 30 days
+              Start free — {pricing.trialDays} days
             </Link>
             <button className="bg-transparent text-white/60 border border-white/25 px-5 py-2.5 rounded-[8px] text-[13px] hover:bg-white/10 transition-colors">
               See demo
@@ -73,9 +86,9 @@ function LandingContent() {
         <div className="px-9 py-5 bg-[#f8f6f2] border-t border-[#ede9e2] flex items-center justify-between flex-wrap gap-3.5">
           <div>
             <div className="text-2xl font-serif font-light text-[#1a1a1a]">
-              €19<span className="text-[13px] text-[#888] font-normal font-sans">/month per property</span>
+              From €{pricing.fromPriceEuros}<span className="text-[13px] text-[#888] font-normal font-sans">/month</span>
             </div>
-            <div className="text-xs text-[#888] mt-0.5">30 days free · Cancel anytime · No card needed to start</div>
+            <div className="text-xs text-[#888] mt-0.5">{pricing.trialDays} days free · No payment needed to start · Cancel anytime</div>
           </div>
           <Link
             to="/signup"

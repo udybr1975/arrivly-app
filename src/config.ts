@@ -1,8 +1,6 @@
 export const ARRIVLY_CONFIG = {
   // Pricing — change here only
-  trialDays: 30,
   trialReminderDays: 5,
-  pricePerPropertyMonthly: 19,
   currency: 'eur',
   currencySymbol: '€',
 
