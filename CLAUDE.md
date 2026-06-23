@@ -1,7 +1,7 @@
 # Arrivly — CLAUDE.md
 
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD:** 8fa50ac (Session 19, Jun 23 2026 — security hardening Steps 1–3). Phase 5 of Step 3 was a DB-only migration (no commit).
+> **Current HEAD:** 4e09d03 (Session 19 cont., Jun 23 2026 — Stripe key/env fix + billing pipeline verified (#6) + landing dynamic pricing (#7 part)). Earlier S19 HEAD was 8fa50ac (security hardening Steps 1–3); Phase 5 of Step 3 was DB-only.
 
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
@@ -46,7 +46,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - **guide_recommendations** — id, apartment_id, neighborhood, categories (jsonb), generated_at
 - **push_subscriptions** — id, host_id, apartment_id, booking_id, role, endpoint, p256dh, auth_key, created_at
 - **guest_optins** — id, first_name, email, apartment_id, opted_in_at
-- **app_settings** — id (always 1), trial_days (int, default 30), updated_at; RLS ON with zero policies (only service-role + SECURITY DEFINER trigger can read/write); `handle_new_user()` reads `trial_days` with hard fallback to 30 so a missing row never breaks signups. Change trial length: `update public.app_settings set trial_days=N, updated_at=now() where id=1;` (new signups only; existing hosts keep their dates). Future superadmin dashboard edits this row.
+- **app_settings** — id (always 1), trial_days (int, default 14), updated_at; RLS ON with zero policies (only service-role + SECURITY DEFINER trigger can read/write); `handle_new_user()` reads `trial_days` with hard fallback to 30 so a missing row never breaks signups. Change trial length: `update public.app_settings set trial_days=N, updated_at=now() where id=1;` (new signups only; existing hosts keep their dates). Future superadmin dashboard edits this row.
 - **admin_audit** — id, actor_email, action ('update_host'|'update_plans'|'impersonate_view'|'subscription_event'), target_host_id (uuid nullable), detail (jsonb), created_at. RLS ON with zero policies (service-role only). Written by the admin endpoints and stripe-webhook; read by api/admin-audit.ts (last 50). NOTE: edits made by direct SQL (not via an admin endpoint) are intentionally NOT logged here.
 
 ### DB functions
@@ -58,6 +58,7 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - `apartments.ical_urls` — single text column, one URL per line, no limit (replaces old airbnb_ical_url)
 - `bookings.reference_number` — is the guest token, used in QR URL
 - `guide_recommendations` — always query with `.maybeSingle()` never `.single()`
+- **Landing pricing/trial are DB-driven but anon CANNOT read the tables.** `plans` is `plans_select_authenticated` (authenticated only); `app_settings` has NO read policy (service-role only). The logged-out landing reads `{trialDays, fromPriceEuros}` from `api/public-pricing.ts` (service-role, marketing-safe fields only) — never by loosening RLS.
 - **`bookings_guest_read` RLS policy — DROPPED (S19).** Migration `close_guest_disclosure_chain_lockdown` removed the anon read policy on `bookings`; guests no longer read `bookings`/`guests` directly. Booking state is now resolved server-side via `api/guest-state.ts` (service-role). VERIFIED: anon role reads 0 bookings + 0 guests; authenticated host still reads own bookings + guest list. `guests_host_read` was replaced with `USING(true)` scoped to role `authenticated` only (guests still readable by ALL authenticated hosts — see Tracked security follow-ups).
 - RLS on `host_picks` joins through `apartments.host_id` — correct, verified
 - `push_subscriptions` has a UNIQUE index on `endpoint` (`push_subscriptions_endpoint_key`) — subscriptions upsert with `onConflict: 'endpoint'`
@@ -131,6 +132,12 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
   - `3cfa4dc7-b72c-4a39-976c-669355fc14f0` (ARR-SWEET1, booking f803d95e-…)
 - Date reverts pending: ARR-SWEET1 check_out → 2026-06-02; ARR-TEST01 → original 27–31 May (or delete).
 - 3 guest push subs on ARR-SWEET1 (booking f803d95e) from push testing — old phone `fxoFeLto…`, new-phone tab `dPjCzkTFG…`, new-phone installed app `emdrm-rTQYM…`; decide whether to prune.
+
+**Billing-test hosts (S19 cont.):**
+- **Roy** (udy.bar.yosef@sterlights.com) `3b11235b-d6af-4291-a929-db0194065740` — billing sanity click-through; now tier 2, status trial, sub `sub_1TgnuY…` / `cus_UgADqTdBVkwPFj`, trial ends ~2026-06-24.
+- **Yaron** (udy@1234.com) `06eb554e-40eb-45fd-a6ed-7dbc2edbc0c1` — subscribed-during-trial (completed Checkout; trialing `sub_1TlZaX…` / `cus_Ul5l…`, no charge until ~2026-07-07).
+- **Udyn** `11b5b459-d631-41b1-8d5c-327613f0e346` — parked in `grace` on the test-clock sub (`cus_UkzljDJks6qaGC` / `sub_1TlTpFFgkuKMBYAu7yJaesdN`).
+- **Yiftach** (yiftach@xn--gnai-8qa.com) `6dbfbda4` — clean trial, no subscription (a pre-fix subscribe attempt errored before creating anything; nothing to remove).
 
 ---
 
@@ -260,6 +267,14 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
   - **Phase 5 (DB-only)** — migration `close_guest_disclosure_chain_lockdown`: dropped `bookings_guest_read` (anon); replaced `guests_host_read` with `USING(true)` scoped to role `authenticated` only. VERIFIED: anon reads 0 bookings + 0 guests; authenticated host still reads own bookings + guest list; security advisor shows no new issues.
   - **BEHAVIOUR CHANGE (intended):** a guest URL with apt only / no token / wrong key → neutral page. Keyed QR URLs carry the key; token URLs + localStorage-returning guests still work.
 
+**S19 cont. (2026-06-23):** Post-hardening cleanups, a critical Stripe key/env fix, full billing-pipeline verification (#6), and DB-driven landing pricing (#7 part). HEAD `4e09d03`.
+- **Quick fixes:** greeting-blurb prompt opens by naming the place + bans participial openers ("Stepping","Nestled","Tucked") (`8a5dc35`); dashboard Live/Draft publish toggle on `apartments.is_visible` (host-RLS-scoped; new properties default Live) (`6fc9a89`); branded "temporarily unavailable" guest screen for unpublished properties via new `api/guest-availability.ts` (anon GET, service-role after UUID validation, returns only {status, brand}) (`47a1335`); dropped unused all-NULL `hosts.change_reminder_sent_at` (migration `drop_unused_change_reminder_sent_at`); docs refresh (`44789a7`).
+- **CRITICAL — Stripe key/environment mismatch fixed (Vercel env change, no commit).** During the Anna's Stays incident key rotation, `STRIPE_SECRET_KEY` was left pointing at a DIFFERENT Stripe environment than `STRIPE_WEBHOOK_SECRET`. Events passed signature verification but `subscriptions.retrieve()` failed → the webhook 500'd on EVERY billing event since the incident, silently. The app's real Stripe env is the SANDBOX holding `cus_UfOVHv9hahCr78` + the Arrivly product's three prices. Fix: Udy set `STRIPE_SECRET_KEY` to that sandbox's secret key (webhook secret + 3 price IDs already correct); redeployed; webhook 500→200. Pre-live, no real subscribers, so only test hosts were affected — no real billing harmed.
+- **#6 billing pipeline — VERIFIED COMPLETE.** Inbound (test clock): Scenario 6 (renewal → silence) PASS; Scenario 5 (payment fail → grace) PASS. Outbound (host Roy): upgrade via `change-plan` ("upgraded" notice) PASS; cancel + resume via `cancel-subscription` PASS. Subscribe-from-zero: new host completed Stripe Checkout → trialing sub + "started" notice PASS.
+- **Webhook isolation metadata is CASE-SENSITIVE:** subscription `metadata.app` must be exactly lowercase `arrivly` (`Arrivly` is silently ignored — 200, no update). Test/clock subs also need `metadata.host_id`. Clock artefacts: `cus_UkzljDJks6qaGC` / `sub_1TlTpFFgkuKMBYAu7yJaesdN`.
+- **Landing dynamic pricing** — `9e2cff8`: new `api/public-pricing.ts` (anon GET, service-role, returns ONLY `{ trialDays, fromPriceEuros, currency }`; fail-soft to `{14,10,'eur'}`; per-instance IP rate limiter 60/60s; edge-cached). `src/App.tsx` `LandingContent` fetches it on mount (DB-matching defaults → no flash); copy now "Start free — {trialDays} days", "From €{fromPriceEuros}/month", "{trialDays} days free · No payment needed to start · Cancel anytime". Dead `config.ts` fields `trialDays` + `pricePerPropertyMonthly` removed. code-reviewer + security-auditor PASS. `4e09d03`: shortened public-pricing edge cache to `s-maxage=60, stale-while-revalidate=120` so admin trial/price edits show within ~1 min.
+- **Test values reverted to defaults** after testing the dynamic flow: `app_settings.trial_days` = 14, `plans` tier 1 = €10. Tiers 2–4 untouched.
+
 ---
 
 ## Phase C — Communication (COMPLETE ✓)
@@ -301,6 +316,8 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - `countUnread` in `Layout.tsx` called directly from event listeners with no mounted guard at call site — safe because `mounted` flag is closed over and listeners are removed on cleanup before it matters; no real bug (W3, `c294bda`).
 - `BookingManager.tsx` `arrivly:messages-read` handler calls `loadBookings()` without a cancellation signal — tiny stale-overwrite race on rapid apartment switching; fold into next BookingManager change.
 - **Guide: upsert fires even on empty parse result** — a 0-place guide silently overwrites a previously good guide. Gate the upsert on `placeCount > 0` (see next steps #7).
+- `api/public-pricing.ts` cache is `s-maxage=60` — admin trial/price edits show on the landing within ~1 min.
+- Dashboard "City guide" completeness tick is still hardcoded `check(false)` and the "QR scans" tile is still a placeholder — both pending in #7 Prompt B.
 
 ### Tracked security follow-ups (S19; not blockers)
 - **`guests` still readable by ALL authenticated hosts** (`guests_host_read` authenticated `USING true`). Host-scoping pairs with moving guest creation server-side first — `BookingManager.addBooking` does insert-then-read-back-id + global first_name dedup, which a strict host-scoped read policy would break.
@@ -395,6 +412,18 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 
 - **Guest booking-state is resolved server-side via `api/guest-state.ts` (S19), never by reading `bookings`/`guests` from the client.** The anon `bookings_guest_read` policy is gone. GuestPage calls `/api/guest-state` (plain fetch — guests have no auth session) in two stages: token path, then a KEYED date path gated by the per-apartment `apartment_qr_secrets.qr_secret` carried in the QR URL as `?key=`. An apt-only URL with no token and no valid key resolves to the neutral page by design. Every non-active outcome returns an identical flat neutral body so the endpoint leaks nothing.
 
+- **Stripe secret key and webhook secret MUST point at the same Stripe environment.** A mismatch passes `constructEvent()` signature verification but fails `subscriptions.retrieve()` → the webhook 500s on every event and the DB never updates (symptom: 500 "subscription retrieve error", not 400). The real env is the sandbox with `cus_UfOVHv9hahCr78` + the Arrivly product's 3 prices. After any Stripe key change, replay one subscription event and confirm webhook 200 AND host-row update.
+
+- **`plans.price_cents` is DISPLAY-ONLY; it does NOT control what Stripe charges.** The charged amount comes from the Stripe Price objects in env `STRIPE_PRICE_TIER_1/2/3` (`api/_lib/stripe.ts`). Editing the DB price only changes what the landing + plan cards SHOW. To change a price for real: (1) create a NEW Stripe Price (immutable), (2) update `STRIPE_PRICE_TIER_n` in Vercel + redeploy, (3) update `plans.price_cents` for display — Stripe first/together. Existing subscribers stay on the old price unless migrated. `app_settings.trial_days` needs NO Stripe action (trial applied per-sub at creation via `trial_end`; new signups only). Tier 4 has no Stripe price env; `create-subscription` returns `booking_tier_unavailable`.
+
+- **Stripe `metadata.app` check is case-sensitive.** The webhook ignores any subscription whose `metadata.app !== 'arrivly'` (exact lowercase) with a silent 200. Test/clock subs need `metadata.app = arrivly` AND `metadata.host_id = <uuid>`.
+
+- **Signup does NOT create a Stripe subscription.** `Signup.tsx` only fires `/send-welcome`. A subscription exists only after a completed Checkout (`create-subscription`). Subscribing during the trial carries the remaining trial via `trial_end` → status stays `'trial'` (no charge) until the trial date, then converts to active.
+
+- **Logged-out landing reads DB values via a service-role endpoint, not RLS.** anon can't read `plans` or `app_settings`; expose only marketing-safe fields through `api/public-pricing.ts` — same pattern as `guest-availability`.
+
+- **Vercel strips `s-maxage`/`stale-while-revalidate` from the browser-facing `Cache-Control`** (edge honours them; client sees only `public`). The authenticated Vercel MCP fetch ALSO bypasses the CDN cache (always MISS) — verify caching from a real browser. A new deploy purges the edge cache. With `s-maxage=60`, admin edits surface on the landing within ~1 min.
+
 ### Greeting system (S18)
 - The guest home-tab greeting is 4 layers: (1) time-aware salutation (getDayPart/getTimeSalutation from the guest's DEVICE clock), (2) neighbourhood blurb from `apartments.greeting_blurb` or a static fallback, (3) live weather (now fetched via the apartment's `lat,lng` — more reliable than the old neighbourhood/city text lookup), (4) a dynamic time-of-day suggestion from `/api/daily-greeting`. Signed in the host's brand name.
 - `api/_lib/greeting.ts` = generateGreetingBlurb (Gemini → apartments.greeting_blurb; called best-effort after guide generation, so refreshing the guide refreshes the blurb) + generateDailySuggestion (pure prose; the endpoint handles caching). Both follow guide.ts conventions: gemini-2.5-flash, thinkingConfig.thinkingBudget 0, withRetry, AbortController, AIza/key= error scrubbing.
@@ -486,13 +515,13 @@ Pre-live work, in priority order (Udy-set, S16; updated S17):
 3. ~~**Multi-property add + plan-cap enforcement.**~~ **DONE S18** (`29857da` caps UI, `a95b3d6` deferred creation, `679c4d3` + `3dbf724` warm greeting). DB trigger `enforce_property_cap` is the authoritative guard; dashboard add card gated with at-cap upgrade nudge + "X of Y used"; apartment creation deferred to first save. (Warm time/weather-aware guest greeting shipped alongside.)
 4. ~~**Live/Draft publish toggle.**~~ **DONE S19** (`6fc9a89`) — dashboard property card Publish/Unpublish button writing `apartments.is_visible` (host-RLS-scoped, no host_id from client); badge relabelled Live/Draft; new properties stay Live by default (no migration). Unpublished properties now show a branded "temporarily unavailable" guest screen via `api/guest-availability.ts` (`47a1335`) instead of the booking-oriented neutral page.
 5. ~~**Guest-data security close-out.**~~ **DONE S19** — `api/guest-state.ts` service-role resolver + keyed QR URLs; `bookings_guest_read` anon policy dropped; GuestPage no longer reads bookings/guests directly. Verified anon reads 0 bookings + 0 guests. (Residual: `guests` still readable by all authenticated hosts — see Tracked security follow-ups.)
-6. **Two billing edge tests.** Scenario 5 (payment failure → grace), Scenario 6 (renewal → silence). Verification only.
-7. **Cleanups.** Landing copy still says "30 days / €19 / no card" (wrong — now 14 days, card required, from €10); dashboard "QR scans" and city-guide completeness ticks are hardcoded placeholders.
+6. ~~**Two billing edge tests + pipeline verification.**~~ **DONE S19 cont.** — Scenario 5 (payment fail → grace) + Scenario 6 (renewal → silence) via test clock; plus host-initiated upgrade/cancel/resume and subscribe-from-zero. Also fixed a Stripe key/env mismatch that had silently 500'd the webhook on every event since the Anna's Stays incident (pre-live; only test hosts affected).
+7. **Cleanups (partly done).** Landing copy DONE S19 cont. — DB-driven (14-day trial / "From €10" / "No payment needed to start") via `api/public-pricing.ts`, edge cache 60s. REMAINING (Prompt B, code-reviewer only): dashboard "QR scans" tile → remove (grid-cols-3→2); "City guide" completeness tick → wire to `guide_recommendations` existence (currently hardcoded `check(false)`); Layout "Add card" → "Manage plan" when the host has a `stripe_subscription_id`.
 8. ~~**Remove the 2-day change-reminder cron + drop `hosts.change_reminder_sent_at`.**~~ **DONE S19** — cron already absent from the codebase (zero references found); column dropped via migration `drop_unused_change_reminder_sent_at` (was all-NULL, no code or DB dependencies).
 
 **Shipped S19 (this session):** greeting-blurb fix (`8a5dc35` — opens by naming the place; bans the "Stepping out," / participial opener); Live/Draft publish toggle (`6fc9a89`); branded "temporarily unavailable" guest screen for unpublished properties (`47a1335`); dropped unused `hosts.change_reminder_sent_at` (#8 done).
 
-**Immediate next:** #6 billing edge tests 5+6 (Scenario 5 payment-failure → grace; Scenario 6 renewal → silence; verification only), then the remaining #7 cleanups (landing-page copy "30 days / €19 / no card" → 14 days / card required / from €10; dashboard "QR scans" + city-guide completeness ticks are still hardcoded placeholders).
+**Immediate next:** the remaining #7 dashboard/Layout cleanups (Prompt B — QR-scans tile removal, City-guide tick wired to `guide_recommendations`, "Add card"→"Manage plan" when subscribed; code-reviewer only). Then **F** → **G** → **H** → **I** → **flip Stripe to live (LAST)**.
 
 Then: **F** (Tier-4 full booking) → **G** (pre-launch hardening) → **H** (UI/UX polish) → **I** (monetisation iteration) → **Flip Stripe to live (LAST).**
 
