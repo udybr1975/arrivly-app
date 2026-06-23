@@ -10,6 +10,7 @@ interface ApartmentQR {
   name: string
   neighborhood: string | null
   guide_refreshed_at: string | null
+  qr_secret: string | null
 }
 
 interface PropertyQRCardProps {
@@ -20,8 +21,12 @@ interface PropertyQRCardProps {
   refreshError: string | null
 }
 
-function guestUrl(aptId: string) {
-  return `${ARRIVLY_CONFIG.appUrl}/guest?apt=${aptId}`
+function guestUrl(aptId: string, secret: string | null) {
+  // Keyed URL unlocks the tokenless date-lookup in /api/guest-state. If the
+  // secret is missing, fall back to the keyless URL so the card still renders.
+  return secret
+    ? `${ARRIVLY_CONFIG.appUrl}/guest?apt=${aptId}&key=${secret}`
+    : `${ARRIVLY_CONFIG.appUrl}/guest?apt=${aptId}`
 }
 
 function slugify(s: string) {
@@ -30,7 +35,7 @@ function slugify(s: string) {
 
 function PropertyQRCard({ apt, onRefresh, refreshing, refreshingAll, refreshError }: PropertyQRCardProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const url = guestUrl(apt.id)
+  const url = guestUrl(apt.id, apt.qr_secret)
 
   useEffect(() => {
     if (!canvasRef.current) return
@@ -131,12 +136,23 @@ export default function QRCodePanel() {
         .select('id, name, neighborhood, guide_recommendations(generated_at)')
         .eq('host_id', user.id)
         .order('created_at')
-      setApts(((data ?? []) as RawApt[]).map(a => ({
+      const mapped: ApartmentQR[] = ((data ?? []) as RawApt[]).map(a => ({
         id: a.id,
         name: a.name,
         neighborhood: a.neighborhood,
         guide_refreshed_at: a.guide_recommendations?.[0]?.generated_at ?? null,
-      })))
+        qr_secret: null,
+      }))
+
+      // Fetch per-apartment QR secrets (host-authenticated, own apartments only)
+      // and merge each onto its apartment. Best-effort: if it fails, cards render
+      // with the keyless fallback URL rather than crashing.
+      try {
+        const { secrets } = await api.post<{ secrets: Record<string, string> }>('/qr-secrets', {})
+        for (const a of mapped) a.qr_secret = secrets[a.id] ?? null
+      } catch { /* keep keyless fallback URLs */ }
+
+      setApts(mapped)
       setLoading(false)
     }
     load()
