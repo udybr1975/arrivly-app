@@ -31,6 +31,7 @@ export default function Dashboard() {
   const [bookingCountByApt, setBookingCountByApt] = useState<Map<string, number>>(new Map())
   const [loading, setLoading] = useState(true)
   const [showWelcome, setShowWelcome] = useState(false)
+  const [togglingId, setTogglingId] = useState<string | null>(null)
   const welcomeRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -125,6 +126,29 @@ export default function Dashboard() {
 
   function createProperty() {
     navigate('/dashboard/property/new')
+  }
+
+  async function handleToggleVisibility(apt: Apartment) {
+    const makeVisible = !apt.is_visible
+    if (!makeVisible) {
+      const ok = window.confirm(
+        'Unpublish this property?\n\nThis hides your guest page from anyone who scans the QR code, including any guest currently staying. You can publish it again at any time.'
+      )
+      if (!ok) return
+    }
+    setTogglingId(apt.id)
+    // optimistic update
+    setList(prev => prev.map(a => (a.id === apt.id ? { ...a, is_visible: makeVisible } : a)))
+    const { error } = await supabase
+      .from('apartments')
+      .update({ is_visible: makeVisible })
+      .eq('id', apt.id)
+    setTogglingId(null)
+    if (error) {
+      // revert on failure
+      setList(prev => prev.map(a => (a.id === apt.id ? { ...a, is_visible: !makeVisible } : a)))
+      window.alert("Couldn't update the property's status — please try again.")
+    }
   }
 
   if (loading) return <Loader />
@@ -259,7 +283,7 @@ export default function Dashboard() {
                         ? 'bg-[#e4f0da] text-[#2a5c0a]'
                         : 'bg-[#f0ede6] text-[#888]'
                     }`}>
-                      {apt.is_visible ? 'Active' : 'Draft'}
+                      {apt.is_visible ? 'Live' : 'Draft'}
                     </span>
                   </div>
 
@@ -301,6 +325,13 @@ export default function Dashboard() {
                     >
                       ✏️ Edit property
                     </Link>
+                    <button
+                      onClick={() => void handleToggleVisibility(apt)}
+                      disabled={togglingId === apt.id}
+                      className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1.5 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      {togglingId === apt.id ? 'Saving…' : apt.is_visible ? 'Unpublish' : 'Publish'}
+                    </button>
                   </div>
                 </div>
               )
