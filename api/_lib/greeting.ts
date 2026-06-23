@@ -39,12 +39,14 @@ export async function generateGreetingBlurb(
 
   const prompt =
     `A guest is arriving at a short-term rental in ${locationParts.join(', ')}. ` +
-    `Write ONE warm, welcoming paragraph (2–3 sentences, around 45 words) that captures ` +
-    `the character of this exact neighbourhood for an arriving guest — what the area is known for, ` +
-    `its feel, what is nearby. Warm, first-person-host tone, present tense. ` +
-    `Do not start with a greeting word ("Dear", "Welcome", "Hello"). ` +
-    `No weather, no signature, no lists, no markdown, no emojis — ` +
-    `just the descriptive paragraph. Write in English.`
+    `Write ONE warm paragraph (2–3 sentences, around 45 words) that welcomes them to this exact ` +
+    `place by capturing its character — what the area is known for, its feel, what is nearby. ` +
+    `Begin by naming the neighbourhood or city itself (for example, "El Born is…" or ` +
+    `"Barcelona's Gothic Quarter…"). Do NOT open with a participle, gerund, or "-ing" phrase — ` +
+    `specifically never begin with words like "Stepping", "Nestled", "Tucked", "Wandering", or "Strolling". ` +
+    `Warm, first-person-host tone, present tense. No greeting words ("Dear", "Welcome", "Hello"). ` +
+    `No weather, no signature, no lists, no markdown, no emojis — just the descriptive paragraph. ` +
+    `Write in English.`
 
   const ai = new GoogleGenAI({ apiKey })
 
