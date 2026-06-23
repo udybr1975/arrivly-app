@@ -1,7 +1,7 @@
 # Arrivly — CLAUDE.md
 
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD:** 3dbf724 (Session 18, Jun 11 2026)
+> **Current HEAD:** 8fa50ac (Session 19, Jun 23 2026 — security hardening Steps 1–3). Phase 5 of Step 3 was a DB-only migration (no commit).
 
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
@@ -39,6 +39,7 @@ NOTE: hosts.change_reminder_sent_at (timestamptz, added S16, parked) is UNUSED a
 - **apartments** — id, host_id, name, country, city, neighborhood, street, street_number, floor_note, lat, lng, max_guests, description, images[], is_visible, accent_color, ical_urls, hero_image_url, city_image_url, city_image_credit, greeting_blurb (text nullable — Gemini-generated neighbourhood-character paragraph; generated best-effort whenever the guide runs; null → guest page uses a static fallback line), created_at
 - **daily_greetings** — id, apartment_id (FK cascade), local_date (date), day_part (text check morning|afternoon|evening|night), suggestion (text), weather_summary (text nullable), generated_at. UNIQUE (apartment_id, local_date, day_part). RLS mirrors guide_recommendations (guests read; host manages own; service-role writes). Cache for the dynamic time-of-day greeting suggestion — at most 4 rows per apartment per day; first verified guest of a day-part fills it, the rest read it.
 - **apartment_details** — id, apartment_id, category, content, is_private
+- **apartment_qr_secrets** — apartment_id (PK, FK→apartments cascade), qr_secret (text, unique, default gen_random_uuid()::text), created_at. RLS ON with **ZERO policies** (service-role-only — never readable by anon/authenticated). The per-apartment secret embedded in the guest QR URL as `?key=` to unlock the tokenless date-lookup in `/api/guest-state`. 11/11 apartments backfilled (S19). New apartments auto-provision a secret via an AFTER-INSERT trigger. Read by hosts only through `api/qr-secrets.ts` (host_id-scoped). Added S19.
 - **host_picks** — id, apartment_id, name, category, address, lat, lng, note, display_order, created_at
 - **bookings** — id, apartment_id, guest_id, check_in, check_out, status, reference_number, source, created_at
 - **guests** — id, first_name, last_name, email, created_at
@@ -51,13 +52,14 @@ NOTE: hosts.change_reminder_sent_at (timestamptz, added S16, parked) is UNUSED a
 
 ### DB functions
 - **`guest_host_card(p_apartment_id uuid)`** — SECURITY DEFINER, granted to anon+authenticated. Returns setof (brand_name, logo_url, whatsapp, subscription_status) for visible apartments. Used by GuestPage to read host branding without requiring anon SELECT on the hosts table. Added S13.
+- **`create_apartment_qr_secret()`** — AFTER-INSERT trigger `trg_apartment_qr_secret` on apartments; SECURITY DEFINER, `search_path=public`; auto-provisions an `apartment_qr_secrets` row (random `qr_secret`) for each new apartment. EXECUTE on the function is revoked from public/anon/authenticated. Added S19.
 
 ### Critical DB facts
 - `apartments.accent_color` — NOT brand_color (common mistake, causes silent save failure)
 - `apartments.ical_urls` — single text column, one URL per line, no limit (replaces old airbnb_ical_url)
 - `bookings.reference_number` — is the guest token, used in QR URL
 - `guide_recommendations` — always query with `.maybeSingle()` never `.single()`
-- **`bookings_guest_read` RLS policy** — scoped to `TO anon` (was `TO public`) since migration `scope_bookings_guest_read_to_anon` (S11). anon key is public so anon can still read all booking rows; a service-role endpoint for guest booking-state lookup + dropping this policy is the remaining close-out item before go-live.
+- **`bookings_guest_read` RLS policy — DROPPED (S19).** Migration `close_guest_disclosure_chain_lockdown` removed the anon read policy on `bookings`; guests no longer read `bookings`/`guests` directly. Booking state is now resolved server-side via `api/guest-state.ts` (service-role). VERIFIED: anon role reads 0 bookings + 0 guests; authenticated host still reads own bookings + guest list. `guests_host_read` was replaced with `USING(true)` scoped to role `authenticated` only (guests still readable by ALL authenticated hosts — see Tracked security follow-ups).
 - RLS on `host_picks` joins through `apartments.host_id` — correct, verified
 - `push_subscriptions` has a UNIQUE index on `endpoint` (`push_subscriptions_endpoint_key`) — subscriptions upsert with `onConflict: 'endpoint'`
 - `push_subscriptions` RLS verified (2026-05-31): single ALL policy `push_host_all`
@@ -111,8 +113,8 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - **Casa Marco** — `d81e4e89-385a-4886-b461-ba952c78e7f8`, El Born Barcelona, token `ARR-BCN777` (booking 1–5 Jun 2026 ended → thank-you state, guest "Marco").
 - **Maison Lumiere** — `d7f47672-fde5-4da1-91ae-0f9f774732fd`, Le Marais Paris, token `ARR-PAR777` (booking 3–12 Jun 2026 ongoing → active page, guest "Sophie"; has WiFi + rules + private check-in door code 4521).
 
-**Host: Udyni** (udy.baryosef@jchelsinki.fi) — owns:
-- **Penthouse in the sky** — id: `9b03a763-3ca6-4d1f-946c-d4e1f977d614`, is_visible=true; test booking `ARR-PHTEST`, guest Liam, Jun 8–12 2026 (active); extras + guide + polished rules present.
+**Host: Udyni** (udy.baryosef@jchelsinki.fi) — host id `11b5b459…` (billing-test host). Owns:
+- **Penthouse in the sky** — id: `9b03a763-3ca6-4d1f-946c-d4e1f977d614`, is_visible=true; extras + guide + polished rules present. Current test booking `ARR-CHAT01` (2026-06-21→2026-06-25, active, guest_id null). (Earlier `ARR-PHTEST`/3 bookings deleted in S17.)
 
 **Host: Anna** (anna.humalainen@gmail.com) — new test host added S11. Owns:
 - **Anna Stays** — id: `eab1e358-…`, Vantaa/Hakunila, is_visible=true.
@@ -247,6 +249,18 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - Test hosts Roy + Anna deleted; Anna (anna.humalainen@gmail.com) re-registered through the new flow → host `b4f76db4`, apt "Anna's stays" `cf5a643f` (Arrivly project; distinct from the protected "Anna's Stays").
 - **DECISION:** finish Phase I before flipping Stripe to live.
 
+**S19 (2026-06-23):** Security hardening — every metered external API moved to no-card keys; geocoding migrated off Google; the guest-data disclosure chain closed. HEAD `8fa50ac`.
+
+- **Step 1 — AI on no-card keys.** `GEMINI_API_KEY` is now an Arrivly-only no-card AI Studio key (replaced the dead shared key); `GEMINI_API_KEY_GUIDES` is a second no-card project used for guides only. `api/_lib/guide.ts` reads `GEMINI_API_KEY_GUIDES || GEMINI_API_KEY` (the only endpoint that prefers the guides key).
+- **Step 2 — geocoding → LocationIQ** (`0d31967`, attribution `98ee376`). `LOCATIONIQ_API_KEY` set in Vercel (production + preview); LocationIQ free tier = no card, ~5,000/day, 2 req/sec, EU endpoint `eu1.locationiq.com/v1/search`, permits permanent storage of results. `api/_lib/geo.ts` rewritten for LocationIQ EU forward geocoding: parses the JSON array's lat/lon STRINGS (`"lon"` not `"lng"`) with `Number.isFinite` guards; silent/never-throw (key-in-URL never logged); module-level rate gate spacing request START times ≥550ms (~1.8 req/s) so concurrent callers (guide 5×, host-picks up to 20×) stay under the 2/s cap with NO caller changes. `api/geocode.ts` now delegates to `geocodeAddress` from `./_lib/geo.js` (inline Google block + duplicate interface removed; Bearer auth + 250-char cap unchanged). GuestPage Explore tab shows an ungated attribution line "Location data © OpenStreetMap contributors · Geocoding by LocationIQ" (links to openstreetmap.org/copyright and locationiq.com). `GOOGLE_GEOCODING_API_KEY` REMOVED from Arrivly Vercel (production + preview); the actual Google Cloud key was left alone (possibly shared with Anna's Stays — any action on it is Anna's-Stays-side only). Result: every metered external API Arrivly uses is now no-card; no keys shared with Anna's Stays.
+- **Step 3 — guest-data disclosure chain CLOSED** (`caf1c1e`, `eb7f6d7`, `8fa50ac` + DB-only Phase 5). Original chain: anon RLS `bookings_guest_read` (USING true) let anyone read every `reference_number`; `resolveGuestAccess` treated "valid token = in-dates confirmed booking" as verified; verified unlocked private door/WiFi codes (`guest-details`) + chatbot context. Fixed build-then-lock in 5 phases:
+  - **Phase 1** — `apartment_qr_secrets` table + auto-provision trigger (see schema/DB functions above); 11/11 apartments backfilled.
+  - **Phase 2** — `api/guest-state.ts` (NEW, service-role GET): returns `{ state: active|thankyou|neutral, token, guestName }`. Token path first (reference_number+apt+status confirmed/completed; `' 11:00:00'` Helsinki checkout cutoff → thankyou; inclusive in-dates → active), then KEYED date path (only when `?key` matches that apartment's `apartment_qr_secrets.qr_secret` → status=confirmed, check_in≤today<check_out, ref not null, order source desc). Flat neutral on every non-active outcome; wrong/missing key reveals nothing; inputs validated; best-effort per-instance IP rate limiter (30/60s → 429); truncated secret-free logs.
+  - **Phase 3** — `api/qr-secrets.ts` (NEW, host-auth POST): Bearer→anon getUser→401; service-role client only after auth; resolves apartments by `host_id=user.id`; returns `{ secrets: { [apartment_id]: qr_secret } }` for the caller's OWN apartments only (never trusts client-supplied ids). `QRCodePanel.tsx`: guest URL is now `{appUrl}/guest?apt=ID&key=SECRET` (keyless fallback if a secret is missing); secrets fetched via `/api/qr-secrets`.
+  - **Phase 4** — `GuestPage.tsx` `fetchData` resolves state via `/api/guest-state` (plain fetch) in two stages — Stage A token path, Stage B keyed date path (reads new `?key` param; previous-guest protection preserved). NO direct bookings/guests reads remain; apartments / apartment_details(public) / guest_host_card RPC / expired check / guest-details private fetch / weather / PWA unchanged.
+  - **Phase 5 (DB-only)** — migration `close_guest_disclosure_chain_lockdown`: dropped `bookings_guest_read` (anon); replaced `guests_host_read` with `USING(true)` scoped to role `authenticated` only. VERIFIED: anon reads 0 bookings + 0 guests; authenticated host still reads own bookings + guest list; security advisor shows no new issues.
+  - **BEHAVIOUR CHANGE (intended):** a guest URL with apt only / no token / wrong key → neutral page. Keyed QR URLs carry the key; token URLs + localStorage-returning guests still work.
+
 ---
 
 ## Phase C — Communication (COMPLETE ✓)
@@ -288,6 +302,13 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - `countUnread` in `Layout.tsx` called directly from event listeners with no mounted guard at call site — safe because `mounted` flag is closed over and listeners are removed on cleanup before it matters; no real bug (W3, `c294bda`).
 - `BookingManager.tsx` `arrivly:messages-read` handler calls `loadBookings()` without a cancellation signal — tiny stale-overwrite race on rapid apartment switching; fold into next BookingManager change.
 - **Guide: upsert fires even on empty parse result** — a 0-place guide silently overwrites a previously good guide. Gate the upsert on `placeCount > 0` (see next steps #7).
+
+### Tracked security follow-ups (S19; not blockers)
+- **`guests` still readable by ALL authenticated hosts** (`guests_host_read` authenticated `USING true`). Host-scoping pairs with moving guest creation server-side first — `BookingManager.addBooking` does insert-then-read-back-id + global first_name dedup, which a strict host-scoped read policy would break.
+- **`guests_insert_open` still allows anon INSERT** (nothing anon-inserts now) → restrict to `authenticated` (quick win).
+- Pre-existing advisor items: anon/authenticated-executable SECURITY DEFINER fns (`auth_owns_apartment`, `enforce_property_cap`, `guest_host_card` [intentional], `handle_new_user`); `function_search_path_mutable` on `set_updated_at` + `auth_owns_apartment`; leaked-password protection disabled.
+- **`api/guest-state.ts` rate limiter is per-instance best-effort** (serverless memory not shared) — a shared-store / Vercel-firewall limiter is a later option.
+- **QR key rotation:** a leaked per-apartment key is revocable only by rotating `apartment_qr_secrets.qr_secret`, which invalidates every printed QR for that apartment (no per-guest revocation).
 
 ---
 
@@ -370,6 +391,10 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - **Guests have no auth session — `src/lib/api.ts` attaches the logged-in Bearer.** Guest-page calls to token-gated endpoints (e.g. `api/guest-details`, `api/guest-message`) must use plain `fetch()`, NOT `api.get()` / `api.post()`. Using `api.get` from a guest page would send a null/empty Bearer header — the endpoint would behave differently from its intended unauthenticated path.
 
 - **Anything the guest page must show from `is_private=true` rows needs a server endpoint with the booking token as the credential.** Anon RLS on `apartment_details` blocks private rows at the DB layer (`apt_details_guest_read USING (is_private = false)`), so client-side filtering after an anon query can never surface them — the rows simply aren't in the HTTP response. The only safe pattern is a token-verified server endpoint (using `resolveGuestAccess`) that calls the service-role client and returns only the private rows for the verified booking.
+
+- **LocationIQ geocoding (S19).** `api/_lib/geo.ts` uses the EU endpoint `eu1.locationiq.com/v1/search?key=…&q=…&format=json&limit=1`. The response is a JSON ARRAY; lat/lon come back as STRINGS and the longitude field is `"lon"` (NOT `"lng"`) — parse with `Number()` + `Number.isFinite` guards on both. The key sits in the URL, so the function must stay SILENT (no logging on any path). Free tier ≈ 2 req/sec; the module-level rate gate spaces request START times ≥550ms so concurrent fan-out callers (guide, host-picks) throttle automatically with no caller changes. Best-effort, never throws, returns null on every failure.
+
+- **Guest booking-state is resolved server-side via `api/guest-state.ts` (S19), never by reading `bookings`/`guests` from the client.** The anon `bookings_guest_read` policy is gone. GuestPage calls `/api/guest-state` (plain fetch — guests have no auth session) in two stages: token path, then a KEYED date path gated by the per-apartment `apartment_qr_secrets.qr_secret` carried in the QR URL as `?key=`. An apt-only URL with no token and no valid key resolves to the neutral page by design. Every non-active outcome returns an identical flat neutral body so the endpoint leaks nothing.
 
 ### Greeting system (S18)
 - The guest home-tab greeting is 4 layers: (1) time-aware salutation (getDayPart/getTimeSalutation from the guest's DEVICE clock), (2) neighbourhood blurb from `apartments.greeting_blurb` or a static fallback, (3) live weather (now fetched via the apartment's `lat,lng` — more reliable than the old neighbourhood/city text lookup), (4) a dynamic time-of-day suggestion from `/api/daily-greeting`. Signed in the host's brand name.
@@ -461,9 +486,13 @@ Pre-live work, in priority order (Udy-set, S16; updated S17):
 2. ~~**Admin "View as" guest page broken.**~~ **DONE S17** (`06b3168`) — fixed via same preview mechanism; SuperAdmin "Preview guest page ↗" link added.
 3. ~~**Multi-property add + plan-cap enforcement.**~~ **DONE S18** (`29857da` caps UI, `a95b3d6` deferred creation, `679c4d3` + `3dbf724` warm greeting). DB trigger `enforce_property_cap` is the authoritative guard; dashboard add card gated with at-cap upgrade nudge + "X of Y used"; apartment creation deferred to first save. (Warm time/weather-aware guest greeting shipped alongside.)
 4. **Live/Draft publish toggle.** No publish/unpublish UI; new properties created visible; drafts can only be flipped in the DB.
-5. **Guest-data security close-out.** Anon key can read every host's bookings/guests rows. Move guest booking-state lookup to a service-role endpoint and drop the `bookings_guest_read` anon policy. Before real guest data lands.
+5. ~~**Guest-data security close-out.**~~ **DONE S19** — `api/guest-state.ts` service-role resolver + keyed QR URLs; `bookings_guest_read` anon policy dropped; GuestPage no longer reads bookings/guests directly. Verified anon reads 0 bookings + 0 guests. (Residual: `guests` still readable by all authenticated hosts — see Tracked security follow-ups.)
 6. **Two billing edge tests.** Scenario 5 (payment failure → grace), Scenario 6 (renewal → silence). Verification only.
 7. **Cleanups.** Landing copy still says "30 days / €19 / no card" (wrong — now 14 days, card required, from €10); dashboard "QR scans" and city-guide completeness ticks are hardcoded placeholders.
 8. **REMOVE the 2-day change-reminder cron completely** + drop the unused `hosts.change_reminder_sent_at` column.
 
+**Immediate next (S19):** (1) **greeting-blurb fix** — `api/_lib/greeting.ts` `generateGreetingBlurb` currently opens with "Stepping out," → change the prompt to open with a warm welcome to the city/place/apartment. (2) **Pre-live #4** Live/Draft publish toggle. Then #6 billing edge tests 5+6; #7 cleanups (incl. remove the 2-day change-reminder cron + drop `hosts.change_reminder_sent_at`).
+
 Then: **F** (Tier-4 full booking) → **G** (pre-launch hardening) → **H** (UI/UX polish) → **I** (monetisation iteration) → **Flip Stripe to live (LAST).**
+
+> **Groq deferred to Phase G** (capacity/redundancy, NOT security; trigger = observed Gemini free-tier 429s in production). Non-grounded endpoints that could move: `rewrite-rules`, `bulk-import`, `greeting`, `host-picks`. Grounded endpoints stay on Gemini: `guest-chat`, `city-events`.
