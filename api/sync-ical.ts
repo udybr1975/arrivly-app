@@ -8,6 +8,21 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
+// Best-effort, per-instance rate limiter (mirrors public-pricing.ts) — keyed by the
+// authenticated userId, not IP, since this endpoint is Bearer-gated and host-scoped.
+const RL_MAX = 5
+const RL_WINDOW_MS = 60_000
+const rlHits = new Map<string, { count: number; windowStart: number }>()
+function rateLimited(key: string, now: number): boolean {
+  const entry = rlHits.get(key)
+  if (!entry || now - entry.windowStart >= RL_WINDOW_MS) {
+    rlHits.set(key, { count: 1, windowStart: now })
+    return false
+  }
+  entry.count += 1
+  return entry.count > RL_MAX
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -22,6 +37,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { data: authData, error: authError } = await authClient.auth.getUser(token)
   if (authError || !authData.user) return res.status(401).json({ error: 'Unauthorized' })
   const userId = authData.user.id
+
+  if (rateLimited(userId, Date.now())) return res.status(429).json({ error: 'rate_limited' })
 
   if (!req.body) return res.status(400).json({ error: 'Request body required' })
 

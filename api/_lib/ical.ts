@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { safeFetchIcal } from './safe-fetch.js'
 
 export interface SyncResult {
   imported: number
@@ -49,21 +50,18 @@ export async function syncApartmentBookings(
   const urls = (apartment.ical_urls ?? '')
     .split('\n')
     .map((u) => u.trim())
-    .filter((u) => u.startsWith('http'))
+    .filter((u) => u.startsWith('https://'))
   if (urls.length === 0) return { imported, skipped, errors }
 
   for (const url of urls) {
     const source = detectSource(url)
     try {
-      const response = await fetch(url, {
-        headers: { 'User-Agent': 'Arrivly/1.0 iCal Sync' },
-        signal: AbortSignal.timeout(10000),
-      })
+      const response = await safeFetchIcal(url)
       if (!response.ok) {
         errors.push(`${source}: HTTP ${response.status}`)
         continue
       }
-      const text = await response.text()
+      const text = response.text
       const events = parseIcal(text)
 
       for (const event of events) {
@@ -90,7 +88,10 @@ export async function syncApartmentBookings(
         if (insertErr) { errors.push(`${source}: insert failed`) } else { imported++ }
       }
     } catch {
-      errors.push(`${source}: fetch failed`)
+      // safeFetchIcal threw (blocked host, timeout, oversize, non-https, redirect cap,
+      // transport error). Generic host-facing string only — no URL, no blocked-vs-network
+      // distinction (no probing signal).
+      errors.push(`${source}: couldn't be used (check it's a public https calendar link)`)
     }
   }
 
