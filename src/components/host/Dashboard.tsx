@@ -29,6 +29,7 @@ export default function Dashboard() {
   const [bookingTotal, setBookingTotal] = useState(0)
   const [completenessByApt, setCompletenessByApt] = useState<Map<string, Set<string>>>(new Map())
   const [bookingCountByApt, setBookingCountByApt] = useState<Map<string, number>>(new Map())
+  const [guideByApt, setGuideByApt] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [showWelcome, setShowWelcome] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
@@ -71,9 +72,10 @@ export default function Dashboard() {
 
       if (aList.length > 0) {
         const aptIds = aList.map((a: Apartment) => a.id)
-        const [{ data: dets }, { data: bk }] = await Promise.all([
+        const [{ data: dets }, { data: bk }, { data: guides }] = await Promise.all([
           supabase.from('apartment_details').select('apartment_id, category').in('apartment_id', aptIds),
           supabase.from('bookings').select('apartment_id').in('apartment_id', aptIds),
+          supabase.from('guide_recommendations').select('apartment_id').in('apartment_id', aptIds),
         ])
 
         const cbMap = new Map<string, Set<string>>()
@@ -89,6 +91,8 @@ export default function Dashboard() {
         }
         setBookingCountByApt(bkMap)
         setBookingTotal(bk?.length ?? 0)
+
+        setGuideByApt(new Set(((guides ?? []) as Array<{ apartment_id: string }>).map(g => g.apartment_id)))
       }
 
       setLoading(false)
@@ -252,11 +256,10 @@ export default function Dashboard() {
           /* ── Normal state (≥1 apartment) ── */
           <>
             {/* Metrics */}
-            <div className="grid grid-cols-3 gap-2.5 mb-5">
+            <div className="grid grid-cols-2 gap-2.5 mb-5">
               {[
                 { label: 'Properties', value: String(list.length) },
                 { label: 'Bookings', value: String(bookingTotal) },
-                { label: 'QR scans', value: '—' },
               ].map(m => (
                 <div key={m.label} className="bg-white border border-[#ddd8ce] rounded-[10px] p-3">
                   <div className="text-[22px] font-serif font-light text-[#1a1a1a]">{m.value}</div>
@@ -293,7 +296,7 @@ export default function Dashboard() {
                     <span className="text-[#ddd]">·</span>
                     <span>House rules {check(cats.has('House Rules'))}</span>
                     <span className="text-[#ddd]">·</span>
-                    <span>City guide {check(false)}</span>
+                    <span>City guide {check(guideByApt.has(apt.id))}</span>
                     <span className="text-[#ddd]">·</span>
                     <span>Check-in {check(cats.has('Check-in'))}</span>
                   </div>

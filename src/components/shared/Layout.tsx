@@ -17,6 +17,7 @@ interface HostData {
   brand_name: string | null
   trial_ends_at: string | null
   subscription_status: string | null
+  stripe_subscription_id: string | null
 }
 
 export default function Layout() {
@@ -45,7 +46,7 @@ export default function Layout() {
       setEmail(user.email ?? '')
       const { data } = await supabase
         .from('hosts')
-        .select('brand_name, trial_ends_at, subscription_status')
+        .select('brand_name, trial_ends_at, subscription_status, stripe_subscription_id')
         .eq('id', user.id)
         .maybeSingle()
       if (data) setHost(data)
@@ -89,6 +90,7 @@ export default function Layout() {
     ? Math.max(0, Math.ceil((new Date(host.trial_ends_at).getTime() - Date.now()) / 86_400_000))
     : 0
   const showTrial = host?.subscription_status === 'trial' && trialRemaining > 0
+  const hasSub = !!host?.stripe_subscription_id
 
   const closeMenu = () => setMenuOpen(false)
 
@@ -191,7 +193,7 @@ export default function Layout() {
                 onClick={closeMenu}
                 className="block bg-[#1a3a0a] text-white text-center py-1.5 rounded-[5px] text-[10px] font-semibold hover:opacity-80 transition-opacity"
               >
-                Add card
+                {hasSub ? 'Manage plan' : 'Add card'}
               </NavLink>
             </div>
           )}
