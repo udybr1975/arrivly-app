@@ -39,7 +39,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(429).json({ error: 'rate_limited' })
   }
 
-  res.setHeader('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600')
+  res.setHeader('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=120')
 
   const supabaseUrl = process.env.VITE_SUPABASE_URL
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
