@@ -76,7 +76,7 @@ interface Weather {
   icon: string
 }
 
-type PageState = 'loading' | 'active' | 'thankyou' | 'neutral' | 'expired'
+type PageState = 'loading' | 'active' | 'thankyou' | 'neutral' | 'expired' | 'unavailable'
 type ActiveTab = 'home' | 'chat' | 'explore' | 'more'
 type PushNotifState = 'loading' | 'off' | 'on' | 'blocked' | 'ios' | 'unsupported' | 'needs-install'
 
@@ -158,6 +158,7 @@ export default function GuestPage() {
 
   const [guestName, setGuestName] = useState<string | null>(null)
   const [thankYouName, setThankYouName] = useState<string | null>(null)
+  const [unavailableBrand, setUnavailableBrand] = useState<{ brand_name: string | null; logo_url: string | null; accent_color: string | null } | null>(null)
 
   const [weather, setWeather] = useState<Weather | null>(null)
   const [dailySuggestion, setDailySuggestion] = useState<string | null>(null)
@@ -220,7 +221,27 @@ export default function GuestPage() {
           .eq('apartment_id', aptId!),
       ])
 
-      if (!aptRes.data) { setPageState('neutral'); setLoading(false); return }
+      if (!aptRes.data) {
+        // The anon read returns nothing for a hidden (unpublished) apartment because
+        // RLS apartments_guest_read gates on is_visible. Ask the server whether this
+        // apt exists-but-is-hidden so we can show a branded "temporarily unavailable"
+        // screen instead of the booking-oriented neutral page. Any failure → neutral.
+        try {
+          const r = await fetch(`/api/guest-availability?apt=${encodeURIComponent(aptId!)}`)
+          if (r.ok) {
+            const a = await r.json()
+            if (a.status === 'draft' && a.brand) {
+              setUnavailableBrand(a.brand)
+              setPageState('unavailable')
+              setLoading(false)
+              return
+            }
+          }
+        } catch {
+          // network/parse error → fall through to neutral
+        }
+        setPageState('neutral'); setLoading(false); return
+      }
       const apt = aptRes.data as Apartment
       setApartment(apt)
       setDetails(((detRes.data ?? []) as Detail[]).filter(d => !d.is_private))
@@ -590,6 +611,29 @@ export default function GuestPage() {
           {brandName.charAt(0)}
         </div>
         <h1 className="text-xl font-semibold text-[#1c1c1a] mb-2">{brandName}</h1>
+        <p className="text-sm text-gray-500 max-w-xs leading-relaxed">
+          This guest page is temporarily unavailable. Please contact your host directly.
+        </p>
+      </div>
+    )
+  }
+
+  if (pageState === 'unavailable') {
+    const uAccent = unavailableBrand?.accent_color ?? ARRIVLY_CONFIG.colourPresets[0].hex
+    const uBrand = unavailableBrand?.brand_name ?? 'Your Host'
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#f5f5f3] px-6 py-16 text-center">
+        {unavailableBrand?.logo_url ? (
+          <img src={resolveImageUrl(unavailableBrand.logo_url)} alt={uBrand} className="h-12 mb-6 object-contain" />
+        ) : (
+          <div
+            className="w-12 h-12 rounded-full flex items-center justify-center mb-6 text-white font-bold text-xl"
+            style={{ background: uAccent }}
+          >
+            {uBrand.charAt(0)}
+          </div>
+        )}
+        <h1 className="text-xl font-semibold text-[#1c1c1a] mb-2">{uBrand}</h1>
         <p className="text-sm text-gray-500 max-w-xs leading-relaxed">
           This guest page is temporarily unavailable. Please contact your host directly.
         </p>
