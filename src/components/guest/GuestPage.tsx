@@ -46,14 +46,6 @@ interface Detail {
   is_private: boolean
 }
 
-interface Booking {
-  reference_number: string
-  check_in: string
-  check_out: string
-  guest_id: string | null
-  status: string
-}
-
 interface HostPick {
   id: string
   name: string
@@ -148,6 +140,7 @@ export default function GuestPage() {
   const [searchParams] = useSearchParams()
   const aptId = searchParams.get('apt')
   const tokenParam = searchParams.get('token')
+  const keyParam = searchParams.get('key')
   const msgParam = searchParams.get('msg')
   const preview = searchParams.get('preview') === '1'
 
@@ -210,9 +203,6 @@ export default function GuestPage() {
     }
 
     async function fetchData() {
-      const tzNow = new Date().toLocaleString('sv-SE', { timeZone: 'Europe/Helsinki' })
-      const [helsinkiDate] = tzNow.split(' ')
-
       const storageKey = `arrivly_guest_token_${aptId}`
       const storedToken = localStorage.getItem(storageKey)
       const cleanedStored = storedToken && storedToken !== 'null' ? storedToken : null
@@ -246,117 +236,102 @@ export default function GuestPage() {
         return
       }
 
+      // STAGE A — token path, resolved server-side by /api/guest-state.
+      // Guests have no auth session, so use plain fetch (not the api helper).
       if (activeToken) {
-        const { data: tokenBooking } = await supabase
-          .from('bookings')
-          .select('reference_number,check_in,check_out,guest_id,status')
-          .eq('reference_number', activeToken)
-          .eq('apartment_id', aptId!)
-          .in('status', ['confirmed', 'completed'])
-          .limit(1)
-          .maybeSingle()
+        let aState: { state: string; token: string | null; guestName: string | null } =
+          { state: 'neutral', token: null, guestName: null }
+        try {
+          const r = await fetch(`/api/guest-state?apt=${encodeURIComponent(aptId!)}&token=${encodeURIComponent(activeToken)}`)
+          if (r.ok) aState = await r.json()
+        } catch {
+          // network/parse error → treat as neutral and fall through to Stage B
+        }
 
-        if (tokenBooking) {
-          const bk = tokenBooking as Booking
-          const checkoutCutoff = bk.check_out + ' 11:00:00'
+        if (aState.state === 'thankyou') {
+          if (aState.guestName) setThankYouName(aState.guestName)
+          setPageState('thankyou')
+          setLoading(false)
+          return
+        }
 
-          if (tzNow >= checkoutCutoff) {
-            if (bk.guest_id) {
-              const { data: gd } = await supabase
-                .from('guests')
-                .select('first_name')
-                .eq('id', bk.guest_id)
-                .single()
-              if (gd?.first_name) setThankYouName(gd.first_name)
-            }
-            setPageState('thankyou')
-            setLoading(false)
+        if (aState.state === 'active') {
+          localStorage.setItem(storageKey, activeToken)
+
+          if (!tokenParam) {
+            window.location.replace(`/guest?apt=${aptId}&token=${activeToken}`)
             return
           }
 
-          if (helsinkiDate >= bk.check_in && helsinkiDate <= bk.check_out) {
-            localStorage.setItem(storageKey, activeToken)
-
-            if (!tokenParam) {
-              window.location.replace(`/guest?apt=${aptId}&token=${activeToken}`)
-              return
-            }
-
-            const publicRows = ((detRes.data ?? []) as Detail[]).filter(d => !d.is_private)
-            try {
-              const r = await fetch(`/api/guest-details?apt=${encodeURIComponent(aptId!)}&token=${encodeURIComponent(activeToken)}`)
-              if (r.ok) {
-                const { details: priv } = await r.json()
-                setDetails([...publicRows, ...(Array.isArray(priv) ? priv as Detail[] : [])])
-              } else {
-                setDetails(publicRows)
-              }
-            } catch {
+          const publicRows = ((detRes.data ?? []) as Detail[]).filter(d => !d.is_private)
+          try {
+            const r = await fetch(`/api/guest-details?apt=${encodeURIComponent(aptId!)}&token=${encodeURIComponent(activeToken)}`)
+            if (r.ok) {
+              const { details: priv } = await r.json()
+              setDetails([...publicRows, ...(Array.isArray(priv) ? priv as Detail[] : [])])
+            } else {
               setDetails(publicRows)
             }
-
-            if (bk.guest_id) {
-              const { data: gd } = await supabase
-                .from('guests')
-                .select('first_name')
-                .eq('id', bk.guest_id)
-                .single()
-              if (gd?.first_name) setGuestName(gd.first_name)
-            }
-
-            const weatherUrl = apt.lat != null && apt.lng != null
-              ? `https://wttr.in/${apt.lat},${apt.lng}?format=j1`
-              : `https://wttr.in/${encodeURIComponent(`${apt.neighborhood}, ${apt.city}`)}?format=j1`
-            fetch(weatherUrl)
-              .then(r => r.json())
-              .then(data => {
-                const cur = data.current_condition?.[0]
-                if (!cur) return
-                const temp = Math.round(Number(cur.temp_C))
-                const desc = (cur.weatherDesc?.[0]?.value ?? '').toLowerCase()
-                let icon = '🌤'
-                let isOutdoor = false
-                if (desc.includes('sunny') || desc.includes('clear')) { icon = '☀️'; isOutdoor = true }
-                else if (desc.includes('partly')) { icon = '⛅'; isOutdoor = true }
-                else if (desc.includes('overcast') || desc.includes('cloudy')) { icon = '☁️' }
-                else if (desc.includes('snow') || desc.includes('blizzard')) { icon = '❄️'; isOutdoor = true }
-                else if (desc.includes('thunder') || desc.includes('storm')) { icon = '⛈' }
-                else if (desc.includes('rain') || desc.includes('drizzle') || desc.includes('shower')) { icon = '🌧' }
-                else if (desc.includes('mist') || desc.includes('fog')) { icon = '🌫' }
-                const condition = desc.charAt(0).toUpperCase() + desc.slice(1)
-                setWeather({ temp, condition, isOutdoorWeather: isOutdoor, icon })
-              })
-              .catch(() => {})
-
-            setPageState('active')
-            setLoading(false)
-            return
+          } catch {
+            setDetails(publicRows)
           }
+
+          if (aState.guestName) setGuestName(aState.guestName)
+
+          const weatherUrl = apt.lat != null && apt.lng != null
+            ? `https://wttr.in/${apt.lat},${apt.lng}?format=j1`
+            : `https://wttr.in/${encodeURIComponent(`${apt.neighborhood}, ${apt.city}`)}?format=j1`
+          fetch(weatherUrl)
+            .then(r => r.json())
+            .then(data => {
+              const cur = data.current_condition?.[0]
+              if (!cur) return
+              const temp = Math.round(Number(cur.temp_C))
+              const desc = (cur.weatherDesc?.[0]?.value ?? '').toLowerCase()
+              let icon = '🌤'
+              let isOutdoor = false
+              if (desc.includes('sunny') || desc.includes('clear')) { icon = '☀️'; isOutdoor = true }
+              else if (desc.includes('partly')) { icon = '⛅'; isOutdoor = true }
+              else if (desc.includes('overcast') || desc.includes('cloudy')) { icon = '☁️' }
+              else if (desc.includes('snow') || desc.includes('blizzard')) { icon = '❄️'; isOutdoor = true }
+              else if (desc.includes('thunder') || desc.includes('storm')) { icon = '⛈' }
+              else if (desc.includes('rain') || desc.includes('drizzle') || desc.includes('shower')) { icon = '🌧' }
+              else if (desc.includes('mist') || desc.includes('fog')) { icon = '🌫' }
+              const condition = desc.charAt(0).toUpperCase() + desc.slice(1)
+              setWeather({ temp, condition, isOutdoorWeather: isOutdoor, icon })
+            })
+            .catch(() => {})
+
+          setPageState('active')
+          setLoading(false)
+          return
         }
+        // 'neutral' → fall through to Stage B
       }
 
-      const { data: dateBooking } = await supabase
-        .from('bookings')
-        .select('reference_number,guest_id')
-        .eq('apartment_id', aptId!)
-        .eq('status', 'confirmed')
-        .lte('check_in', helsinkiDate)
-        .gt('check_out', helsinkiDate)
-        .not('reference_number', 'is', null)
-        .order('source', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      // STAGE B — keyed date path. The tokenless date-lookup only resolves with a
+      // valid per-apartment key; without one /api/guest-state returns neutral.
+      let bState: { state: string; token: string | null } = { state: 'neutral', token: null }
+      try {
+        const url = keyParam
+          ? `/api/guest-state?apt=${encodeURIComponent(aptId!)}&key=${encodeURIComponent(keyParam)}`
+          : `/api/guest-state?apt=${encodeURIComponent(aptId!)}`
+        const r = await fetch(url)
+        if (r.ok) bState = await r.json()
+      } catch {
+        // network/parse error → neutral
+      }
 
-      if (dateBooking?.reference_number) {
+      if (bState.state === 'active' && bState.token) {
+        const resolvedToken = bState.token
         const existing = localStorage.getItem(storageKey)
-        const hadDifferentToken = existing && existing !== 'null' && existing !== dateBooking.reference_number
-        if (hadDifferentToken) {
+        if (existing && existing !== 'null' && existing !== resolvedToken) {
           setPageState('neutral')
           setLoading(false)
           return
         }
-        localStorage.setItem(storageKey, dateBooking.reference_number)
-        window.location.replace(`/guest?apt=${aptId}&token=${dateBooking.reference_number}`)
+        localStorage.setItem(storageKey, resolvedToken)
+        window.location.replace(`/guest?apt=${aptId}&token=${resolvedToken}`)
         return
       }
 
@@ -365,7 +340,7 @@ export default function GuestPage() {
     }
 
     fetchData()
-  }, [aptId, tokenParam, preview])
+  }, [aptId, tokenParam, keyParam, preview])
 
   useEffect(() => {
     if (activeTab !== 'explore' || !aptId) return
