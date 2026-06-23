@@ -1,7 +1,7 @@
 # Arrivly — CLAUDE.md
 
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD:** 4e09d03 (Session 19 cont., Jun 23 2026 — Stripe key/env fix + billing pipeline verified (#6) + landing dynamic pricing (#7 part)). Earlier S19 HEAD was 8fa50ac (security hardening Steps 1–3); Phase 5 of Step 3 was DB-only.
+> **Current HEAD:** 360a987 (Session 19 cont., Jun 23 2026 — pre-live cleanup #7 complete: removed QR-scans tile, City-guide tick wired to guide_recommendations, sidebar CTA "Manage plan" when subscribed). Prior: 4e09d03 (Stripe key/env fix + billing pipeline verified #6 + landing dynamic pricing). Earlier S19 HEAD was 8fa50ac (security hardening Steps 1–3); Phase 5 of Step 3 was DB-only.
 
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
@@ -120,7 +120,7 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - **Anna Stays** — id: `eab1e358-…`, Vantaa/Hakunila, is_visible=true.
 (Earlier test host `eed9860a` fully deleted from DB in S11.)
 
-**Host: TLV properties** (udy@tlv.capital) — id `1d5a3b9c-0a41-4585-898f-5095ed6f2350`, 2 apartments, trial ends 2026-07-05, tier 1 (baseline).
+**Host: TLV properties** (udy@tlv.capital) — id `1d5a3b9c-0a41-4585-898f-5095ed6f2350`, 2 apartments. Live state (verified S19 cont.): subscription_status `active`, no `stripe_subscription_id`. (NOTE: because the sidebar trial widget only renders for status `trial`, TLV is NOT a valid "Add card"/"Manage plan" test row — use a trial host for that. Clean "Add card" row: Yiftach, trial + no sub.)
 
 **Live plan values (confirmed S12, hard gate CLOSED):** Tier 1 €10/cap 2, Tier 2 €15/cap 7, Tier 3 €25/cap 12, Tier 4 €49/unlimited; `app_settings.trial_days` = 14. These are the official base values — do not change without explicit decision.
 
@@ -274,6 +274,10 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - **Webhook isolation metadata is CASE-SENSITIVE:** subscription `metadata.app` must be exactly lowercase `arrivly` (`Arrivly` is silently ignored — 200, no update). Test/clock subs also need `metadata.host_id`. Clock artefacts: `cus_UkzljDJks6qaGC` / `sub_1TlTpFFgkuKMBYAu7yJaesdN`.
 - **Landing dynamic pricing** — `9e2cff8`: new `api/public-pricing.ts` (anon GET, service-role, returns ONLY `{ trialDays, fromPriceEuros, currency }`; fail-soft to `{14,10,'eur'}`; per-instance IP rate limiter 60/60s; edge-cached). `src/App.tsx` `LandingContent` fetches it on mount (DB-matching defaults → no flash); copy now "Start free — {trialDays} days", "From €{fromPriceEuros}/month", "{trialDays} days free · No payment needed to start · Cancel anytime". Dead `config.ts` fields `trialDays` + `pricePerPropertyMonthly` removed. code-reviewer + security-auditor PASS. `4e09d03`: shortened public-pricing edge cache to `s-maxage=60, stale-while-revalidate=120` so admin trial/price edits show within ~1 min.
 - **Test values reverted to defaults** after testing the dynamic flow: `app_settings.trial_days` = 14, `plans` tier 1 = €10. Tiers 2–4 untouched.
+- **Pre-live cleanup #7 — DONE (`360a987`).** Dashboard: removed the placeholder "QR scans" metric tile (grid-cols-3 → grid-cols-2); wired the "City guide" completeness tick to real data (bulk `.in()` on `guide_recommendations` inside the existing Promise.all → `guideByApt` Set → `check(guideByApt.has(apt.id))`). Layout: sidebar trial-widget CTA now reads "Manage plan" when `host.stripe_subscription_id` is set, else "Add card" (NavLink target + countdown unchanged). code-reviewer PASS, no must-fix. This closes ALL pre-live cleanup items.
+- **ROADMAP REORDER (Udy decision, S19 cont.):** Phase F (Tier-4 full booking) is moved to the END of the build order. New sequence: **G (hardening) → H (polish) → I (monetisation) → F (Tier-4 booking) → flip Stripe to live**. Rationale: ship the guest-page product's hardening/polish/monetisation first; booking is the last build phase.
+- **OPEN DECISION (deferred, Udy):** does Tier-4 booking (F) ship BEFORE or AFTER the live Stripe flip? NOT yet decided — to be settled once G/H/I are done. Two options on the table: (a) F is the final build phase, then flip live (launch live with booking already built); (b) flip live on the guest-page product (Tiers 1–3) first, then build F as a post-launch addition. Do NOT bake either into plans until Udy chooses.
+- **PRE-LIVE GATE (Udy, S19 cont.):** a security/penetration-test pass ("hacker" agent) is a HARD required gate before the live Stripe flip — in addition to the standard security-auditor. Runs as part of / immediately after Phase G hardening and must pass before go-live.
 
 ---
 
@@ -303,7 +307,6 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 ## Known notes / minor debt
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
 - `BookingCalendar.tsx` is an unused stub; the real calendar is `CalendarView` inside `BookingManager.tsx`.
-- QR scans metric on Overview still shows "—" (not wired to any data source).
 - iCal fetch (`api/_lib/ical.ts`, used by both sync-ical and cron-sync-ical): mild SSRF (no
   private-IP/metadata blocklist on fetched URLs); no per-host rate limit. The monthly cron now
   exercises this unattended. Tidy SSRF + rate limit before public launch.
@@ -317,7 +320,6 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - `BookingManager.tsx` `arrivly:messages-read` handler calls `loadBookings()` without a cancellation signal — tiny stale-overwrite race on rapid apartment switching; fold into next BookingManager change.
 - **Guide: upsert fires even on empty parse result** — a 0-place guide silently overwrites a previously good guide. Gate the upsert on `placeCount > 0` (see next steps #7).
 - `api/public-pricing.ts` cache is `s-maxage=60` — admin trial/price edits show on the landing within ~1 min.
-- Dashboard "City guide" completeness tick is still hardcoded `check(false)` and the "QR scans" tile is still a placeholder — both pending in #7 Prompt B.
 
 ### Tracked security follow-ups (S19; not blockers)
 - **`guests` still readable by ALL authenticated hosts** (`guests_host_read` authenticated `USING true`). Host-scoping pairs with moving guest creation server-side first — `BookingManager.addBooking` does insert-then-read-back-id + global first_name dedup, which a strict host-scoped read policy would break.
@@ -483,18 +485,13 @@ Phases:
 - **C — Communication:** COMPLETE ✓ Messaging + push + badges + PWA install UX + transactional email (welcome + day-25 reminder). (`94e1fc0`→`53e6460`)
 - **D — Superadmin:** COMPLETE ✓ — D1 overview API + UI + admin routing (`b8f41d5`); D2 read-only "View as" + `admin_audit` (`09b9e50`); D2.1 enriched View-as + plans `label` fix (`bf4e318`, `b2015d2`); D3a host Manage drawer + `api/admin-update-host.ts` (tier/status/price/discount/cap/trial extend, 6-key allowlist, audited) (`909dda5`); D3b global Plan-settings panel (`api/admin-plans.ts`, edits tier price+cap and `app_settings.trial_days`) + Activity-log view (`api/admin-audit.ts`) + fixes: MRR/totals re-fetch after Manage save, discount preview clamped 0-100, `mobile-web-app-capable` meta tag (`3fc401d`). Business model: 4 tiers, flat price per tier, dashboard-editable; Tiers 1-3 guest-page at rising caps, Tier 4 adds booking. Lifecycle status and tier are independent dimensions. PRE-STRIPE: all admin edits set intent + move MRR projection only — they charge no one (money/destructive actions wait for E). D4 — billing-tab tier cards (plans read client-side) + `src/lib/tierCopy.ts` + `api/set-tier.ts` inert pre-Stripe seam (403 billing_not_live) (`ec77806`).
 - **E — Billing (Tier-1 Stripe):** E1 DONE ✓ (`23a4abd`) — create-subscription + billing-portal + `api/_lib/stripe.ts`, verified in Stripe TEST sandbox. E2 DONE ✓ (`bb077e6`) — stripe-webhook (raw-body, signature verify, Arrivly isolation, idempotent sync); lifecycle emails; guest-page host fetch via SECURITY DEFINER RPC; `showPoweredBy` = trial || grace. E2.1 DONE ✓ (`a18f9ec`) — 7-channel subscription-change fan-out; dismissible `billing_notice` banner; ntfy live. E3 DONE ✓ (`b827ecb`→`71a974c`) — in-app plan switching, cancellation/resume, BillingPanel manage-mode, deferral + webhook triple-fire fixes. E (S15) DONE ✓ (`a67c50d`→`b3b8c23`) — immediate prorated upgrades (402 on card fail), enriched emails+ntfy, billing panel unlocked during a pending downgrade (upgrade/re-target/cancel; one cancel-scheduled control), cancel-subscription release-then-cancel, request-time host+admin emails. **Phase E close-out (S16):** 360 webhook test COMPLETE (all 4 scenarios); signup-with-card shipped. Remaining go-live items moved to "On the horizon" below; the 2-day change-reminder cron is DROPPED (Udy, S16).
-- **F — Tier-2 booking system:** Full booking (availability → request → approve → pay →
-  manage) on the €49 price, referencing Anna's Stays components. Built on working Stripe.
-- **G — Pre-launch hardening:** cron follow-ups (sync-ical real-feed test), iCal SSRF blocklist + rate limit, cron batching/maxDuration
-  at scale, mobile drawer a11y (Escape-to-close, focus return), dead-code sweep, full security
-  audit.
-  - Add server-side file-size cap in `api/create-upload-url.ts` (client guards are 5 MB cover /
-    2 MB logo; a direct API caller can bypass them).
-  - Auto-delete old Storage objects on cover/logo replace + remove (partially done: `1cde275`).
-  - Message retention: ~90-day cleanup job post-checkout.
-- **H — UI/UX design polish:** Dedicated visual-quality pass once all core features work end-to-end; design-system refinement, guest-page + dashboard polish, consistency sweep; mockup-first. Deferred deliberately so polish lands on a stable surface, not a moving one.
-- **I — Monetisation iteration (post-launch, data-driven):** (a) pricing/packaging experiments, annual billing, discounts/referrals, trial-to-paid conversion, churn; (b) third-party experience connectors on the guest-page Explore tab — Viator, GetYourGuide, OpenTable and similar — as BOTH an affiliate-revenue stream AND a tier-differentiation lever. Open decisions to scope before build: revenue model (affiliate-to-Arrivly vs host-share vs split), per-provider partner-programme eligibility/API terms + EU inventory, which tiers unlock them, guest-page placement, server-side key handling. Verify provider terms (don't assume) at scoping.
-- **Flip Stripe to live (LAST — Udy decision S16):** create live products/prices/webhook, set live keys in Vercel, re-verify price→tier mapping, redeploy, clean up sandbox test data. Done ONLY after Phase I completes.
+> **BUILD ORDER (reordered S19 cont.): G → H → I → F → flip live.** Phase F (Tier-4 booking) moved to the end. The A–E phases below are already complete; the remaining order is G, then H, then I, then F.
+- **G — Pre-launch hardening:** cron follow-ups (sync-ical real-feed test), iCal SSRF blocklist + rate limit, cron batching/maxDuration at scale, mobile drawer a11y (Escape-to-close, focus return), dead-code sweep, full security audit. Plus: server-side file-size cap in `api/create-upload-url.ts` (client guards 5 MB cover / 2 MB logo are bypassable by a direct API caller); auto-delete old Storage objects on cover/logo replace + remove (partially done: `1cde275`); message retention ~90-day cleanup job post-checkout; rate-limit public guest-facing endpoints (`guest-chat`, `city-events`, `generate-guide`, `daily-greeting`). **Includes the pentest/"hacker" agent pass (hard pre-live gate — see below).**
+- **H — UI/UX design polish:** Dedicated visual-quality pass once core features work end-to-end; design-system refinement, guest-page + dashboard polish, consistency sweep; mockup-first. Deferred deliberately so polish lands on a stable surface.
+- **I — Monetisation iteration (data-driven):** (a) pricing/packaging experiments, annual billing, discounts/referrals, trial-to-paid conversion, churn; (b) third-party experience connectors on the guest-page Explore tab — Viator, GetYourGuide, OpenTable and similar — as BOTH an affiliate-revenue stream AND a tier-differentiation lever. Open decisions to scope before build: revenue model (affiliate-to-Arrivly vs host-share vs split), per-provider partner-programme eligibility/API terms + EU inventory, which tiers unlock them, guest-page placement, server-side key handling. Verify provider terms (don't assume) at scoping.
+- **F — Tier-4 full booking system (MOVED TO END):** Full booking (availability → request → approve → pay → manage) on the €49 / Tier-4 price, referencing Anna's Stays components (read-only). Built on the verified Stripe pipeline. Tier-2 architecture has stayed upgrade-ready throughout (plan-gated component slots; bookings/guests schema already supports it).
+- **PRE-LIVE GATE — pentest/"hacker" agent (HARD, Udy S19 cont.):** before the live Stripe flip, run a dedicated security/penetration-test pass in addition to the standard security-auditor. Must pass. Sits in/after Phase G.
+- **Flip Stripe to live (LAST):** create live products/prices/webhook, set live keys in Vercel, re-verify price→tier mapping, redeploy, clean up sandbox test data. **OPEN: whether F ships before or after this flip is NOT yet decided (see "On the horizon"). To be settled after G/H/I.**
 
 Tier-2 architecture stays upgrade-ready throughout (plan-gated component slots; bookings/guests
 schema already supports it).
@@ -506,7 +503,9 @@ Tier differentiation beyond property caps is a wanted direction (not iterated ye
 ## On the horizon / next steps
 
 > ✓ Plan values confirmed (hard gate CLOSED): T1 €10/cap 2, T2 €15/cap 7, T3 €25/cap 12, T4 €49/unlimited; trial_days = 14.
-> **DECISION (S16): finish Phase I BEFORE flipping Stripe to live. Flip-to-live is the LAST step — after F → G → H → I.**
+> **DECISION (S16, amended S19 cont.): flip-to-live is the LAST step. Build order reordered S19 cont. to G → H → I → F (Phase F / Tier-4 booking moved to the end).**
+> **OPEN (Udy, deferred): does F ship before or after the live flip? Decide after G/H/I. Options: (a) F then flip; (b) flip on Tiers 1–3, build F post-launch.**
+> **HARD PRE-LIVE GATE (Udy, S19 cont.): a pentest/"hacker" agent pass must run and pass before the live flip, on top of security-auditor.**
 
 Pre-live work, in priority order (Udy-set, S16; updated S17):
 
@@ -516,13 +515,18 @@ Pre-live work, in priority order (Udy-set, S16; updated S17):
 4. ~~**Live/Draft publish toggle.**~~ **DONE S19** (`6fc9a89`) — dashboard property card Publish/Unpublish button writing `apartments.is_visible` (host-RLS-scoped, no host_id from client); badge relabelled Live/Draft; new properties stay Live by default (no migration). Unpublished properties now show a branded "temporarily unavailable" guest screen via `api/guest-availability.ts` (`47a1335`) instead of the booking-oriented neutral page.
 5. ~~**Guest-data security close-out.**~~ **DONE S19** — `api/guest-state.ts` service-role resolver + keyed QR URLs; `bookings_guest_read` anon policy dropped; GuestPage no longer reads bookings/guests directly. Verified anon reads 0 bookings + 0 guests. (Residual: `guests` still readable by all authenticated hosts — see Tracked security follow-ups.)
 6. ~~**Two billing edge tests + pipeline verification.**~~ **DONE S19 cont.** — Scenario 5 (payment fail → grace) + Scenario 6 (renewal → silence) via test clock; plus host-initiated upgrade/cancel/resume and subscribe-from-zero. Also fixed a Stripe key/env mismatch that had silently 500'd the webhook on every event since the Anna's Stays incident (pre-live; only test hosts affected).
-7. **Cleanups (partly done).** Landing copy DONE S19 cont. — DB-driven (14-day trial / "From €10" / "No payment needed to start") via `api/public-pricing.ts`, edge cache 60s. REMAINING (Prompt B, code-reviewer only): dashboard "QR scans" tile → remove (grid-cols-3→2); "City guide" completeness tick → wire to `guide_recommendations` existence (currently hardcoded `check(false)`); Layout "Add card" → "Manage plan" when the host has a `stripe_subscription_id`.
+7. ~~**Cleanups.**~~ **DONE S19 cont.** Landing copy DB-driven via `api/public-pricing.ts` (edge cache 60s). Prompt B (`360a987`): removed the "QR scans" tile (grid-cols-3→2); wired the "City guide" tick to `guide_recommendations` existence (`guideByApt.has(apt.id)`); Layout sidebar CTA → "Manage plan" when `stripe_subscription_id` is set. All pre-live cleanup items now closed.
 8. ~~**Remove the 2-day change-reminder cron + drop `hosts.change_reminder_sent_at`.**~~ **DONE S19** — cron already absent from the codebase (zero references found); column dropped via migration `drop_unused_change_reminder_sent_at` (was all-NULL, no code or DB dependencies).
 
 **Shipped S19 (this session):** greeting-blurb fix (`8a5dc35` — opens by naming the place; bans the "Stepping out," / participial opener); Live/Draft publish toggle (`6fc9a89`); branded "temporarily unavailable" guest screen for unpublished properties (`47a1335`); dropped unused `hosts.change_reminder_sent_at` (#8 done).
 
-**Immediate next:** the remaining #7 dashboard/Layout cleanups (Prompt B — QR-scans tile removal, City-guide tick wired to `guide_recommendations`, "Add card"→"Manage plan" when subscribed; code-reviewer only). Then **F** → **G** → **H** → **I** → **flip Stripe to live (LAST)**.
+**Immediate next:** Phase **G — pre-launch hardening** (now the front of the queue): iCal SSRF blocklist + rate limit, public-endpoint rate limiting, sync-ical real-feed test, cron batching/maxDuration, mobile-drawer a11y, server-side upload size cap, message-retention cleanup, dead-code sweep, full security audit, **plus the pentest/"hacker" agent pass (hard pre-live gate)**.
 
-Then: **F** (Tier-4 full booking) → **G** (pre-launch hardening) → **H** (UI/UX polish) → **I** (monetisation iteration) → **Flip Stripe to live (LAST).**
+Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live (LAST)**.
+- G — pre-launch hardening (incl. pentest gate)
+- H — UI/UX polish
+- I — monetisation iteration
+- F — Tier-4 full booking (moved to end)
+- Flip Stripe to live — LAST. OPEN: F before or after the flip — decide after G/H/I.
 
 > **Groq deferred to Phase G** (capacity/redundancy, NOT security; trigger = observed Gemini free-tier 429s in production). Non-grounded endpoints that could move: `rewrite-rules`, `bulk-import`, `greeting`, `host-picks`. Grounded endpoints stay on Gemini: `guest-chat`, `city-events`.
