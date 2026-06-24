@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { isCronAuthorized } from './_lib/cron.js'
 import { sendPushToHost } from './_lib/push.js'
 import { syncApartmentBookings } from './_lib/ical.js'
+import { mapPool } from './_lib/pool.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
@@ -23,12 +24,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (error) return res.status(500).json({ error: 'Query failed' })
 
   const apartments = (data ?? []) as AptRow[]
+
+  // Parallelise the per-apartment sync with a bounded pool (4 in flight). Each iCal
+  // fetch is network-bound and already capped at 10s by safeFetchIcal, so up to 4
+  // concurrent keeps a many-apartment run inside the 60s maxDuration without raising
+  // any per-fetch timeout. Each task RETURNS its result; aggregation happens in a
+  // single sequential pass below, so the shared Map/array are never mutated
+  // concurrently and the totals/byHost output are identical to the sequential loop.
+  const synced = await mapPool(apartments, 4, async (apt) => ({
+    apt,
+    result: await syncApartmentBookings(supabase, { id: apt.id, ical_urls: apt.ical_urls }),
+  }))
+
   const byHost = new Map<string, { count: number; names: Set<string> }>()
   let totalImported = 0
   const errors: string[] = []
 
-  for (const apt of apartments) {
-    const result = await syncApartmentBookings(supabase, { id: apt.id, ical_urls: apt.ical_urls })
+  for (const { apt, result } of synced) {
     if (result.errors.length) errors.push(...result.errors.map((e) => `${apt.name ?? apt.id}: ${e}`))
     if (result.imported > 0) {
       totalImported += result.imported
