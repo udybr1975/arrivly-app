@@ -72,8 +72,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(429).json({ error: 'rate_limited' })
   }
 
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) { console.error('[guest-chat] GEMINI_API_KEY not set'); return res.status(500).json({ error: 'chat_unavailable' }) }
+  const apiKey = process.env.GEMINI_API_KEY_CHAT || process.env.GEMINI_API_KEY
+  if (!apiKey) { console.error('[guest-chat] no Gemini key set'); return res.status(500).json({ error: 'chat_unavailable' }) }
 
   const { data: hostRow } = await supabase.from('hosts').select('brand_name').eq('id', apt.host_id).maybeSingle()
   const brandName = hostRow?.brand_name || 'your host'

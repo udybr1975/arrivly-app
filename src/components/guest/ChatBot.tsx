@@ -40,13 +40,14 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
       })
       if (res.status === 429) { setMsgs(p => [...p, { role: 'assistant', text: "You're sending messages quickly — give it a moment, then try again." }]); return }
       if (res.status === 403) { setMsgs(p => [...p, { role: 'assistant', text: "I can help once your stay is confirmed — please scan your check-in QR code to start." }]); return }
+      if (res.status === 500) { setMsgs(p => [...p, { role: 'assistant', text: "I'm getting a lot of questions right now — please try again in a moment." }]); return }
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       const reply = (data.reply || '').trim()
       if (!reply) throw new Error('empty')
       setMsgs(p => [...p, { role: 'assistant', text: reply }])
     } catch {
-      setMsgs(p => [...p, { role: 'assistant', text: 'Sorry — I had a connection hiccup. Could you try that again?' }])
+      setMsgs(p => [...p, { role: 'assistant', text: 'Something went wrong on my end — please try again in a moment.' }])
     } finally {
       setLoading(false)
     }
