@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import { Menu } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -26,6 +26,9 @@ export default function Layout() {
   const [host, setHost] = useState<HostData | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [unread, setUnread] = useState(0)
+  const hamburgerRef = useRef<HTMLButtonElement>(null)
+  const asideRef = useRef<HTMLElement>(null)
+  const wasMenuOpen = useRef(false)
 
   useEffect(() => {
     let mounted = true
@@ -78,6 +81,52 @@ export default function Layout() {
     }
   }, [unread])
 
+  // Mobile-drawer a11y. Everything below is gated on `menuOpen`, which can only be
+  // true on mobile (the hamburger trigger is in a md:hidden bar), so the static
+  // desktop sidebar is completely unaffected.
+  // While open: focus the first nav link, close on Escape, and trap Tab/Shift+Tab
+  // inside the drawer so focus can't reach the page behind the backdrop.
+  useEffect(() => {
+    if (!menuOpen) return
+    const aside = asideRef.current
+    if (!aside) return
+    const SELECTOR = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+    aside.querySelector<HTMLElement>(SELECTOR)?.focus()
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setMenuOpen(false)
+        return
+      }
+      if (e.key !== 'Tab') return
+      const focusables = Array.from(aside.querySelectorAll<HTMLElement>(SELECTOR))
+      if (focusables.length === 0) return
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+      const active = document.activeElement
+      if (e.shiftKey) {
+        if (active === first || !aside.contains(active)) {
+          e.preventDefault()
+          last.focus()
+        }
+      } else if (active === last || !aside.contains(active)) {
+        e.preventDefault()
+        first.focus()
+      }
+    }
+
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [menuOpen])
+
+  // Return focus to the hamburger when the drawer closes — but never steal focus on
+  // the initial mount (only on a true→false transition).
+  useEffect(() => {
+    if (wasMenuOpen.current && !menuOpen) hamburgerRef.current?.focus()
+    wasMenuOpen.current = menuOpen
+  }, [menuOpen])
+
   async function signOut() {
     const { error } = await supabase.auth.signOut()
     if (error) {
@@ -100,6 +149,7 @@ export default function Layout() {
       {/* Mobile top bar — hidden on md+ */}
       <div className="md:hidden fixed top-0 inset-x-0 h-12 z-30 bg-[#f8f6f2] border-b border-[#ddd8ce] flex items-center px-3 gap-2">
         <button
+          ref={hamburgerRef}
           onClick={() => setMenuOpen(true)}
           aria-label="Open menu"
           aria-expanded={menuOpen}
@@ -122,7 +172,13 @@ export default function Layout() {
       )}
 
       {/* Sidebar — off-canvas on mobile, static on desktop */}
-      <aside id="sidebar-nav" className={`
+      <aside
+        id="sidebar-nav"
+        ref={asideRef}
+        role={menuOpen ? 'dialog' : undefined}
+        aria-modal={menuOpen ? true : undefined}
+        aria-label={menuOpen ? 'Dashboard menu' : undefined}
+        className={`
         fixed inset-y-0 left-0 z-50 w-[170px] shrink-0
         bg-[#f8f6f2] border-r border-[#ddd8ce] p-[14px]
         flex flex-col min-h-screen
