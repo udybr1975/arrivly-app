@@ -70,13 +70,6 @@ function statusPill(status: string) {
   return `text-[10px] px-2 py-0.5 rounded-full font-medium ${map[status] ?? 'bg-[#f0e8ff] text-[#4a0e8f]'}`
 }
 
-function randomRef(): string {
-  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
-  let r = 'ARR-'
-  for (let i = 0; i < 6; i++) r += chars[Math.floor(Math.random() * chars.length)]
-  return r
-}
-
 function CalendarView({ bookings }: { bookings: Booking[] }) {
   const [cursor, setCursor] = useState(() => {
     const n = new Date()
@@ -276,45 +269,16 @@ export default function BookingManager() {
     }
     setSaving(true)
     try {
-      const { data: existingGuest } = await supabase
-        .from('guests')
-        .select('id')
-        .eq('first_name', form.firstName.trim())
-        .maybeSingle()
-
-      let guestId: string
-      if (existingGuest?.id) {
-        guestId = existingGuest.id
-      } else {
-        const { data: newGuest, error: guestErr } = await supabase
-          .from('guests')
-          .insert({ first_name: form.firstName.trim(), last_name: '', email: '' })
-          .select('id')
-          .single()
-        if (guestErr || !newGuest) throw new Error(guestErr?.message ?? 'Could not create guest')
-        guestId = newGuest.id
-      }
-
-      let ref = randomRef()
-      const { data: collision } = await supabase
-        .from('bookings')
-        .select('id')
-        .eq('reference_number', ref)
-        .maybeSingle()
-      if (collision) ref = randomRef()
-
-      const { error: bookErr } = await supabase.from('bookings').insert({
+      // Booking + guest creation runs server-side (api/create-booking) under the
+      // service role, so the client no longer reads/inserts the guests table.
+      const { reference_number } = await api.post<{ reference_number: string }>('/create-booking', {
         apartment_id: aptId,
-        guest_id: guestId,
+        first_name: form.firstName.trim(),
         check_in: form.checkIn,
         check_out: form.checkOut,
-        status: 'confirmed',
-        reference_number: ref,
-        source: 'manual',
       })
-      if (bookErr) throw new Error(bookErr.message)
 
-      toast(`Booking added · ${ref}`, 'success')
+      toast(`Booking added · ${reference_number}`, 'success')
       setForm({ firstName: '', checkIn: '', checkOut: '' })
       setShowAddForm(false)
       await loadBookings()
