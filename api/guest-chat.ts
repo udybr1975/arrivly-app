@@ -8,6 +8,36 @@ const MODEL = 'gemini-2.5-flash'
 const MAX_MESSAGE = 1000
 const MAX_HISTORY = 10
 const MAX_RETRIES = 2
+const TOKEN_RE = /^[A-Za-z0-9-]{4,32}$/
+
+// Best-effort, per-instance rate limiter — a spend cap on the VERIFIED Gemini path.
+// Unverified (public) callers are refused (403) before they ever reach this, so the
+// limiter only ever counts real verified-guest chat turns. Keyed by apartmentId+IP.
+const RL_MAX = 15
+const RL_WINDOW_MS = 60_000
+const RL_MAX_KEYS = 5000
+const rlHits = new Map<string, { count: number; windowStart: number }>()
+function rateLimited(key: string, now: number): boolean {
+  // Opportunistic bounded-memory sweep: drop expired entries when the map grows large.
+  if (rlHits.size > RL_MAX_KEYS) {
+    for (const [k, v] of rlHits) {
+      if (now - v.windowStart >= RL_WINDOW_MS) rlHits.delete(k)
+    }
+  }
+  const entry = rlHits.get(key)
+  if (!entry || now - entry.windowStart >= RL_WINDOW_MS) {
+    rlHits.set(key, { count: 1, windowStart: now })
+    return false
+  }
+  entry.count += 1
+  return entry.count > RL_MAX
+}
+function clientIp(req: VercelRequest): string {
+  const xff = req.headers['x-forwarded-for']
+  const first = Array.isArray(xff) ? xff[0] : xff
+  if (first) return first.split(',')[0].trim()
+  return req.socket?.remoteAddress ?? 'unknown'
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -18,9 +48,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!apartmentId || typeof apartmentId !== 'string') return res.status(400).json({ error: 'apartmentId required' })
   if (!message || typeof message !== 'string') return res.status(400).json({ error: 'message required' })
 
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) { console.error('[guest-chat] GEMINI_API_KEY not set'); return res.status(500).json({ error: 'chat_unavailable' }) }
-
   // Authoritative apartment from DB; client is trusted only for the id + token.
   const { data: apt } = await supabase
     .from('apartments')
@@ -29,11 +56,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .maybeSingle()
   if (!apt || apt.is_visible === false) return res.status(404).json({ error: 'not_found' })
 
+  // Normalise + validate the booking token before resolving access.
+  const rawToken = (typeof token === 'string' && token !== 'null') ? token.trim() : ''
+  const cleanToken = rawToken && TOKEN_RE.test(rawToken) ? rawToken : null
+
+  const access = await resolveGuestAccess(supabase, apt.id, cleanToken)
+
+  // GATE: only verified guests may spend a Gemini call. A public caller (no/invalid
+  // token) is refused here — NO Gemini, NO brand fetch, NO system-instruction build.
+  // Not an error: refusals are not logged.
+  if (access.tier === 'public') return res.status(403).json({ error: 'verify_required' })
+
+  // Spend cap on the verified path.
+  if (rateLimited(`${apt.id}:${clientIp(req)}`, Date.now())) {
+    return res.status(429).json({ error: 'rate_limited' })
+  }
+
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) { console.error('[guest-chat] GEMINI_API_KEY not set'); return res.status(500).json({ error: 'chat_unavailable' }) }
+
   const { data: hostRow } = await supabase.from('hosts').select('brand_name').eq('id', apt.host_id).maybeSingle()
   const brandName = hostRow?.brand_name || 'your host'
 
-  const cleanToken = typeof token === 'string' && token !== 'null' && token.trim() ? token.trim() : null
-  const access = await resolveGuestAccess(supabase, apt.id, cleanToken)
   const systemInstruction = await buildGuestSystemInstruction(supabase, apt, access, brandName)
 
   const userMessage = message.slice(0, MAX_MESSAGE)

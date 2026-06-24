@@ -38,6 +38,8 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apartmentId, token, message: trimmed, history }),
       })
+      if (res.status === 429) { setMsgs(p => [...p, { role: 'assistant', text: "You're sending messages quickly — give it a moment, then try again." }]); return }
+      if (res.status === 403) { setMsgs(p => [...p, { role: 'assistant', text: "I can help once your stay is confirmed — please scan your check-in QR code to start." }]); return }
       if (!res.ok) throw new Error(`HTTP ${res.status}`)
       const data = await res.json()
       const reply = (data.reply || '').trim()
