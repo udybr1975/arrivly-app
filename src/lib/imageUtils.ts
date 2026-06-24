@@ -40,10 +40,25 @@ export async function uploadImage(
   const ext = MIME_TO_EXT[file.type]
   if (!ext) throw new Error('Use a PNG, JPG or WebP image.')
 
-  const { path, token } = await api.post<{ path: string; token: string }>(
-    '/create-upload-url',
-    { kind, apartmentId, ext },
-  )
+  let path: string, token: string
+  try {
+    ;({ path, token } = await api.post<{ path: string; token: string }>(
+      '/create-upload-url',
+      { kind, apartmentId, ext, size: file.size },
+    ))
+  } catch (err) {
+    // api.post throws new Error(rawText); surface a friendly message for the
+    // declared-size pre-check instead of the raw JSON body. Parse defensively —
+    // the message may not be JSON (network errors, 5xx HTML).
+    let code: string | undefined
+    if (err instanceof Error) {
+      try { code = JSON.parse(err.message)?.error } catch { /* not JSON */ }
+    }
+    if (code === 'file_too_large') {
+      throw new Error('That image is too large — logo must be under 2 MB, cover under 5 MB.')
+    }
+    throw err
+  }
 
   const { error } = await supabase.storage
     .from(BUCKET)
