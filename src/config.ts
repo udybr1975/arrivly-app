@@ -1,16 +1,8 @@
 export const ARRIVLY_CONFIG = {
   // Pricing — change here only
-  trialReminderDays: 5,
-  currency: 'eur',
   currencySymbol: '€',
 
-  // Stripe — fill after Stripe product created
-  stripePriceId: '',
-  stripePublishableKey: '',
-
   // Branding
-  poweredByOnTrial: true,
-  poweredByOnPaid: false,
   poweredByText: 'Powered by Arrivly',
 
   // Colour presets for host branding
@@ -28,19 +20,4 @@ export const ARRIVLY_CONFIG = {
 
   // App
   appUrl: import.meta.env.VITE_APP_URL ?? 'https://arrivly.anna-stays.fi',
-  appName: 'Arrivly',
-
-  // Maps
-  defaultTravelMode: 'walking',
-
-  // Guide
-  guideRefreshDays: 30,
-
-  // Max properties per plan (V1 = 1, expandable later)
-  maxPropertiesByPlan: {
-    trial: 1,
-    basic: 1,
-    plus: 5,
-    pro: 999,
-  },
 } as const
