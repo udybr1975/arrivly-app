@@ -51,7 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Authoritative apartment from DB; client is trusted only for the id + token.
   const { data: apt } = await supabase
     .from('apartments')
-    .select('id, name, city, country, neighborhood, host_id, is_visible')
+    .select('id, name, city, country, neighborhood, street, street_number, host_id, is_visible')
     .eq('id', apartmentId)
     .maybeSingle()
   if (!apt || apt.is_visible === false) return res.status(404).json({ error: 'not_found' })

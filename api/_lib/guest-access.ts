@@ -20,6 +20,8 @@ export interface ApartmentCtx {
   city: string
   country: string | null
   neighborhood: string | null
+  street: string | null
+  street_number: string | null
 }
 
 // Helsinki "today" (YYYY-MM-DD) — matches GuestPage's booking gating timezone.
@@ -139,6 +141,11 @@ export async function buildGuestSystemInstruction(
   }
 
   const where = [apt.neighborhood, apt.city, apt.country].filter(Boolean).join(', ')
+  const streetLine = [apt.street, apt.street_number].filter(Boolean).join(' ')
+  const fullAddress = [streetLine, apt.neighborhood, apt.city, apt.country].filter(Boolean).join(', ')
+  const addressBlock = access.tier !== 'public' && streetLine
+    ? `ADDRESS: ${fullAddress}`
+    : ''
   const guestLine = access.tier !== 'public' && access.guestName
     ? `The guest's name is ${access.guestName}. You may greet them by name on your first reply.`
     : ''
@@ -161,6 +168,7 @@ export async function buildGuestSystemInstruction(
     `- Warm, concise, conversational. Never use markdown bold or double asterisks — plain text only. Keep replies short unless asked for more.`,
     ``,
     `APARTMENT DATA:`,
+    addressBlock,
     detailsBlock,
     ``,
     `HOST RECOMMENDATIONS:`,
