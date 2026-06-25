@@ -5,18 +5,17 @@ import { useToast } from '../shared/Toast'
 import Loader from '../shared/Loader'
 import { resolveImageUrl, uploadImage, deleteImage } from '../../lib/imageUtils'
 
-interface Apartment {
-  id: string
-  name: string
-  accent_color: string | null
-}
+const DEFAULT_COLOR = '#1c1c1a'
 
 export default function BrandingPanel() {
   const { toast } = useToast()
-  const [apt, setApt] = useState<Apartment | null>(null)
   const [hostId, setHostId] = useState<string | null>(null)
-  const [selectedColor, setSelectedColor] = useState('#1c1c1a')
+  const [brandName, setBrandName] = useState('')
+  const [selectedColor, setSelectedColor] = useState(DEFAULT_COLOR)
   const [customHex, setCustomHex] = useState('')
+  // Snapshot of the persisted values, used to disable Save when nothing changed.
+  const [loadedBrandName, setLoadedBrandName] = useState('')
+  const [loadedColor, setLoadedColor] = useState(DEFAULT_COLOR)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [logoUrl, setLogoUrl] = useState<string | null>(null)
@@ -29,22 +28,18 @@ export default function BrandingPanel() {
       setHostId(user.id)
       const { data: hostRow } = await supabase
         .from('hosts')
-        .select('logo_url')
+        .select('brand_name, logo_url, accent_color')
         .eq('id', user.id)
         .maybeSingle()
-      if (hostRow?.logo_url) setLogoUrl(hostRow.logo_url)
-      const { data } = await supabase
-        .from('apartments')
-        .select('id, name, accent_color')
-        .eq('host_id', user.id)
-        .order('created_at')
-        .limit(1)
-        .maybeSingle()
-      if (data) {
-        setApt(data)
-        setSelectedColor(data.accent_color ?? '#1c1c1a')
-        const isPreset = ARRIVLY_CONFIG.colourPresets.some(p => p.hex === (data.accent_color ?? '#1c1c1a'))
-        if (!isPreset && data.accent_color) setCustomHex(data.accent_color)
+      if (hostRow) {
+        const color = hostRow.accent_color ?? DEFAULT_COLOR
+        setBrandName(hostRow.brand_name ?? '')
+        setLoadedBrandName(hostRow.brand_name ?? '')
+        setSelectedColor(color)
+        setLoadedColor(color)
+        if (hostRow.logo_url) setLogoUrl(hostRow.logo_url)
+        const isPreset = ARRIVLY_CONFIG.colourPresets.some(p => p.hex === color)
+        if (!isPreset) setCustomHex(color)
       }
       setLoading(false)
     }
@@ -52,18 +47,25 @@ export default function BrandingPanel() {
   }, [])
 
   async function save() {
-    if (!apt || !hostId) {
-      toast('Set up a property first before saving branding.', 'error')
+    if (!hostId) return
+    const trimmed = brandName.trim()
+    if (!trimmed) {
+      toast("Brand name can't be empty.", 'error')
       return
     }
     setSaving(true)
     const { error } = await supabase
-      .from('apartments')
-      .update({ accent_color: selectedColor })
-      .eq('id', apt.id)
-      .eq('host_id', hostId)
-    if (error) toast(error.message, 'error')
-    else { setApt(p => p ? { ...p, accent_color: selectedColor } : p); toast('Branding saved', 'success') }
+      .from('hosts')
+      .update({ brand_name: trimmed, accent_color: selectedColor })
+      .eq('id', hostId)
+    if (error) {
+      toast(error.message, 'error')
+    } else {
+      setBrandName(trimmed)
+      setLoadedBrandName(trimmed)
+      setLoadedColor(selectedColor)
+      toast('Branding saved', 'success')
+    }
     setSaving(false)
   }
 
@@ -106,97 +108,122 @@ export default function BrandingPanel() {
 
   if (loading) return <Loader />
 
-  const LABEL = 'block text-[10px] uppercase tracking-[.06em] text-[#999] mb-[3px]'
+  const LABEL = 'block text-[10px] font-medium uppercase tracking-[.12em] text-[#a79e8e] mb-1.5'
+  const CARD = 'bg-[#fffdf9] border border-[#e4ddd0] rounded-[14px] p-5'
+  const dirty = brandName.trim() !== loadedBrandName || selectedColor !== loadedColor
+  const previewName = brandName.trim() || 'Your property'
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-[17px] font-serif font-light text-[#1a1a1a] mb-4">Branding</h1>
+    <div className="max-w-3xl font-['Inter']">
+      <h1 className="text-[22px] font-['Fraunces'] font-light text-[#231d17] mb-1">Branding</h1>
+      <p className="text-[13px] text-[#8a8276] mb-5">
+        Your logo, name and default colour — applied across every guest page unless a property overrides it.
+      </p>
 
-      <div className="flex gap-4 items-start">
+      <div className="flex flex-col md:flex-row gap-5 items-start">
         {/* Left: controls */}
-        <div className="flex-1 space-y-4">
-          <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4">
+        <div className="flex-1 w-full space-y-4">
+          {/* Logo */}
+          <div className={CARD}>
             <label className={LABEL}>Logo</label>
-            <div className="flex items-center gap-3 mt-2">
-              <div className="w-16 h-16 rounded-[8px] border border-[#ddd8ce] bg-[#f8f6f2] flex items-center justify-center overflow-hidden shrink-0">
+            <div className="flex items-center gap-3.5 mt-1">
+              <div className="w-16 h-16 rounded-[10px] border border-[#e4ddd0] bg-[#f0ede6] flex items-center justify-center overflow-hidden shrink-0">
                 {logoUrl ? (
                   <img src={resolveImageUrl(logoUrl)} alt="Logo" className="w-full h-full object-contain" />
                 ) : (
-                  <span className="text-[9px] text-[#999] text-center px-1">No logo</span>
+                  <span className="text-[9px] text-[#a79e8e] text-center px-1">No logo</span>
                 )}
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-2 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors cursor-pointer inline-block">
+                <label className="bg-transparent border border-[#e4ddd0] text-[#231d17] px-3.5 py-2 rounded-[9px] text-xs font-medium hover:bg-[#f0ede6] transition-colors cursor-pointer inline-block">
                   {uploadingLogo ? 'Uploading…' : logoUrl ? 'Replace logo' : 'Upload logo'}
                   <input type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={handleLogoFile} disabled={uploadingLogo} />
                 </label>
                 {logoUrl && (
-                  <button onClick={removeLogo} disabled={uploadingLogo} className="text-[11px] text-[#a33] hover:underline bg-transparent border-none cursor-pointer text-left disabled:opacity-40">Remove</button>
+                  <button onClick={removeLogo} disabled={uploadingLogo} className="text-[11px] text-[#8a1a1a] hover:underline bg-transparent border-none cursor-pointer text-left disabled:opacity-40">Remove</button>
                 )}
-                <p className="text-[10px] text-[#999]">PNG, JPG or WebP · under 2 MB · shown in your guest page header.</p>
+                <p className="text-[10.5px] text-[#8a8276]">PNG, JPG or WebP · under 2 MB · shown in your guest page header.</p>
               </div>
             </div>
           </div>
-          <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4">
-            <label className={LABEL}>Brand colour</label>
-            <div className="grid grid-cols-3 gap-2 mt-2">
-              {ARRIVLY_CONFIG.colourPresets.map(preset => (
-                <button
-                  key={preset.hex}
-                  onClick={() => { setSelectedColor(preset.hex); setCustomHex('') }}
-                  className={`flex items-center gap-2 rounded-[8px] p-2.5 border transition-colors text-left ${
-                    selectedColor === preset.hex && !customHex
-                      ? 'border-[#1a1a1a] shadow-sm'
-                      : 'border-[#ddd8ce] hover:border-[#aaa]'
-                  }`}
-                >
-                  <div
-                    className="w-6 h-6 rounded-[5px] shrink-0"
-                    style={{ backgroundColor: preset.hex }}
-                  />
-                  <span className="text-[11px] text-[#444]">{preset.name}</span>
-                  {selectedColor === preset.hex && !customHex && (
-                    <span className="ml-auto text-[10px] text-[#1a1a1a]">✓</span>
-                  )}
-                </button>
-              ))}
+
+          {/* Brand name */}
+          <div className={CARD}>
+            <label className={LABEL} htmlFor="brand-name">Brand name</label>
+            <input
+              id="brand-name"
+              value={brandName}
+              onChange={e => setBrandName(e.target.value)}
+              className="w-full bg-[#f0ede6] border border-[#e4ddd0] rounded-[9px] px-3.5 py-2.5 text-[13px] text-[#231d17] focus:outline-none focus:border-[#c8a24e] transition-colors"
+              placeholder="Your property or business name"
+              maxLength={80}
+            />
+            <p className="text-[10.5px] text-[#8a8276] mt-1.5">Signed at the bottom of every guest greeting.</p>
+          </div>
+
+          {/* Default colour */}
+          <div className={CARD}>
+            <label className={LABEL}>Default colour</label>
+            <div className="grid grid-cols-3 gap-2 mt-1">
+              {ARRIVLY_CONFIG.colourPresets.map(preset => {
+                const active = selectedColor === preset.hex && !customHex
+                return (
+                  <button
+                    key={preset.hex}
+                    onClick={() => { setSelectedColor(preset.hex); setCustomHex('') }}
+                    className={`flex items-center gap-2 rounded-[10px] p-2.5 border transition-colors text-left ${
+                      active
+                        ? 'border-[#c8a24e] bg-[rgba(200,162,78,0.08)] shadow-sm'
+                        : 'border-[#e4ddd0] hover:border-[#a8842f]'
+                    }`}
+                  >
+                    <div className="w-6 h-6 rounded-[6px] shrink-0" style={{ backgroundColor: preset.hex }} />
+                    <span className="text-[11px] text-[#231d17]">{preset.name}</span>
+                    {active && <span className="ml-auto text-[11px] text-[#a8842f]">✓</span>}
+                  </button>
+                )
+              })}
             </div>
 
             {/* Custom hex */}
-            <div className="mt-3">
+            <div className="mt-3.5">
               <label className={LABEL}>Custom hex</label>
               <div className="flex gap-2 items-center">
-                <div className="w-8 h-8 rounded-[6px] border border-[#ddd8ce] shrink-0" style={{ backgroundColor: customHex || selectedColor }} />
+                <div className="w-8 h-8 rounded-[7px] border border-[#e4ddd0] shrink-0" style={{ backgroundColor: customHex || selectedColor }} />
                 <input
                   value={customHex}
                   onChange={e => setCustomHex(e.target.value)}
                   onBlur={applyCustomHex}
-                  className="flex-1 bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-3 py-2 text-xs text-[#444] font-mono focus:outline-none focus:border-[#1a1a1a] transition-colors"
+                  className="flex-1 bg-[#f0ede6] border border-[#e4ddd0] rounded-[9px] px-3.5 py-2.5 text-xs text-[#231d17] font-mono focus:outline-none focus:border-[#c8a24e] transition-colors"
                   placeholder="#2c4a8a"
                   maxLength={7}
                 />
                 <button
                   onClick={applyCustomHex}
-                  className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-2 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors"
+                  className="bg-transparent border border-[#e4ddd0] text-[#231d17] px-3.5 py-2.5 rounded-[9px] text-xs font-medium hover:bg-[#f0ede6] transition-colors"
                 >
                   Apply
                 </button>
               </div>
             </div>
+
+            <p className="text-[10.5px] text-[#8a8276] mt-3">
+              This is your account default. Any property can override it in its Look tab.
+            </p>
           </div>
 
           <button
             onClick={save}
-            disabled={saving || selectedColor === apt?.accent_color}
-            className="bg-[#1a1a1a] text-white px-4 py-2.5 rounded-[8px] text-xs font-semibold hover:opacity-80 transition-opacity disabled:opacity-40"
+            disabled={saving || !dirty}
+            className="bg-[#c8a24e] text-[#16100d] px-5 py-2.5 rounded-[10px] text-xs font-semibold hover:bg-[#a8842f] hover:text-white transition-colors disabled:opacity-40 disabled:hover:bg-[#c8a24e] disabled:hover:text-[#16100d]"
           >
             {saving ? 'Saving…' : 'Save branding'}
           </button>
         </div>
 
         {/* Right: phone preview */}
-        <div className="shrink-0">
-          <div className="text-[10px] uppercase tracking-[.06em] text-[#999] mb-2 text-center">Preview</div>
+        <div className="shrink-0 mx-auto md:mx-0">
+          <div className="text-[10px] font-medium uppercase tracking-[.12em] text-[#a79e8e] mb-2 text-center">Preview</div>
           <div
             className="relative rounded-[28px] overflow-hidden border-[3px]"
             style={{ width: 180, borderColor: '#2a2a2a' }}
@@ -207,9 +234,12 @@ export default function BrandingPanel() {
             </div>
             {/* Hero */}
             <div className="px-3 py-3" style={{ backgroundColor: selectedColor }}>
+              {logoUrl && (
+                <img src={resolveImageUrl(logoUrl)} alt="" className="h-5 mb-1.5 object-contain" />
+              )}
               <div className="text-[10px] text-white/60 mb-0.5">Welcome</div>
-              <div className="text-[14px] font-serif font-light text-white leading-tight">
-                {apt?.name ?? 'Your property'}
+              <div className="text-[14px] font-['Fraunces'] font-light text-white leading-tight">
+                {previewName}
               </div>
             </div>
             {/* WiFi card */}

@@ -20,6 +20,7 @@ interface Host {
   logo_url: string | null
   whatsapp: string | null
   subscription_status: string
+  accent_color: string | null
 }
 
 interface Apartment {
@@ -499,7 +500,7 @@ export default function GuestPage() {
   )
 
 
-  const accentColor = apartment?.accent_color ?? ARRIVLY_CONFIG.colourPresets[0].hex
+  const accentColor = apartment?.accent_color ?? host?.accent_color ?? ARRIVLY_CONFIG.colourPresets[0].hex
   const brandName = host?.brand_name ?? 'Your Host'
   const showPoweredBy = host?.subscription_status === 'trial' || host?.subscription_status === 'grace'
 

@@ -48,7 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { data: guide,    error: guideErr },
     ] = await Promise.all([
       db.from('hosts')
-        .select('brand_name, logo_url, whatsapp, subscription_status')
+        .select('brand_name, logo_url, whatsapp, subscription_status, accent_color')
         .eq('id', apt.host_id)
         .maybeSingle(),
       db.from('apartment_details')
@@ -83,7 +83,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     return res.status(200).json({
       apartment: apt,
-      host:      hostRow ?? { brand_name: null, logo_url: null, whatsapp: null, subscription_status: 'trial' },
+      host:      hostRow ?? { brand_name: null, logo_url: null, whatsapp: null, subscription_status: 'trial', accent_color: null },
       details:   detRows ?? [],
       hostPicks: picks ?? [],
       guide:     guide?.categories ?? {},
