@@ -8,6 +8,7 @@ import SuperAdminRoute from './components/shared/SuperAdminRoute'
 import Layout from './components/shared/Layout'
 import Login from './components/auth/Login'
 import Signup from './components/auth/Signup'
+import ResetPassword from './components/auth/ResetPassword'
 import ChoosePlan from './components/host/ChoosePlan'
 import Dashboard from './components/host/Dashboard'
 import PropertySetup from './components/host/PropertySetup'
@@ -78,6 +79,7 @@ export default function App() {
           <Route path="/" element={<LandingGate />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/login" element={<Login />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/guest" element={<GuestPage />} />
 
           {/* Protected host routes */}
