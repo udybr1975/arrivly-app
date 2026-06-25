@@ -1,16 +1,47 @@
 import { useEffect, useRef, useState } from 'react'
+import type { ComponentType } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { Menu } from 'lucide-react'
+import {
+  Menu,
+  Home,
+  QrCode,
+  Palette,
+  CalendarDays,
+  MessageCircle,
+  CreditCard,
+  Settings as SettingsIcon,
+  ShieldCheck,
+} from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { ARRIVLY_CONFIG } from '../../config'
+import Logo from './Logo'
 
-const NAV = [
-  { to: '/dashboard',          label: 'Overview',     emoji: '📊', end: true },
-  { to: '/dashboard/bookings',  label: 'Bookings',     emoji: '📅' },
-  { to: '/dashboard/messages', label: 'Messages',     emoji: '💬' },
-  { to: '/dashboard/qr',       label: 'QR codes',     emoji: '📲' },
-  { to: '/dashboard/branding', label: 'Branding',     emoji: '🎨' },
-  { to: '/dashboard/billing',  label: 'Billing',      emoji: '💳' },
+type NavEntry = { to: string; label: string; Icon: ComponentType<{ size?: number; className?: string }>; end?: boolean }
+
+// Grouped IA. Route `to` paths are unchanged from before — only labels/icons/grouping.
+const NAV_GROUPS: Array<{ label?: string; items: NavEntry[] }> = [
+  { items: [{ to: '/dashboard', label: 'Home', Icon: Home, end: true }] },
+  {
+    label: 'Your place',
+    items: [
+      { to: '/dashboard/qr', label: 'Guest page & QR', Icon: QrCode },
+      { to: '/dashboard/branding', label: 'Branding', Icon: Palette },
+    ],
+  },
+  {
+    label: 'Guests',
+    items: [
+      { to: '/dashboard/bookings', label: 'Bookings', Icon: CalendarDays },
+      { to: '/dashboard/messages', label: 'Messages', Icon: MessageCircle },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { to: '/dashboard/billing', label: 'Billing', Icon: CreditCard },
+      { to: '/dashboard/settings', label: 'Settings', Icon: SettingsIcon },
+    ],
+  },
 ]
 
 interface HostData {
@@ -19,6 +50,13 @@ interface HostData {
   subscription_status: string | null
   stripe_subscription_id: string | null
 }
+
+const navItemClass = ({ isActive }: { isActive: boolean }) =>
+  `group flex items-center gap-[11px] pl-[10px] pr-2.5 py-[7px] rounded-[9px] text-[13px] border-l-[3px] transition-colors ${
+    isActive
+      ? 'bg-[rgba(200,162,78,0.13)] text-[#f4ecdb] border-[#c8a24e]'
+      : 'text-[#b6ad9e] border-transparent hover:bg-white/5'
+  }`
 
 export default function Layout() {
   const navigate = useNavigate()
@@ -144,21 +182,22 @@ export default function Layout() {
   const closeMenu = () => setMenuOpen(false)
 
   return (
-    <div className="flex min-h-screen bg-[#f0ede6]">
+    <div className="flex min-h-screen bg-[#f0ede6] font-['Inter']">
 
       {/* Mobile top bar — hidden on md+ */}
-      <div className="md:hidden fixed top-0 inset-x-0 h-12 z-30 bg-[#f8f6f2] border-b border-[#ddd8ce] flex items-center px-3 gap-2">
+      <div className="md:hidden fixed top-0 inset-x-0 h-12 z-30 bg-[#1c1c1a] border-b border-[#322c25] flex items-center px-3 gap-2.5">
         <button
           ref={hamburgerRef}
           onClick={() => setMenuOpen(true)}
           aria-label="Open menu"
           aria-expanded={menuOpen}
           aria-controls="sidebar-nav"
-          className="p-1.5 text-[#666] hover:text-[#1a1a1a] transition-colors"
+          className="p-1.5 text-[#b6ad9e] hover:text-[#f0ede6] transition-colors"
         >
           <Menu size={18} />
         </button>
-        <span className="text-[13px] font-semibold text-[#1a1a1a] truncate">
+        <Logo size={22} />
+        <span className="text-[13px] font-semibold text-[#e9e3d7] truncate">
           {host?.brand_name ?? 'Arrivly'}
         </span>
       </div>
@@ -166,7 +205,7 @@ export default function Layout() {
       {/* Backdrop — closes drawer on tap */}
       {menuOpen && (
         <div
-          className="md:hidden fixed inset-0 z-40 bg-black/40"
+          className="md:hidden fixed inset-0 z-40 bg-black/50"
           onClick={closeMenu}
         />
       )}
@@ -179,107 +218,97 @@ export default function Layout() {
         aria-modal={menuOpen ? true : undefined}
         aria-label={menuOpen ? 'Dashboard menu' : undefined}
         className={`
-        fixed inset-y-0 left-0 z-50 w-[170px] shrink-0
-        bg-[#f8f6f2] border-r border-[#ddd8ce] p-[14px]
+        fixed inset-y-0 left-0 z-50 w-[212px] shrink-0
+        bg-[#1c1c1a] border-r border-[#322c25] p-3.5
         flex flex-col min-h-screen
         transform transition-transform duration-200
         ${menuOpen ? 'translate-x-0' : '-translate-x-full'}
         md:static md:translate-x-0 md:z-auto
       `}>
-        {/* Brand + email */}
-        <div className="mb-3.5">
-          <div className="text-[13px] font-semibold text-[#1a1a1a] truncate">
-            {host?.brand_name ?? 'Arrivly'}
+        {/* Brand */}
+        <div className="mb-4 px-1">
+          <Logo size={28} withWordmark wordmarkClassName="font-['Fraunces'] text-[17px] text-[#f0ede6]" />
+          <div className="mt-3">
+            <div className="text-[12px] font-semibold text-[#e9e3d7] truncate">
+              {host?.brand_name ?? 'Arrivly'}
+            </div>
+            <div className="text-[10.5px] text-[#8a8175] truncate">{email}</div>
           </div>
-          <div className="text-[10px] text-[#aaa] truncate">{email}</div>
         </div>
 
         {/* Nav */}
-        <nav className="flex flex-col gap-0.5 flex-1">
-          {NAV.map(({ to, label, emoji, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              onClick={closeMenu}
-              className={({ isActive }) =>
-                `flex items-center gap-[7px] px-[10px] py-[7px] rounded-[7px] text-xs cursor-pointer transition-colors ${
-                  isActive
-                    ? 'bg-white text-[#1a1a1a] font-semibold shadow-[0_1px_2px_rgba(0,0,0,.06)]'
-                    : 'text-[#666] hover:bg-white/60'
-                }`
-              }
-            >
-              <span className="text-sm">{emoji}</span>
-              {label}
-              {to === '/dashboard/messages' && unread > 0 && (
-                <span className="ml-auto bg-[#1a1a1a] text-white text-[9px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
-                  {unread}
-                </span>
+        <nav className="flex flex-col gap-2 flex-1 overflow-y-auto">
+          {NAV_GROUPS.map((group, gi) => (
+            <div key={group.label ?? `g${gi}`} className="flex flex-col gap-0.5">
+              {group.label && (
+                <div className="px-[10px] pt-1.5 pb-1 text-[10px] font-medium uppercase tracking-[.12em] text-[#7d7466]">
+                  {group.label}
+                </div>
               )}
-            </NavLink>
+              {group.items.map(({ to, label, Icon, end }) => (
+                <NavLink key={to} to={to} end={end} onClick={closeMenu} className={navItemClass}>
+                  {({ isActive }) => (
+                    <>
+                      <Icon size={16} className={isActive ? 'text-[#c8a24e]' : 'text-[#9a9082]'} />
+                      <span className="flex-1 truncate">{label}</span>
+                      {to === '/dashboard/messages' && unread > 0 && (
+                        <span className="bg-[#c8a24e] text-[#16100d] text-[9px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
+                          {unread}
+                        </span>
+                      )}
+                    </>
+                  )}
+                </NavLink>
+              ))}
+            </div>
           ))}
-          <NavLink
-            to="/dashboard/settings"
-            onClick={closeMenu}
-            className={({ isActive }) =>
-              `flex items-center gap-[7px] px-[10px] py-[7px] rounded-[7px] text-xs cursor-pointer transition-colors ${
-                isActive
-                  ? 'bg-white text-[#1a1a1a] font-semibold shadow-[0_1px_2px_rgba(0,0,0,.06)]'
-                  : 'text-[#666] hover:bg-white/60'
-              }`
-            }
-          >
-            <span className="text-sm">⚙️</span>
-            Settings
-          </NavLink>
+
+          {email === ARRIVLY_CONFIG.adminEmail && (
+            <div className="flex flex-col gap-0.5">
+              <div className="px-[10px] pt-1.5 pb-1 text-[10px] font-medium uppercase tracking-[.12em] text-[#7d7466]">
+                Admin
+              </div>
+              <NavLink to="/admin" onClick={closeMenu} className={navItemClass}>
+                {({ isActive }) => (
+                  <>
+                    <ShieldCheck size={16} className={isActive ? 'text-[#c8a24e]' : 'text-[#9a9082]'} />
+                    <span className="flex-1 truncate">Admin</span>
+                  </>
+                )}
+              </NavLink>
+            </div>
+          )}
         </nav>
 
         {/* Trial widget + sign out */}
-        <div className="mt-auto pt-3.5 flex flex-col gap-2">
+        <div className="mt-auto pt-3.5 flex flex-col gap-2.5">
           {showTrial && (
-            <div className="bg-[#e4f0da] rounded-[9px] p-[11px]">
-              <div className="text-[10px] font-semibold text-[#2a5c0a]">Free trial</div>
-              <div className="text-[22px] font-serif font-light text-[#1a3a0a] my-0.5">
+            <div className="rounded-[12px] p-[13px] bg-[rgba(200,162,78,0.10)] border border-[rgba(200,162,78,0.22)]">
+              <div className="text-[10px] font-semibold uppercase tracking-[.08em] text-[#e7d6ad]">Free trial</div>
+              <div className="text-[26px] font-['Fraunces'] font-light text-[#f0ede6] leading-none mt-1">
                 {trialRemaining}
               </div>
-              <div className="text-[10px] text-[#2a5c0a] mb-1.5">days remaining</div>
+              <div className="text-[10.5px] text-[#8a8175] mt-0.5 mb-2.5">days remaining</div>
               <NavLink
                 to="/dashboard/billing"
                 onClick={closeMenu}
-                className="block bg-[#1a3a0a] text-white text-center py-1.5 rounded-[5px] text-[10px] font-semibold hover:opacity-80 transition-opacity"
+                className="block text-center py-2 rounded-[8px] text-[11px] font-semibold bg-[#c8a24e] text-[#16100d] hover:bg-[#e7d6ad] transition-colors"
               >
                 {hasSub ? 'Manage plan' : 'Add card'}
               </NavLink>
             </div>
           )}
-          {email === ARRIVLY_CONFIG.adminEmail && (
-            <NavLink
-              to="/admin"
-              onClick={closeMenu}
-              className={({ isActive }) =>
-                `flex items-center gap-[7px] px-[10px] py-[7px] rounded-[7px] text-xs cursor-pointer transition-colors ${
-                  isActive
-                    ? 'bg-white text-[#1a1a1a] font-semibold shadow-[0_1px_2px_rgba(0,0,0,.06)]'
-                    : 'text-[#666] hover:bg-white/60'
-                }`
-              }
-            >
-              <span className="text-sm">🔒</span>
-              ← Admin
-            </NavLink>
-          )}
           <button
             onClick={signOut}
-            className="text-[10px] text-[#999] hover:text-[#666] text-left px-1 transition-colors"
+            className="text-[11px] text-[#8a8175] hover:text-[#b6ad9e] text-left px-1 transition-colors"
           >
             Sign out
           </button>
         </div>
       </aside>
 
-      {/* Main — pt-16 clears the fixed mobile top bar; md:pt-4 restores normal padding */}
-      <main className="flex-1 px-4 pb-4 pt-16 md:pt-4 overflow-auto min-w-0">
+      {/* Main — pt-16 clears the fixed mobile top bar; md restores normal padding */}
+      <main className="flex-1 px-4 pb-8 pt-16 md:px-8 md:pt-8 overflow-auto min-w-0">
         <Outlet />
       </main>
     </div>

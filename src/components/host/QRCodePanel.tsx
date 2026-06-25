@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { MapPin, Download, Printer, Copy, Check } from 'lucide-react'
 import QRCode from 'qrcode'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
@@ -9,19 +10,7 @@ interface ApartmentQR {
   id: string
   name: string
   neighborhood: string | null
-  guide_refreshed_at: string | null
   qr_secret: string | null
-}
-
-interface PropertyQRCardProps {
-  apt: ApartmentQR
-  onRefresh: () => void
-  refreshing: boolean
-  refreshingAll: boolean
-  refreshError: string | null
-  onRefreshEvents: () => void
-  refreshingEvents: boolean
-  eventsMsg: { text: string; ok: boolean } | null
 }
 
 function guestUrl(aptId: string, secret: string | null) {
@@ -36,14 +25,9 @@ function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'qr'
 }
 
-function hoursAgoLabel(iso: string): string {
-  const h = Math.floor((Date.now() - new Date(iso).getTime()) / 3_600_000)
-  if (!Number.isFinite(h) || h < 1) return 'just now'
-  return `${h}h ago`
-}
-
-function PropertyQRCard({ apt, onRefresh, refreshing, refreshingAll, refreshError, onRefreshEvents, refreshingEvents, eventsMsg }: PropertyQRCardProps) {
+function PropertyQRCard({ apt }: { apt: ApartmentQR }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const [copied, setCopied] = useState(false)
   const url = guestUrl(apt.id, apt.qr_secret)
 
   useEffect(() => {
@@ -54,6 +38,13 @@ function PropertyQRCard({ apt, onRefresh, refreshing, refreshingAll, refreshErro
       color: { dark: '#1a1a1a', light: '#ffffff' },
     })
   }, [url])
+
+  // Reset the "copied" tick after a moment.
+  useEffect(() => {
+    if (!copied) return
+    const t = window.setTimeout(() => setCopied(false), 1600)
+    return () => window.clearTimeout(t)
+  }, [copied])
 
   function download() {
     if (!canvasRef.current) return
@@ -73,60 +64,51 @@ function PropertyQRCard({ apt, onRefresh, refreshing, refreshingAll, refreshErro
     w.print()
   }
 
+  function copyUrl() {
+    navigator.clipboard?.writeText(url).then(() => setCopied(true)).catch(() => {})
+  }
+
   return (
-    <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 flex items-start gap-4">
-      <div className="shrink-0 bg-[#f8f6f2] rounded-[8px] p-2 flex items-center justify-center">
-        <canvas ref={canvasRef} aria-label={`QR code for ${apt.name}`} style={{ width: 80, height: 80 }} />
+    <div className="flex flex-col items-center bg-[#fffdf9] border border-[#e4ddd0] rounded-[14px] p-5 text-center">
+      <div className="rounded-[12px] border border-[#e4ddd0] bg-white p-3">
+        <canvas ref={canvasRef} aria-label={`QR code for ${apt.name}`} style={{ width: 148, height: 148 }} />
       </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-semibold text-[#1a1a1a] mb-0.5">{apt.name}</div>
-        {apt.neighborhood && (
-          <div className="text-[11px] text-[#888] mb-2">{apt.neighborhood}</div>
-        )}
-        <div className="bg-[#f8f6f2] rounded-[6px] px-2.5 py-1.5 mb-2">
-          <div className="text-[10px] uppercase tracking-[.06em] text-[#999] mb-0.5">Guest page URL</div>
-          <div className="text-[10px] font-mono text-[#555] break-all">{url}</div>
+      <div className="mt-4 text-[14px] font-semibold text-[#231d17] truncate max-w-full">{apt.name}</div>
+      {apt.neighborhood && (
+        <div className="mt-0.5 flex items-center gap-1 text-[12px] text-[#8a8276]">
+          <MapPin size={12} className="shrink-0" />
+          <span className="truncate">{apt.neighborhood}</span>
         </div>
-        <div className="text-[10px] text-[#aaa] mb-3">
-          Guide refreshed: {apt.guide_refreshed_at
-            ? new Date(apt.guide_refreshed_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
-            : 'Not generated yet'}
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          <button
-            onClick={download}
-            className="bg-[#1a1a1a] text-white px-3 py-1.5 rounded-[7px] text-xs font-semibold hover:opacity-80 transition-opacity"
-          >
-            ⬇ Download PNG
-          </button>
-          <button
-            onClick={printCard}
-            className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1.5 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors"
-          >
-            🖨 Print card
-          </button>
-          <button
-            onClick={onRefresh}
-            disabled={refreshing || refreshingAll}
-            className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1.5 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors disabled:opacity-50"
-          >
-            {refreshing ? 'Refreshing…' : '↻ Refresh guide'}
-          </button>
-          <button
-            onClick={onRefreshEvents}
-            disabled={refreshingEvents}
-            className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1.5 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors disabled:opacity-50"
-          >
-            {refreshingEvents ? 'Refreshing…' : '↻ Refresh events'}
-          </button>
-        </div>
-        {refreshError && (
-          <div className="text-[10px] text-[#c44] mt-1.5">{refreshError}</div>
-        )}
-        {eventsMsg && (
-          <div className={`text-[10px] mt-1.5 ${eventsMsg.ok ? 'text-[#2a5c0a]' : 'text-[#c44]'}`}>{eventsMsg.text}</div>
-        )}
+      )}
+
+      {/* URL row + copy */}
+      <div className="mt-3.5 flex w-full items-center gap-2 rounded-[9px] border border-[#e4ddd0] bg-[#f7f3ec] px-2.5 py-2">
+        <span className="flex-1 min-w-0 truncate text-left text-[11px] font-mono text-[#6b6354]">{url}</span>
+        <button
+          type="button"
+          onClick={copyUrl}
+          aria-label={copied ? 'Copied' : 'Copy guest page URL'}
+          className="shrink-0 text-[#8a8276] hover:text-[#231d17] transition-colors"
+        >
+          {copied ? <Check size={15} className="text-[#5d7c34]" /> : <Copy size={15} />}
+        </button>
+      </div>
+
+      {/* actions */}
+      <div className="mt-4 flex w-full gap-2">
+        <button
+          onClick={download}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 bg-[#c8a24e] text-[#16100d] px-3 py-2 rounded-[9px] text-[12.5px] font-semibold hover:bg-[#e7d6ad] transition-colors"
+        >
+          <Download size={14} /> Download
+        </button>
+        <button
+          onClick={printCard}
+          className="flex-1 inline-flex items-center justify-center gap-1.5 border border-[#e4ddd0] text-[#6b6354] px-3 py-2 rounded-[9px] text-[12.5px] hover:bg-[#f0ede6] transition-colors"
+        >
+          <Printer size={14} /> Print
+        </button>
       </div>
     </div>
   )
@@ -136,17 +118,11 @@ type RawApt = {
   id: string
   name: string
   neighborhood: string | null
-  guide_recommendations: Array<{ generated_at: string }>
 }
 
 export default function QRCodePanel() {
   const [apts, setApts] = useState<ApartmentQR[]>([])
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState<Set<string>>(new Set())
-  const [refreshErrors, setRefreshErrors] = useState<Record<string, string>>({})
-  const [refreshingAll, setRefreshingAll] = useState(false)
-  const [refreshingEvents, setRefreshingEvents] = useState<Set<string>>(new Set())
-  const [eventsMsgs, setEventsMsgs] = useState<Record<string, { text: string; ok: boolean }>>({})
 
   useEffect(() => {
     async function load() {
@@ -154,14 +130,13 @@ export default function QRCodePanel() {
       if (!user) { setLoading(false); return }
       const { data } = await supabase
         .from('apartments')
-        .select('id, name, neighborhood, guide_recommendations(generated_at)')
+        .select('id, name, neighborhood')
         .eq('host_id', user.id)
         .order('created_at')
       const mapped: ApartmentQR[] = ((data ?? []) as RawApt[]).map(a => ({
         id: a.id,
         name: a.name,
         neighborhood: a.neighborhood,
-        guide_refreshed_at: a.guide_recommendations?.[0]?.generated_at ?? null,
         qr_secret: null,
       }))
 
@@ -179,104 +154,26 @@ export default function QRCodePanel() {
     load()
   }, [])
 
-  async function refreshGuide(aptId: string) {
-    setRefreshing(prev => new Set(prev).add(aptId))
-    setRefreshErrors(prev => { const n = { ...prev }; delete n[aptId]; return n })
-    try {
-      await api.post<{ ok: boolean; placeCount: number }>('/generate-guide', { apartment_id: aptId })
-      setApts(prev => prev.map(a =>
-        a.id === aptId ? { ...a, guide_refreshed_at: new Date().toISOString() } : a
-      ))
-    } catch (e) {
-      let msg = 'Refresh failed. Try again.'
-      try {
-        if (JSON.parse((e as Error).message)?.error === 'guide_empty') {
-          msg = 'No places were generated this time. Please try again.'
-        }
-      } catch { /* keep generic message */ }
-      setRefreshErrors(prev => ({ ...prev, [aptId]: msg }))
-    } finally {
-      setRefreshing(prev => { const s = new Set(prev); s.delete(aptId); return s })
-    }
-  }
-
-  async function refreshEvents(aptId: string) {
-    setRefreshingEvents(prev => new Set(prev).add(aptId))
-    setEventsMsgs(prev => { const n = { ...prev }; delete n[aptId]; return n })
-    try {
-      const r = await api.post<{ refreshed: boolean; reason?: string; generated_at?: string }>(
-        '/refresh-events', { apartment_id: aptId }
-      )
-      if (r.refreshed) {
-        setEventsMsgs(prev => ({ ...prev, [aptId]: { text: 'Events refreshed.', ok: true } }))
-      } else if (r.reason === 'fresh') {
-        const ago = r.generated_at ? hoursAgoLabel(r.generated_at) : ''
-        setEventsMsgs(prev => ({
-          ...prev,
-          [aptId]: { text: `Events are up to date${ago ? ` (refreshed ${ago})` : ''}.`, ok: true },
-        }))
-      } else {
-        setEventsMsgs(prev => ({
-          ...prev,
-          [aptId]: { text: "Couldn't refresh right now — please try again later.", ok: false },
-        }))
-      }
-    } catch (e) {
-      let text = "Couldn't refresh right now — please try again later."
-      try {
-        if (JSON.parse((e as Error).message)?.error === 'rate_limited') {
-          text = 'Please wait a moment before refreshing again.'
-        }
-      } catch { /* keep generic message */ }
-      setEventsMsgs(prev => ({ ...prev, [aptId]: { text, ok: false } }))
-    } finally {
-      setRefreshingEvents(prev => { const s = new Set(prev); s.delete(aptId); return s })
-    }
-  }
-
-  async function refreshAllGuides() {
-    setRefreshingAll(true)
-    for (const apt of apts) {
-      await refreshGuide(apt.id)
-    }
-    setRefreshingAll(false)
-  }
-
   if (loading) return <Loader />
 
   return (
-    <div className="max-w-2xl">
-      <div className="flex items-center justify-between mb-4">
-        <h1 className="text-[17px] font-serif font-light text-[#1a1a1a]">QR codes &amp; guides</h1>
-        <button
-          onClick={refreshAllGuides}
-          disabled={refreshingAll}
-          className="bg-transparent border border-[#ddd8ce] text-[#444] px-3 py-1.5 rounded-[7px] text-xs hover:bg-[#f0ede6] transition-colors disabled:opacity-50"
-        >
-          {refreshingAll ? 'Refreshing…' : '↻ Refresh all guides'}
-        </button>
-      </div>
+    <div className="font-['Inter'] max-w-5xl">
+      <header className="mb-7">
+        <h1 className="text-[25px] font-['Fraunces'] font-light text-[#231d17]">QR codes</h1>
+        <p className="text-[13px] text-[#8a8276] mt-1">
+          One code per property. Print it, stick it up — every scan opens that guest page.
+        </p>
+      </header>
 
-      {apts.length === 0 && (
-        <div className="text-center py-10 text-[#aaa] text-[12px]">No properties yet.</div>
+      {apts.length === 0 ? (
+        <div className="text-center py-16 text-[#b3aa9b] text-[13px]">No properties yet.</div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3.5">
+          {apts.map(apt => (
+            <PropertyQRCard key={apt.id} apt={apt} />
+          ))}
+        </div>
       )}
-
-      <div className="grid grid-cols-1 gap-3">
-        {apts.map((apt) => (
-          <PropertyQRCard
-            key={apt.id}
-            apt={apt}
-            onRefresh={() => refreshGuide(apt.id)}
-            refreshing={refreshing.has(apt.id)}
-            refreshingAll={refreshingAll}
-            refreshError={refreshErrors[apt.id] ?? null}
-            onRefreshEvents={() => refreshEvents(apt.id)}
-            refreshingEvents={refreshingEvents.has(apt.id)}
-            eventsMsg={eventsMsgs[apt.id] ?? null}
-          />
-        ))}
-      </div>
-
     </div>
   )
 }
