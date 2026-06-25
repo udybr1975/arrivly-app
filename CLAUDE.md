@@ -1,7 +1,24 @@
 # Arrivly — CLAUDE.md
 
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD:** b658813 (Jun 25 2026 — S25 — Phase G CLOSED (items a–g done); pentest/'hacker' gate (h) repositioned to immediately before the live flip (after Phase F), NOT a G-internal task. Phase H STARTED (order: landing → host dashboard → guest page). Landing page redesigned + shipped: new `src/components/Landing.tsx` (dark-premium charcoal/brass, Fraunces+Inter scoped to landing, real photos in `public/landing/`, inline-SVG brass icons), replacing the old inline LandingContent. Headline 'Your guest concierge page. Your new revenue stream.' Dynamic trial-days + from-price wired from `/api/public-pricing` in 4 places; booking €-figures are illustrative/hardcoded. Picks (editorial) kept distinct from the experiences marketplace (whole third-party catalogue earns, picks-overlap is the bonus). AI chatbot vs human host↔guest messaging kept as distinct features. PWA install mentioned lightly only). Prior: acd16f4 (feat(city-events): dedicated `GEMINI_API_KEY_EVENTS` with fallback to shared key). Prior code HEAD: 81b3767 (S24, server-side create-booking + host-scoped guests RLS).
+> **Current HEAD:** ba113d2 (Jun 26 2026 — S26 — Phase H continued (host dashboard). Dashboard redesign **pass 1** shipped: Layout sidebar IA + Overview grid + QR grid (all refresh controls removed from QR). Deploy `dpl_9yiemsf8` READY on arrivly.anna-stays.fi. **Design system = DARK sidebar + CREAM workspace** (see "Design system — ground truth" below). Also shipped this session: auth redesign `1e03d95` (split-screen AuthShell + Login/Signup reskin + new `/reset-password` flow), branding icons `a8d6c64` (favicon + app icons → Arrivly Marker mark). Prior: b658813 (S25 — landing redesign shipped; Phase G CLOSED; pentest gate repositioned to just before the live flip after Phase F). Prior code HEAD: 81b3767 (S24, server-side create-booking + host-scoped guests RLS).
+>
+> **Design system — GROUND TRUTH (verified from shipped `Layout.tsx`, S26):**
+> - Host dashboard = **DARK sidebar + CREAM workspace** (NOT all-dark). Sidebar bg `#1c1c1a`, border `#322c25`. Workspace/main bg `#f0ede6`. Cards `#fffdf9`, hairline `#e4ddd0`.
+> - Brass `#c8a24e` (active state + primary CTA), brass-deep `#a8842f`, brass-soft `#e7d6ad`. Text `#231d17`, muted `#8a8276`, faint `#b3aa9b`, label `#a79e8e`. Good `#5d7c34` on `#eaf0dd`. Private badge text `#8a1a1a`.
+> - Fonts: Fraunces (display) + Inter (body), loaded globally in `index.html`.
+> - In-page section nav (e.g. property editor) = **HORIZONTAL premium tabs, NOT a vertical rail**. Active tab = charcoal pill (bg `#1c1c1a`, text `#f0ede6`); inactive = hairline outline, muted text. Brass reserved for Save + accents. (A vertical rail was tried and rejected — read as a competing second menu.)
+>
+> **Locked colour model (per-property inherit / account default) — to wire in S27 2a:**
+> - `apartments.accent_color`: NULL = "inherit the brand default". `hosts.accent_color` = the account-wide brand default.
+> - Guest page resolves colour as: `apartment.accent_color ?? host.accent_color ?? colourPresets[0].hex` (`#1c1c1a`).
+> - VERIFIED in `GuestPage.tsx`: today `const accentColor = apartment?.accent_color ?? ARRIVLY_CONFIG.colourPresets[0].hex` → a NULL property currently renders `#1c1c1a`. Migration is appearance-safe.
+> - **WRINKLE (verified):** the guest page does NOT read the host row directly — it gets host fields via SECURITY DEFINER RPC `guest_host_card(p_apartment_id)` which returns brand_name, logo_url, whatsapp, subscription_status but **NOT accent_color**. `/api/guest-preview`'s host payload also lacks accent_color. BOTH must be extended to surface `host.accent_color` before the coalesce works.
+>
+> **Branding model (locked) — to build in S27 2a:**
+> - Branding tab stays in the menu, repurposed **ACCOUNT-WIDE**: logo (`hosts.logo_url`) + brand name (editable → `hosts.brand_name`) + default colour (→ `hosts.accent_color`). Remove the current first-property-only behaviour (it writes `apartments.accent_color` on the oldest property via `.order('created_at').limit(1)` — drop that entirely).
+> - Host-contact-to-guests toggle (WhatsApp/phone "show to guests on every page", OFF by default) is **DEFERRED** to its own later pass — it needs guest-page display work; do not ship a dead toggle.
+> - Per-property colour override lives in a new "Look" tab inside the property editor.
 
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
@@ -577,7 +594,7 @@ Pre-live work, in priority order (Udy-set, S16; updated S17):
 
 **Shipped S19 (this session):** greeting-blurb fix (`8a5dc35` — opens by naming the place; bans the "Stepping out," / participial opener); Live/Draft publish toggle (`6fc9a89`); branded "temporarily unavailable" guest screen for unpublished properties (`47a1335`); dropped unused `hosts.change_reminder_sent_at` (#8 done).
 
-**Phase G CLOSED (S25).** NEXT = Phase H — UI/UX polish (mockup-first), order: landing (SHIPPED S25) → host dashboard (next) → guest page (last). The pentest gate (h) runs once after Phase F, just before the live flip. Rides just before the flip: Batch C `npm audit fix` + leaked-password toggle. Interim: flip `GEMINI_API_KEY_CHAT` to billed once Google payment resolved.
+**Phase G CLOSED (S25). Phase H IN PROGRESS — host dashboard (S26).** Order: landing (SHIPPED S25) → host dashboard (in progress) → guest page (last). Dashboard **pass 1 SHIPPED S26** (`ba113d2`): Layout sidebar IA + Overview grid + QR grid (refresh controls removed from QR — relocated into the property editor in S27 pass 2b). Auth redesign + `/reset-password` (`1e03d95`) and branding icons (`a8d6c64`) also shipped S26. NEXT = **S27 dashboard pass 2** (colour/branding model + property-editor redesign — see "S27 plan" below). The pentest gate (h) runs once after Phase F, just before the live flip. Rides just before the flip: Batch C `npm audit fix` + leaked-password toggle. Interim: flip `GEMINI_API_KEY_CHAT` to billed once Google payment resolved.
 
 Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live (LAST)**.
 - G — pre-launch hardening (incl. pentest gate)
@@ -585,5 +602,35 @@ Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live
 - I — monetisation iteration
 - F — Tier-4 full booking (moved to end)
 - Flip Stripe to live — LAST. OPEN: F before or after the flip — decide after G/H/I.
+
+### S27 plan (next session) — do not miss a thing
+
+Session opens with the usual state check (GitHub HEAD `ba113d2` == latest Vercel READY deploy).
+
+**PASS 2a — colour model + Branding + guest read** (security-sensitive: touches `hosts` data + live guest surface + an RPC). ORDER:
+1. Claude (chat) applies **MIGRATION A** via Supabase MCP `apply_migration`:
+   - `ALTER TABLE public.apartments ALTER COLUMN accent_color DROP DEFAULT, ALTER COLUMN accent_color DROP NOT NULL;`
+   - `UPDATE public.hosts h SET accent_color = COALESCE((SELECT a.accent_color FROM public.apartments a WHERE a.host_id = h.id ORDER BY a.created_at ASC LIMIT 1), '#1c1c1a');`
+   - `UPDATE public.apartments SET accent_color = '#1c1c1a' WHERE accent_color IS NULL;`
+   - `UPDATE public.apartments a SET accent_color = NULL FROM public.hosts h WHERE h.id = a.host_id AND a.accent_color = h.accent_color;`
+   - Then verify: spot-check Sweet home `d9614d11`, Casa Marco `d81e4e89`, Maison Lumière `d7f47672` render unchanged; report count of nulled rows.
+2. Claude (chat) reads the CURRENT `guest_host_card` definition (via Supabase MCP / `pg_proc`) and applies **MIGRATION B**: `CREATE OR REPLACE` so it ALSO returns `accent_color`, preserving SECURITY DEFINER, the pinned `search_path`, and existing grants. **DO NOT blind-rewrite from memory.**
+3. Claude Code prompt (Udy pastes), gated code-reviewer + security-auditor, no commit until both pass + build green:
+   - Rebuild `src/components/host/BrandingPanel.tsx` **account-wide**: logo (keep `hosts.logo_url`), brand name (new editable field → `hosts.brand_name`), default colour → `hosts.accent_color`. Remove first-property-only logic. Restyle into chrome language (cream `#fffdf9` cards, brass focus + Save, live phone preview). Match mockup intent (logo, brand name, default colour, "applies to every page unless a property overrides in Look"). **NO contact toggle.**
+   - `src/components/guest/GuestPage.tsx`: add `accent_color` to the Host interface; change resolver to `apartment?.accent_color ?? host?.accent_color ?? ARRIVLY_CONFIG.colourPresets[0].hex`.
+   - `api/guest-preview.ts`: include `host.accent_color` in the host payload.
+
+**PASS 2b — property editor redesign, ONE touch of `PropertySetup.tsx`.** Gated code-reviewer + security-auditor (Look writes `apartments.accent_color`; Guide&events touches AI-spend endpoints):
+   - Rewrite `src/components/host/PropertySetup.tsx` into the chrome/cream language with **HORIZONTAL premium tabs** (charcoal active pill). Preserve ALL existing behaviour/logic byte-faithfully: geocoding on save, hero upload, WiFi/Check-in(private)/House-rules(Gemini rewrite) detail rows, Extras AI bulk-import, My-picks AI enrich + candidates + relocate flow.
+   - Tab order: **Basics · WiFi · Check-in (lock) · House rules · Extras · My picks · Guide & events · Look.** (Confirm order with Udy at build time.)
+   - NEW **"Guide & events"** tab — the relocated, timestamped, freshness-gated refresh (restores what pass-1 removed from QR):
+     - City guide row: status from `guide_recommendations.generated_at` ("updated X ago"); Refresh → `/generate-guide`; add a freshness gate so it shows "Up to date" (disabled) inside the window instead of firing Gemini; subnote "Refreshes automatically every month."
+     - Local events row: status from events cache; Refresh → `/refresh-events` (already ~20h-gated → shows "Up to date · refreshed Xh ago"); subnote "Refreshes automatically while guests are staying."
+     - **NO "Refresh all" button** (killed).
+   - NEW **"Look"** tab — per-property colour: inherit state "Using your brand default — {name}"; Override reveals 6 presets + custom hex; "Reset to brand default". Override → sets `apartments.accent_color`; Reset → sets `apartments.accent_color = NULL`. Live phone preview (hero, WiFi left border, active tab, Take me home). Reads `hosts.accent_color` for the default indicator/preview when inheriting. Signpost to Branding for logo/name/default.
+
+**DEFERRED / BACKLOG:** host-contact-to-guests toggle (+ guest display); property-card overflow-menu edge detection (open-upward clip, short viewports); remaining surfaces Bookings / Messages / Billing / Settings (mockup-first); pre-arrival guest reachability (don't build until asked); `GEMINI_API_KEY_CHAT` → billed when Google payment resolves.
+
+**PENDING UDY ACTIONS:** add Supabase Auth redirect URL `https://arrivly.anna-stays.fi/reset-password` (password reset incomplete without it); run live test scripts for auth + dashboard pass-1; hand over remaining dashboard "open issues" to fold in.
 
 > **Groq deferred to Phase G** (capacity/redundancy, NOT security; trigger = observed Gemini free-tier 429s in production). Non-grounded endpoints that could move: `rewrite-rules`, `bulk-import`, `greeting`, `host-picks`. Grounded endpoints stay on Gemini: `guest-chat`, `city-events`.
