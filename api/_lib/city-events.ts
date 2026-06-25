@@ -44,7 +44,7 @@ function scrubErr(e: unknown): string {
 export async function generateCityEvents(
   apt: { id: string; city: string | null; country: string | null }
 ): Promise<{ payload: CityEventsPayload | null }> {
-  const apiKey = process.env.GEMINI_API_KEY
+  const apiKey = process.env.GEMINI_API_KEY_EVENTS || process.env.GEMINI_API_KEY
   if (!apiKey) {
     console.error('[city-events] GEMINI_API_KEY not set')
     return { payload: null }
