@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { TIER_COPY } from '../../lib/tierCopy'
 import Loader from '../shared/Loader'
+import PlanCard from './PlanCard'
 
 interface BillingNotice {
   type: 'started' | 'upgraded' | 'downgraded' | 'cancelled' | 'grace'
@@ -70,17 +71,25 @@ function parseApiError(err: unknown): string {
 
 type BannerStyle = { bg: string; border: string; heading: string; muted: string; btn: string }
 const GREEN: BannerStyle = {
-  bg: 'bg-[#e4f0da]', border: 'border-[#b8d9a0]', heading: 'text-[#2a5c0a]', muted: 'text-[#2a5c0a]/70',
-  btn: 'border-[#2a5c0a]/40 text-[#2a5c0a] hover:bg-[#2a5c0a]/10',
+  bg: 'bg-[#eaf0dd]', border: 'border-[#d4dcc0]', heading: 'text-[#5d7c34]', muted: 'text-[#5d7c34]/80',
+  btn: 'border-[#5d7c34]/40 text-[#5d7c34] hover:bg-[#5d7c34]/10',
 }
 const AMBER: BannerStyle = {
-  bg: 'bg-[#faeeda]', border: 'border-[#e8d0a0]', heading: 'text-[#7a4800]', muted: 'text-[#7a4800]/70',
-  btn: 'border-[#7a4800]/40 text-[#7a4800] hover:bg-[#7a4800]/10',
+  bg: 'bg-[#f7efda]', border: 'border-[#e7d6ad]', heading: 'text-[#8a5a14]', muted: 'text-[#8a5a14]/80',
+  btn: 'border-[#8a5a14]/40 text-[#8a5a14] hover:bg-[#8a5a14]/10',
 }
 const RED: BannerStyle = {
-  bg: 'bg-[#fde4e4]', border: 'border-[#f5c6c6]', heading: 'text-[#8a1a1a]', muted: 'text-[#8a1a1a]/70',
-  btn: 'border-[#8a1a1a]/40 text-[#8a1a1a] hover:bg-[#8a1a1a]/10',
+  bg: 'bg-[#fbe9e9]', border: 'border-[#f0cccc]', heading: 'text-[#8a1a1a]', muted: 'text-[#8a1a1a]/80',
+  btn: 'border-[#8a1a1a]/30 text-[#8a1a1a] hover:bg-[#8a1a1a]/10',
 }
+
+// CTA button recipes (PlanCard slot). All w-full, 13px, semibold, rounded-[10px].
+const BTN_BRASS = 'w-full text-[13px] font-semibold py-2.5 rounded-[10px] transition-colors bg-[#c8a24e] text-[#16100d] hover:bg-[#e7d6ad] disabled:opacity-50 disabled:cursor-not-allowed'
+const BTN_QUIET = 'w-full text-[13px] font-semibold py-2.5 rounded-[10px] transition-colors bg-transparent border border-[#e4ddd0] text-[#231d17] hover:bg-[#f0ede6] disabled:opacity-50 disabled:cursor-not-allowed'
+const BTN_GHOST = 'w-full text-center text-[13px] font-semibold py-2.5 rounded-[10px] bg-transparent border border-[rgba(247,243,236,0.28)] text-[#f7f3ec]'
+const BTN_CURRENT_CREAM = 'w-full text-center text-[12.5px] font-semibold py-2.5 rounded-[10px] bg-[#f0ede6] border border-[#e4ddd0] text-[#231d17]'
+const BTN_DISABLED_CREAM = 'w-full text-[13px] font-semibold py-2.5 rounded-[10px] bg-[#ece6da] text-[#a79e8e] cursor-not-allowed'
+const BTN_DISABLED_FEATURED = 'w-full text-[13px] font-semibold py-2.5 rounded-[10px] bg-[rgba(247,243,236,0.10)] text-[#8f887b] cursor-not-allowed'
 
 const TIER_NAMES_LOCAL: Record<number, string> = { 1: 'Starter', 2: 'Growth', 3: 'Portfolio', 4: 'Pro' }
 
@@ -291,225 +300,214 @@ export default function BillingPanel() {
   const billingNotice = host?.billing_notice ?? null
 
   return (
-    <div className="max-w-2xl">
-      <h1 className="text-[17px] font-serif font-light text-[#1a1a1a] mb-4">Billing</h1>
+    <div className="max-w-5xl font-['Inter']">
+      <h1 className="text-[22px] font-['Fraunces'] font-light text-[#231d17] mb-5">Billing</h1>
 
-      {/* Dismissible billing_notice banner from webhook */}
-      {billingNotice && (() => {
-        const { heading, body, style } = bannerConfig(billingNotice)
-        return (
-          <div className={`${style.bg} border ${style.border} rounded-[10px] p-4 mb-5 flex items-start justify-between gap-3`}>
-            <div>
-              <div className={`text-[13px] font-semibold ${style.heading} mb-0.5`}>{heading}</div>
-              {body && <div className={`text-[11px] ${style.muted}`}>{body}</div>}
+      {/* Banner / notice stack — kept narrower so bars don't stretch across 4 columns */}
+      <div className="max-w-3xl">
+        {/* Dismissible billing_notice banner from webhook */}
+        {billingNotice && (() => {
+          const { heading, body, style } = bannerConfig(billingNotice)
+          return (
+            <div className={`${style.bg} border ${style.border} rounded-[12px] p-4 mb-4 flex items-start justify-between gap-3`}>
+              <div>
+                <div className={`text-[13px] font-semibold ${style.heading} mb-0.5`}>{heading}</div>
+                {body && <div className={`text-[11px] ${style.muted}`}>{body}</div>}
+              </div>
+              <button
+                onClick={handleDismissNotice}
+                disabled={dismissing}
+                aria-label="Dismiss"
+                className={`shrink-0 ${style.heading} opacity-50 hover:opacity-100 text-lg leading-none bg-transparent border-none cursor-pointer disabled:cursor-not-allowed`}
+              >
+                &times;
+              </button>
             </div>
-            <button
-              onClick={handleDismissNotice}
-              disabled={dismissing}
-              aria-label="Dismiss"
-              className={`shrink-0 ${style.heading} opacity-50 hover:opacity-100 text-lg leading-none bg-transparent border-none cursor-pointer disabled:cursor-not-allowed`}
-            >
-              &times;
-            </button>
-          </div>
-        )
-      })()}
+          )
+        })()}
 
-      {/* Checkout result banners */}
-      {checkoutResult === 'success' && (
-        <div className="bg-[#e4f0da] border border-[#b8d9a0] rounded-[10px] p-4 mb-5">
-          <div className="text-[13px] font-semibold text-[#2a5c0a] mb-0.5">You're all set</div>
-          <div className="text-[11px] text-[#2a5c0a]/80">Thanks — your plan is being set up.</div>
-        </div>
-      )}
-      {checkoutResult === 'cancelled' && (
-        <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mb-5">
-          <div className="text-[11px] text-[#888]">Checkout cancelled — no changes were made.</div>
-        </div>
-      )}
+        {/* Checkout result banners */}
+        {checkoutResult === 'success' && (
+          <div className="bg-[#eaf0dd] border border-[#d4dcc0] rounded-[12px] p-4 mb-4">
+            <div className="text-[13px] font-semibold text-[#5d7c34] mb-0.5">You're all set</div>
+            <div className="text-[11px] text-[#5d7c34]/80">Thanks — your plan is being set up.</div>
+          </div>
+        )}
+        {checkoutResult === 'cancelled' && (
+          <div className="bg-[#fffdf9] border border-[#e4ddd0] rounded-[12px] p-4 mb-4">
+            <div className="text-[11px] text-[#8a8276]">Checkout cancelled — no changes were made.</div>
+          </div>
+        )}
 
-      {/* Status banners */}
-      {status === 'trial' && host !== null && (
-        <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mb-5">
-          <div className="flex items-center justify-between mb-1">
-            <div className="text-[13px] font-semibold text-[#1a1a1a]">Free trial</div>
-            <span className="text-[10px] bg-[#dceef8] text-[#0c3d70] px-2 py-0.5 rounded-full font-medium">Trial</span>
-          </div>
-          <div className="text-[11px] text-[#888]">
-            {trialRemaining > 0
-              ? `${trialRemaining} day${trialRemaining !== 1 ? 's' : ''} left`
-              : 'Trial period complete'}
-            {trialEndDate && ` · ends ${trialEndDate}`}
-          </div>
-        </div>
-      )}
-      {status === 'active' && (
-        <div className="bg-white border border-[#ddd8ce] rounded-[10px] p-4 mb-5">
-          <div className="flex items-center gap-2">
-            <span className="text-[13px] font-semibold text-[#1a1a1a]">
-              {hostTier !== null ? (TIER_COPY[hostTier as 1 | 2 | 3 | 4]?.name ?? 'Active') : 'Active'} plan
-            </span>
-            <span className="text-[10px] bg-[#e4f0da] text-[#2a5c0a] px-2 py-0.5 rounded-full font-medium">Active</span>
-          </div>
-        </div>
-      )}
-      {(status === 'grace' || status === 'expired') && (
-        <div className={`${RED.bg} border ${RED.border} rounded-[10px] p-4 mb-5`}>
-          <div className={`text-[13px] font-semibold ${RED.heading} mb-1`}>
-            {status === 'grace' ? 'Payment failed — grace period' : 'Subscription inactive'}
-          </div>
-          <div className={`text-[11px] ${RED.muted}`}>Add a payment method to restore access.</div>
-        </div>
-      )}
-
-      {/* Cancel-pending banner (shown when cancelPending; wins over pending-tier if both set) */}
-      {cancelPending && (
-        <div className={`${AMBER.bg} border ${AMBER.border} rounded-[10px] p-4 mb-5 flex items-start justify-between gap-3`}>
-          <div>
-            <div className={`text-[13px] font-semibold ${AMBER.heading} mb-0.5`}>Subscription ending</div>
-            <div className={`text-[11px] ${AMBER.muted}`}>
-              Your subscription cancels on {periodEndDate}. Your guest pages stay live until then.
+        {/* Status banners */}
+        {status === 'trial' && host !== null && (
+          <div className="bg-[#fffdf9] border border-[#e4ddd0] rounded-[12px] p-4 mb-4">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-[13px] font-semibold text-[#231d17]">Free trial</div>
+              <span className="text-[10px] bg-[#f3ecdb] text-[#8a5a14] px-2 py-0.5 rounded-full font-medium">Trial</span>
+            </div>
+            <div className="text-[11px] text-[#8a8276]">
+              {trialRemaining > 0
+                ? `${trialRemaining} day${trialRemaining !== 1 ? 's' : ''} left`
+                : 'Trial period complete'}
+              {trialEndDate && ` · ends ${trialEndDate}`}
             </div>
           </div>
-          <button
-            onClick={handleResume}
-            disabled={resumeActionPending}
-            className={`shrink-0 text-[11px] font-semibold border rounded-[7px] px-2.5 py-1 ${AMBER.btn} disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap`}
-          >
-            {resumeActionPending ? 'Resuming…' : 'Resume subscription'}
-          </button>
-        </div>
-      )}
+        )}
+        {status === 'active' && (
+          <div className="bg-[#fffdf9] border border-[#e4ddd0] rounded-[12px] p-4 mb-4">
+            <div className="flex items-center gap-2">
+              <span className="text-[13px] font-semibold text-[#231d17]">
+                {hostTier !== null ? (TIER_COPY[hostTier as 1 | 2 | 3 | 4]?.name ?? 'Active') : 'Active'} plan
+              </span>
+              <span className="text-[10px] bg-[#eaf0dd] text-[#5d7c34] px-2 py-0.5 rounded-full font-medium">Active</span>
+            </div>
+          </div>
+        )}
+        {(status === 'grace' || status === 'expired') && (
+          <div className={`${RED.bg} border ${RED.border} rounded-[12px] p-4 mb-4`}>
+            <div className={`text-[13px] font-semibold ${RED.heading} mb-1`}>
+              {status === 'grace' ? 'Payment failed — grace period' : 'Subscription inactive'}
+            </div>
+            <div className={`text-[11px] ${RED.muted}`}>Add a payment method to restore access.</div>
+          </div>
+        )}
 
-      {/* Pending tier-change banner (only when cancel is not set) */}
-      {!cancelPending && pendingTier !== null && (() => {
-        const pCopy = TIER_COPY[pendingTier as 1 | 2 | 3 | 4]
-        const hCopy = hostTier !== null ? TIER_COPY[hostTier as 1 | 2 | 3 | 4] : null
-        return (
-          <div className={`${AMBER.bg} border ${AMBER.border} rounded-[10px] p-4 mb-5 flex items-start justify-between gap-3`}>
+        {/* Cancel-pending banner (shown when cancelPending; wins over pending-tier if both set) */}
+        {cancelPending && (
+          <div className={`${AMBER.bg} border ${AMBER.border} rounded-[12px] p-4 mb-4 flex items-start justify-between gap-3`}>
             <div>
-              <div className={`text-[13px] font-semibold ${AMBER.heading} mb-0.5`}>Plan change scheduled</div>
+              <div className={`text-[13px] font-semibold ${AMBER.heading} mb-0.5`}>Subscription ending</div>
               <div className={`text-[11px] ${AMBER.muted}`}>
-                Switching to {pCopy?.name ?? `Tier ${pendingTier}`} on {periodEndDate}.
-                {hCopy && ` You stay on ${hCopy.name} until then.`}
+                Your subscription cancels on {periodEndDate}. Your guest pages stay live until then.
               </div>
             </div>
             <button
-              onClick={handleUndoSwitch}
-              disabled={undoPending}
-              className={`shrink-0 text-[11px] font-semibold border rounded-[7px] px-2.5 py-1 ${AMBER.btn} disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap`}
+              onClick={handleResume}
+              disabled={resumeActionPending}
+              className={`shrink-0 text-[11px] font-semibold border rounded-[8px] px-2.5 py-1 ${AMBER.btn} disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap`}
             >
-              {undoPending ? 'Undoing…' : 'Cancel scheduled change'}
+              {resumeActionPending ? 'Resuming…' : 'Resume subscription'}
             </button>
           </div>
-        )
-      })()}
+        )}
 
-      {/* Plan load error */}
-      {plansError && (
-        <div className={`${RED.bg} border ${RED.border} rounded-[10px] p-4 text-[11px] ${RED.heading} mb-4`}>
-          Could not load plan details — please refresh to try again.
-        </div>
-      )}
+        {/* Pending tier-change banner (only when cancel is not set) */}
+        {!cancelPending && pendingTier !== null && (() => {
+          const pCopy = TIER_COPY[pendingTier as 1 | 2 | 3 | 4]
+          const hCopy = hostTier !== null ? TIER_COPY[hostTier as 1 | 2 | 3 | 4] : null
+          return (
+            <div className={`${AMBER.bg} border ${AMBER.border} rounded-[12px] p-4 mb-4 flex items-start justify-between gap-3`}>
+              <div>
+                <div className={`text-[13px] font-semibold ${AMBER.heading} mb-0.5`}>Plan change scheduled</div>
+                <div className={`text-[11px] ${AMBER.muted}`}>
+                  Switching to {pCopy?.name ?? `Tier ${pendingTier}`} on {periodEndDate}.
+                  {hCopy && ` You stay on ${hCopy.name} until then.`}
+                </div>
+              </div>
+              <button
+                onClick={handleUndoSwitch}
+                disabled={undoPending}
+                className={`shrink-0 text-[11px] font-semibold border rounded-[8px] px-2.5 py-1 ${AMBER.btn} disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap`}
+              >
+                {undoPending ? 'Undoing…' : 'Cancel scheduled change'}
+              </button>
+            </div>
+          )
+        })()}
 
-      {/* Non-modal action error */}
-      {actionError && !modal && (
-        <div className={`${RED.bg} border ${RED.border} rounded-[10px] p-3 mb-4 text-[11px] ${RED.heading}`}>
-          {actionError}
-        </div>
-      )}
+        {/* Plan load error */}
+        {plansError && (
+          <div className={`${RED.bg} border ${RED.border} rounded-[12px] p-4 text-[11px] ${RED.heading} mb-4`}>
+            Could not load plan details — please refresh to try again.
+          </div>
+        )}
 
-      {/* Upgrade processing indicator */}
-      {upgradeProcessing && (
-        <div className="text-[11px] text-[#888] mb-4">Upgrade processing — your plan will update shortly.</div>
-      )}
+        {/* Non-modal action error */}
+        {actionError && !modal && (
+          <div className={`${RED.bg} border ${RED.border} rounded-[12px] p-3 mb-4 text-[11px] ${RED.heading}`}>
+            {actionError}
+          </div>
+        )}
+
+        {/* Upgrade processing indicator */}
+        {upgradeProcessing && (
+          <div className="text-[11px] text-[#8a8276] mb-4">Upgrade processing — your plan will update shortly.</div>
+        )}
+      </div>
 
       {/* Plan cards */}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         {plans.map(plan => {
           const copy = TIER_COPY[plan.tier as 1 | 2 | 3 | 4]
           if (!copy) return null
-          const isMostPopular = !!copy.mostPopular
+          const featured = !!copy.mostPopular
           const sym = currencySymbol(plan.currency)
           const price = `${sym}${(plan.price_cents / 100).toFixed(0)}`
           const capacity = plan.max_properties === null
             ? 'Unlimited properties'
             : `Up to ${plan.max_properties} ${plan.max_properties === 1 ? 'property' : 'properties'}`
           const isCurrentTier = manageMode && plan.tier === hostTier
-          const borderCls = isMostPopular ? 'border-2 border-[#1a1a1a]' : 'border border-[#ddd8ce]'
-          const ringCls = isCurrentTier ? 'ring-2 ring-[#1a1a1a]/15' : ''
+
+          let cta: ReactNode
+          if (plan.tier === 4) {
+            cta = (
+              <button disabled className={featured ? BTN_DISABLED_FEATURED : BTN_DISABLED_CREAM}>
+                Available at launch
+              </button>
+            )
+          } else if (chooseMode) {
+            cta = (
+              <button
+                onClick={() => handleChoosePlan(plan.tier)}
+                disabled={choosingTier !== null}
+                className={featured ? BTN_BRASS : BTN_QUIET}
+              >
+                {choosingTier === plan.tier ? 'Loading…' : 'Choose plan'}
+              </button>
+            )
+          } else if (isCurrentTier) {
+            cta = featured
+              ? <div className={BTN_GHOST}>Current plan</div>
+              : <div className={BTN_CURRENT_CREAM}>Current plan</div>
+          } else {
+            const isUp = plan.tier > (hostTier ?? 0)
+            cta = (
+              <button
+                onClick={() => { setActionError(null); setModal({ kind: 'switch', tier: plan.tier }) }}
+                disabled={locked}
+                className={isUp ? BTN_BRASS : BTN_QUIET}
+              >
+                {isUp ? 'Upgrade' : 'Downgrade'}
+              </button>
+            )
+          }
 
           return (
-            <div
+            <PlanCard
               key={plan.tier}
-              className={`bg-white rounded-[10px] p-4 flex flex-col relative ${borderCls} ${ringCls}`}
-            >
-              {isMostPopular && (
-                <span className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#1a1a1a] text-white text-[10px] font-semibold px-2.5 py-0.5 rounded-full whitespace-nowrap">
-                  Most popular
-                </span>
-              )}
-
-              <div className="mb-3">
-                <div className="text-[10px] uppercase tracking-[.06em] text-[#999] mb-0.5">{copy.name}</div>
-                <div className="text-[22px] font-serif font-light text-[#1a1a1a] leading-none">
-                  {price}<span className="text-[12px] text-[#888] font-sans font-normal">/mo</span>
-                </div>
-              </div>
-
-              <p className="text-[11px] text-[#666] leading-relaxed mb-3">{copy.tagline}</p>
-
-              <div className="border border-[#ddd8ce] rounded-[7px] px-3 py-1.5 text-[11px] text-[#444] mb-3">
-                {capacity}
-              </div>
-
-              <ul className="space-y-1.5 mb-4 flex-1">
-                {copy.bullets.map((b, i) => (
-                  <li key={i} className="flex items-start gap-1.5 text-[11px] text-[#444]">
-                    <span className="text-[#2a5c0a] shrink-0 mt-px">✓</span>
-                    {b}
-                  </li>
-                ))}
-              </ul>
-
-              {plan.tier === 4 ? (
-                <button disabled className="w-full bg-[#1a1a1a] text-white py-2 rounded-[8px] text-xs font-semibold opacity-40 cursor-not-allowed">
-                  Available at launch
-                </button>
-              ) : chooseMode ? (
-                <button
-                  onClick={() => handleChoosePlan(plan.tier)}
-                  disabled={choosingTier !== null}
-                  className="w-full bg-[#1a1a1a] text-white py-2 rounded-[8px] text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {choosingTier === plan.tier ? 'Loading…' : 'Choose plan'}
-                </button>
-              ) : isCurrentTier ? (
-                <div className="w-full text-center text-[11px] font-semibold text-[#1a1a1a] py-2 border border-[#ddd8ce] rounded-[8px] bg-[#f8f6f2]">
-                  Current plan
-                </div>
-              ) : (
-                <button
-                  onClick={() => { setActionError(null); setModal({ kind: 'switch', tier: plan.tier }) }}
-                  disabled={locked}
-                  className="w-full bg-[#1a1a1a] text-white py-2 rounded-[8px] text-xs font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-                >
-                  {plan.tier > (hostTier ?? 0) ? 'Upgrade' : 'Downgrade'}
-                </button>
-              )}
-            </div>
+              tierName={copy.name}
+              price={price}
+              valueProp={copy.tagline}
+              capacityLabel={capacity}
+              bullets={copy.bullets}
+              featured={featured}
+              currentTag={isCurrentTier}
+              comingSoonTag={plan.tier === 4}
+              cta={cta}
+            />
           )
         })}
       </div>
 
       {/* Manage footer */}
       {manageMode && (
-        <div className="mt-5 flex items-start justify-between gap-4">
+        <div className="max-w-3xl mt-5 flex items-start justify-between gap-4">
           <div>
             <button
               onClick={() => { setActionError(null); setModal({ kind: 'cancel' }) }}
               disabled={cancelPending}
-              className="text-[11px] font-medium text-[#8a1a1a] border border-[#f5c6c6] rounded-[8px] px-3 py-2 bg-transparent hover:bg-[#fde4e4] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+              className="text-[11px] font-medium text-[#8a1a1a] border border-[#f0cccc] rounded-[9px] px-3 py-2 bg-transparent hover:bg-[#fbe9e9] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Cancel subscription
             </button>
@@ -517,7 +515,7 @@ export default function BillingPanel() {
           <button
             onClick={handlePaymentPortal}
             disabled={portalPending}
-            className="text-[11px] text-[#888] hover:text-[#444] underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="text-[11px] text-[#a8842f] hover:text-[#c8a24e] underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {portalPending ? 'Opening…' : 'Payment method & receipts →'}
           </button>
@@ -526,13 +524,13 @@ export default function BillingPanel() {
 
       {/* Confirmation modal */}
       {modal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/30">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
           <div
             ref={modalRef}
             role="dialog"
             aria-modal="true"
             tabIndex={-1}
-            className="bg-[#f8f6f2] rounded-[12px] border border-[#ddd8ce] p-6 max-w-sm w-full shadow-xl outline-none"
+            className="bg-[#fffdf9] rounded-[14px] border border-[#e4ddd0] p-6 max-w-sm w-full shadow-xl outline-none"
           >
 
             {modal.kind === 'switch' && (() => {
@@ -570,10 +568,10 @@ export default function BillingPanel() {
 
               return (
                 <>
-                  <h2 className="text-[15px] font-serif font-light text-[#1a1a1a] mb-3">
+                  <h2 className="text-[16px] font-['Fraunces'] font-light text-[#231d17] mb-3">
                     {isUp ? `Upgrade to ${mCopy.name}?` : `Switch to ${mCopy.name}?`}
                   </h2>
-                  <p className="text-[12px] text-[#555] leading-relaxed mb-4">
+                  <p className="text-[12px] text-[#6b6354] leading-relaxed mb-4">
                     {modalCopy}
                   </p>
                   {actionError && (
@@ -583,14 +581,14 @@ export default function BillingPanel() {
                     <button
                       onClick={() => { setModal(null); setActionError(null) }}
                       disabled={switchPending}
-                      className="text-[12px] text-[#444] border border-[#ddd8ce] rounded-[8px] px-4 py-2 bg-white hover:bg-[#f8f6f2] transition-colors disabled:opacity-50"
+                      className="text-[12px] text-[#231d17] border border-[#e4ddd0] rounded-[9px] px-4 py-2 bg-transparent hover:bg-[#f0ede6] transition-colors disabled:opacity-50"
                     >
                       Keep {hCopy?.name ?? 'current plan'}
                     </button>
                     <button
                       onClick={() => handleSwitch(mTier)}
                       disabled={switchPending}
-                      className="text-[12px] text-white bg-[#1a1a1a] rounded-[8px] px-4 py-2 font-semibold hover:bg-[#333] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="text-[12px] text-[#16100d] bg-[#c8a24e] rounded-[9px] px-4 py-2 font-semibold hover:bg-[#e7d6ad] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {switchPending ? 'Confirming…' : confirmLabel}
                     </button>
@@ -601,8 +599,8 @@ export default function BillingPanel() {
 
             {modal.kind === 'cancel' && (
               <>
-                <h2 className="text-[15px] font-serif font-light text-[#1a1a1a] mb-3">Cancel subscription?</h2>
-                <p className="text-[12px] text-[#555] leading-relaxed mb-4">
+                <h2 className="text-[16px] font-['Fraunces'] font-light text-[#231d17] mb-3">Cancel subscription?</h2>
+                <p className="text-[12px] text-[#6b6354] leading-relaxed mb-4">
                   Your guest pages stay live until {periodEndDate} (the end of your billing period). After that, visitors see a "temporarily unavailable" screen until you resubscribe. You can resubscribe anytime.
                 </p>
                 {actionError && (
@@ -612,14 +610,14 @@ export default function BillingPanel() {
                   <button
                     onClick={() => { setModal(null); setActionError(null) }}
                     disabled={cancelActionPending}
-                    className="text-[12px] text-[#444] border border-[#ddd8ce] rounded-[8px] px-4 py-2 bg-white hover:bg-[#f8f6f2] transition-colors disabled:opacity-50"
+                    className="text-[12px] text-[#231d17] border border-[#e4ddd0] rounded-[9px] px-4 py-2 bg-transparent hover:bg-[#f0ede6] transition-colors disabled:opacity-50"
                   >
                     Keep subscription
                   </button>
                   <button
                     onClick={handleCancel}
                     disabled={cancelActionPending}
-                    className="text-[12px] text-white bg-[#8a1a1a] rounded-[8px] px-4 py-2 font-semibold hover:bg-[#a02020] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="text-[12px] text-white bg-[#8a1a1a] rounded-[9px] px-4 py-2 font-semibold hover:bg-[#a02020] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {cancelActionPending ? 'Cancelling…' : 'Cancel plan'}
                   </button>
