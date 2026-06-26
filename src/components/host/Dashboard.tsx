@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
-import { MapPin, QrCode, Plus, MoreHorizontal, ArrowRight, Building2, CalendarDays, MessageCircle } from 'lucide-react'
+import { MapPin, QrCode, Plus, MoreHorizontal, ArrowRight, Building2, MessageCircle, Home, ArrowDownToLine, ArrowUpFromLine, Eye, Check } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { resolveImageUrl } from '../../lib/imageUtils'
 import Loader from '../shared/Loader'
@@ -96,7 +96,9 @@ export default function Dashboard() {
   const [list, setList] = useState<Apartment[]>([])
   const [hostData, setHostData] = useState<HostData | null>(null)
   const [planMaxProperties, setPlanMaxProperties] = useState<number | null>(null)
-  const [bookingTotal, setBookingTotal] = useState(0)
+  // Total kept in state (still computed below) but no longer rendered on this surface.
+  const [, setBookingTotal] = useState(0)
+  const [ops, setOps] = useState({ stayingNow: 0, checkingInToday: 0, checkingOutToday: 0 })
   const [unread, setUnread] = useState(0)
   const [completenessByApt, setCompletenessByApt] = useState<Map<string, Set<string>>>(new Map())
   const [bookingCountByApt, setBookingCountByApt] = useState<Map<string, number>>(new Map())
@@ -153,7 +155,7 @@ export default function Dashboard() {
         const aptIds = aList.map((a: Apartment) => a.id)
         const [{ data: dets }, { data: bk }, { data: guides }] = await Promise.all([
           supabase.from('apartment_details').select('apartment_id, category').in('apartment_id', aptIds),
-          supabase.from('bookings').select('apartment_id').in('apartment_id', aptIds),
+          supabase.from('bookings').select('apartment_id, check_in, check_out, status, source').in('apartment_id', aptIds),
           supabase.from('guide_recommendations').select('apartment_id').in('apartment_id', aptIds),
         ])
 
@@ -170,6 +172,20 @@ export default function Dashboard() {
         }
         setBookingCountByApt(bkMap)
         setBookingTotal(bk?.length ?? 0)
+
+        // Host-wide operational counts for today (host's DEVICE-LOCAL date as a
+        // 'YYYY-MM-DD' string — built from local parts, NOT toISOString() which is UTC).
+        const d = new Date()
+        const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+        let stayingNow = 0, checkingInToday = 0, checkingOutToday = 0
+        for (const b of (bk ?? []) as Array<{ check_in: string | null; check_out: string | null; status: string | null; source: string | null }>) {
+          const active = (b.status === 'confirmed' || b.status === 'completed') && !(b.source ?? '').endsWith('_block')
+          if (!active) continue
+          if (b.check_in != null && b.check_out != null && b.check_in <= today && b.check_out > today) stayingNow++
+          if (b.check_in === today) checkingInToday++
+          if (b.check_out === today) checkingOutToday++
+        }
+        setOps({ stayingNow, checkingInToday, checkingOutToday })
 
         setGuideByApt(new Set(((guides ?? []) as Array<{ apartment_id: string }>).map(g => g.apartment_id)))
       }
@@ -239,6 +255,17 @@ export default function Dashboard() {
   const firstName = hostData?.name?.split(' ')[0] ?? ''
   const greeting = firstName ? `Welcome back, ${firstName}` : 'Welcome back'
 
+  // Host-local date label for the header eyebrow (e.g. "Friday, 26 June").
+  const todayLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
+
+  // Operational one-liner — drop any clause whose count is 0 so the line stays clean.
+  const summaryClauses = ([
+    ops.stayingNow > 0 ? { n: ops.stayingNow, text: ` guest${ops.stayingNow === 1 ? '' : 's'} staying now` } : null,
+    ops.checkingInToday > 0 ? { n: ops.checkingInToday, text: ' checking in today' } : null,
+    ops.checkingOutToday > 0 ? { n: ops.checkingOutToday, text: ' checking out today' } : null,
+    unread > 0 ? { n: unread, text: ` unread message${unread === 1 ? '' : 's'}` } : null,
+  ].filter(Boolean) as Array<{ n: number; text: string }>)
+
   const trialEndsAt = hostData?.trial_ends_at ?? null
   const trialRemaining = trialEndsAt
     ? Math.max(0, Math.ceil((new Date(trialEndsAt).getTime() - Date.now()) / 86_400_000))
@@ -264,13 +291,16 @@ export default function Dashboard() {
     return { met, total: ESSENTIAL_DEFS.length, missing }
   }
 
-  // Adaptive next-step: first property still missing an essential.
+  // Adaptive next-step: the incomplete property CLOSEST to ready (highest `met`,
+  // fewest steps left); tie-break by original list order (stable — strict `>`).
   const nextStep = (() => {
+    let best: { apt: Apartment; met: number; total: number; missing: string[] } | null = null
     for (const apt of list) {
       const e = essentials(apt)
-      if (e.missing.length > 0) return { apt, ...e }
+      if (e.missing.length === 0) continue
+      if (best === null || e.met > best.met) best = { apt, ...e }
     }
-    return null
+    return best
   })()
 
   const TRIAL_FOOTER = trialRemaining > 0 && (
@@ -331,8 +361,18 @@ export default function Dashboard() {
       <div className="max-w-5xl">
         {/* Header */}
         <header className="mb-7">
-          <h1 className="text-[25px] font-['Fraunces'] font-light text-[#231d17]">{greeting}</h1>
-          <p className="text-[13px] text-[#8a8276] mt-1">Here's your guest experience at a glance.</p>
+          <div className="text-[10.5px] uppercase tracking-[.1em] text-[#a79e8e]">{todayLabel}</div>
+          <h1 className="text-[25px] font-['Fraunces'] font-light text-[#231d17] mt-1">{greeting}</h1>
+          <p className="text-[13px] text-[#8a8276] mt-1.5">
+            {summaryClauses.length === 0
+              ? 'No arrivals or departures today.'
+              : summaryClauses.map((c, i) => (
+                  <span key={i}>
+                    {i > 0 && <span className="text-[#cdc6b8]"> · </span>}
+                    <b className="font-semibold text-[#231d17]">{c.n}</b>{c.text}
+                  </span>
+                ))}
+          </p>
         </header>
 
         {list.length === 0 ? (
@@ -360,43 +400,57 @@ export default function Dashboard() {
         ) : (
           /* ── Normal state (≥1 apartment) ── */
           <>
-            {/* Adaptive next-step banner */}
-            {nextStep && (
-              <div className="mb-6 flex items-center gap-4 rounded-[13px] border border-[rgba(200,162,78,0.4)] bg-gradient-to-r from-[#fffaf0] to-[#fffdf9] p-4">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-[#c8a24e] text-[13px] font-['Fraunces'] font-medium text-[#a8842f]">
-                  {nextStep.met}/{nextStep.total}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-[14px] font-semibold text-[#231d17]">{nextStep.apt.name} is almost ready</div>
-                  <div className="text-[12px] text-[#8a8276] mt-0.5 truncate">
-                    Still to add: {nextStep.missing.join(', ')}
+            {/* Adaptive next-step banner — the incomplete property closest to ready */}
+            {nextStep && (() => {
+              const stepsLeft = nextStep.total - nextStep.met
+              return (
+                <div className="mb-6 flex items-center gap-4 rounded-[13px] border border-[rgba(200,162,78,0.4)] bg-gradient-to-r from-[#fffaf0] to-[#fffdf9] p-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-[#c8a24e] text-[13px] font-['Fraunces'] font-medium text-[#a8842f]">
+                    {nextStep.met}/{nextStep.total}
                   </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[14px] font-semibold text-[#231d17]">
+                      {nextStep.apt.name} is {stepsLeft} step{stepsLeft === 1 ? '' : 's'} from ready
+                    </div>
+                    <div className="text-[12px] text-[#8a8276] mt-0.5 truncate">
+                      Still to add: {nextStep.missing.join(', ')}
+                    </div>
+                  </div>
+                  <Link
+                    to={`/dashboard/property/${nextStep.apt.id}`}
+                    className="shrink-0 inline-flex items-center gap-1.5 bg-[#c8a24e] text-[#16100d] px-3.5 py-2 rounded-[9px] text-[12.5px] font-semibold hover:bg-[#e7d6ad] transition-colors"
+                  >
+                    Finish setup
+                    <ArrowRight size={14} />
+                  </Link>
                 </div>
-                <Link
-                  to={`/dashboard/property/${nextStep.apt.id}`}
-                  className="shrink-0 inline-flex items-center gap-1.5 bg-[#c8a24e] text-[#16100d] px-3.5 py-2 rounded-[9px] text-[12.5px] font-semibold hover:bg-[#e7d6ad] transition-colors"
-                >
-                  Continue setup
-                  <ArrowRight size={14} />
-                </Link>
-              </div>
-            )}
+              )
+            })()}
 
-            {/* Metrics */}
-            <div className="grid grid-cols-3 gap-3.5 mb-8">
+            {/* Operational top strip — today at a glance, each tile clickable */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5 mb-8">
               {[
-                { label: 'Properties', value: list.length, Icon: Building2 },
-                { label: 'Bookings', value: bookingTotal, Icon: CalendarDays },
-                { label: 'New messages', value: unread, Icon: MessageCircle },
-              ].map(m => (
-                <div key={m.label} className="bg-[#fffdf9] border border-[#e4ddd0] rounded-[13px] p-4">
-                  <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-[9px] bg-[rgba(200,162,78,0.14)] text-[#a8842f]">
-                    <m.Icon size={16} />
-                  </div>
-                  <div className="text-[26px] font-['Fraunces'] font-light text-[#231d17] leading-none">{m.value}</div>
-                  <div className="text-[10px] uppercase tracking-[.08em] text-[#a79e8e] mt-1.5">{m.label}</div>
-                </div>
-              ))}
+                { label: 'Staying now', value: ops.stayingNow, Icon: Home, to: '/dashboard/bookings' },
+                { label: 'Checking in today', value: ops.checkingInToday, Icon: ArrowDownToLine, to: '/dashboard/bookings' },
+                { label: 'Checking out today', value: ops.checkingOutToday, Icon: ArrowUpFromLine, to: '/dashboard/bookings' },
+                { label: unread === 1 ? 'Unread message' : 'Unread messages', value: unread, Icon: MessageCircle, to: '/dashboard/messages' },
+              ].map(t => {
+                const zero = t.value === 0
+                return (
+                  <Link
+                    key={t.label}
+                    to={t.to}
+                    className="group relative bg-[#fffdf9] border border-[#e4ddd0] rounded-[13px] p-4 transition-all hover:-translate-y-[2px] hover:border-[#c8a24e] hover:shadow-[0_8px_24px_rgba(35,29,23,0.08)]"
+                  >
+                    <ArrowRight size={14} className="absolute top-3 right-3 text-[#c8a24e] opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <div className={`mb-2 flex h-8 w-8 items-center justify-center rounded-[9px] ${zero ? 'bg-[#f0ece3] text-[#bcb3a2]' : 'bg-[rgba(200,162,78,0.14)] text-[#a8842f]'}`}>
+                      <t.Icon size={16} />
+                    </div>
+                    <div className={`text-[26px] font-['Fraunces'] font-light leading-none ${zero ? 'text-[#cdc6b8]' : 'text-[#231d17]'}`}>{t.value}</div>
+                    <div className="text-[11px] text-[#8a8276] mt-1.5">{t.label}</div>
+                  </Link>
+                )
+              })}
             </div>
 
             {/* Section label */}
@@ -446,10 +500,11 @@ export default function Dashboard() {
                       {/* readiness */}
                       <div className="mt-3.5">
                         <div className="flex items-center justify-between text-[11px] mb-1">
-                          <span className={ready ? 'font-medium text-[#5d7c34]' : 'text-[#8a8276]'}>
+                          <span className={ready ? 'inline-flex items-center gap-1 font-medium text-[#5d7c34]' : 'text-[#8a8276]'}>
+                            {ready && <Check size={12} />}
                             {ready ? 'Ready' : 'Setup'}
                           </span>
-                          <span className={ready ? 'font-medium text-[#5d7c34]' : 'text-[#a79e8e]'}>{e.met}/{e.total}</span>
+                          <span className={ready ? 'font-medium text-[#5d7c34]' : 'text-[#a79e8e]'}>{e.met} of {e.total}</span>
                         </div>
                         <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#ece7dc]">
                           <div
@@ -457,36 +512,40 @@ export default function Dashboard() {
                             style={{ width: `${(e.met / e.total) * 100}%` }}
                           />
                         </div>
-                        {!apt.is_visible && e.missing.length > 0 && (
-                          <div className="mt-1.5 text-[11px] text-[#b3aa9b] truncate">Needs {e.missing.join(', ')}</div>
+                        {e.missing.length > 0 && (
+                          <div className="mt-1.5 text-[11px] text-[#b3aa9b] truncate">Still to add: {e.missing.join(', ')}</div>
                         )}
                       </div>
 
-                      {/* actions pinned bottom */}
+                      {/* actions pinned bottom — state-matched to readiness */}
                       <div className="mt-auto pt-4 flex items-center gap-2">
-                        {apt.is_visible ? (
-                          <Link
-                            to="/dashboard/qr"
+                        {ready ? (
+                          <a
+                            href={`/guest?apt=${apt.id}&preview=1`}
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="flex-1 inline-flex items-center justify-center gap-1.5 bg-[#c8a24e] text-[#16100d] px-3 py-2 rounded-[9px] text-[12.5px] font-semibold hover:bg-[#e7d6ad] transition-colors"
                           >
-                            <QrCode size={14} /> QR &amp; share
-                          </Link>
+                            <Eye size={14} /> Preview
+                          </a>
                         ) : (
-                          <Link
-                            to={`/dashboard/property/${apt.id}`}
-                            className="flex-1 inline-flex items-center justify-center gap-1.5 bg-[#c8a24e] text-[#16100d] px-3 py-2 rounded-[9px] text-[12.5px] font-semibold hover:bg-[#e7d6ad] transition-colors"
-                          >
-                            Continue setup
-                          </Link>
+                          <>
+                            <Link
+                              to={`/dashboard/property/${apt.id}`}
+                              className="flex-1 inline-flex items-center justify-center gap-1.5 bg-[#c8a24e] text-[#16100d] px-3 py-2 rounded-[9px] text-[12.5px] font-semibold hover:bg-[#e7d6ad] transition-colors"
+                            >
+                              Finish setup
+                            </Link>
+                            <a
+                              href={`/guest?apt=${apt.id}&preview=1`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 rounded-[9px] text-[12.5px] border border-[#e4ddd0] text-[#6b6354] hover:bg-[#f0ede6] transition-colors"
+                            >
+                              <Eye size={14} /> Preview
+                            </a>
+                          </>
                         )}
-                        <a
-                          href={`/guest?apt=${apt.id}&preview=1`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center justify-center px-3 py-2 rounded-[9px] text-[12.5px] border border-[#e4ddd0] text-[#6b6354] hover:bg-[#f0ede6] transition-colors"
-                        >
-                          Preview
-                        </a>
                         <CardMenu apt={apt} toggling={togglingId === apt.id} onToggle={() => void handleToggleVisibility(apt)} />
                       </div>
                     </div>
@@ -528,10 +587,10 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* Coming soon */}
-            <div className="mt-3.5 bg-[#fffdf9] border border-[#e4ddd0] rounded-[14px] p-4">
-              <div className="text-[12.5px] font-semibold text-[#231d17] mb-0.5">Guest reviews · coming soon</div>
-              <div className="text-[12px] text-[#8a8276] leading-relaxed">Collect UGC screenshots from guests and display them on your guest page.</div>
+            {/* Coming soon — demoted to a quiet one-line strip */}
+            <div className="mt-3.5 flex items-center gap-2.5 border border-dashed border-[#e4ddd0] rounded-[11px] px-3 py-2.5">
+              <span className="shrink-0 text-[9.5px] font-bold uppercase tracking-[.06em] text-[#a8842f] bg-[rgba(200,162,78,0.13)] rounded-full px-2 py-[3px]">Soon</span>
+              <span className="text-[12px] text-[#b3aa9b]">Guest reviews — collect guest screenshots and show them on your page.</span>
             </div>
 
             {TRIAL_FOOTER}
