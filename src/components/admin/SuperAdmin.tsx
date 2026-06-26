@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
@@ -173,6 +173,187 @@ function auditSummary(action: string, detail: Record<string, unknown> | null): s
   return ''
 }
 
+// Case-insensitive filter + rank over the search pool.
+// Rank: name/brand startsWith query → name/brand contains → email contains.
+function rankHosts(pool: HostEntry[], q: string): HostEntry[] {
+  const query = q.trim().toLowerCase()
+  if (!query) return pool
+  const scored: { h: HostEntry; score: number }[] = []
+  for (const h of pool) {
+    const brand = (h.brand_name ?? '').toLowerCase()
+    const nm    = (h.name ?? '').toLowerCase()
+    const email = (h.contact_email ?? '').toLowerCase()
+    let score = -1
+    if (brand.startsWith(query) || nm.startsWith(query)) score = 0
+    else if (brand.includes(query) || nm.includes(query)) score = 1
+    else if (email.includes(query)) score = 2
+    if (score >= 0) scored.push({ h, score })
+  }
+  // stable sort (V8 Array.sort is stable) keeps original order within a rank tier
+  scored.sort((a, b) => a.score - b.score)
+  return scored.map(s => s.h)
+}
+
+// Accessible searchable combobox over the host search pool. Selecting a host
+// pins it (parent renders only that host's card); clearing unpins.
+function HostFinder({
+  pool,
+  pinnedHostId,
+  pinnedName,
+  onPin,
+  onClear,
+}: {
+  pool: HostEntry[]
+  pinnedHostId: string | null
+  pinnedName: string | null
+  onPin: (id: string) => void
+  onClear: () => void
+}) {
+  const [query, setQuery]             = useState('')
+  const [open, setOpen]               = useState(false)
+  const [activeIndex, setActiveIndex] = useState(-1)
+  const rootRef  = useRef<HTMLDivElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  const results   = rankHosts(pool, query)
+  const listboxId = 'host-finder-listbox'
+
+  // Click-outside closes the dropdown (mirrors the menu/modal patterns in this file).
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
+        setOpen(false)
+        setActiveIndex(-1)
+      }
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+
+  // Keep the active option visible while arrowing through a scrollable list.
+  useEffect(() => {
+    if (!open || activeIndex < 0) return
+    document.getElementById(`host-finder-opt-${activeIndex}`)?.scrollIntoView({ block: 'nearest' })
+  }, [activeIndex, open])
+
+  function selectHost(h: HostEntry) {
+    onPin(h.id)
+    setQuery('')
+    setOpen(false)
+    setActiveIndex(-1)
+    inputRef.current?.blur()
+  }
+
+  function clearAll() {
+    onClear()
+    setQuery('')
+    setOpen(false)
+    setActiveIndex(-1)
+    inputRef.current?.focus()
+  }
+
+  function handleChange(v: string) {
+    if (pinnedHostId) onClear() // editing the pinned name unpins and resumes searching
+    setQuery(v)
+    setOpen(true)
+    setActiveIndex(-1)
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      if (!open) { setOpen(true); return }
+      setActiveIndex(i => Math.min(i + 1, results.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      if (!open) { setOpen(true); return }
+      setActiveIndex(i => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      if (!open) return
+      e.preventDefault()
+      const pick = activeIndex >= 0 ? results[activeIndex] : results[0]
+      if (pick) selectHost(pick)
+    } else if (e.key === 'Escape') {
+      setOpen(false)
+      setActiveIndex(-1)
+    }
+  }
+
+  const inputValue = pinnedHostId ? (pinnedName ?? '') : query
+  const showClear  = pinnedHostId != null || query.trim() !== ''
+
+  return (
+    <div ref={rootRef} className="relative mb-2">
+      <div className="relative">
+        <span aria-hidden className="absolute left-3 top-1/2 -translate-y-1/2 text-xs text-[#888] pointer-events-none">⌕</span>
+        <input
+          ref={inputRef}
+          type="text"
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={open ? listboxId : undefined}
+          aria-autocomplete="list"
+          aria-label="Find a host"
+          aria-activedescendant={open && activeIndex >= 0 ? `host-finder-opt-${activeIndex}` : undefined}
+          placeholder="Find a host by name or email"
+          value={inputValue}
+          onChange={e => handleChange(e.target.value)}
+          onFocus={() => setOpen(true)}
+          onKeyDown={handleKeyDown}
+          className="bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] pl-9 pr-9 py-2 text-xs text-[#444] focus:outline-none focus:border-[#1a1a1a] w-full"
+        />
+        {showClear && (
+          <button
+            type="button"
+            aria-label="Clear host search"
+            onClick={clearAll}
+            className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded-full text-[#888] hover:bg-[#f0ede6] hover:text-[#1a1a1a] transition-colors text-sm leading-none"
+          >
+            ×
+          </button>
+        )}
+      </div>
+      {open && (
+        <ul
+          id={listboxId}
+          role="listbox"
+          aria-label="Hosts"
+          className="absolute z-20 left-0 right-0 mt-1 bg-white border border-[#ddd8ce] rounded-[8px] shadow-lg max-h-[336px] overflow-y-auto py-1"
+        >
+          {results.length === 0 ? (
+            <li className="px-3 py-2 text-[11px] text-[#aaa]">No hosts match.</li>
+          ) : results.map((h, i) => {
+            const name = h.brand_name ?? h.name ?? '—'
+            return (
+              <li
+                key={h.id}
+                id={`host-finder-opt-${i}`}
+                role="option"
+                aria-selected={i === activeIndex}
+                onMouseEnter={() => setActiveIndex(i)}
+                onMouseDown={e => { e.preventDefault(); selectHost(h) }}
+                className={`flex items-center gap-2.5 px-3 py-2 cursor-pointer ${i === activeIndex ? 'bg-[#f0ede6]' : ''}`}
+              >
+                <div className="w-8 h-8 rounded-[7px] bg-[#1a1a1a] flex items-center justify-center text-[11px] text-white font-semibold shrink-0">
+                  {(h.brand_name ?? h.name ?? '?').charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[12px] font-medium text-[#1a1a1a] truncate">{name}</span>
+                    <StatusPill status={h.subscription_status} />
+                  </div>
+                  <div className="text-[10px] text-[#888] truncate">{h.contact_email ?? '—'}</div>
+                </div>
+              </li>
+            )
+          })}
+        </ul>
+      )}
+    </div>
+  )
+}
+
 export default function SuperAdmin() {
   const navigate = useNavigate()
   const [data, setData] = useState<AdminOverview | null>(null)
@@ -181,6 +362,7 @@ export default function SuperAdmin() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [sort, setSort] = useState<SortKey>('expiring')
   const [showExempt, setShowExempt] = useState(false)
+  const [pinnedHostId, setPinnedHostId] = useState<string | null>(null)
 
   // "View as" impersonate state
   const [impersonateData, setImpersonateData]       = useState<ImpersonateSnapshot | null>(null)
@@ -220,6 +402,13 @@ export default function SuperAdmin() {
       })
     return () => { cancelled = true }
   }, [])
+
+  // If the pinned host disappears (e.g. after a Manage re-fetch), unpin gracefully.
+  useEffect(() => {
+    if (pinnedHostId && data && !data.hosts.some(h => h.id === pinnedHostId)) {
+      setPinnedHostId(null)
+    }
+  }, [pinnedHostId, data])
 
   async function signOut() {
     const { error } = await supabase.auth.signOut()
@@ -767,6 +956,15 @@ export default function SuperAdmin() {
     return (a.brand_name ?? a.name ?? '').localeCompare(b.brand_name ?? b.name ?? '')
   })
 
+  // ── Host finder: search pool respects the exempt toggle but ignores the
+  // status filter (any host is findable). A pinned host (looked up fresh each
+  // render) collapses the list to just that one card. ──────────────────────
+  const searchPool = showExempt ? data.hosts : data.hosts.filter(h => !h.is_exempt)
+  const pinnedHost = pinnedHostId ? (searchPool.find(h => h.id === pinnedHostId) ?? null) : null
+  const isPinned   = pinnedHost !== null
+  const pinnedName = pinnedHost ? (pinnedHost.brand_name ?? pinnedHost.name ?? '—') : null
+  const displayHosts = pinnedHost ? [pinnedHost] : sorted
+
   const { totals, plans } = data
 
   const METRICS = [
@@ -832,52 +1030,65 @@ export default function SuperAdmin() {
           ))}
         </div>
 
-        {/* Filter + sort + exempt toggle */}
-        <div className="flex flex-wrap items-center gap-2 mb-3">
-          <div className="flex items-center gap-1 flex-wrap">
-            {FILTER_BTNS.map(f => (
-              <button
-                key={f.key}
-                onClick={() => setStatusFilter(f.key)}
-                className={`px-2.5 py-1 rounded-[6px] text-[11px] transition-colors ${
-                  statusFilter === f.key
-                    ? 'bg-[#1a1a1a] text-white'
-                    : 'bg-white border border-[#ddd8ce] text-[#666] hover:bg-[#f0ede6]'
-                }`}
-              >
-                {f.label}
-              </button>
-            ))}
+        {/* Find a host — searchable combobox (full-width, above the filters) */}
+        <HostFinder
+          pool={searchPool}
+          pinnedHostId={isPinned ? pinnedHostId : null}
+          pinnedName={pinnedName}
+          onPin={setPinnedHostId}
+          onClear={() => setPinnedHostId(null)}
+        />
+
+        {/* Filter + sort + exempt toggle (hidden while a host is pinned) */}
+        {!isPinned && (
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <div className="flex items-center gap-1 flex-wrap">
+              {FILTER_BTNS.map(f => (
+                <button
+                  key={f.key}
+                  onClick={() => setStatusFilter(f.key)}
+                  className={`px-2.5 py-1 rounded-[6px] text-[11px] transition-colors ${
+                    statusFilter === f.key
+                      ? 'bg-[#1a1a1a] text-white'
+                      : 'bg-white border border-[#ddd8ce] text-[#666] hover:bg-[#f0ede6]'
+                  }`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <select
+              value={sort}
+              onChange={e => setSort(e.target.value as SortKey)}
+              className="bg-white border border-[#ddd8ce] rounded-[6px] px-2 py-1 text-[11px] text-[#444] focus:outline-none focus:border-[#1a1a1a]"
+            >
+              <option value="expiring">Expiring soon</option>
+              <option value="newest">Newest</option>
+              <option value="name">Name</option>
+            </select>
+            <label className="flex items-center gap-1.5 ml-auto text-[11px] text-[#666] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showExempt}
+                onChange={e => setShowExempt(e.target.checked)}
+                className="w-3 h-3"
+              />
+              Show my account
+            </label>
           </div>
-          <select
-            value={sort}
-            onChange={e => setSort(e.target.value as SortKey)}
-            className="bg-white border border-[#ddd8ce] rounded-[6px] px-2 py-1 text-[11px] text-[#444] focus:outline-none focus:border-[#1a1a1a]"
-          >
-            <option value="expiring">Expiring soon</option>
-            <option value="newest">Newest</option>
-            <option value="name">Name</option>
-          </select>
-          <label className="flex items-center gap-1.5 ml-auto text-[11px] text-[#666] cursor-pointer select-none">
-            <input
-              type="checkbox"
-              checked={showExempt}
-              onChange={e => setShowExempt(e.target.checked)}
-              className="w-3 h-3"
-            />
-            Show my account
-          </label>
-        </div>
+        )}
 
         {/* Host list */}
         <div className="space-y-2">
-          <div className="text-[10px] uppercase tracking-[.06em] text-[#999] mb-2">
-            {sorted.length} host{sorted.length !== 1 ? 's' : ''}
-          </div>
-          {sorted.length === 0 && (
+          {!isPinned && (
+            <div className="text-[10px] uppercase tracking-[.06em] text-[#999] mb-2">
+              {displayHosts.length} host{displayHosts.length !== 1 ? 's' : ''}
+            </div>
+          )}
+          {displayHosts.length === 0 && (
             <div className="text-[12px] text-[#aaa] text-center py-8">No hosts match this filter.</div>
           )}
-          {sorted.map(h => {
+          {displayHosts.map(h => {
             const plan = plans.find(p => p.tier === (h.tier ?? 1))
             const cap = h.property_cap_override ?? plan?.max_properties
             const capStr = cap == null ? '∞' : String(cap)
