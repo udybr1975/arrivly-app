@@ -23,6 +23,7 @@ interface HostData {
   tier: number | null
   is_exempt: boolean | null
   property_cap_override: number | null
+  accent_color: string | null
 }
 
 const ESSENTIAL_DEFS = [
@@ -112,7 +113,7 @@ export default function Dashboard() {
 
       const { data: hd } = await supabase
         .from('hosts')
-        .select('trial_ends_at, name, brand_name, welcome_seen_at, tier, is_exempt, property_cap_override')
+        .select('trial_ends_at, name, brand_name, welcome_seen_at, tier, is_exempt, property_cap_override, accent_color')
         .eq('id', user.id)
         .maybeSingle()
 
@@ -409,7 +410,7 @@ export default function Dashboard() {
               {list.map(apt => {
                 const e = essentials(apt)
                 const ready = e.met === e.total
-                const accent = apt.accent_color || '#1c1c1a'
+                const accent = apt.accent_color || hostData?.accent_color || '#1c1c1a'
                 const aptBookings = bookingCountByApt.get(apt.id) ?? 0
                 return (
                   <div key={apt.id} className="flex flex-col bg-[#fffdf9] border border-[#e4ddd0] rounded-[14px] overflow-hidden">
