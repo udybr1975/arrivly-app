@@ -239,10 +239,10 @@ export default function Layout() {
         className={`
         fixed inset-y-0 left-0 z-50 w-[212px] shrink-0
         bg-[#1c1c1a] border-r border-[#322c25] p-3.5
-        flex flex-col min-h-screen
+        flex flex-col
         transform transition-transform duration-200
         ${menuOpen ? 'translate-x-0' : '-translate-x-full'}
-        md:static md:translate-x-0 md:z-auto
+        md:sticky md:top-0 md:h-screen md:self-start md:translate-x-0 md:z-auto
       `}>
         {/* Brand */}
         <div className="mb-4 px-1">
