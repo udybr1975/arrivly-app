@@ -11,9 +11,13 @@ import {
   CreditCard,
   Settings as SettingsIcon,
   ShieldCheck,
+  LogOut,
+  ChevronUp,
+  Download,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { ARRIVLY_CONFIG } from '../../config'
+import { useInstallPrompt } from '../../lib/useInstallPrompt'
 import Logo from './Logo'
 
 type NavEntry = { to: string; label: string; Icon: ComponentType<{ size?: number; className?: string }>; end?: boolean }
@@ -64,9 +68,12 @@ export default function Layout() {
   const [host, setHost] = useState<HostData | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [unread, setUnread] = useState(0)
+  const [accountOpen, setAccountOpen] = useState(false)
   const hamburgerRef = useRef<HTMLButtonElement>(null)
   const asideRef = useRef<HTMLElement>(null)
+  const accountRef = useRef<HTMLDivElement>(null)
   const wasMenuOpen = useRef(false)
+  const { canInstall, standalone, installed, install } = useInstallPrompt()
 
   useEffect(() => {
     let mounted = true
@@ -165,6 +172,18 @@ export default function Layout() {
     wasMenuOpen.current = menuOpen
   }, [menuOpen])
 
+  // Close the account popover on outside click (gated on accountOpen).
+  useEffect(() => {
+    if (!accountOpen) return
+    const onMouseDown = (e: MouseEvent) => {
+      if (accountRef.current && !accountRef.current.contains(e.target as Node)) {
+        setAccountOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onMouseDown)
+    return () => document.removeEventListener('mousedown', onMouseDown)
+  }, [accountOpen])
+
   async function signOut() {
     const { error } = await supabase.auth.signOut()
     if (error) {
@@ -228,12 +247,6 @@ export default function Layout() {
         {/* Brand */}
         <div className="mb-4 px-1">
           <Logo size={28} withWordmark wordmarkClassName="font-['Fraunces'] text-[17px] text-[#f0ede6]" />
-          <div className="mt-3">
-            <div className="text-[12px] font-semibold text-[#e9e3d7] truncate">
-              {host?.brand_name ?? 'Arrivly'}
-            </div>
-            <div className="text-[10.5px] text-[#8a8175] truncate">{email}</div>
-          </div>
         </div>
 
         {/* Nav */}
@@ -280,7 +293,7 @@ export default function Layout() {
           )}
         </nav>
 
-        {/* Trial widget + sign out */}
+        {/* Trial widget + account menu */}
         <div className="mt-auto pt-3.5 flex flex-col gap-2.5">
           {showTrial && (
             <div className="rounded-[12px] p-[13px] bg-[rgba(200,162,78,0.10)] border border-[rgba(200,162,78,0.22)]">
@@ -298,12 +311,75 @@ export default function Layout() {
               </NavLink>
             </div>
           )}
-          <button
-            onClick={signOut}
-            className="text-[11px] text-[#8a8175] hover:text-[#b6ad9e] text-left px-1 transition-colors"
+
+          {/* Account row + upward popover */}
+          <div
+            ref={accountRef}
+            className="relative"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape' && accountOpen) {
+                setAccountOpen(false)
+                e.stopPropagation()
+              }
+            }}
           >
-            Sign out
-          </button>
+            {accountOpen && (
+              <div
+                role="menu"
+                className="absolute left-0 right-0 bottom-[calc(100%+8px)] bg-[#211f1c] border border-[#3a342c] rounded-[13px] p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.5)]"
+              >
+                <NavLink
+                  to="/dashboard/settings"
+                  role="menuitem"
+                  onClick={() => { setAccountOpen(false); closeMenu() }}
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-[9px] text-[13px] text-[#e9e3d7] hover:bg-white/[0.06] transition-colors"
+                >
+                  <SettingsIcon size={16} className="text-[#9a9082]" />
+                  <span>Settings</span>
+                </NavLink>
+                {canInstall && !installed && !standalone && (
+                  <button
+                    role="menuitem"
+                    onClick={() => { install(); setAccountOpen(false) }}
+                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[9px] text-[13px] text-[#e9e3d7] hover:bg-white/[0.06] transition-colors"
+                  >
+                    <Download size={16} className="text-[#9a9082]" />
+                    <span>Install app</span>
+                  </button>
+                )}
+                <div className="h-px bg-[#332e27] mx-2 my-1" />
+                <button
+                  role="menuitem"
+                  onClick={() => { signOut() }}
+                  className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[9px] text-[13px] text-[#d98a7a] hover:bg-[rgba(217,138,122,0.12)] transition-colors"
+                >
+                  <LogOut size={16} className="text-[#d98a7a]" />
+                  <span>Sign out</span>
+                </button>
+              </div>
+            )}
+
+            <button
+              aria-haspopup="menu"
+              aria-expanded={accountOpen}
+              onClick={() => setAccountOpen((o) => !o)}
+              className="flex items-center gap-2.5 p-2 rounded-[11px] w-full text-left border border-transparent bg-[rgba(255,255,255,0.03)] hover:bg-[rgba(255,255,255,0.06)] hover:border-[#322c25] transition-colors"
+            >
+              <div className="shrink-0 w-[30px] h-[30px] rounded-[9px] bg-gradient-to-br from-[#e7d6ad] to-[#c8a24e] text-[#16100d] font-['Fraunces'] text-[14px] flex items-center justify-center">
+                {(host?.brand_name?.trim()?.[0] ?? email?.[0] ?? 'A').toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-[12px] font-semibold text-[#e9e3d7] truncate">
+                  {host?.brand_name ?? 'Arrivly'}
+                </div>
+                <div className="text-[10px] text-[#8a8175] truncate">{email}</div>
+              </div>
+              <ChevronUp
+                size={15}
+                className={`shrink-0 text-[#8a8175] transition-transform ${accountOpen ? 'rotate-180' : ''}`}
+              />
+            </button>
+          </div>
         </div>
       </aside>
 
