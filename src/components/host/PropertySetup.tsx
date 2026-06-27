@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type ChangeEvent } from 'react'
-import { Link, useParams, useNavigate } from 'react-router-dom'
+import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Lock } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
@@ -53,6 +53,7 @@ function timeAgo(iso: string): string {
 export default function PropertySetup() {
   const { aptId } = useParams<{ aptId: string }>()
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const { toast } = useToast()
   const [tab, setTab] = useState<Tab>('basic')
   const [apartmentId, setApartmentId] = useState<string | null>(null)
@@ -191,6 +192,11 @@ export default function PropertySetup() {
       if (!apt) { navigate('/dashboard'); return }
 
       setApartmentId(apt.id)
+      // Honour a ?tab= deep-link (e.g. Bookings → "Manage calendars"). For an existing
+      // property every tab is unlocked, so no lock check is needed; the 'new' branch above
+      // ignores the param by forcing 'basic'.
+      const requestedTab = searchParams.get('tab')
+      if (requestedTab && TABS.some(t => t.key === requestedTab)) setTab(requestedTab as Tab)
       setHeroImageUrl(apt.hero_image_url ?? null)
       setBasic({
         name: apt.name ?? '',
@@ -237,7 +243,7 @@ export default function PropertySetup() {
       setLoading(false)
     }
     load()
-  }, [aptId])
+  }, [aptId, searchParams])
 
   const loadPicks = useCallback(async () => {
     if (!apartmentId) return
