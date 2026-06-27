@@ -466,14 +466,33 @@ export default function Dashboard() {
                 const ready = e.met === e.total
                 const accent = apt.accent_color || hostData?.accent_color || '#1c1c1a'
                 const aptBookings = bookingCountByApt.get(apt.id) ?? 0
+                const isDraftNoPhoto = !apt.hero_image_url && !apt.is_visible
                 return (
                   <div key={apt.id} className="flex flex-col bg-[#fffdf9] border border-[#e4ddd0] rounded-[14px] overflow-hidden">
                     {/* hero */}
-                    <div className="relative h-24" style={apt.hero_image_url ? undefined : { backgroundColor: accent }}>
+                    <div
+                      className="relative h-24"
+                      style={
+                        apt.hero_image_url
+                          ? undefined
+                          : isDraftNoPhoto
+                            ? { backgroundImage: 'repeating-linear-gradient(135deg,#f4ecdb,#f4ecdb 11px,#efe6d2 11px,#efe6d2 22px)' }
+                            : { backgroundColor: accent }
+                      }
+                    >
                       {apt.hero_image_url && (
                         <img src={resolveImageUrl(apt.hero_image_url)} alt="" className="h-full w-full object-cover" loading="lazy" />
                       )}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
+                      {apt.hero_image_url && (
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-transparent" />
+                      )}
+                      {isDraftNoPhoto && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <span className="text-[11px] font-semibold text-[#9a6b12] bg-white border border-[#e8d9b8] rounded-full px-2.5 py-[3px]">
+                            No photo yet
+                          </span>
+                        </div>
+                      )}
                       <span className="absolute top-2.5 left-2.5 flex h-7 w-7 items-center justify-center rounded-[8px] bg-black/35 text-white backdrop-blur-sm">
                         <QrCode size={14} />
                       </span>
