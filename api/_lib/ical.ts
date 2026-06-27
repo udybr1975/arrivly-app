@@ -1,10 +1,22 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { randomInt } from 'node:crypto'
 import { safeFetchIcal } from './safe-fetch.js'
 
 export interface SyncResult {
   imported: number
   skipped: number
   errors: string[]
+}
+
+// Clean, unambiguous reference token for a brand-new feed booking. Unbiased pick from
+// crypto randomness (reference_number doubles as the guest access token, so it must not
+// be predictable). 32^6 space, <100 bookings → collision is negligible; the RPC only
+// consumes new_ref on INSERT (ignored on conflict), so existing references are preserved.
+const REF_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+function generateRef(): string {
+  let s = ''
+  for (let i = 0; i < 6; i++) s += REF_ALPHABET[randomInt(REF_ALPHABET.length)]
+  return `ARR-${s}`
 }
 
 export function detectSource(url: string): string {
@@ -34,10 +46,25 @@ function parseIcal(text: string): Array<{ uid: string; start: string; end: strin
   return events
 }
 
+type ReconcileEvent = {
+  uid: string
+  check_in: string
+  check_out: string
+  is_block: boolean
+  new_ref: string
+}
+
 /**
- * Sync one apartment's iCal URLs into bookings. Dedupes by reference_number (iCal UID)
- * + apartment_id. Returns counts; never sends notifications (caller does). Error strings
- * are provider-label only — never the URL (which can embed auth tokens).
+ * Sync one apartment's iCal URLs into bookings via the reconcile_ical_bookings RPC
+ * (upsert keyed on apartment_id + ical_uid). The RPC inserts new feed rows, updates
+ * dates/status on conflict (never touching guest_id/reference_number, so CSV-attached
+ * guest names survive every sync), and soft-cancels feed rows of the same source family
+ * whose uid dropped from the feed. Returns counts; never sends notifications (caller does).
+ *
+ * Events are grouped by base SOURCE and the RPC is called once per source, so the soft-
+ * cancel sees the WHOLE source family at once. A source with ANY failed fetch is skipped
+ * entirely (no RPC call) so a feed that didn't load can never cancel its own live rows.
+ * Error strings are provider-label only — never the URL (which can embed auth tokens).
  */
 export async function syncApartmentBookings(
   db: SupabaseClient,
@@ -53,46 +80,61 @@ export async function syncApartmentBookings(
     .filter((u) => u.startsWith('https://'))
   if (urls.length === 0) return { imported, skipped, errors }
 
+  // Accumulate parsed events per base source; track which sources had ≥1 URL and which
+  // had at least one failed fetch (so they're excluded from reconciliation this run).
+  const eventsBySource = new Map<string, ReconcileEvent[]>()
+  const sourcesSeen = new Set<string>()
+  const incompleteSources = new Set<string>()
+
   for (const url of urls) {
     const source = detectSource(url)
+    sourcesSeen.add(source)
+    if (!eventsBySource.has(source)) eventsBySource.set(source, [])
     try {
       const response = await safeFetchIcal(url)
       if (!response.ok) {
         errors.push(`${source}: HTTP ${response.status}`)
+        incompleteSources.add(source)
         continue
       }
-      const text = response.text
-      const events = parseIcal(text)
-
+      const events = parseIcal(response.text)
+      const bucket = eventsBySource.get(source)!
       for (const event of events) {
-        const isBlock = /blocked|not available|unavailable|closed/i.test(event.summary)
-
-        const { data: existing } = await db
-          .from('bookings')
-          .select('id')
-          .eq('reference_number', event.uid)
-          .eq('apartment_id', apartment.id)
-          .maybeSingle()
-
-        if (existing) { skipped++; continue }
-
-        const { error: insertErr } = await db.from('bookings').insert({
-          apartment_id: apartment.id,
-          guest_id: null,
+        bucket.push({
+          uid: event.uid,
           check_in: event.start,
           check_out: event.end,
-          status: 'confirmed',
-          reference_number: event.uid,
-          source: isBlock ? `${source}_block` : source,
+          is_block: /blocked|not available|unavailable|closed/i.test(event.summary),
+          new_ref: generateRef(),
         })
-        if (insertErr) { errors.push(`${source}: insert failed`) } else { imported++ }
       }
     } catch {
       // safeFetchIcal threw (blocked host, timeout, oversize, non-https, redirect cap,
       // transport error). Generic host-facing string only — no URL, no blocked-vs-network
-      // distinction (no probing signal).
+      // distinction (no probing signal). Mark the source incomplete so we don't reconcile.
       errors.push(`${source}: couldn't be used (check it's a public https calendar link)`)
+      incompleteSources.add(source)
     }
+  }
+
+  // Reconcile each fully-fetched source exactly once. A source with any failed fetch is
+  // skipped (the error is already recorded) so the RPC's soft-cancel never fires against
+  // a feed that didn't fully load.
+  for (const source of sourcesSeen) {
+    if (incompleteSources.has(source)) continue
+    const p_events = eventsBySource.get(source) ?? []
+    const { data, error } = await db.rpc('reconcile_ical_bookings', {
+      p_apartment_id: apartment.id,
+      p_source: source,
+      p_events,
+    })
+    if (error) {
+      errors.push(`${source}: sync failed`)
+      continue
+    }
+    const res = (data ?? {}) as { imported?: number; updated?: number; cancelled?: number }
+    imported += res.imported ?? 0
+    skipped += res.updated ?? 0
   }
 
   return { imported, skipped, errors }

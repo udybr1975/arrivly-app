@@ -248,7 +248,7 @@ export default function BookingManager() {
         skipped: number
         errors: string[]
       }
-      const msg = `Synced — ${result.imported} new, ${result.skipped} already known`
+      const msg = `Synced — ${result.imported} new, ${result.skipped} updated`
       toast(
         result.errors.length > 0 ? `${msg} (${result.errors.length} error(s))` : msg,
         result.errors.length > 0 ? 'error' : 'success'
