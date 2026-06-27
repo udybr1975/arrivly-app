@@ -34,7 +34,9 @@ const ESSENTIAL_DEFS = [
 ] as const
 
 // Accessible per-card overflow menu: Escape + click-outside to close.
-function CardMenu({ apt, toggling, onToggle }: { apt: Apartment; toggling: boolean; onToggle: () => void }) {
+function CardMenu({ apt, toggling, discarding, canDiscard, onToggle, onDiscard }:
+  { apt: Apartment; toggling: boolean; discarding: boolean; canDiscard: boolean;
+    onToggle: () => void; onDiscard: () => void }) {
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -85,6 +87,20 @@ function CardMenu({ apt, toggling, onToggle }: { apt: Apartment; toggling: boole
           >
             {toggling ? 'Saving…' : apt.is_visible ? 'Unpublish' : 'Publish'}
           </button>
+          {canDiscard && (
+            <>
+              <div className="my-1 border-t border-[#e4ddd0]" />
+              <button
+                type="button"
+                role="menuitem"
+                disabled={discarding}
+                onClick={() => { setOpen(false); onDiscard() }}
+                className="block w-full text-left px-3 py-2 text-[12.5px] text-[#a23b32] hover:bg-[#f7ecea] transition-colors disabled:opacity-50"
+              >
+                {discarding ? 'Discarding…' : 'Discard draft'}
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
@@ -106,6 +122,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true)
   const [showWelcome, setShowWelcome] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
+  const [discardingId, setDiscardingId] = useState<string | null>(null)
   const welcomeRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -248,6 +265,23 @@ export default function Dashboard() {
       setList(prev => prev.map(a => (a.id === apt.id ? { ...a, is_visible: !makeVisible } : a)))
       window.alert("Couldn't update the property's status — please try again.")
     }
+  }
+
+  async function handleDiscard(apt: Apartment) {
+    const ok = window.confirm(
+      `Discard "${apt.name}"?\n\nThis permanently deletes this unfinished draft. It isn't ` +
+      `published and has no bookings, so nothing guests can see is affected. This can't be undone.`
+    )
+    if (!ok) return
+    setDiscardingId(apt.id)
+    const { error } = await supabase.from('apartments').delete().eq('id', apt.id)
+    if (error) {
+      setDiscardingId(null)
+      window.alert("Couldn't discard this draft — please try again.")
+      return
+    }
+    setList(prev => prev.filter(a => a.id !== apt.id))
+    setDiscardingId(null)
   }
 
   if (loading) return <Loader />
@@ -565,7 +599,14 @@ export default function Dashboard() {
                             </a>
                           </>
                         )}
-                        <CardMenu apt={apt} toggling={togglingId === apt.id} onToggle={() => void handleToggleVisibility(apt)} />
+                        <CardMenu
+                          apt={apt}
+                          toggling={togglingId === apt.id}
+                          discarding={discardingId === apt.id}
+                          canDiscard={!apt.is_visible && aptBookings === 0}
+                          onToggle={() => void handleToggleVisibility(apt)}
+                          onDiscard={() => void handleDiscard(apt)}
+                        />
                       </div>
                     </div>
                   </div>
