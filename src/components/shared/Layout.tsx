@@ -13,11 +13,9 @@ import {
   ShieldCheck,
   LogOut,
   ChevronUp,
-  Download,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { ARRIVLY_CONFIG } from '../../config'
-import { useInstallPrompt } from '../../lib/useInstallPrompt'
 import Logo from './Logo'
 
 type NavEntry = { to: string; label: string; Icon: ComponentType<{ size?: number; className?: string }>; end?: boolean }
@@ -73,7 +71,6 @@ export default function Layout() {
   const asideRef = useRef<HTMLElement>(null)
   const accountRef = useRef<HTMLDivElement>(null)
   const wasMenuOpen = useRef(false)
-  const { canInstall, standalone, installed, install } = useInstallPrompt()
 
   useEffect(() => {
     let mounted = true
@@ -328,26 +325,6 @@ export default function Layout() {
                 role="menu"
                 className="absolute left-0 right-0 bottom-[calc(100%+8px)] bg-[#211f1c] border border-[#3a342c] rounded-[13px] p-1.5 shadow-[0_14px_40px_rgba(0,0,0,0.5)]"
               >
-                <NavLink
-                  to="/dashboard/settings"
-                  role="menuitem"
-                  onClick={() => { setAccountOpen(false); closeMenu() }}
-                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-[9px] text-[13px] text-[#e9e3d7] hover:bg-white/[0.06] transition-colors"
-                >
-                  <SettingsIcon size={16} className="text-[#9a9082]" />
-                  <span>Settings</span>
-                </NavLink>
-                {canInstall && !installed && !standalone && (
-                  <button
-                    role="menuitem"
-                    onClick={() => { install(); setAccountOpen(false) }}
-                    className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-[9px] text-[13px] text-[#e9e3d7] hover:bg-white/[0.06] transition-colors"
-                  >
-                    <Download size={16} className="text-[#9a9082]" />
-                    <span>Install app</span>
-                  </button>
-                )}
-                <div className="h-px bg-[#332e27] mx-2 my-1" />
                 <button
                   role="menuitem"
                   onClick={() => { signOut() }}
