@@ -8,7 +8,7 @@ import Loader from '../shared/Loader'
 import { resolveImageUrl, uploadImage, deleteImage } from '../../lib/imageUtils'
 import { useToast } from '../shared/Toast'
 
-type Tab = 'basic' | 'wifi' | 'checkin' | 'rules' | 'extras' | 'picks' | 'guide' | 'look'
+type Tab = 'basic' | 'wifi' | 'checkin' | 'rules' | 'extras' | 'picks' | 'guide' | 'calendars' | 'look'
 
 const TABS: { key: Tab; label: string; privateLock?: boolean }[] = [
   { key: 'basic',   label: 'Basics' },
@@ -18,6 +18,7 @@ const TABS: { key: Tab; label: string; privateLock?: boolean }[] = [
   { key: 'extras',  label: 'Extras' },
   { key: 'picks',   label: 'My picks' },
   { key: 'guide',   label: 'Guide & events' },
+  { key: 'calendars', label: 'Calendars' },
   { key: 'look',    label: 'Look' },
 ]
 
@@ -124,6 +125,14 @@ export default function PropertySetup() {
   const [lookCustomHex, setLookCustomHex] = useState('')
   const [savingLook, setSavingLook] = useState(false)
 
+  // Tab 9 — Calendars (iCal feeds + Airbnb CSV guest-name import)
+  const [icalUrls, setIcalUrls] = useState('')
+  const [savingIcal, setSavingIcal] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMsg, setSyncMsg] = useState<string | null>(null)
+  const [csvImporting, setCsvImporting] = useState(false)
+  const [csvMsg, setCsvMsg] = useState<string | null>(null)
+
   const basicComplete =
     !!basic.name.trim() && !!basic.country.trim() && !!basic.city.trim() &&
     !!basic.neighborhood.trim() && !!basic.street.trim() &&
@@ -157,6 +166,9 @@ export default function PropertySetup() {
       setOverrideOpen(false)
       setLookSelected(DEFAULT_COLOR)
       setLookCustomHex('')
+      setIcalUrls('')
+      setSyncMsg(null)
+      setCsvMsg(null)
 
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) { setLoading(false); return }
@@ -304,6 +316,23 @@ export default function PropertySetup() {
     if (tab !== 'look' || !apartmentId) return
     loadLook()
   }, [tab, apartmentId, loadLook])
+
+  // ── Tab 9: Calendars — lazy iCal-URL load ─────────────────────────────────
+  const loadCalendars = useCallback(async () => {
+    if (!apartmentId || !hostId) return
+    const { data } = await supabase
+      .from('apartments')
+      .select('ical_urls')
+      .eq('id', apartmentId)
+      .eq('host_id', hostId)
+      .maybeSingle()
+    setIcalUrls(data?.ical_urls ?? '')
+  }, [apartmentId, hostId])
+
+  useEffect(() => {
+    if (tab !== 'calendars' || !apartmentId) return
+    loadCalendars()
+  }, [tab, apartmentId, loadCalendars])
 
   function showOk() {
     setFeedback({ ok: true, msg: 'Saved ✓' })
@@ -694,6 +723,73 @@ export default function PropertySetup() {
     setLookSelected(eff)
     setLookCustomHex(ARRIVLY_CONFIG.colourPresets.some(p => p.hex === eff) ? '' : eff)
     toast('Reset to brand default', 'success')
+  }
+
+  // ── Tab 9: Calendars — save links, manual sync, CSV guest-name import ──────
+  const SYNC_ERR = 'Could not sync right now. Please try again.'
+  const CSV_ERR = "Could not read that CSV. Make sure it's the reservations export from Airbnb."
+
+  async function saveIcal() {
+    if (!apartmentId || !hostId) return
+    setSavingIcal(true)
+    const { error } = await supabase
+      .from('apartments')
+      .update({ ical_urls: icalUrls.trim() || null })
+      .eq('id', apartmentId)
+      .eq('host_id', hostId)
+    setSavingIcal(false)
+    if (error) { toast(error.message, 'error'); return }
+    toast('Calendar links saved', 'success')
+  }
+
+  async function syncNow() {
+    if (!apartmentId) return
+    setSyncing(true)
+    setSyncMsg(null)
+    try {
+      const r = await api.post<{ imported: number; skipped: number; errors: string[] }>(
+        '/sync-ical',
+        { apartment_id: apartmentId }
+      )
+      let msg = `Synced — ${r.imported} new · ${r.skipped} already known`
+      if (r.errors.length > 0) {
+        msg += ` · ${r.errors.length} link${r.errors.length === 1 ? '' : 's'} couldn't be read`
+      }
+      setSyncMsg(msg)
+      toast('Calendar synced', 'success')
+    } catch {
+      setSyncMsg(SYNC_ERR)
+      toast(SYNC_ERR, 'error')
+    } finally {
+      setSyncing(false)
+    }
+  }
+
+  async function handleCsvFile(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-selecting the same file
+    if (!file || !apartmentId) return
+    if (file.size > 1_000_000) { toast('That CSV is too large.', 'error'); return }
+    setCsvImporting(true)
+    setCsvMsg(null)
+    try {
+      const text = await file.text()
+      const r = await api.post<{ matched: number; named: number; skipped: number; ambiguous: number }>(
+        '/import-airbnb-csv',
+        { apartment_id: apartmentId, csv: text }
+      )
+      let msg = `Added ${r.named} guest name${r.named === 1 ? '' : 's'} · ${r.matched} matched · ${r.skipped} with no match`
+      if (r.ambiguous > 0) {
+        msg += ` · ${r.ambiguous} extra same-date booking${r.ambiguous === 1 ? '' : 's'} to check`
+      }
+      setCsvMsg(msg)
+      toast('Guest names imported', 'success')
+    } catch {
+      setCsvMsg(CSV_ERR)
+      toast(CSV_ERR, 'error')
+    } finally {
+      setCsvImporting(false)
+    }
   }
 
   if (loading) return <Loader />
@@ -1226,6 +1322,58 @@ export default function PropertySetup() {
                 {refreshingEvents ? 'Refreshing…' : '↻ Refresh events'}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tab 9: Calendars ──────────────────────────────────────────────── */}
+      {tab === 'calendars' && (
+        <div className="space-y-3.5">
+          {/* Calendar sync */}
+          <div className={`${CARD} space-y-3.5`}>
+            <h2 className={HEADING}>Calendar sync</h2>
+            <p className="text-[11px] text-[#8a8276]">
+              Paste your Airbnb or Vrbo calendar links, one per line. We check them daily and block those dates automatically.
+            </p>
+            <textarea
+              value={icalUrls}
+              onChange={e => setIcalUrls(e.target.value)}
+              className={`${INPUT} resize-none`}
+              rows={3}
+              placeholder="https://www.airbnb.com/calendar/ical/12345.ics?s=…"
+            />
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={saveIcal} disabled={savingIcal} className={BTN_SAVE}>
+                {savingIcal ? 'Saving…' : 'Save'}
+              </button>
+              <button onClick={syncNow} disabled={syncing || icalUrls.trim() === ''} className={BTN_OUTLINE}>
+                {syncing ? 'Syncing…' : 'Sync now'}
+              </button>
+            </div>
+            {syncMsg && (
+              <p className={`text-[11px] ${syncMsg === SYNC_ERR ? 'text-[#8a1a1a]' : 'text-[#8a8276]'}`}>
+                {syncMsg}
+              </p>
+            )}
+          </div>
+
+          {/* Guest names from Airbnb */}
+          <div className={`${CARD} space-y-3.5`}>
+            <h2 className={HEADING}>Guest names from Airbnb</h2>
+            <p className="text-[11px] text-[#8a8276]">
+              Airbnb calendars don't include guest names. Download your reservations CSV from Airbnb and upload it here — we'll add each guest's first name to the matching booking. Names then stay put through every future sync.
+            </p>
+            <div>
+              <label className={`${(csvImporting || !apartmentId) ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer hover:bg-[#f0ede6]'} bg-transparent border border-[#e4ddd0] text-[#231d17] px-3.5 py-2 rounded-[9px] text-xs font-medium transition-colors inline-block`}>
+                {csvImporting ? 'Importing…' : 'Upload Airbnb CSV'}
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={handleCsvFile} disabled={csvImporting || !apartmentId} />
+              </label>
+            </div>
+            {csvMsg && (
+              <p className={`text-[11px] ${csvMsg === CSV_ERR ? 'text-[#8a1a1a]' : 'text-[#8a8276]'}`}>
+                {csvMsg}
+              </p>
+            )}
           </div>
         </div>
       )}
