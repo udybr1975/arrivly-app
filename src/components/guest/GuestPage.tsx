@@ -173,6 +173,14 @@ export default function GuestPage() {
   const msgOpenedRef = useRef(false)
   const deferredInstallRef = useRef<any>(null)
   const autopromptFiredRef = useRef(false)
+  // First-open-only neighbourhood blurb, per booking. Initialised synchronously to avoid a
+  // flash of the blurb on returning opens. (No setter — the value is decided once at mount.)
+  const [showBlurb] = useState<boolean>(() => {
+    if (preview || !tokenParam) return true            // preview / no-token: always show
+    try { return localStorage.getItem(`arrivly_guest_blurb_seen_${tokenParam}`) !== '1' }
+    catch { return true }
+  })
+  const blurbFlagRef = useRef(false)
 
   useEffect(() => {
     if (!aptId) { setLoading(false); setPageState('neutral'); return }
@@ -487,6 +495,16 @@ export default function GuestPage() {
     tryAutoEnable()
   }, [pageState, aptId, tokenParam])
 
+  // Mark this booking's blurb as seen once the active page mounts, so the NEXT launch's
+  // initialiser returns false. Gated exactly like the autoprompt effect — a neutral/non-active
+  // visit must NOT consume the first-open blurb. (Do not setShowBlurb here.)
+  useEffect(() => {
+    if (pageState !== 'active' || preview || !tokenParam) return
+    if (blurbFlagRef.current) return
+    blurbFlagRef.current = true
+    try { localStorage.setItem(`arrivly_guest_blurb_seen_${tokenParam}`, '1') } catch {}
+  }, [pageState, tokenParam, preview])
+
   const rulesRaw = useMemo(() =>
     details
       .filter(d => /rule|house|policy|policies|guidelines/i.test(d.category ?? ''))
@@ -688,6 +706,8 @@ export default function GuestPage() {
   const apt = apartment!
 
   const salutation = getTimeSalutation()
+  const dp = getDayPart()
+  const dayPartLabel = dp[0].toUpperCase() + dp.slice(1)
   const blurb = apt.greeting_blurb?.trim()
     || `You're in ${apt.neighborhood} — a wonderful part of ${apt.city} to explore.`
   const staticWeatherLine: string | null = weather
@@ -776,9 +796,7 @@ export default function GuestPage() {
               Dear {guestName ? guestName : 'guest'},
             </h2>
             <p className="text-[15px] leading-relaxed text-[#36322c] mt-4">
-              {salutation}. {blurb + ' '}
-              {weather && `Outside right now it's ${weather.temp}°C and ${weather.condition} ${weather.icon}. `}
-              {dailySuggestion ? dailySuggestion : (staticWeatherLine ?? '')}
+              {salutation}.{showBlurb ? ` ${blurb}` : ''}
             </p>
             <p className="text-[15px] leading-relaxed text-[#36322c] mt-3">
               Need a quick answer? The assistant in the Chat tab knows the apartment and the city. Want to reach me directly? Message me just below — I&apos;ll get a notification and reply right here.
@@ -792,6 +810,31 @@ export default function GuestPage() {
               <div className="flex-1 h-px bg-[#e9e4d9]" />
             </div>
           </div>
+
+          {/* Right now — the visibly-fresh time/weather/suggestion element (moved out of the letter) */}
+          {(dailySuggestion || staticWeatherLine) && (
+            <div className="max-w-lg mx-auto px-6 pt-3 pb-2">
+              <div className="bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl overflow-hidden shadow-[0_1px_5px_rgba(0,0,0,0.04)]">
+                <div className="h-[3px]" style={{ background: accentColor }} />
+                <div className="p-5">
+                  <div className="flex items-start justify-between gap-3 mb-2.5">
+                    <div>
+                      <p className="text-[10px] tracking-widest uppercase font-semibold" style={{ color: accentColor }}>Right now</p>
+                      <p className="text-[11px] text-[#9a958c] mt-0.5">{dayPartLabel}</p>
+                    </div>
+                    {weather && (
+                      <span className="shrink-0 text-[11px] text-[#9a958c] bg-[#fbfaf7] border border-[#e9e4d9] rounded-full px-2.5 py-1">
+                        {weather.temp}°C · {weather.condition} {weather.icon}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[15px] leading-relaxed text-[#36322c]">
+                    {dailySuggestion ? dailySuggestion : staticWeatherLine}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Message host directly — same trigger as the More-tab messages button */}
           {tokenParam && (
