@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import {
-  Home, MessageCircle, MapPin, MoreHorizontal,
+  Home, MessageCircle, MapPin, Settings,
   Copy, Check, RefreshCw, Navigation, Calendar, Star,
   Wifi, KeyRound, Ticket,
 } from 'lucide-react'
@@ -613,15 +613,15 @@ export default function GuestPage() {
 
   if (pageState === 'expired') {
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#f5f5f3] px-6 py-16 text-center">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#fbfaf7] px-6 py-16 text-center">
         <div
-          className="w-12 h-12 rounded-full flex items-center justify-center mb-6 text-white font-bold text-xl"
+          className="w-14 h-14 rounded-full flex items-center justify-center mb-6 text-white font-semibold text-xl"
           style={{ background: accentColor }}
         >
           {brandName.charAt(0)}
         </div>
-        <h1 className="text-xl font-semibold text-[#1c1c1a] mb-2">{brandName}</h1>
-        <p className="text-sm text-gray-500 max-w-xs leading-relaxed">
+        <h1 className="font-['Fraunces'] font-light text-2xl tracking-tight text-[#1c1c1a] mb-2">{brandName}</h1>
+        <p className="text-sm text-[#9a958c] max-w-xs leading-relaxed">
           This guest page is temporarily unavailable. Please contact your host directly.
         </p>
       </div>
@@ -632,19 +632,19 @@ export default function GuestPage() {
     const uAccent = unavailableBrand?.accent_color ?? ARRIVLY_CONFIG.colourPresets[0].hex
     const uBrand = unavailableBrand?.brand_name ?? 'Your Host'
     return (
-      <div className="min-h-screen flex flex-col items-center justify-center bg-[#f5f5f3] px-6 py-16 text-center">
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#fbfaf7] px-6 py-16 text-center">
         {unavailableBrand?.logo_url ? (
           <img src={resolveImageUrl(unavailableBrand.logo_url)} alt={uBrand} className="h-12 mb-6 object-contain" />
         ) : (
           <div
-            className="w-12 h-12 rounded-full flex items-center justify-center mb-6 text-white font-bold text-xl"
+            className="w-14 h-14 rounded-full flex items-center justify-center mb-6 text-white font-semibold text-xl"
             style={{ background: uAccent }}
           >
             {uBrand.charAt(0)}
           </div>
         )}
-        <h1 className="text-xl font-semibold text-[#1c1c1a] mb-2">{uBrand}</h1>
-        <p className="text-sm text-gray-500 max-w-xs leading-relaxed">
+        <h1 className="font-['Fraunces'] font-light text-2xl tracking-tight text-[#1c1c1a] mb-2">{uBrand}</h1>
+        <p className="text-sm text-[#9a958c] max-w-xs leading-relaxed">
           This guest page is temporarily unavailable. Please contact your host directly.
         </p>
       </div>
@@ -653,26 +653,23 @@ export default function GuestPage() {
 
   if (pageState === 'neutral') {
     return (
-      <div
-        className="min-h-screen flex flex-col items-center justify-center px-6 py-16 text-center"
-        style={{ background: `linear-gradient(160deg, ${accentColor}22 0%, #fff 60%)` }}
-      >
+      <div className="min-h-screen flex flex-col items-center justify-center bg-[#fbfaf7] px-6 py-16 text-center">
         {host?.logo_url ? (
           <img src={resolveImageUrl(host.logo_url)} alt={brandName} className="h-12 mb-6 object-contain" />
         ) : (
           <div
-            className="w-12 h-12 rounded-full flex items-center justify-center mb-6 text-white font-bold text-xl"
+            className="w-14 h-14 rounded-full flex items-center justify-center mb-6 text-white font-semibold text-xl"
             style={{ background: accentColor }}
           >
             {brandName.charAt(0)}
           </div>
         )}
-        <h1 className="text-2xl font-semibold text-[#1c1c1a] mb-2">{brandName}</h1>
-        <p className="text-sm text-gray-500 max-w-xs leading-relaxed mb-8">
+        <h1 className="font-['Fraunces'] font-light text-[28px] tracking-tight text-[#1c1c1a] mb-2">{brandName}</h1>
+        <p className="text-sm text-[#5b5853] max-w-xs leading-relaxed mb-8">
           Welcome. There is no active booking for today — scan your check-in QR code to access your guest page.
         </p>
         {showPoweredBy && (
-          <p className="text-[10px] text-gray-400 mt-8">{ARRIVLY_CONFIG.poweredByText}</p>
+          <p className="text-[10px] text-[#9a958c] mt-8">{ARRIVLY_CONFIG.poweredByText}</p>
         )}
       </div>
     )
@@ -685,8 +682,8 @@ export default function GuestPage() {
           {host?.logo_url && (
             <img src={resolveImageUrl(host.logo_url)} alt={brandName} className="h-10 mb-8 object-contain opacity-90" />
           )}
-          <p className="text-white/70 text-xs tracking-widest uppercase mb-3">{brandName}</p>
-          <h1 className="text-3xl font-light text-white leading-tight mb-4">
+          <p className="text-white/70 text-[11px] tracking-[0.22em] uppercase mb-4">{brandName}</p>
+          <h1 className="font-['Fraunces'] font-light text-[34px] leading-tight tracking-tight text-white mb-4">
             Until next time{thankYouName ? `, ${thankYouName}` : ''}.
           </h1>
           <p className="text-white/70 text-base leading-relaxed max-w-xs">
@@ -995,7 +992,7 @@ export default function GuestPage() {
       )}
 
       {activeTab === 'chat' && (
-        <div style={{ height: 'calc(100vh - 56px)' }}>
+        <div style={{ height: 'calc(100vh - 64px)' }}>
           {preview ? (
             <div className="h-full flex flex-col bg-[#fbfaf7]">
               <div className="shrink-0 px-5 pt-5 pb-3 border-b border-gray-100">
@@ -1275,201 +1272,220 @@ export default function GuestPage() {
       )}
 
       {activeTab === 'more' && (
-        <div className="pb-28" style={{ background: `linear-gradient(to bottom, ${accentColor}1a, #fbfaf7 360px)` }}>
+        <div className="pb-28 bg-[#fbfaf7]">
           <div className="px-6 pt-8 pb-6 text-white" style={{ background: accentColor }}>
             {host?.logo_url && (
               <img src={resolveImageUrl(host.logo_url)} alt={brandName} className="h-7 mb-2 object-contain" />
             )}
-            <p className="text-[10px] tracking-[0.16em] uppercase opacity-70 mb-1">More</p>
-            <h2 className="text-2xl font-light" style={{ fontFamily: 'Georgia, serif' }}>{brandName}</h2>
-          </div>
-          <div className="max-w-lg mx-auto px-6 py-10 border-b border-gray-100">
-            <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Save this page</h2>
-            <p className="text-sm text-gray-500 leading-relaxed mb-6">
-              Send yourself this link so you can open it without scanning the QR code again.
-            </p>
-            <button
-              onClick={handleShare}
-              className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold"
-              style={{ background: accentColor }}
-            >
-              Share via WhatsApp or Save →
-            </button>
+            <p className="text-[10px] tracking-[0.16em] uppercase opacity-70 mb-1">Settings</p>
+            <h2 className="font-['Fraunces'] font-light text-2xl tracking-tight">{brandName}</h2>
           </div>
 
-          {tokenParam && (
-            <div className="max-w-lg mx-auto px-6 py-8 border-b border-gray-100">
-              <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Message your host</h2>
-              <p className="text-sm text-gray-500 leading-relaxed mb-5">
-                Have a question or need something? Send a message — {brandName} will be notified and reply here.
-              </p>
-              <button
-                onClick={() => {
-                  setShowMessages(true)
-                  if ('clearAppBadge' in navigator) void (navigator as any).clearAppBadge()
-                }}
-                className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold"
-                style={{ background: accentColor }}
-              >
-                Open messages →
-              </button>
-            </div>
-          )}
+          <div className="max-w-lg mx-auto px-6 pt-6 space-y-3">
 
-          {tokenParam && pushNotifState !== 'unsupported' && pushNotifState !== 'loading' && (
-            <div className="max-w-lg mx-auto px-6 py-8 border-b border-gray-100">
-              {pushNotifState === 'needs-install' && (
-                <>
-                  <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Get replies on your phone</h2>
-                  <p className="text-sm text-gray-500 leading-relaxed mb-5">
-                    To get notified of your host's replies, this page needs to be installed as an app — then you turn on notifications inside it.
-                  </p>
-                  {canInstall ? (
-                    <button
-                      onClick={async () => {
-                        const prompt = deferredInstallRef.current
-                        if (!prompt) return
-                        deferredInstallRef.current = null
-                        setCanInstall(false)
-                        prompt.prompt()
-                        await prompt.userChoice
-                      }}
-                      className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold"
-                      style={{ background: accentColor }}
-                    >
-                      Install app →
-                    </button>
-                  ) : (
-                    <div>
+            {/* SECTION — This device: Install + Notifications as the two hero items */}
+            {tokenParam && pushNotifState !== 'unsupported' && pushNotifState !== 'loading' && (
+              <>
+                <p className="text-[10px] tracking-widest uppercase text-[#9a958c]">This device</p>
+
+                {/* INSTALL — only on needs-install (mutually exclusive with the Notifications card) */}
+                {pushNotifState === 'needs-install' && (
+                  <div className="bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl p-[17px] shadow-[0_1px_5px_rgba(0,0,0,0.04)]">
+                    <div className="flex items-start gap-3.5 mb-4">
+                      <span className="w-[42px] h-[42px] rounded-xl flex items-center justify-center shrink-0" style={{ background: accentColor + '14', color: accentColor }}>
+                        <Home size={19} />
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-[15px] text-[#1c1c1a]">Install this page as an app</p>
+                        <p className="text-[13px] text-[#5b5853] leading-snug mt-0.5">Open it from your home screen — even offline.</p>
+                      </div>
+                    </div>
+                    {canInstall ? (
                       <button
-                        onClick={() => copyText(shareUrl, setCopiedLink)}
-                        className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold"
+                        onClick={async () => {
+                          const prompt = deferredInstallRef.current
+                          if (!prompt) return
+                          deferredInstallRef.current = null
+                          setCanInstall(false)
+                          prompt.prompt()
+                          await prompt.userChoice
+                        }}
+                        className="w-full py-3.5 rounded-xl text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold"
                         style={{ background: accentColor }}
                       >
-                        {copiedLink ? 'Link copied ✓' : 'Copy link →'}
+                        Install app →
                       </button>
-                      <p className="text-sm text-gray-500 mt-4 leading-relaxed">
-                        Best on Chrome: paste this link in Chrome, then tap Install for one-tap notifications.
-                      </p>
-                      <p className="text-xs text-gray-400 mt-2">
-                        In Firefox: tap the ⋮ menu, then 'Install' (or 'Add to Home Screen').
-                      </p>
+                    ) : (
+                      <div>
+                        <button
+                          onClick={() => copyText(shareUrl, setCopiedLink)}
+                          className="w-full py-3.5 rounded-xl text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold"
+                          style={{ background: accentColor }}
+                        >
+                          {copiedLink ? 'Link copied ✓' : 'Copy link →'}
+                        </button>
+                        <p className="text-sm text-[#5b5853] mt-4 leading-relaxed">
+                          Best on Chrome: paste this link in Chrome, then tap Install for one-tap notifications.
+                        </p>
+                        <p className="text-xs text-[#9a958c] mt-2">
+                          In Firefox: tap the ⋮ menu, then 'Install' (or 'Add to Home Screen').
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* NOTIFICATIONS — off / on / blocked / ios */}
+                {pushNotifState !== 'needs-install' && (
+                  <div className="bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl p-[17px] shadow-[0_1px_5px_rgba(0,0,0,0.04)]">
+                    <div className="flex items-start gap-3.5 mb-4">
+                      <span className="w-[42px] h-[42px] rounded-xl flex items-center justify-center shrink-0" style={{ background: accentColor + '14', color: accentColor }}>
+                        <MessageCircle size={19} />
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        {pushNotifState === 'off' && (
+                          <>
+                            <p className="font-semibold text-[15px] text-[#1c1c1a]">Allow notifications</p>
+                            <p className="text-[13px] text-[#5b5853] leading-snug mt-0.5">Get notified the moment {brandName} replies.</p>
+                          </>
+                        )}
+                        {pushNotifState === 'on' && (
+                          <>
+                            <p className="font-semibold text-[15px] text-[#1c1c1a]">Notifications on</p>
+                            <p className="text-[13px] text-[#5b5853] leading-snug mt-0.5">Notifications are on — you'll get your host's replies here and as a phone notification.</p>
+                          </>
+                        )}
+                        {pushNotifState === 'blocked' && (
+                          <>
+                            <p className="font-semibold text-[15px] text-[#1c1c1a]">Notifications</p>
+                            <p className="text-[13px] text-[#5b5853] leading-snug mt-0.5">Notifications are blocked in your browser settings.</p>
+                          </>
+                        )}
+                        {pushNotifState === 'ios' && (
+                          <>
+                            <p className="font-semibold text-[15px] text-[#1c1c1a]">Notifications</p>
+                            <p className="text-[13px] text-[#5b5853] leading-snug mt-0.5">Add this page to your Home Screen (Share → Add to Home Screen) to get notifications.</p>
+                          </>
+                        )}
+                      </div>
                     </div>
-                  )}
-                </>
-              )}
-              {pushNotifState === 'off' && (
-                <>
-                  <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Get replies on your phone</h2>
-                  <p className="text-sm text-gray-500 leading-relaxed mb-5">
-                    Turn on notifications so you don't miss your host's reply.
-                  </p>
-                  {pushNotifError && (
-                    <p className="text-xs text-red-500 mb-3">{pushNotifError}</p>
-                  )}
+                    {pushNotifState === 'off' && (
+                      <>
+                        {pushNotifError && (
+                          <p className="text-xs text-red-500 mb-3">{pushNotifError}</p>
+                        )}
+                        <button
+                          onClick={handleMoreTabPushEnable}
+                          disabled={pushNotifBusy}
+                          className="w-full py-3.5 rounded-xl text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold disabled:opacity-50"
+                          style={{ background: accentColor }}
+                        >
+                          {pushNotifBusy ? 'Enabling…' : 'Turn on notifications →'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* PREVIEW — inert demo cards (preview has no token, so the real device section above doesn't render) */}
+            {preview && (
+              <>
+                <p className="text-[10px] tracking-widest uppercase text-[#9a958c]">This device</p>
+                <div className="bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl p-[17px] shadow-[0_1px_5px_rgba(0,0,0,0.04)]">
+                  <div className="flex items-start gap-3.5 mb-4">
+                    <span className="w-[42px] h-[42px] rounded-xl flex items-center justify-center shrink-0" style={{ background: accentColor + '14', color: accentColor }}>
+                      <MessageCircle size={19} />
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-[15px] text-[#1c1c1a]">Message your host</p>
+                      <p className="text-[13px] text-[#5b5853] leading-snug mt-0.5">Have a question or need something? Send a message — {brandName} will be notified and reply here.</p>
+                    </div>
+                  </div>
                   <button
-                    onClick={handleMoreTabPushEnable}
-                    disabled={pushNotifBusy}
-                    className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold disabled:opacity-50"
+                    disabled
+                    className="w-full py-3.5 rounded-xl text-white text-[10px] tracking-widest uppercase border-none cursor-default font-semibold opacity-50"
                     style={{ background: accentColor }}
                   >
-                    {pushNotifBusy ? 'Enabling…' : 'Turn on notifications →'}
+                    Open messages →
                   </button>
-                </>
-              )}
-              {pushNotifState === 'on' && (
-                <>
-                  <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Notifications</h2>
-                  <p className="text-sm text-gray-500 leading-relaxed">
-                    Notifications are on — you'll get your host's replies here and as a phone notification.
-                  </p>
-                </>
-              )}
-              {pushNotifState === 'blocked' && (
-                <>
-                  <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Notifications</h2>
-                  <p className="text-sm text-gray-500 leading-relaxed">
-                    Notifications are blocked in your browser settings.
-                  </p>
-                </>
-              )}
-              {pushNotifState === 'ios' && (
-                <>
-                  <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Notifications</h2>
-                  <p className="text-sm text-gray-500 leading-relaxed">
-                    Add this page to your Home Screen (Share → Add to Home Screen) to get notifications.
-                  </p>
-                </>
-              )}
-            </div>
-          )}
+                  <p className="text-[11px] text-[#9a958c] mt-3 text-center">Available to your guests during their stay.</p>
+                </div>
+                <div className="bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl p-[17px] shadow-[0_1px_5px_rgba(0,0,0,0.04)]">
+                  <div className="flex items-start gap-3.5 mb-4">
+                    <span className="w-[42px] h-[42px] rounded-xl flex items-center justify-center shrink-0" style={{ background: accentColor + '14', color: accentColor }}>
+                      <Home size={19} />
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-[15px] text-[#1c1c1a]">Allow notifications</p>
+                      <p className="text-[13px] text-[#5b5853] leading-snug mt-0.5">Turn on notifications so you don&apos;t miss your host&apos;s reply.</p>
+                    </div>
+                  </div>
+                  <button
+                    disabled
+                    className="w-full py-3.5 rounded-xl text-white text-[10px] tracking-widest uppercase border-none cursor-default font-semibold opacity-50"
+                    style={{ background: accentColor }}
+                  >
+                    Turn on notifications →
+                  </button>
+                  <p className="text-[11px] text-[#9a958c] mt-3 text-center">Available to your guests during their stay.</p>
+                </div>
+              </>
+            )}
 
-          {preview && (
-            <>
-              <div className="max-w-lg mx-auto px-6 py-8 border-b border-gray-100">
-                <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Message your host</h2>
-                <p className="text-sm text-gray-500 leading-relaxed mb-5">
-                  Have a question or need something? Send a message — {brandName} will be notified and reply here.
-                </p>
-                <button
-                  disabled
-                  className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-default font-semibold opacity-50"
-                  style={{ background: accentColor }}
-                >
-                  Open messages →
-                </button>
-                <p className="text-[11px] text-gray-400 mt-3 text-center">Available to your guests during their stay.</p>
-              </div>
-              <div className="max-w-lg mx-auto px-6 py-8 border-b border-gray-100">
-                <h2 className="text-xl font-medium text-[#1c1c1a] mb-1">Get replies on your phone</h2>
-                <p className="text-sm text-gray-500 leading-relaxed mb-5">
-                  Turn on notifications so you don&apos;t miss your host&apos;s reply.
-                </p>
-                <button
-                  disabled
-                  className="w-full py-4 text-white text-[10px] tracking-widest uppercase border-none cursor-default font-semibold opacity-50"
-                  style={{ background: accentColor }}
-                >
-                  Turn on notifications →
-                </button>
-                <p className="text-[11px] text-gray-400 mt-3 text-center">Available to your guests during their stay.</p>
-              </div>
-            </>
-          )}
+            {/* SECTION — This page: Save + WhatsApp */}
+            <p className="text-[10px] tracking-widest uppercase text-[#9a958c] pt-3">This page</p>
 
-          {host?.whatsapp && (
-            <div className="max-w-lg mx-auto px-6 py-8 border-b border-gray-100">
-              <h2 className="text-xl font-medium text-[#1c1c1a] mb-4">Or message on WhatsApp</h2>
+            <button
+              onClick={handleShare}
+              className="w-full flex items-center gap-3.5 bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl p-4 shadow-[0_1px_5px_rgba(0,0,0,0.04)] text-left cursor-pointer"
+            >
+              <span className="w-[42px] h-[42px] rounded-xl flex items-center justify-center shrink-0" style={{ background: accentColor + '14', color: accentColor }}>
+                <Copy size={18} />
+              </span>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-[14px] text-[#1c1c1a]">Save this page</p>
+                <p className="text-[11.5px] text-[#5b5853] leading-snug mt-0.5">Send yourself the link to reopen it any time</p>
+              </div>
+              <span style={{ color: accentColor }}>→</span>
+            </button>
+
+            {host?.whatsapp && (
               <a
                 href={`https://wa.me/${host.whatsapp.replace(/\D/g, '')}`}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center gap-3 no-underline"
+                className="w-full flex items-center gap-3.5 bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl p-4 shadow-[0_1px_5px_rgba(0,0,0,0.04)] no-underline"
               >
-                <div className="w-8 h-8 bg-[#25D366] rounded-full flex items-center justify-center">
-                  <MessageCircle size={14} className="text-white" />
+                <span className="w-[42px] h-[42px] rounded-xl bg-[#25D366] flex items-center justify-center shrink-0">
+                  <MessageCircle size={18} className="text-white" />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-[14px] text-[#1c1c1a]">Message on WhatsApp</p>
+                  <p className="text-[11.5px] text-[#5b5853] leading-snug mt-0.5">Prefer WhatsApp? Reach {brandName} there</p>
                 </div>
-                <span className="text-sm text-[#1c1c1a]">Message on WhatsApp</span>
+                <span style={{ color: accentColor }}>→</span>
               </a>
-            </div>
-          )}
-
-          <div className="max-w-lg mx-auto px-6 py-10 text-center">
-            <p className="text-sm font-medium text-gray-400 mb-2">{brandName}</p>
-            {showPoweredBy && (
-              <p className="text-[10px] text-gray-300 mt-6">{ARRIVLY_CONFIG.poweredByText}</p>
             )}
+
+            <div className="pt-6 pb-2 text-center">
+              <p className="font-['Fraunces'] italic text-[15px] text-[#9a958c]">{brandName}</p>
+              {showPoweredBy && (
+                <p className="text-[10px] text-[#b3aa9b] mt-5">{ARRIVLY_CONFIG.poweredByText}</p>
+              )}
+            </div>
           </div>
         </div>
       )}
 
-      <div className="fixed bottom-0 left-0 right-0 z-40 bg-white border-t border-gray-100 h-14 flex items-stretch">
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-[rgba(255,253,249,0.93)] backdrop-blur border-t border-[#e9e4d9] h-16 flex items-stretch">
         {(
           [
             { id: 'home', Icon: Home, label: 'Home' },
             { id: 'chat', Icon: MessageCircle, label: 'Chat' },
             { id: 'explore', Icon: MapPin, label: 'Explore' },
-            { id: 'more', Icon: MoreHorizontal, label: 'More' },
+            { id: 'more', Icon: Settings, label: 'Settings' },
           ] as const
         ).map(({ id, Icon, label }) => {
           const isActive = activeTab === id
@@ -1478,11 +1494,11 @@ export default function GuestPage() {
               key={id}
               onClick={() => setActiveTab(id)}
               className="flex-1 flex flex-col items-center justify-center gap-0.5 border-none bg-transparent cursor-pointer relative"
-              style={{ color: isActive ? accentColor : '#9ca3af' }}
+              style={{ color: isActive ? accentColor : '#a8a399' }}
             >
               {isActive && (
                 <div
-                  className="absolute top-0 left-4 right-4 h-0.5 rounded-full"
+                  className="absolute top-0 left-1/2 -translate-x-1/2 w-7 h-[3px] rounded-b"
                   style={{ background: accentColor }}
                 />
               )}
@@ -1492,19 +1508,6 @@ export default function GuestPage() {
           )
         })}
       </div>
-
-      {activeTab === 'home' && (
-        <div className="fixed bottom-14 left-0 right-0 z-30 px-5 py-2.5 flex items-center justify-between shadow-lg bg-[#1c1c1a]">
-          <p className="text-white text-xs">Take this page with you</p>
-          <button
-            onClick={handleShare}
-            className="text-white text-[10px] tracking-widest uppercase px-4 py-1.5 rounded-md font-semibold border-none cursor-pointer"
-            style={{ background: accentColor }}
-          >
-            Save →
-          </button>
-        </div>
-      )}
 
       {showEvents && (
         <EventsPage
