@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import {
   Home, MessageCircle, MapPin, MoreHorizontal,
   Copy, Check, RefreshCw, Navigation, Calendar, Star,
+  Wifi, KeyRound,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getDirectionsUrl } from '../../lib/maps'
@@ -714,6 +715,16 @@ export default function GuestPage() {
     try { heroCredit = JSON.parse(apt.city_image_credit) } catch { heroCredit = null }
   }
 
+  // First door/entry code found in the private check-in rows — surfaced as a one-tap
+  // copy cell in the home quick-access strip (same regex the check-in card uses).
+  const quickDoorCode: string | null = (() => {
+    for (const d of checkinDetails) {
+      const m = d.content.match(/(?:code|door|entry)[:\s]+([^\n\r]+)/i)
+      if (m) return m[1].trim()
+    }
+    return null
+  })()
+
   return (
     <div className="min-h-screen bg-[#fbfaf7] font-sans">
 
@@ -730,131 +741,198 @@ export default function GuestPage() {
       )}
 
       {activeTab === 'home' && (
-        <div className="pb-28" style={{ background: `linear-gradient(to bottom, ${accentColor}1a, #fbfaf7 360px)` }}>
-          <div className="relative h-64">
+        <div className="pb-28 bg-[#fbfaf7]">
+          {/* Immersive, photo-forward hero with a neutral dark scrim */}
+          <div className="relative h-[68vh] min-h-[460px] max-h-[560px]">
             <img src={heroSrc} alt="" className="absolute inset-0 w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).src = FALLBACK_HERO }} />
-            <div className="absolute inset-0" style={{ background: `linear-gradient(to top, ${accentColor} 4%, ${accentColor}8c 34%, transparent 82%)` }} />
+            <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(18,16,13,0.86)_0%,rgba(18,16,13,0.55)_22%,rgba(18,16,13,0.12)_46%,transparent_80%)]" />
             {heroCredit && (
               <div className="absolute top-2 right-2 text-[9px] text-white/80 bg-black/30 rounded px-1.5 py-0.5">
                 Photo by <a href={heroCredit.userLink} target="_blank" rel="noopener noreferrer" className="underline">{heroCredit.name}</a> on <a href={heroCredit.unsplashLink} target="_blank" rel="noopener noreferrer" className="underline">Unsplash</a>
               </div>
             )}
-            <div className="absolute left-0 right-0 bottom-0 px-6 pb-6 text-white">
-              {host?.logo_url ? (
-                <img src={resolveImageUrl(host.logo_url)} alt={brandName} className="h-7 mb-4 object-contain" />
-              ) : (
-                <div className="flex items-center gap-2 mb-4">
-                  <span className="w-6 h-6 rounded-full bg-white/25 flex items-center justify-center text-xs font-bold">{brandName.charAt(0)}</span>
-                  <span className="text-sm font-medium opacity-90">{brandName}</span>
-                </div>
-              )}
-              <h1 className="text-3xl font-light leading-tight" style={{ fontFamily: 'Georgia, serif' }}>
-                {guestName ? `Welcome, ${guestName}.` : 'Welcome.'}
+            <div className="absolute left-0 right-0 bottom-0 px-6 pb-12 text-white">
+              <p className="text-[11px] tracking-[0.26em] uppercase opacity-80 mb-3">
+                {apt.city}{apt.country ? `, ${apt.country}` : ''}
+              </p>
+              <h1 className="font-['Fraunces'] font-light text-[40px] leading-none tracking-tight">
+                Welcome to {apt.neighborhood}.
               </h1>
-              <p className="text-white/80 text-sm mt-1.5">{apt.name} · {apt.neighborhood}</p>
-              {weather && (
-                <div className="mt-3 inline-flex items-center gap-2 bg-white/20 rounded-full px-3 py-1.5">
-                  <span className="text-base">{weather.icon}</span>
-                  <span className="text-sm">{weather.temp}°C</span>
-                  <span className="text-white/70 text-xs">{weather.condition}</span>
-                </div>
-              )}
+              <p className="font-['Fraunces'] font-light text-[18px] leading-snug opacity-90 mt-3 max-w-[280px]">
+                Your apartment is ready — and so is one of {apt.city}&apos;s most memorable corners.
+              </p>
+              <div className="mt-5 flex items-center gap-2.5">
+                {host?.logo_url ? (
+                  <img src={resolveImageUrl(host.logo_url)} alt={brandName} className="w-[38px] h-[38px] rounded-full object-cover ring-1 ring-white/40" />
+                ) : (
+                  <span className="w-[38px] h-[38px] rounded-full bg-white/15 ring-1 ring-white/40 flex items-center justify-center text-sm font-semibold">
+                    {brandName.charAt(0)}
+                  </span>
+                )}
+                <span className="font-['Fraunces'] italic text-[15px] opacity-90">— {brandName}</span>
+              </div>
+            </div>
+            <div className="absolute bottom-3 left-0 right-0 flex flex-col items-center gap-1.5 pointer-events-none">
+              <div className="w-px h-[22px] bg-white/50" />
+              <span className="text-[9.5px] tracking-[0.24em] uppercase text-white/60">Scroll</span>
             </div>
           </div>
 
-          <div className="max-w-lg mx-auto px-6 pt-8 pb-4">
-            <p className="text-[#1c1c1a] text-base leading-relaxed">
-              {salutation}{guestName ? `, ${guestName}` : ''},
-            </p>
-            <p className="text-[#1c1c1a] text-base leading-relaxed mt-3">
-              {blurb + ' '}
+          {/* The letter */}
+          <div className="max-w-lg mx-auto px-6 pt-9 pb-4">
+            <h2 className="font-['Fraunces'] font-normal text-[27px] tracking-tight text-[#1c1c1a]">
+              Dear {guestName ? guestName : 'guest'},
+            </h2>
+            <p className="text-[15px] leading-relaxed text-[#36322c] mt-4">
+              {salutation}. {blurb + ' '}
               {weather && `Outside right now it's ${weather.temp}°C and ${weather.condition} ${weather.icon}. `}
               {dailySuggestion ? dailySuggestion : (staticWeatherLine ?? '')}
             </p>
-            <p className="text-[#1c1c1a] text-base leading-relaxed mt-3">
-              If you need anything during your stay, open the Chat tab and ask — I&apos;m here.
+            <p className="text-[15px] leading-relaxed text-[#36322c] mt-3">
+              Need a quick answer? The assistant in the Chat tab knows the apartment and the city. Want to reach me directly? Message me just below — I&apos;ll get a notification and reply right here.
             </p>
             <div className="mt-5 flex justify-end">
-              <p className="text-sm italic" style={{ color: accentColor }}>— {brandName}</p>
+              <p className="font-['Fraunces'] italic text-[15px]" style={{ color: accentColor }}>— {brandName}</p>
             </div>
             <div className="mt-6 flex items-center gap-3">
-              <div className="flex-1 h-px bg-gray-100" />
+              <div className="flex-1 h-px bg-[#e9e4d9]" />
               <span className="text-xs" style={{ color: accentColor }}>✦</span>
-              <div className="flex-1 h-px bg-gray-100" />
+              <div className="flex-1 h-px bg-[#e9e4d9]" />
             </div>
           </div>
 
-          {apt.lat !== null && apt.lng !== null && (
-            <div className="max-w-lg mx-auto px-6 pt-4 pb-1">
-              <a
-                href={getDirectionsUrl(apt.lat, apt.lng)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center gap-3 w-full p-4 rounded-xl text-white no-underline shadow-[0_4px_14px_rgba(0,0,0,0.12)]"
-                style={{ background: accentColor }}
+          {/* Message host directly — same trigger as the More-tab messages button */}
+          {tokenParam && (
+            <div className="max-w-lg mx-auto px-6 pb-2">
+              <button
+                onClick={() => {
+                  setShowMessages(true)
+                  if ('clearAppBadge' in navigator) void (navigator as any).clearAppBadge()
+                }}
+                className="w-full flex items-center gap-3.5 bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl p-4 shadow-[0_1px_5px_rgba(0,0,0,0.04)] text-left cursor-pointer"
               >
-                <Home size={18} />
-                <div className="flex-1">
-                  <p className="text-sm font-semibold">Take me home</p>
-                  <p className="text-xs opacity-75">Walking directions to {apt.name}</p>
+                {host?.logo_url ? (
+                  <img src={resolveImageUrl(host.logo_url)} alt={brandName} className="w-11 h-11 rounded-full object-cover shrink-0" />
+                ) : (
+                  <span className="w-11 h-11 rounded-full flex items-center justify-center text-white text-base font-semibold shrink-0" style={{ background: accentColor }}>
+                    {brandName.charAt(0)}
+                  </span>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-[14px] text-[#1c1c1a]">Message {brandName} directly</p>
+                  <p className="text-[11.5px] text-[#5b5853] leading-snug mt-0.5">A question, a request, or a local tip — I&apos;ll reply right here.</p>
                 </div>
-                <Navigation size={16} className="opacity-80" />
-              </a>
+                <span className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center" style={{ background: accentColor + '14', color: accentColor }}>
+                  <MessageCircle size={16} />
+                </span>
+              </button>
             </div>
           )}
 
-          {wifiParsed && (wifiParsed.network || wifiParsed.password) && (
-            <div className="max-w-lg mx-auto px-6 py-6">
-              <div className="bg-[#faf9f6] border-l-4 p-5 shadow-[0_1px_5px_rgba(0,0,0,0.05)]" style={{ borderLeftColor: accentColor }}>
-                <p className="text-[10px] tracking-widest uppercase text-gray-400 mb-4">WiFi</p>
-                {wifiParsed.network && (
-                  <div className="mb-3">
-                    <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">Network</p>
-                    <p className="text-[#1c1c1a] font-medium">{wifiParsed.network}</p>
-                  </div>
+          {/* Quick access — only cells whose data exists */}
+          {((wifiParsed?.password) || quickDoorCode || (apt.lat != null && apt.lng != null)) && (
+            <div className="max-w-lg mx-auto px-6 pt-3 pb-2">
+              <p className="text-[10px] tracking-widest uppercase text-[#9a958c] mb-2.5">Quick access</p>
+              <div className="grid grid-cols-3 gap-2.5">
+                {wifiParsed?.password && (
+                  <button
+                    onClick={() => copyText(wifiParsed!.password, setCopiedWifi)}
+                    className="bg-[#fffdf9] border border-[#e9e4d9] rounded-xl p-3 flex flex-col items-start gap-2 text-left cursor-pointer"
+                  >
+                    <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: accentColor + '14', color: accentColor }}>
+                      <Wifi size={15} />
+                    </span>
+                    <span className="text-[10px] tracking-widest uppercase text-[#9a958c]">WiFi</span>
+                    <span className="text-[13px] font-medium text-[#1c1c1a]">{copiedWifi ? 'Copied' : 'Copy'}</span>
+                  </button>
                 )}
-                {wifiParsed.network && wifiParsed.password && (
-                  <div className="border-t border-gray-100 my-3" />
+                {quickDoorCode && (
+                  <button
+                    onClick={() => copyText(quickDoorCode, setCopiedDoor)}
+                    className="bg-[#fffdf9] border border-[#e9e4d9] rounded-xl p-3 flex flex-col items-start gap-2 text-left cursor-pointer"
+                  >
+                    <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: accentColor + '14', color: accentColor }}>
+                      <KeyRound size={15} />
+                    </span>
+                    <span className="text-[10px] tracking-widest uppercase text-[#9a958c]">Door</span>
+                    <span className="text-[13px] font-medium text-[#1c1c1a] truncate w-full">{copiedDoor ? 'Copied' : quickDoorCode}</span>
+                  </button>
                 )}
-                {wifiParsed.password && (
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-2">Password</p>
-                    <div className="flex items-center justify-between gap-4">
-                      <span className="font-mono text-xl text-[#1c1c1a] tracking-widest break-all">
-                        {wifiParsed.password}
-                      </span>
-                      <button
-                        onClick={() => copyText(wifiParsed!.password, setCopiedWifi)}
-                        className="flex items-center gap-1.5 text-white text-[10px] tracking-widest uppercase px-3 py-2 shrink-0 border-none cursor-pointer"
-                        style={{ background: accentColor }}
-                      >
-                        {copiedWifi ? <Check size={12} /> : <Copy size={12} />}
-                        {copiedWifi ? 'Copied' : 'Copy'}
-                      </button>
-                    </div>
-                  </div>
+                {apt.lat != null && apt.lng != null && (
+                  <a
+                    href={getDirectionsUrl(apt.lat, apt.lng)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="bg-[#fffdf9] border border-[#e9e4d9] rounded-xl p-3 flex flex-col items-start gap-2 text-left no-underline"
+                  >
+                    <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: accentColor + '14', color: accentColor }}>
+                      <Navigation size={15} />
+                    </span>
+                    <span className="text-[10px] tracking-widest uppercase text-[#9a958c]">Home</span>
+                    <span className="text-[13px] font-medium text-[#1c1c1a]">Directions</span>
+                  </a>
                 )}
               </div>
             </div>
           )}
 
+          {/* WiFi — the primary card */}
+          {wifiParsed && (wifiParsed.network || wifiParsed.password) && (
+            <div className="max-w-lg mx-auto px-6 pt-3 pb-2">
+              <div className="bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl overflow-hidden shadow-[0_1px_5px_rgba(0,0,0,0.04)]">
+                <div className="h-[3px]" style={{ background: accentColor }} />
+                <div className="p-5">
+                  <p className="text-[10px] tracking-widest uppercase text-[#9a958c] mb-4">WiFi</p>
+                  {wifiParsed.network && (
+                    <div className="mb-3">
+                      <p className="text-[10px] uppercase tracking-widest text-[#9a958c] mb-1">Network</p>
+                      <p className="text-[#1c1c1a] font-medium">{wifiParsed.network}</p>
+                    </div>
+                  )}
+                  {wifiParsed.network && wifiParsed.password && (
+                    <div className="border-t border-[#e9e4d9] my-3" />
+                  )}
+                  {wifiParsed.password && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest text-[#9a958c] mb-2">Password</p>
+                      <div className="flex items-center justify-between gap-4">
+                        <span className="font-mono text-[20px] text-[#1c1c1a] tracking-widest break-all">
+                          {wifiParsed.password}
+                        </span>
+                        <button
+                          onClick={() => copyText(wifiParsed!.password, setCopiedWifi)}
+                          className="flex items-center gap-1.5 text-[10px] tracking-widest uppercase px-3 py-2 rounded-lg shrink-0 border-none cursor-pointer"
+                          style={{ background: accentColor + '14', color: accentColor }}
+                        >
+                          {copiedWifi ? <Check size={12} /> : <Copy size={12} />}
+                          {copiedWifi ? 'Copied' : 'Copy'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Check-in info */}
           {checkinDetails.length > 0 && (
-            <div className="max-w-lg mx-auto px-6 py-4">
-              <div className="bg-[#faf9f6] border border-gray-100 rounded-lg p-5 shadow-[0_1px_5px_rgba(0,0,0,0.05)]">
-                <p className="text-[10px] tracking-widest uppercase text-gray-400 mb-4">Check-in info</p>
+            <div className="max-w-lg mx-auto px-6 pt-3 pb-2">
+              <div className="bg-[#fffdf9] border border-[#e9e4d9] rounded-[14px] p-5 shadow-[0_1px_5px_rgba(0,0,0,0.04)]">
+                <p className="text-[10px] tracking-widest uppercase text-[#9a958c] mb-4">Check-in info</p>
                 <div className="space-y-3">
                   {checkinDetails.map(d => {
                     const doorCodeMatch = d.content.match(/(?:code|door|entry)[:\s]+([^\n\r]+)/i)
                     const doorCode = doorCodeMatch ? doorCodeMatch[1].trim() : null
                     return (
                       <div key={d.id}>
-                        <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-1">{d.category}</p>
+                        <p className="text-[10px] uppercase tracking-widest text-[#9a958c] mb-1">{d.category}</p>
                         <div className="flex items-start justify-between gap-3">
                           <p className="text-[#1c1c1a] text-sm leading-relaxed">{d.content}</p>
                           {doorCode && (
                             <button
                               onClick={() => copyText(doorCode, setCopiedDoor)}
-                              className="shrink-0 flex items-center gap-1 text-[10px] tracking-widest uppercase px-2 py-1 border cursor-pointer bg-transparent"
+                              className="shrink-0 flex items-center gap-1 text-[10px] tracking-widest uppercase px-2 py-1 rounded-md border cursor-pointer bg-transparent"
                               style={{ borderColor: accentColor, color: accentColor }}
                             >
                               {copiedDoor ? <Check size={10} /> : <Copy size={10} />}
@@ -870,31 +948,36 @@ export default function GuestPage() {
             </div>
           )}
 
+          {/* House rules */}
           {rulesRaw && (
-            <div className="max-w-lg mx-auto px-6 py-6 border-t border-gray-100">
-              <h2 className="text-lg font-medium text-[#1c1c1a] mb-1">Before you settle in</h2>
-              <p className="text-sm text-gray-500 italic mb-5 leading-relaxed">
-                A few small things that keep everything running smoothly.
-              </p>
-              <p className="text-[#1c1c1a] text-sm leading-relaxed whitespace-pre-line">
-                {rulesRaw}
-              </p>
+            <div className="max-w-lg mx-auto px-6 pt-3 pb-2">
+              <div className="bg-[#fffdf9] border border-[#e9e4d9] rounded-[14px] p-5 shadow-[0_1px_5px_rgba(0,0,0,0.04)]">
+                <p className="text-[10px] tracking-widest uppercase text-[#9a958c] mb-2">House rules</p>
+                <h2 className="font-['Fraunces'] font-normal text-[19px] tracking-tight text-[#1c1c1a]">Before you settle in</h2>
+                <p className="text-sm text-[#9a958c] italic mt-1 mb-4 leading-relaxed">
+                  A few small things that keep everything running smoothly.
+                </p>
+                <p className="text-[#36322c] text-sm leading-relaxed whitespace-pre-line">
+                  {rulesRaw}
+                </p>
+              </div>
             </div>
           )}
 
+          {/* Good to know */}
           {extras.length > 0 && (
-            <div className="max-w-lg mx-auto px-6 py-6 border-t border-gray-100">
-              <h2 className="text-lg font-medium text-[#1c1c1a] mb-4">Good to know</h2>
-              <div className="space-y-4">
+            <div className="max-w-lg mx-auto px-6 pt-3 pb-2">
+              <h2 className="font-['Fraunces'] font-normal text-[19px] tracking-tight text-[#1c1c1a] mb-4 px-1">Good to know</h2>
+              <div className="space-y-3">
                 {EXTRAS_CATEGORIES
                   .map(cat => extras.find(d => d.category === cat))
                   .filter((d): d is Detail => d !== undefined)
                   .map(d => (
-                    <div key={d.id} className="bg-[#faf9f6] border border-gray-100 rounded-lg p-4 shadow-[0_1px_5px_rgba(0,0,0,0.05)]">
+                    <div key={d.id} className="bg-[#fffdf9] border border-[#e9e4d9] rounded-[14px] p-4 shadow-[0_1px_5px_rgba(0,0,0,0.04)]">
                       <p className="text-[10px] uppercase tracking-widest font-semibold mb-2" style={{ color: accentColor }}>
                         {d.category}
                       </p>
-                      <p className="text-sm text-[#1c1c1a] leading-relaxed whitespace-pre-line">{d.content}</p>
+                      <p className="text-sm text-[#36322c] leading-relaxed whitespace-pre-line">{d.content}</p>
                     </div>
                   ))}
               </div>
@@ -1364,15 +1447,12 @@ export default function GuestPage() {
       </div>
 
       {activeTab === 'home' && (
-        <div
-          className="fixed bottom-14 left-0 right-0 z-30 px-5 py-2.5 flex items-center justify-between shadow-lg"
-          style={{ background: accentColor }}
-        >
+        <div className="fixed bottom-14 left-0 right-0 z-30 px-5 py-2.5 flex items-center justify-between shadow-lg bg-[#1c1c1a]">
           <p className="text-white text-xs">Take this page with you</p>
           <button
             onClick={handleShare}
-            className="bg-white text-[10px] tracking-widest uppercase px-4 py-1.5 font-semibold border-none cursor-pointer"
-            style={{ color: accentColor }}
+            className="text-white text-[10px] tracking-widest uppercase px-4 py-1.5 rounded-md font-semibold border-none cursor-pointer"
+            style={{ background: accentColor }}
           >
             Save →
           </button>
