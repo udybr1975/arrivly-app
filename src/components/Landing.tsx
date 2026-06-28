@@ -164,75 +164,245 @@ const STEPS = [
 
 const TRUST = ['Airbnb', 'Vrbo', 'Booking.com', 'Direct']
 
-// ── The phone mockup: a styled, presentational recreation of the real guest page.
-// Not a live component — markup only.
-function PhoneMockup() {
+// Example guest-page accent for the marketing phone. The real guest page renders in the
+// HOST's own accent; this is fixed terracotta marketing chrome — change it here only.
+const EXAMPLE_ACCENT = '#a8542e'
+const PHONE_MS = 3400
+
+// Two tiny nav glyphs the shared landing-icons set doesn't cover (home, gear). Decorative,
+// stroke = currentColor so they inherit the nav item's colour. No new imports.
+function HomeGlyph({ className }: { className?: string }) {
   return (
-    // Decorative illustration — hidden from the a11y tree so its fragmentary text
-    // (brand, greeting, WiFi, host pick…) isn't announced out of context.
-    <div aria-hidden className="relative mx-auto w-[268px] shrink-0">
-      {/* device frame */}
-      <div className="relative rounded-[40px] bg-[#16100d] p-[10px] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.55)] ring-1 ring-white/5">
-        <div className="overflow-hidden rounded-[31px] bg-[#f0ede6]">
-          {/* hero image + greeting */}
-          <div className="relative h-[150px]">
-            <img
-              src="/landing/sagrada.jpg"
-              alt=""
-              className="h-full w-full object-cover"
-              loading="lazy"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-[#16100d]/85 via-[#16100d]/25 to-transparent" />
-            <div className="absolute left-3.5 right-3.5 top-3 flex items-center justify-between">
-              <span className="font-['Fraunces'] text-[13px] font-medium text-white drop-shadow">Casa Marco</span>
-              <span className="rounded-full bg-white/20 px-2 py-0.5 text-[8px] font-medium uppercase tracking-wide text-white backdrop-blur">
-                Barcelona
-              </span>
-            </div>
-            <div className="absolute bottom-2.5 left-3.5 right-3.5">
-              <div className="text-[8px] uppercase tracking-[.14em] text-white/70">Good evening</div>
-              <div className="font-['Fraunces'] text-[18px] font-light leading-tight text-white">Welcome, Marco</div>
-            </div>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden className={className}>
+      <path d="M4 11.5 12 5l8 6.5" />
+      <path d="M6 10.5V19h12v-8.5" />
+    </svg>
+  )
+}
+function GearGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden className={className}>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3.5v2M12 18.5v2M4.6 7.5l1.7 1M17.7 15.5l1.7 1M4.6 16.5l1.7-1M17.7 8.5l1.7-1" />
+    </svg>
+  )
+}
+
+// ── The phone mockup: an auto-cycling, presentational recreation of the real guest page
+// (Home → Explore → Chat → Settings). Decorative + aria-hidden; not wired to any data.
+function PhoneMockup() {
+  const [index, setIndex] = useState(0)
+  // Bumping restartKey tears down + rebuilds the interval, giving a manually-picked screen
+  // a full dwell. pausedRef lets hover pause without re-running the effect.
+  const [restartKey, setRestartKey] = useState(0)
+  const pausedRef = useRef(false)
+
+  useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return // stay on Home
+    const id = setInterval(() => {
+      if (!pausedRef.current) setIndex(i => (i + 1) % 4)
+    }, PHONE_MS)
+    return () => clearInterval(id)
+  }, [restartKey])
+
+  const goTo = (i: number) => { setIndex(i); setRestartKey(k => k + 1) }
+
+  // Bottom nav in the real on-screen order (Home, Chat, Explore, Settings); each maps to its
+  // screen index (Home=0, Explore=1, Chat=2, Settings=3).
+  const nav = [
+    { label: 'Home', idx: 0, Icon: HomeGlyph },
+    { label: 'Chat', idx: 2, Icon: ChatIcon },
+    { label: 'Explore', idx: 1, Icon: PinIcon },
+    { label: 'Settings', idx: 3, Icon: GearGlyph },
+  ]
+
+  // Screens, ordered by index: 0 Home, 1 Explore, 2 Chat, 3 Settings.
+  const screens = [
+    // 0 — HOME
+    <div key="home" className="h-full overflow-hidden">
+      <div className="relative h-[150px]">
+        <img src="/landing/sagrada.jpg" alt="" className="h-full w-full object-cover" loading="lazy" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#120e0b]/85 via-[#120e0b]/25 to-transparent" />
+        <div className="absolute inset-x-3.5 bottom-2.5 text-white">
+          <div className="text-[8px] uppercase tracking-[.18em] text-white/75">Barcelona, Spain</div>
+          <div className="font-['Fraunces'] text-[19px] font-light leading-tight">Welcome to El Born.</div>
+          <div className="mt-1 flex items-center gap-1.5">
+            <span className="flex h-4 w-4 items-center justify-center rounded-full text-[8px] font-semibold text-white" style={{ background: EXAMPLE_ACCENT }}>M</span>
+            <span className="font-['Fraunces'] text-[10px] italic text-white/85">— Casa Marco</span>
           </div>
-
-          {/* body */}
-          <div className="space-y-2.5 px-3.5 pb-4 pt-3">
-            {/* wifi card */}
-            <div className="flex items-center gap-2.5 rounded-[10px] border border-[#ddd8ce] bg-white px-3 py-2">
-              <WifiIcon className="h-4 w-4 text-[#a8842f]" />
-              <div className="min-w-0">
-                <div className="text-[9px] uppercase tracking-wide text-[#999]">WiFi · tap to connect</div>
-                <div className="truncate text-[11px] font-medium text-[#1a1a1a]">CasaMarco_5G</div>
-              </div>
+        </div>
+      </div>
+      <div className="space-y-2 px-3.5 pb-[56px] pt-2.5">
+        <div className="font-['Fraunces'] text-[13px] text-[#1c1c1a]">Dear Marco,</div>
+        <p className="text-[10px] leading-snug text-[#36322c]">
+          Good evening. El Born is all winding medieval lanes, design shops and vermut bars — and you&apos;re right in the middle of it.
+        </p>
+        <div className="overflow-hidden rounded-[10px] border border-[#e9e4d9] bg-[#fffdf9]">
+          <div className="h-[3px]" style={{ background: EXAMPLE_ACCENT }} />
+          <div className="p-2.5">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[8px] font-semibold uppercase tracking-[.14em]" style={{ color: EXAMPLE_ACCENT }}>Right now · Evening</span>
+              <span className="shrink-0 rounded-full border border-[#e9e4d9] bg-[#fbfaf7] px-1.5 py-0.5 text-[8px] text-[#9a958c]">18°C · Clear</span>
             </div>
-
-            {/* host pick — editorial recommendation, NOT a sold reservation */}
-            <div className="rounded-[10px] border border-[#ddd8ce] bg-white p-3">
-              <div className="mb-0.5 flex items-center gap-1.5">
-                <PinIcon className="h-3 w-3 text-[#a8842f]" />
-                <span className="text-[9px] uppercase tracking-wide text-[#999]">Host pick · Dinner</span>
-              </div>
-              <div className="font-['Fraunces'] text-[13px] text-[#1a1a1a]">Bar Cañete</div>
-              <div className="mb-2 text-[10px] leading-snug text-[#888]">
-                Marco’s favourite tapas — 4 min walk, down the lane.
-              </div>
-              <div className="flex items-center gap-1.5 rounded-[7px] bg-[#1a1a1a] px-2.5 py-1.5">
-                <ArrowRightIcon className="h-3 w-3 text-white" />
-                <span className="text-[10px] font-semibold text-white">Navigate</span>
-              </div>
-              <div className="mt-1.5 flex items-center gap-1 text-[9px] text-[#a8842f]">
-                <TicketIcon className="h-2.5 w-2.5" />
-                <span>Bookable · reserve a table</span>
-              </div>
-            </div>
-
-            {/* chat snippet */}
-            <div className="flex items-center gap-2.5 rounded-[10px] border border-[#ddd8ce] bg-white px-3 py-2">
-              <SparkleIcon className="h-4 w-4 text-[#a8842f]" />
-              <div className="text-[10px] text-[#777]">Ask anything about your stay…</div>
+            <p className="mt-1 text-[10px] leading-snug text-[#36322c]">Bar Cañete pours the best vermut at this hour — go before eight to get a stool.</p>
+          </div>
+        </div>
+        <div className="overflow-hidden rounded-[10px] border border-[#e9e4d9] bg-[#fffdf9]">
+          <div className="h-[3px]" style={{ background: EXAMPLE_ACCENT }} />
+          <div className="flex items-center gap-2 px-2.5 py-2">
+            <WifiIcon className="h-3.5 w-3.5" style={{ color: EXAMPLE_ACCENT }} />
+            <div className="min-w-0">
+              <div className="text-[8px] uppercase tracking-wide text-[#9a958c]">WiFi · tap to copy</div>
+              <div className="truncate text-[10px] font-medium text-[#1c1c1a]">CasaMarco_5G</div>
             </div>
           </div>
         </div>
+      </div>
+    </div>,
+    // 1 — EXPLORE
+    <div key="explore" className="h-full overflow-hidden px-3.5 pb-[56px] pt-3.5">
+      <div className="text-[8px] uppercase tracking-[.18em]" style={{ color: EXAMPLE_ACCENT }}>Explore</div>
+      <div className="font-['Fraunces'] text-[17px] font-light text-[#1c1c1a]">Around you</div>
+      <div className="mt-2.5 flex items-center justify-center gap-1.5 rounded-[9px] px-3 py-2 text-white" style={{ background: EXAMPLE_ACCENT }}>
+        <PinIcon className="h-3 w-3" />
+        <span className="text-[10px] font-semibold">Take me home — walking directions</span>
+      </div>
+      <div className="mt-2.5 flex flex-wrap gap-1.5">
+        {['Food', 'Coffee', 'Sights', 'Bars'].map((p, i) => (
+          <span
+            key={p}
+            className="rounded-full border px-2 py-0.5 text-[9px]"
+            style={i === 0
+              ? { background: EXAMPLE_ACCENT + '1f', borderColor: EXAMPLE_ACCENT + '55', color: EXAMPLE_ACCENT }
+              : { borderColor: '#e9e4d9', color: '#9a958c' }}
+          >
+            {p}
+          </span>
+        ))}
+      </div>
+      <div className="mt-2.5 space-y-2">
+        {[
+          { tag: 'Host pick · Dinner', name: 'Bar Cañete', meta: '3 min walk' },
+          { tag: 'Guide · Sight', name: 'Basílica de Santa Maria', meta: '4 min walk' },
+        ].map(c => (
+          <div key={c.name} className="rounded-[10px] border border-[#e9e4d9] bg-[#fffdf9] p-2.5">
+            <div className="flex items-center gap-1.5">
+              <PinIcon className="h-3 w-3" style={{ color: EXAMPLE_ACCENT }} />
+              <span className="text-[8px] uppercase tracking-wide text-[#9a958c]">{c.tag}</span>
+            </div>
+            <div className="mt-0.5 font-['Fraunces'] text-[12px] text-[#1c1c1a]">{c.name}</div>
+            <div className="mt-1 flex items-center justify-between">
+              <span className="text-[9px] text-[#9a958c]">{c.meta}</span>
+              <span className="flex items-center gap-1 text-[9px] font-semibold" style={{ color: EXAMPLE_ACCENT }}>
+                Navigate <ArrowRightIcon className="h-2.5 w-2.5" />
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 text-center text-[7.5px] text-[#9a958c]">© OpenStreetMap · Geocoding by LocationIQ</div>
+    </div>,
+    // 2 — CHAT
+    <div key="chat" className="flex h-full flex-col px-3.5 pb-[56px] pt-3.5">
+      <div className="text-[8px] uppercase tracking-[.18em]" style={{ color: EXAMPLE_ACCENT }}>Assistant</div>
+      <div className="font-['Fraunces'] text-[17px] font-light text-[#1c1c1a]">Ask anything</div>
+      <div className="mt-2.5 flex-1 space-y-2 overflow-hidden">
+        <div className="ml-auto max-w-[78%] rounded-[12px] rounded-br-sm px-2.5 py-1.5 text-[10px] leading-snug text-white" style={{ background: EXAMPLE_ACCENT }}>What&apos;s the door code?</div>
+        <div className="mr-auto max-w-[82%] rounded-[12px] rounded-bl-sm border border-[#e9e4d9] bg-[#fffdf9] px-2.5 py-1.5 text-[10px] leading-snug text-[#36322c]">It&apos;s 4-7-2-9 # on the keypad — you&apos;re on the 2nd floor, door on the right.</div>
+        <div className="ml-auto max-w-[78%] rounded-[12px] rounded-br-sm px-2.5 py-1.5 text-[10px] leading-snug text-white" style={{ background: EXAMPLE_ACCENT }}>Late-night food near here?</div>
+        <div className="mr-auto max-w-[82%] rounded-[12px] rounded-bl-sm border border-[#e9e4d9] bg-[#fffdf9] px-2.5 py-1.5 text-[10px] leading-snug text-[#36322c]">El Xampanyet does pintxos till midnight, two minutes away on Carrer de Montcada.</div>
+      </div>
+      <div className="mt-2 flex items-center justify-between rounded-full border border-[#e9e4d9] bg-[#fffdf9] px-3 py-1.5">
+        <span className="text-[10px] text-[#9a958c]">Message…</span>
+        <span className="text-[11px]" style={{ color: EXAMPLE_ACCENT }}>➤</span>
+      </div>
+    </div>,
+    // 3 — SETTINGS
+    <div key="settings" className="h-full overflow-hidden px-3.5 pb-[56px] pt-3.5">
+      <div className="text-[8px] uppercase tracking-[.18em]" style={{ color: EXAMPLE_ACCENT }}>Settings</div>
+      <div className="font-['Fraunces'] text-[17px] font-light text-[#1c1c1a]">Your stay</div>
+      <div className="mt-2.5 space-y-2">
+        <div className="overflow-hidden rounded-[10px] border border-[#e9e4d9] bg-[#fffdf9]">
+          <div className="h-[3px]" style={{ background: EXAMPLE_ACCENT }} />
+          <div className="p-2.5">
+            <div className="text-[11px] font-semibold text-[#1c1c1a]">Add to Home Screen</div>
+            <div className="mt-0.5 text-[9px] leading-snug text-[#9a958c]">One tap — open it like an app, no install.</div>
+          </div>
+        </div>
+        <div className="flex items-center justify-between rounded-[10px] border border-[#e9e4d9] bg-[#fffdf9] p-2.5">
+          <div>
+            <div className="text-[11px] font-semibold text-[#1c1c1a]">Notifications</div>
+            <div className="text-[9px] text-[#9a958c]">Replies from your host</div>
+          </div>
+          <span className="flex h-4 w-7 items-center rounded-full p-0.5" style={{ background: EXAMPLE_ACCENT }}>
+            <span className="ml-auto h-3 w-3 rounded-full bg-white" />
+          </span>
+        </div>
+        <div className="flex items-center justify-between rounded-[10px] border border-[#e9e4d9] bg-[#fffdf9] px-2.5 py-2 text-[11px] font-medium text-[#1c1c1a]">
+          Save this page <span style={{ color: EXAMPLE_ACCENT }}>↗</span>
+        </div>
+        <div className="flex items-center justify-between rounded-[10px] border border-[#e9e4d9] bg-[#fffdf9] px-2.5 py-2 text-[11px] font-medium text-[#1c1c1a]">
+          Message the host <ArrowRightIcon className="h-3 w-3" style={{ color: EXAMPLE_ACCENT }} />
+        </div>
+      </div>
+    </div>,
+  ]
+
+  return (
+    // Decorative illustration — hidden from the a11y tree (rotating text isn't announced);
+    // all inner controls are tabIndex=-1 so the aria-hidden subtree has no focusable elements.
+    <div aria-hidden className="relative mx-auto w-[270px] shrink-0">
+      {/* device frame */}
+      <div
+        className="relative rounded-[40px] bg-[#16100d] p-[10px] shadow-[0_40px_80px_-20px_rgba(0,0,0,0.55)] ring-1 ring-white/5"
+        onMouseEnter={() => { pausedRef.current = true }}
+        onMouseLeave={() => { pausedRef.current = false }}
+      >
+        <div className="relative h-[440px] overflow-hidden rounded-[31px] bg-[#fbfaf7]">
+          {/* crossfading screens */}
+          {screens.map((screen, i) => (
+            <div
+              key={i}
+              className={`absolute inset-0 motion-safe:transition-opacity motion-safe:duration-700 ${i === index ? 'opacity-100' : 'pointer-events-none opacity-0'}`}
+            >
+              {screen}
+            </div>
+          ))}
+
+          {/* persistent frosted bottom nav */}
+          <div className="absolute inset-x-2.5 bottom-2.5 flex items-stretch justify-around rounded-2xl border border-[#e9e4d9] bg-[#fbfaf7]/85 py-1.5 backdrop-blur">
+            {nav.map(item => {
+              const active = index === item.idx
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  tabIndex={-1}
+                  onClick={() => goTo(item.idx)}
+                  className="flex flex-1 flex-col items-center gap-0.5"
+                  style={{ color: active ? EXAMPLE_ACCENT : '#9a958c' }}
+                >
+                  <item.Icon className="h-3.5 w-3.5" />
+                  <span className="text-[7px] uppercase tracking-wide">{item.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* dot pager (brass on the dark marketing chrome) */}
+      <div className="mt-4 flex items-center justify-center gap-1.5">
+        {[0, 1, 2, 3].map(i => (
+          <button
+            key={i}
+            type="button"
+            tabIndex={-1}
+            onClick={() => goTo(i)}
+            className="h-1.5 rounded-full transition-all"
+            style={i === index ? { width: 16, background: '#c8a24e' } : { width: 6, background: '#c8a24e55' }}
+          />
+        ))}
       </div>
 
       {/* lift-out callout — booked a table (illustrative example earning) */}
@@ -336,6 +506,9 @@ export default function Landing() {
               One QR code in the apartment. Your guest scans it and gets WiFi, check-in, a live
               city guide, events and a 24/7 chatbot — branded to you. Then they book experiences,
               and you earn.
+            </p>
+            <p className="mt-5 font-['Fraunces'] italic text-[17px] leading-snug text-[#e7d6ad]">
+              Made by hosts, for hosts who care about their guests.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3 md:justify-start">
               <Link
