@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom'
 import {
   Home, MessageCircle, MapPin, MoreHorizontal,
   Copy, Check, RefreshCw, Navigation, Calendar, Star,
-  Wifi, KeyRound,
+  Wifi, KeyRound, Ticket,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { getDirectionsUrl } from '../../lib/maps'
@@ -108,6 +108,14 @@ function mapsSearchUrl(name: string, address?: string | null): string {
 
 const EXTRAS_CATEGORIES = ['Parking', 'Recycling & Bins', 'Appliances', 'Transport', 'Amenities', 'Safety', 'Good to know']
 const PREVIEW_SAMPLE_NAME = 'Alex'
+
+// Phase I — third-party monetization surfaces. Built as reserved, reviewed layout
+// now; ship HIDDEN until the affiliate integration lands (Viator/GetYourGuide for
+// experiences, TheFork/OpenTable for tables). Flipping these to true is a SEPARATE,
+// security-reviewed change that also wires the real booking endpoints. Until then
+// these render nothing and make no network calls.
+const SHOW_EXPERIENCES_SLOT = false
+const SHOW_RESERVE_SLOT = false
 
 function getDayPart(): 'morning' | 'afternoon' | 'evening' | 'night' {
   const h = new Date().getHours()
@@ -1050,179 +1058,218 @@ export default function GuestPage() {
       )}
 
       {activeTab === 'explore' && (
-        <div className="pb-28" style={{ background: `linear-gradient(to bottom, ${accentColor}1a, #fbfaf7 360px)` }}>
+        <div className="pb-28 bg-[#fbfaf7]">
           <div className="px-6 pt-8 pb-6 text-white" style={{ background: accentColor }}>
             <p className="text-[10px] tracking-[0.16em] uppercase opacity-70 mb-1">Host picks & local guide</p>
-            <h2 className="text-2xl font-light" style={{ fontFamily: 'Georgia, serif' }}>Around {apt.neighborhood}</h2>
+            <h2 className="font-['Fraunces'] font-light text-2xl tracking-tight">Around {apt.neighborhood}</h2>
           </div>
           <div className="max-w-lg mx-auto px-6 pt-6 pb-8">
+            {/* "Plan your time" eyebrow only appears once a monetization slot is on */}
+            {SHOW_EXPERIENCES_SLOT && (
+              <p className="text-[10px] tracking-widest uppercase text-[#9a958c] mb-2.5">Plan your time</p>
+            )}
+
+            {/* Events entry card */}
             <button
               onClick={() => setShowEvents(true)}
-              className="flex items-center justify-between w-full p-4 rounded-xl mb-6 cursor-pointer bg-[#faf9f6] border border-gray-100 text-left"
+              className="flex items-center justify-between w-full p-4 rounded-[14px] cursor-pointer bg-[#fffdf9] border border-[#e9e4d9] text-left shadow-[0_1px_5px_rgba(0,0,0,0.04)]"
             >
               <div className="flex items-center gap-3">
-                <Calendar size={18} style={{ color: accentColor }} />
+                <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: accentColor + '14', color: accentColor }}>
+                  <Calendar size={17} />
+                </span>
                 <div>
                   <p className="text-sm font-medium text-[#1c1c1a]">This week in {apt.city}</p>
-                  <p className="text-xs text-gray-400">Live local events, updated each time you open</p>
+                  <p className="text-xs text-[#9a958c]">Live local events, updated each time you open</p>
                 </div>
               </div>
               <span style={{ color: accentColor }}>→</span>
             </button>
 
-            {guideLoading ? (
-              <div className="flex items-center justify-center py-16 gap-2 text-gray-400">
-                <RefreshCw size={18} className="animate-spin" />
-                <span className="text-sm">Loading guide…</span>
-              </div>
-            ) : (
-              <>
-                {hostPicks.length > 0 && (
-                  <div className="mb-8">
-                    <div className="flex items-center gap-1.5 mb-3">
-                      <Star size={12} style={{ color: accentColor }} />
-                      <p className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: accentColor }}>
-                        {brandName}'s picks
-                      </p>
+            {/* SLOT 1 — Tours & tickets (Phase I, inert + flag-gated; renders nothing until SHOW_EXPERIENCES_SLOT) */}
+            {SHOW_EXPERIENCES_SLOT && (
+              <div className="flex items-center justify-between w-full p-4 rounded-[14px] mt-2.5 bg-[#fffdf9] border border-[#e9e4d9] text-left shadow-[0_1px_5px_rgba(0,0,0,0.04)] cursor-default">
+                <div className="flex items-center gap-3">
+                  <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: accentColor + '14', color: accentColor }}>
+                    <Ticket size={17} />
+                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-[#1c1c1a]">Tours & tickets</p>
+                      <span className="text-[9px] uppercase tracking-widest px-1.5 py-0.5 rounded-full" style={{ background: accentColor + '14', color: accentColor }}>Bookable</span>
                     </div>
-                    <div className="space-y-2">
-                      {hostPicks.map(pick => (
-                        <div key={pick.id} className="bg-[#faf9f6] border border-gray-100 rounded-lg p-4 shadow-[0_1px_5px_rgba(0,0,0,0.05)]">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 mb-0.5">
-                                <p className="text-sm font-medium text-[#1c1c1a]">{pick.name}</p>
-                                <span
-                                  className="text-[10px] px-1.5 py-0.5 rounded-full text-white shrink-0"
-                                  style={{ background: categoryColor(pick.category) }}
-                                >
-                                  {pick.category}
-                                </span>
+                    <p className="text-xs text-[#9a958c]">Tours, tickets & experiences — book ahead</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-6">
+              {guideLoading ? (
+                <div className="flex items-center justify-center py-16 gap-2 text-[#9a958c]">
+                  <RefreshCw size={18} className="animate-spin" />
+                  <span className="text-sm">Loading guide…</span>
+                </div>
+              ) : (
+                <>
+                  {hostPicks.length > 0 && (
+                    <div className="mb-8">
+                      <div className="flex items-center gap-1.5 mb-3">
+                        <Star size={12} style={{ color: accentColor }} />
+                        <p className="text-[10px] uppercase tracking-widest font-semibold" style={{ color: accentColor }}>
+                          {brandName}'s picks
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        {hostPicks.map(pick => (
+                          <div key={pick.id} className="bg-[#fffdf9] border border-[#e9e4d9] rounded-[14px] p-4 shadow-[0_1px_5px_rgba(0,0,0,0.04)]">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 mb-0.5">
+                                  <p className="text-sm font-medium text-[#1c1c1a]">{pick.name}</p>
+                                  <span
+                                    className="text-[10px] px-1.5 py-0.5 rounded-full text-white shrink-0"
+                                    style={{ background: categoryColor(pick.category) }}
+                                  >
+                                    {pick.category}
+                                  </span>
+                                </div>
+                                {pick.address && (
+                                  <p className="text-xs text-[#9a958c]">{pick.address}</p>
+                                )}
+                                {pick.note && (
+                                  <p className="text-xs text-[#5b5853] italic mt-1 leading-relaxed">{pick.note}</p>
+                                )}
                               </div>
-                              {pick.address && (
-                                <p className="text-xs text-gray-400">{pick.address}</p>
-                              )}
-                              {pick.note && (
-                                <p className="text-xs text-gray-500 italic mt-1 leading-relaxed">{pick.note}</p>
+                              <div className="shrink-0 flex items-center gap-1.5">
+                                {/* SLOT 2 — Reserve (Phase I, inert + flag-gated; only on restaurant picks once SHOW_RESERVE_SLOT) */}
+                                {SHOW_RESERVE_SLOT && pick.category === 'Restaurant' && (
+                                  <span
+                                    className="flex items-center gap-1 text-[10px] uppercase tracking-widest px-2.5 py-1.5 rounded text-white cursor-default"
+                                    style={{ background: accentColor }}
+                                  >
+                                    Reserve
+                                  </span>
+                                )}
+                                <a
+                                  href={
+                                    pick.lat !== null && pick.lng !== null
+                                      ? getDirectionsUrl(pick.lat, pick.lng)
+                                      : mapsSearchUrl(pick.name, pick.address)
+                                  }
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="shrink-0 flex items-center gap-1 text-[10px] uppercase tracking-widest px-2.5 py-1.5 rounded no-underline bg-transparent"
+                                  style={{ color: accentColor, border: `1px solid ${accentColor}` }}
+                                >
+                                  <Navigation size={10} />
+                                  Go
+                                </a>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {guideCategories && Object.entries(guideCategories).length > 0 && (
+                    <div>
+                      <p className="text-[10px] uppercase tracking-widest text-[#9a958c] mb-3">
+                        Neighbourhood guide
+                      </p>
+                      <div className="space-y-2">
+                        {Object.entries(guideCategories).map(([cat, places]) => {
+                          if (!Array.isArray(places) || places.length === 0) return null
+                          const isExpanded = expandedGuideCategory === cat
+                          return (
+                            <div key={cat} className="bg-[#fffdf9] border border-[#e9e4d9] rounded-[14px] overflow-hidden shadow-[0_1px_5px_rgba(0,0,0,0.04)]">
+                              <button
+                                onClick={() => setExpandedGuideCategory(isExpanded ? null : cat)}
+                                className="w-full flex items-center justify-between px-4 py-3.5 border-none bg-transparent cursor-pointer text-left"
+                              >
+                                <span className="text-sm font-medium text-[#1c1c1a]">{cat}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[10px] text-[#9a958c]">{places.length} places</span>
+                                  <span
+                                    className="text-sm transition-transform"
+                                    style={{ transform: isExpanded ? 'rotate(45deg)' : 'none', color: accentColor }}
+                                  >
+                                    +
+                                  </span>
+                                </div>
+                              </button>
+                              {isExpanded && (
+                                <div className="border-t border-[#e9e4d9] divide-y divide-[#f0ebe1]">
+                                  {places.map((place, i) => (
+                                    <div key={i} className="px-4 py-3">
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          <p className="text-sm font-medium text-[#1c1c1a]">{place.name}</p>
+                                          {place.address && (
+                                            <p className="text-xs text-[#9a958c] mt-0.5">{place.address}</p>
+                                          )}
+                                          {place.description && (
+                                            <p className="text-xs text-[#5b5853] italic mt-1 leading-relaxed">
+                                              {place.description}
+                                            </p>
+                                          )}
+                                        </div>
+                                        <a
+                                          href={
+                                            place.lat !== undefined && place.lng !== undefined
+                                              ? getDirectionsUrl(place.lat, place.lng)
+                                              : mapsSearchUrl(place.name, place.address)
+                                          }
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="shrink-0 flex items-center gap-1 text-[10px] uppercase tracking-widest px-2.5 py-1.5 rounded no-underline bg-transparent"
+                                          style={{ color: accentColor, border: `1px solid ${accentColor}` }}
+                                        >
+                                          <Navigation size={10} />
+                                          Go
+                                        </a>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
                               )}
                             </div>
-                            <a
-                              href={
-                                pick.lat !== null && pick.lng !== null
-                                  ? getDirectionsUrl(pick.lat, pick.lng)
-                                  : mapsSearchUrl(pick.name, pick.address)
-                              }
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="shrink-0 flex items-center gap-1 text-[10px] uppercase tracking-widest px-2.5 py-1.5 rounded no-underline bg-transparent"
-                              style={{ color: accentColor, border: `1px solid ${accentColor}` }}
-                            >
-                              <Navigation size={10} />
-                              Go
-                            </a>
-                          </div>
-                        </div>
-                      ))}
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {guideCategories && Object.entries(guideCategories).length > 0 && (
-                  <div>
-                    <p className="text-[10px] uppercase tracking-widest text-gray-400 mb-3">
-                      Neighbourhood guide
-                    </p>
-                    <div className="space-y-2">
-                      {Object.entries(guideCategories).map(([cat, places]) => {
-                        if (!Array.isArray(places) || places.length === 0) return null
-                        const isExpanded = expandedGuideCategory === cat
-                        return (
-                          <div key={cat} className="bg-[#faf9f6] border border-gray-100 rounded-lg overflow-hidden shadow-[0_1px_5px_rgba(0,0,0,0.05)]">
-                            <button
-                              onClick={() => setExpandedGuideCategory(isExpanded ? null : cat)}
-                              className="w-full flex items-center justify-between px-4 py-3.5 border-none bg-transparent cursor-pointer text-left"
-                            >
-                              <span className="text-sm font-medium text-[#1c1c1a]">{cat}</span>
-                              <div className="flex items-center gap-2">
-                                <span className="text-[10px] text-gray-400">{places.length} places</span>
-                                <span
-                                  className="text-sm transition-transform"
-                                  style={{ transform: isExpanded ? 'rotate(45deg)' : 'none', color: accentColor }}
-                                >
-                                  +
-                                </span>
-                              </div>
-                            </button>
-                            {isExpanded && (
-                              <div className="border-t border-gray-100 divide-y divide-gray-50">
-                                {places.map((place, i) => (
-                                  <div key={i} className="px-4 py-3">
-                                    <div className="flex items-start justify-between gap-2">
-                                      <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium text-[#1c1c1a]">{place.name}</p>
-                                        {place.address && (
-                                          <p className="text-xs text-gray-400 mt-0.5">{place.address}</p>
-                                        )}
-                                        {place.description && (
-                                          <p className="text-xs text-gray-500 italic mt-1 leading-relaxed">
-                                            {place.description}
-                                          </p>
-                                        )}
-                                      </div>
-                                      <a
-                                        href={
-                                          place.lat !== undefined && place.lng !== undefined
-                                            ? getDirectionsUrl(place.lat, place.lng)
-                                            : mapsSearchUrl(place.name, place.address)
-                                        }
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="shrink-0 flex items-center gap-1 text-[10px] uppercase tracking-widest px-2.5 py-1.5 rounded no-underline bg-transparent"
-                                        style={{ color: accentColor, border: `1px solid ${accentColor}` }}
-                                      >
-                                        <Navigation size={10} />
-                                        Go
-                                      </a>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )
-                      })}
+                  {hostPicks.length === 0 && (!guideCategories || Object.keys(guideCategories).length === 0) && (
+                    <div className="text-center py-16">
+                      <MapPin size={32} className="mx-auto mb-3 text-[#d8d2c5]" />
+                      <p className="text-sm text-[#9a958c]">Guide is being prepared by your host.</p>
                     </div>
-                  </div>
-                )}
-
-                {hostPicks.length === 0 && (!guideCategories || Object.keys(guideCategories).length === 0) && (
-                  <div className="text-center py-16">
-                    <MapPin size={32} className="mx-auto mb-3 text-gray-200" />
-                    <p className="text-sm text-gray-400">Guide is being prepared by your host.</p>
-                  </div>
-                )}
-              </>
-            )}
-            <p className="text-[10px] text-gray-400 text-center mt-8">
-              Location data ©{' '}
-              <a
-                href="https://www.openstreetmap.org/copyright"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline"
-              >
-                OpenStreetMap contributors
-              </a>{' '}
-              · Geocoding by{' '}
-              <a
-                href="https://locationiq.com"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hover:underline"
-              >
-                LocationIQ
-              </a>
-            </p>
+                  )}
+                </>
+              )}
+              <p className="text-[10px] text-[#9a958c] text-center mt-8">
+                Location data ©{' '}
+                <a
+                  href="https://www.openstreetmap.org/copyright"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline"
+                >
+                  OpenStreetMap contributors
+                </a>{' '}
+                · Geocoding by{' '}
+                <a
+                  href="https://locationiq.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hover:underline"
+                >
+                  LocationIQ
+                </a>
+              </p>
+            </div>
           </div>
         </div>
       )}
