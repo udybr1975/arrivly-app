@@ -108,6 +108,8 @@ export interface DailySuggestionArgs {
   neighborhood: string | null
   city: string | null
   places: string[]
+  stayDay: number
+  recent: string[]
 }
 
 // Pure generation — no DB writes. The endpoint (api/daily-greeting.ts) handles caching.
@@ -120,7 +122,7 @@ export async function generateDailySuggestion(
     return { suggestion: null }
   }
 
-  const { dayPart, temp, condition, neighborhood, city, places } = args
+  const { dayPart, temp, condition, neighborhood, city, places, stayDay, recent } = args
 
   const weatherLine =
     temp != null
@@ -134,22 +136,56 @@ export async function generateDailySuggestion(
       ? `Nearby places you could mention if one fits: ${places.slice(0, 5).join(', ')}.`
       : ''
 
-  const dayPartHints: Record<DailySuggestionArgs['dayPart'], string> = {
-    morning: 'It is morning — a great time for coffee, breakfast, or an early walk.',
-    afternoon: 'It is afternoon — good for sights, lunch, or a wander.',
-    evening: 'It is evening — ideal for dinner, drinks, or catching the sunset.',
-    night: 'It is night — nice for a calm stroll, late bites, or winding down.',
+  // HARD day-part constraint: explicit ALLOW + DENY per part, phrased as a firm instruction.
+  const dayPartRules: Record<DailySuggestionArgs['dayPart'], { allow: string; deny: string }> = {
+    morning: {
+      allow: 'coffee, breakfast, a bakery, a morning market, an early walk, or a sunrise viewpoint',
+      deny: 'dinner, bars, nightlife, clubs, sunset-only or "tonight" content',
+    },
+    afternoon: {
+      allow: 'lunch, sights, museums, shops, parks, or a daytime walk',
+      deny: 'breakfast-specific spots, nightlife, bars, clubs, "this evening" or "tonight" content',
+    },
+    evening: {
+      allow: 'dinner, the sunset, drinks, early live music, or an evening stroll',
+      deny: 'breakfast, "this morning", or midday-only venues that have already closed',
+    },
+    night: {
+      allow: 'a late bite, a calm late stroll, a bar, winding down, or night views',
+      deny: 'breakfast, morning markets, "this morning" or "this afternoon" content',
+    },
   }
+  const rule = dayPartRules[dayPart]
+  const dayPartBlock =
+    `It is ${dayPart}. Suggest ONLY ${dayPart}-appropriate things: ${rule.allow}. ` +
+    `Never mention ${rule.deny}.`
+
+  // Anti-repeat: a bounded do-not-repeat list of what the guest has already seen.
+  const recentBlock =
+    recent.length > 0
+      ? `Do NOT repeat any of these the guest has already seen: ` +
+        `${recent.map(r => r.slice(0, 120)).join('; ')}. Choose something different.`
+      : ''
+
+  // Stay-day nudge: ease in on day 1; lean to less-obvious / different-kind picks from day 3.
+  const stayDayBlock =
+    stayDay <= 1
+      ? `This is day ${stayDay} of the guest's stay — offer an easy, welcoming nearby pick.`
+      : `This is day ${stayDay} of the guest's stay — they have likely seen the obvious spots, ` +
+        `so lean to something less obvious or a different KIND of place. For a small neighbourhood, ` +
+        `rotate the pool rather than refusing all repeats.`
 
   const location = [neighborhood, city].filter(Boolean).join(', ') || 'the area'
 
   const prompt =
     `You are a friendly short-term rental host. Write ONE short, warm suggestion sentence ` +
     `(maximum 30 words) for what a guest should do RIGHT NOW. ` +
-    `${dayPartHints[dayPart]} ` +
+    `${dayPartBlock} ` +
     `${weatherLine} ` +
     `The neighbourhood is ${location}. ` +
     `${placesLine} ` +
+    `${stayDayBlock} ` +
+    `${recentBlock} ` +
     `Match the weather if relevant (rain → cosy indoors; clear or mild → outdoors). ` +
     `First-person-host warmth. No greeting, no salutation, no signature, ` +
     `no markdown, no emojis. Write in English. One sentence only.`

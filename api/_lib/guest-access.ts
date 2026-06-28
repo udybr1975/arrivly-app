@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 export type GuestTier = 'verified' | 'public' | 'owner'
-export interface GuestAccess { tier: GuestTier; guestName: string | null }
+export interface GuestAccess { tier: GuestTier; guestName: string | null; bookingId: string | null; checkIn: string | null }
 
 export function authorizePreview(
   apartmentHostId: string,
@@ -37,24 +37,25 @@ export async function resolveGuestAccess(
   apartmentId: string,
   token: string | null
 ): Promise<GuestAccess> {
-  if (!token) return { tier: 'public', guestName: null }
+  const PUBLIC: GuestAccess = { tier: 'public', guestName: null, bookingId: null, checkIn: null }
+  if (!token) return PUBLIC
   const { data: booking } = await db
     .from('bookings')
-    .select('check_in, check_out, guest_id, status')
+    .select('id, check_in, check_out, guest_id, status')
     .eq('reference_number', token)
     .eq('apartment_id', apartmentId)
     .in('status', ['confirmed', 'completed'])
     .limit(1)
     .maybeSingle()
-  if (!booking) return { tier: 'public', guestName: null }
+  if (!booking) return PUBLIC
   const today = helsinkiToday()
-  if (today < booking.check_in || today > booking.check_out) return { tier: 'public', guestName: null }
+  if (today < booking.check_in || today > booking.check_out) return PUBLIC
   let guestName: string | null = null
   if (booking.guest_id) {
     const { data: g } = await db.from('guests').select('first_name').eq('id', booking.guest_id).maybeSingle()
     guestName = g?.first_name ?? null
   }
-  return { tier: 'verified', guestName }
+  return { tier: 'verified', guestName, bookingId: booking.id, checkIn: booking.check_in }
 }
 
 export interface MessagingAccess { allowed: boolean; bookingId: string | null; guestName: string | null }

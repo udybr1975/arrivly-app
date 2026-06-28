@@ -63,15 +63,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Only verified guests (in-dates confirmed booking) receive AI suggestions.
     // Non-verified paths return null so the UI falls back to static copy.
     const access = await resolveGuestAccess(db, apt, token)
-    if (access.tier !== 'verified') {
+    if (access.tier !== 'verified' || !access.bookingId) {
       return res.status(200).json({ suggestion: null })
     }
+    const bookingId = access.bookingId
 
-    // Cache read
+    // Day of stay: whole days since check-in (UTC-midnight diff on YYYY-MM-DD strings,
+    // so no timezone drift) + 1, clamped to a minimum of 1.
+    let stayDay = 1
+    if (access.checkIn) {
+      const diffMs = Date.parse(localDate + 'T00:00:00Z') - Date.parse(access.checkIn + 'T00:00:00Z')
+      stayDay = Math.max(1, Math.floor(diffMs / 86_400_000) + 1)
+    }
+
+    // Cache read — keyed per booking now (booking_id, local_date, day_part)
     const { data: cached } = await db
       .from('daily_greetings')
       .select('suggestion')
-      .eq('apartment_id', apt)
+      .eq('booking_id', bookingId)
       .eq('local_date', localDate)
       .eq('day_part', dayPart)
       .maybeSingle()
@@ -112,6 +121,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     }
 
+    // Sliding do-not-repeat window: this booking's most recent ~6 suggestions
+    // (most-recent first). Bounds the anti-repeat list to recent history, not the whole stay.
+    const { data: recentRows } = await db
+      .from('daily_greetings')
+      .select('suggestion')
+      .eq('booking_id', bookingId)
+      .order('local_date', { ascending: false })
+      .order('generated_at', { ascending: false })
+      .limit(6)
+    const recent: string[] = (recentRows ?? [])
+      .map(r => (typeof r.suggestion === 'string' ? r.suggestion.trim() : ''))
+      .filter(Boolean)
+
     const { suggestion } = await generateDailySuggestion({
       apartmentId: apt,
       localDate,
@@ -121,6 +143,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       neighborhood: apartment?.neighborhood ?? null,
       city: apartment?.city ?? null,
       places: placeNames,
+      stayDay,
+      recent,
     })
 
     if (!suggestion) {
@@ -133,20 +157,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { error: insertErr } = await db.from('daily_greetings').insert({
       apartment_id: apt,
+      booking_id: bookingId,
       local_date: localDate,
       day_part: dayPart,
+      stay_day: stayDay,
       suggestion,
       weather_summary: weatherSummary || null,
     })
 
     if (insertErr) {
-      // Unique-key violation (23505) from a concurrent insert — return whichever row won.
-      // Other insert errors also fall here; re-select returns the just-generated suggestion
-      // as fallback so the guest still receives a response.
+      // Unique-key violation (23505) on (booking_id, local_date, day_part) from a concurrent
+      // insert — return whichever row won. Other insert errors also fall here; re-select
+      // returns the just-generated suggestion as fallback so the guest still receives a response.
       const { data: existing } = await db
         .from('daily_greetings')
         .select('suggestion')
-        .eq('apartment_id', apt)
+        .eq('booking_id', bookingId)
         .eq('local_date', localDate)
         .eq('day_part', dayPart)
         .maybeSingle()
