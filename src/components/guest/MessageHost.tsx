@@ -156,7 +156,7 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-white flex flex-col">
+    <div className="fixed inset-0 z-50 bg-[#fbfaf7] flex flex-col">
 
       {/* Header */}
       <div
@@ -188,7 +188,7 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
         {threadLoading ? (
           <div className="flex items-center justify-center py-20">
             <div
-              className="w-8 h-8 border-2 border-gray-100 rounded-full animate-spin"
+              className="w-8 h-8 border-2 border-[#e9e4d9] rounded-full animate-spin"
               style={{ borderTopColor: accentColor }}
             />
           </div>
@@ -200,7 +200,7 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
             >
               {brandName.charAt(0)}
             </div>
-            <p className="text-sm text-gray-500 leading-relaxed">
+            <p className="text-sm text-[#5b5853] leading-relaxed">
               Send a message to {brandName}
               {guestName ? `, ${guestName}` : ''} — they'll be notified and reply right here.
             </p>
@@ -213,12 +213,12 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
                   className={`max-w-[80%] rounded-2xl px-4 py-2.5 text-sm ${
                     m.sender_role === 'guest'
                       ? 'rounded-br-sm text-white'
-                      : 'rounded-bl-sm bg-[#faf9f6] border border-gray-100 text-[#1c1c1a]'
+                      : 'rounded-bl-sm bg-[#fffdf9] border border-[#e9e4d9] text-[#1c1c1a]'
                   }`}
                   style={m.sender_role === 'guest' ? { background: accentColor } : undefined}
                 >
                   <p className="whitespace-pre-line leading-relaxed break-words">{m.body}</p>
-                  <p className={`text-[10px] mt-1 ${m.sender_role === 'guest' ? 'text-white/60 text-right' : 'text-gray-400'}`}>
+                  <p className={`text-[10px] mt-1 ${m.sender_role === 'guest' ? 'text-white/60 text-right' : 'text-[#9a958c]'}`}>
                     {fmtTime(m.created_at)}
                   </p>
                 </div>
@@ -231,14 +231,14 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
 
       {/* Push nudge — shown above input after first message sent */}
       {nudgeState !== null && (
-        <div className="shrink-0 px-4 py-3 bg-[#faf9f6] border-t border-gray-100">
+        <div className="shrink-0 px-4 py-3 bg-[#fffdf9] border-t border-[#e9e4d9]">
           <div className="flex items-start gap-2.5">
             <Bell size={15} className="shrink-0 mt-0.5" style={{ color: accentColor }} />
             <div className="flex-1 min-w-0">
               <p className="text-xs font-semibold text-[#1c1c1a] mb-0.5">Get replies on your phone</p>
               {nudgeState === 'ios' ? (
                 <>
-                  <p className="text-xs text-gray-500 leading-relaxed mb-2.5">
+                  <p className="text-xs text-[#5b5853] leading-relaxed mb-2.5">
                     Add this page to your Home Screen first (Share → Add to Home Screen), then turn on notifications from the More tab.
                   </p>
                   <button
@@ -251,7 +251,7 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
                 </>
               ) : (
                 <>
-                  <p className="text-xs text-gray-500 leading-relaxed mb-2.5">
+                  <p className="text-xs text-[#5b5853] leading-relaxed mb-2.5">
                     Turn on notifications so you don't miss your host's reply.
                   </p>
                   {(nudgeState === 'standard' || nudgeState === 'busy') && (
@@ -266,7 +266,7 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
                       </button>
                       <button
                         onClick={handleNudgeDismiss}
-                        className="text-xs text-gray-500 px-3 py-1.5 rounded-full bg-transparent border-none cursor-pointer"
+                        className="text-xs text-[#9a958c] px-3 py-1.5 rounded-full bg-transparent border-none cursor-pointer"
                       >
                         Not now
                       </button>
@@ -276,10 +276,10 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
                     <p className="text-xs font-semibold" style={{ color: accentColor }}>Notifications on</p>
                   )}
                   {nudgeState === 'denied' && (
-                    <p className="text-xs text-gray-500">Notifications were blocked</p>
+                    <p className="text-xs text-[#5b5853]">Notifications were blocked</p>
                   )}
                   {nudgeState === 'error' && (
-                    <p className="text-xs text-gray-500">
+                    <p className="text-xs text-[#5b5853]">
                       Your phone couldn't enable notifications — you'll still see replies when you open this page.
                     </p>
                   )}
@@ -291,7 +291,7 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
       )}
 
       {/* Input */}
-      <div className="shrink-0 border-t border-gray-100 px-4 py-3 bg-white">
+      <div className="shrink-0 border-t border-[#e9e4d9] px-4 py-3 bg-[#fffdf9]">
         {sendError && (
           <p className="text-xs text-red-500 mb-2 px-1">{sendError}</p>
         )}
@@ -301,7 +301,7 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
             onChange={e => setInput(e.target.value.slice(0, 2000))}
             onKeyDown={e => { if (e.key === 'Enter') sendMessage() }}
             placeholder={`Message ${brandName}…`}
-            className="flex-1 bg-[#faf9f6] border border-gray-200 rounded-full px-4 py-2.5 text-sm outline-none focus:border-gray-400"
+            className="flex-1 bg-[#fbfaf7] border border-[#e9e4d9] rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#9a958c]"
           />
           <button
             onClick={sendMessage}

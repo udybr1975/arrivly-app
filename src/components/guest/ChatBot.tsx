@@ -56,7 +56,7 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
   const showStarters = !loading
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-[#fbfaf7]">
       <div className="shrink-0 px-5 py-3.5 text-white flex items-center gap-3" style={{ background: accentColor }}>
         <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-sm font-bold">{brandName.charAt(0)}</span>
         <div>
@@ -70,14 +70,14 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
             key={i}
             className={m.role === 'user'
               ? 'ml-auto max-w-[80%] rounded-2xl rounded-br-sm px-4 py-2.5 text-sm text-white'
-              : 'mr-auto max-w-[85%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm bg-[#faf9f6] border border-gray-100 text-[#1c1c1a]'}
+              : 'mr-auto max-w-[85%] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm bg-[#fffdf9] border border-[#e9e4d9] text-[#1c1c1a]'}
             style={m.role === 'user' ? { background: accentColor } : undefined}
           >
             <p className="whitespace-pre-line leading-relaxed break-words">{m.text}</p>
           </div>
         ))}
         {loading && (
-          <div className="mr-auto flex items-center gap-2 text-gray-400 text-xs italic px-1">
+          <div className="mr-auto flex items-center gap-2 text-[#9a958c] text-xs italic px-1">
             <RefreshCw size={12} className="animate-spin" /> Thinking…
           </div>
         )}
@@ -94,13 +94,13 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
         </div>
       )}
 
-      <div className="border-t border-gray-100 px-4 py-3 flex items-center gap-2 bg-white">
+      <div className="border-t border-[#e9e4d9] px-4 py-3 flex items-center gap-2 bg-[#fffdf9]">
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
           onKeyDown={e => { if (e.key === 'Enter') sendMessage(input) }}
           placeholder={`Ask ${brandName}…`}
-          className="flex-1 bg-[#faf9f6] border border-gray-200 rounded-full px-4 py-2.5 text-sm outline-none focus:border-gray-400"
+          className="flex-1 bg-[#fbfaf7] border border-[#e9e4d9] rounded-full px-4 py-2.5 text-sm outline-none focus:border-[#9a958c]"
         />
         <button onClick={() => sendMessage(input)} disabled={loading || !input.trim()} aria-label="Send" className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-white border-none cursor-pointer disabled:opacity-40" style={{ background: accentColor }}>
           <Send size={16} />

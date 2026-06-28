@@ -40,23 +40,23 @@ export default function InstallPrompt({ accentColor }: Props) {
   if (!visible) return null
 
   return (
-    <div className="fixed bottom-16 left-4 right-4 z-[35] bg-white border border-[#ddd8ce] rounded-[10px] p-4 shadow-lg">
+    <div className="fixed bottom-16 left-4 right-4 z-[35] bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl p-4 shadow-lg">
       {isIOSSafari ? (
         <>
           <div className="flex items-start gap-3 mb-3">
             <Share size={18} className="shrink-0 mt-0.5" style={{ color: accentColor }} />
             <div>
-              <p className="text-[13px] font-semibold text-[#1a1a1a] mb-0.5">
+              <p className="text-[13px] font-semibold text-[#1c1c1a] mb-0.5">
                 Add this guide to your home screen
               </p>
-              <p className="text-[11px] text-[#888] leading-relaxed">
+              <p className="text-[11px] text-[#5b5853] leading-relaxed">
                 Tap the Share icon below, then choose &ldquo;Add to Home Screen&rdquo;.
               </p>
             </div>
           </div>
           <button
             onClick={dismiss}
-            className="text-[11px] text-[#888] hover:text-[#1a1a1a] transition-colors"
+            className="text-[11px] text-[#9a958c] hover:text-[#1c1c1a] transition-colors"
           >
             Not now
           </button>
@@ -66,10 +66,10 @@ export default function InstallPrompt({ accentColor }: Props) {
           <div className="flex items-start gap-3 mb-3">
             <Download size={18} className="shrink-0 mt-0.5" style={{ color: accentColor }} />
             <div>
-              <p className="text-[13px] font-semibold text-[#1a1a1a] mb-0.5">
+              <p className="text-[13px] font-semibold text-[#1c1c1a] mb-0.5">
                 Add this guide to your home screen
               </p>
-              <p className="text-[11px] text-[#888] leading-relaxed">
+              <p className="text-[11px] text-[#5b5853] leading-relaxed">
                 One tap — open it like an app, even offline.
               </p>
             </div>
@@ -77,14 +77,14 @@ export default function InstallPrompt({ accentColor }: Props) {
           <div className="flex gap-2">
             <button
               onClick={handleInstall}
-              className="px-4 py-1.5 rounded-[7px] text-xs font-semibold text-white hover:opacity-80 transition-opacity"
+              className="px-4 py-1.5 rounded-lg text-xs font-semibold text-white hover:opacity-80 transition-opacity"
               style={{ backgroundColor: accentColor }}
             >
               Add to home screen
             </button>
             <button
               onClick={dismiss}
-              className="px-4 py-1.5 rounded-[7px] text-xs text-[#888] hover:text-[#1a1a1a] transition-colors"
+              className="px-4 py-1.5 rounded-lg text-xs text-[#9a958c] hover:text-[#1c1c1a] transition-colors"
             >
               Not now
             </button>
