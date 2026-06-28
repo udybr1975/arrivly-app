@@ -507,7 +507,7 @@ export default function Landing() {
               city guide, events and a 24/7 chatbot — branded to you. Then they book experiences,
               and you earn.
             </p>
-            <p className="mt-5 font-['Fraunces'] italic text-[17px] leading-snug text-[#e7d6ad]">
+            <p className="mx-auto mt-5 max-w-[480px] font-['Fraunces'] italic text-[17px] leading-snug text-[#e7d6ad] md:mx-0">
               Made by hosts, for hosts who care about their guests.
             </p>
             <div className="mt-8 flex flex-wrap items-center justify-center gap-3 md:justify-start">
