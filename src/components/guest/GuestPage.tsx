@@ -133,19 +133,6 @@ function getTimeSalutation(): string {
   return 'Welcome'
 }
 
-const CATEGORY_COLORS: Record<string, string> = {
-  Restaurant: '#c0392b',
-  Bar: '#8e44ad',
-  Coffee: '#e67e22',
-  Sight: '#2980b9',
-  Essential: '#27ae60',
-  Nightlife: '#2c3e50',
-}
-
-function categoryColor(cat: string): string {
-  return CATEGORY_COLORS[cat] ?? '#555'
-}
-
 export default function GuestPage() {
   const [searchParams] = useSearchParams()
   const aptId = searchParams.get('apt')
@@ -1125,8 +1112,8 @@ export default function GuestPage() {
                                 <div className="flex items-center gap-2 mb-0.5">
                                   <p className="text-sm font-medium text-[#1c1c1a]">{pick.name}</p>
                                   <span
-                                    className="text-[10px] px-1.5 py-0.5 rounded-full text-white shrink-0"
-                                    style={{ background: categoryColor(pick.category) }}
+                                    className="text-[10px] px-2 py-0.5 rounded-full shrink-0 font-medium"
+                                    style={{ background: accentColor + '14', color: accentColor }}
                                   >
                                     {pick.category}
                                   </span>
