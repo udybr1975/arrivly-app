@@ -30,6 +30,17 @@ const DEMO_SUB =
 type Intent = 'create' | 'resume' | 'expired'
 type ApiResp = { ok?: boolean; reason?: string; resume?: boolean; apartmentId?: string; token?: string }
 
+// api.post throws `new Error(rawResponseBody)` on non-2xx — pull the reason code out of
+// the JSON body for the 403 captcha_failed case (guarded; the body may not be JSON).
+function parseReason(err: unknown): string | null {
+  try {
+    const msg = (err as Error)?.message
+    return msg ? (JSON.parse(msg)?.reason ?? null) : null
+  } catch {
+    return null
+  }
+}
+
 function ArrowIcon() {
   return (
     <svg viewBox="0 0 24 24" className="h-4 w-4 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -142,6 +153,11 @@ export default function Demo() {
   const [city, setCity] = useState('')
   const [neighbourhood, setNeighbourhood] = useState('')
   const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  // A SEPARATE, fresh token captured on the final Choose step — Turnstile tokens are
+  // single-use/short-lived, so the step-1 token is stale by the time we POST create.
+  // choiceWidgetKey is bumped to remount the widget for a clean retry after a failure.
+  const [choiceToken, setChoiceToken] = useState<string | null>(null)
+  const [choiceWidgetKey, setChoiceWidgetKey] = useState(0)
   const [code, setCode] = useState<string[]>(['', '', '', '', '', ''])
   const [blocked, setBlocked] = useState(false) // account_exists
   const [expiredPrompt, setExpiredPrompt] = useState(false)
@@ -240,6 +256,11 @@ export default function Demo() {
     }
   }
 
+  function resetChoiceCaptcha() {
+    setChoiceToken(null)
+    setChoiceWidgetKey((k) => k + 1) // remount the widget → fresh single-use token
+  }
+
   async function choose(path: 'quick' | 'full') {
     setError('')
     setLoading(true)
@@ -248,6 +269,7 @@ export default function Demo() {
         city: city.trim(),
         neighbourhood: neighbourhood.trim(),
         path,
+        turnstileToken: choiceToken ?? '',
       })
       if (r?.ok) {
         if (path === 'full' && r.apartmentId) return navigate(`/dashboard/property/${r.apartmentId}`)
@@ -255,7 +277,12 @@ export default function Demo() {
       }
       if (r?.reason === 'not_eligible') return setError('This account can’t start a demo. Try signing in instead.')
       setError('We couldn’t set up your demo. Please try again.')
-    } catch {
+    } catch (err) {
+      // demo-create returns 403 { reason:'captcha_failed' } (non-2xx → api.post throws).
+      if (parseReason(err) === 'captcha_failed') {
+        resetChoiceCaptcha()
+        return setError('That security check didn’t pass. Please complete it and try again.')
+      }
       setError('We couldn’t set up your demo. Please try again.')
     } finally {
       setLoading(false)
@@ -420,6 +447,13 @@ export default function Demo() {
               <p className="mt-1 text-[13px] leading-[1.5] text-[#6f6757]">Start from a blank page and add everything yourself in the editor — WiFi, check-in, rules and picks.</p>
             </button>
           </div>
+
+          {/* Fresh, verified token for the actual create call (the step-1 token is stale). */}
+          {TURNSTILE_SITE_KEY && (
+            <div className="mt-5">
+              <TurnstileWidget key={choiceWidgetKey} siteKey={TURNSTILE_SITE_KEY} onToken={setChoiceToken} />
+            </div>
+          )}
 
           {loading && <p className="mt-5 text-center text-[13px] text-[#8a8170]">Setting up your demo…</p>}
           {error && <div className="mt-5"><ErrorLine>{error}</ErrorLine></div>}

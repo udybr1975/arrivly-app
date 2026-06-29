@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { geocodeAddress } from './_lib/geo.js'
 import { generateGuideForApartment } from './_lib/guide.js'
 import { generateCityEvents } from './_lib/city-events.js'
+import { verifyTurnstile } from './_lib/turnstile.js'
 
 // Host-auth endpoint: turns a fresh trial host into a free 48h DEMO and seeds a
 // ready-to-explore guest page (one apartment + one active "Alex" booking, optionally
@@ -145,12 +146,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(429).json({ error: 'rate_limited' })
   }
 
-  const body = (req.body ?? {}) as { city?: unknown; neighbourhood?: unknown; path?: unknown }
+  const body = (req.body ?? {}) as { city?: unknown; neighbourhood?: unknown; path?: unknown; turnstileToken?: unknown }
   const city = typeof body.city === 'string' ? body.city.trim() : ''
   const neighbourhood = typeof body.neighbourhood === 'string' ? body.neighbourhood.trim() : ''
   const path = body.path === 'quick' || body.path === 'full' ? body.path : ''
-  // NOTE: city/neighbourhood/path are validated inside the CREATE branch only — the
-  // idempotent RESUME path is called with an empty body `{}` and never needs them.
+  const turnstileToken = typeof body.turnstileToken === 'string' ? body.turnstileToken : ''
+  // NOTE: city/neighbourhood/path + the captcha token are used inside the CREATE branch
+  // only — the idempotent RESUME path is called with an empty body `{}` and never needs
+  // them (resume does no AI spend, so it is captcha-exempt).
 
   // Service-role client only AFTER auth. Never returned to the client.
   const admin = createClient(supabaseUrl, serviceKey)
@@ -201,6 +204,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!city || city.length > MAX_FIELD) return res.status(400).json({ error: 'Invalid input' })
     if (!neighbourhood || neighbourhood.length > MAX_FIELD) return res.status(400).json({ error: 'Invalid input' })
     if (!path) return res.status(400).json({ error: 'Invalid input' })
+
+    // ── CAPTCHA (the money gate) — verify BEFORE the eligibility check, any host
+    // mutation, apartment creation, or AI spend. Fail-closed (false on missing token /
+    // unset secret / network error). Resume above is intentionally exempt.
+    const captchaOk = await verifyTurnstile(turnstileToken, clientIp(req))
+    if (!captchaOk) return res.status(403).json({ ok: false, reason: 'captcha_failed' })
 
     // ── ELIGIBILITY TO CREATE (deny-by-default) ───────────────────────────────
     const { count: aptCount } = await admin
