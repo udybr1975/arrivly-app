@@ -13,10 +13,12 @@ import {
   ShieldCheck,
   LogOut,
   ChevronUp,
+  BookOpen,
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { ARRIVLY_CONFIG } from '../../config'
 import Logo from './Logo'
+import GuideDrawer from './GuideDrawer'
 
 type NavEntry = { to: string; label: string; Icon: ComponentType<{ size?: number; className?: string }>; end?: boolean }
 
@@ -67,9 +69,11 @@ export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false)
   const [unread, setUnread] = useState(0)
   const [accountOpen, setAccountOpen] = useState(false)
+  const [guideOpen, setGuideOpen] = useState(false)
   const hamburgerRef = useRef<HTMLButtonElement>(null)
   const asideRef = useRef<HTMLElement>(null)
   const accountRef = useRef<HTMLDivElement>(null)
+  const guideTriggerRef = useRef<HTMLButtonElement>(null)
   const wasMenuOpen = useRef(false)
 
   useEffect(() => {
@@ -288,6 +292,28 @@ export default function Layout() {
               </NavLink>
             </div>
           )}
+
+          {/* Guide & help — a toggle (NOT a NavLink): opens the docked Guide drawer
+              without navigating, so the current page's nav item stays highlighted. */}
+          <div className="mt-1.5 pt-1.5 border-t border-[#322c25]">
+            <button
+              ref={guideTriggerRef}
+              onClick={() => {
+                setGuideOpen((o) => !o)
+                setMenuOpen(false)
+              }}
+              aria-haspopup="dialog"
+              aria-expanded={guideOpen}
+              className={`group flex items-center gap-[11px] pl-[10px] pr-2.5 py-[7px] rounded-[9px] text-[13px] border-l-[3px] w-full text-left transition-colors ${
+                guideOpen
+                  ? 'bg-[rgba(200,162,78,0.13)] text-[#f4ecdb] border-[#c8a24e]'
+                  : 'text-[#b6ad9e] border-transparent hover:bg-white/5'
+              }`}
+            >
+              <BookOpen size={16} className={guideOpen ? 'text-[#c8a24e]' : 'text-[#9a9082]'} />
+              <span className="flex-1 truncate">Guide &amp; help</span>
+            </button>
+          </div>
         </nav>
 
         {/* Trial widget + account menu */}
@@ -364,6 +390,8 @@ export default function Layout() {
       <main className="flex-1 px-4 pb-8 pt-16 md:px-8 md:pt-8 overflow-auto min-w-0">
         <Outlet />
       </main>
+
+      <GuideDrawer open={guideOpen} onClose={() => setGuideOpen(false)} triggerRef={guideTriggerRef} />
     </div>
   )
 }
