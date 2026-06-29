@@ -3,6 +3,10 @@ import { useNavigate, Link } from 'react-router-dom'
 import { MapPin, QrCode, Plus, MoreHorizontal, ArrowRight, Building2, MessageCircle, Home, ArrowDownToLine, ArrowUpFromLine, Eye, Check } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { resolveImageUrl } from '../../lib/imageUtils'
+import { ARRIVLY_CONFIG } from '../../config'
+import { demoRemaining } from '../demo/demoTime'
+import KeepDemoModal from '../demo/KeepDemoModal'
+import BeYourGuestCard from '../demo/BeYourGuestCard'
 import Loader from '../shared/Loader'
 
 interface Apartment {
@@ -24,6 +28,8 @@ interface HostData {
   is_exempt: boolean | null
   property_cap_override: number | null
   accent_color: string | null
+  is_demo: boolean | null
+  demo_expires_at: string | null
 }
 
 const ESSENTIAL_DEFS = [
@@ -123,6 +129,9 @@ export default function Dashboard() {
   const [showWelcome, setShowWelcome] = useState(false)
   const [togglingId, setTogglingId] = useState<string | null>(null)
   const [discardingId, setDiscardingId] = useState<string | null>(null)
+  const [keepOpen, setKeepOpen] = useState(false)
+  const [nowTick, setNowTick] = useState(() => Date.now())
+  const [demoToken, setDemoToken] = useState<{ aptId: string; token: string } | null>(null)
   const welcomeRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -132,7 +141,7 @@ export default function Dashboard() {
 
       const { data: hd } = await supabase
         .from('hosts')
-        .select('trial_ends_at, name, brand_name, welcome_seen_at, tier, is_exempt, property_cap_override, accent_color')
+        .select('trial_ends_at, name, brand_name, welcome_seen_at, tier, is_exempt, property_cap_override, accent_color, is_demo, demo_expires_at')
         .eq('id', user.id)
         .maybeSingle()
 
@@ -172,7 +181,7 @@ export default function Dashboard() {
         const aptIds = aList.map((a: Apartment) => a.id)
         const [{ data: dets }, { data: bk }, { data: guides }] = await Promise.all([
           supabase.from('apartment_details').select('apartment_id, category').in('apartment_id', aptIds),
-          supabase.from('bookings').select('apartment_id, check_in, check_out, status, source').in('apartment_id', aptIds),
+          supabase.from('bookings').select('apartment_id, check_in, check_out, status, source, reference_number').in('apartment_id', aptIds),
           supabase.from('guide_recommendations').select('apartment_id').in('apartment_id', aptIds),
         ])
 
@@ -204,6 +213,15 @@ export default function Dashboard() {
         }
         setOps({ stayingNow, checkingInToday, checkingOutToday })
 
+        // Demo "Be your guest" spotlight: the active seeded ('Alex') booking on the demo
+        // apartment. Find the active confirmed manual booking with an ARR- token.
+        if ((hd as HostData | null)?.is_demo === true) {
+          const demoBk = ((bk ?? []) as Array<{ apartment_id: string; check_in: string | null; check_out: string | null; status: string | null; source: string | null; reference_number: string | null }>)
+            .find(b => !!b.reference_number && b.status === 'confirmed' && b.source === 'manual'
+              && b.check_in != null && b.check_out != null && b.check_in <= today && b.check_out > today)
+          if (demoBk?.reference_number) setDemoToken({ aptId: demoBk.apartment_id, token: demoBk.reference_number })
+        }
+
         setGuideByApt(new Set(((guides ?? []) as Array<{ apartment_id: string }>).map(g => g.apartment_id)))
       }
 
@@ -211,6 +229,15 @@ export default function Dashboard() {
     }
     load()
   }, [])
+
+  const isDemo = hostData?.is_demo === true
+
+  // Tick the demo countdown (no-op for normal hosts).
+  useEffect(() => {
+    if (!isDemo) return
+    const id = window.setInterval(() => setNowTick(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [isDemo])
 
   // Focus modal element when welcome is shown.
   useEffect(() => {
@@ -337,12 +364,15 @@ export default function Dashboard() {
     return best
   })()
 
-  const TRIAL_FOOTER = trialRemaining > 0 && (
+  // Demo hosts get the demo banner instead of the trial footer (and have no Billing route).
+  const TRIAL_FOOTER = !isDemo && trialRemaining > 0 && (
     <p className="text-[11px] text-[#b3aa9b] mt-6">
       Trial ends in {trialRemaining} {trialRemaining === 1 ? 'day' : 'days'} ·{' '}
       <Link to="/dashboard/billing" className="text-[#a8842f] underline underline-offset-2 hover:text-[#c8a24e]">Upgrade</Link>
     </p>
   )
+
+  const demoCountdown = demoRemaining(hostData?.demo_expires_at, nowTick)
 
   return (
     <div className="font-['Inter']">
@@ -408,6 +438,46 @@ export default function Dashboard() {
                 ))}
           </p>
         </header>
+
+        {/* Demo chrome (is_demo only) — banner + "Be your guest" spotlight. */}
+        {isDemo && (
+          <>
+            <div className="mb-6 flex flex-col gap-4 rounded-[14px] border border-[rgba(200,162,78,0.4)] bg-gradient-to-r from-[#fffaf0] to-[#fffdf9] p-4 sm:flex-row sm:items-center sm:p-5">
+              <div className="min-w-0 flex-1">
+                <div className="inline-flex items-center gap-1.5 text-[10.5px] font-semibold uppercase tracking-[.08em] text-[#a8842f]">
+                  <span className="relative flex h-1.5 w-1.5">
+                    <span className="absolute inline-flex h-full w-full rounded-full bg-[#c8a24e] opacity-60 motion-safe:animate-ping" />
+                    <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#c8a24e]" />
+                  </span>
+                  Live demo · {demoCountdown.expired ? 'ended' : demoCountdown.label}
+                </div>
+                <div className="mt-1 text-[16px] font-['Fraunces'] text-[#231d17]">
+                  {demoCountdown.expired ? 'Your demo has ended' : 'You’re exploring a live demo'}
+                </div>
+                <p className="mt-0.5 text-[12.5px] leading-[1.5] text-[#6b6354]">
+                  Everything you build here is saved — start your free trial to keep your page and make it yours.
+                </p>
+              </div>
+              <button
+                onClick={() => setKeepOpen(true)}
+                className="shrink-0 inline-flex items-center gap-1.5 self-start bg-[#c8a24e] text-[#16100d] px-4 py-2.5 rounded-[10px] text-[13px] font-semibold hover:bg-[#e7d6ad] transition-colors sm:self-auto"
+              >
+                Start free trial to keep it
+                <ArrowRight size={14} />
+              </button>
+            </div>
+
+            {demoToken ? (
+              <div className="mb-8">
+                <BeYourGuestCard url={`${ARRIVLY_CONFIG.appUrl}/guest?apt=${demoToken.aptId}&token=${demoToken.token}`} />
+              </div>
+            ) : (
+              <div className="mb-8 rounded-[14px] border border-dashed border-[#e4ddd0] bg-[#fffdf9] p-5 text-[12.5px] text-[#8a8276]">
+                Your live guest page is being prepared — refresh in a moment to preview it.
+              </div>
+            )}
+          </>
+        )}
 
         {list.length === 0 ? (
           /* ── Empty state (0 apartments) ── */
@@ -657,6 +727,8 @@ export default function Dashboard() {
           </>
         )}
       </div>
+
+      <KeepDemoModal open={keepOpen} onClose={() => setKeepOpen(false)} />
     </div>
   )
 }

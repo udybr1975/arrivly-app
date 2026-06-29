@@ -19,6 +19,8 @@ import { supabase } from '../../lib/supabase'
 import { ARRIVLY_CONFIG } from '../../config'
 import { moduleForPath } from '../../guide/content'
 import { GuideContext, type GuideContextValue } from '../../guide/guideContext'
+import { demoRemaining } from '../demo/demoTime'
+import KeepDemoModal from '../demo/KeepDemoModal'
 import Logo from './Logo'
 import GuideDrawer from './GuideDrawer'
 import PageHint from './PageHint'
@@ -56,6 +58,8 @@ interface HostData {
   trial_ends_at: string | null
   subscription_status: string | null
   stripe_subscription_id: string | null
+  is_demo: boolean | null
+  demo_expires_at: string | null
 }
 
 const navItemClass = ({ isActive }: { isActive: boolean }) =>
@@ -77,6 +81,8 @@ export default function Layout() {
   const [userId, setUserId] = useState<string | null>(null)
   const [dismissedHints, setDismissedHints] = useState<Record<string, boolean>>({})
   const [uiReady, setUiReady] = useState(false)
+  const [keepOpen, setKeepOpen] = useState(false)
+  const [now, setNow] = useState(() => Date.now())
   const hamburgerRef = useRef<HTMLButtonElement>(null)
   const asideRef = useRef<HTMLElement>(null)
   const accountRef = useRef<HTMLDivElement>(null)
@@ -103,7 +109,7 @@ export default function Layout() {
       setUserId(user.id)
       const { data } = await supabase
         .from('hosts')
-        .select('brand_name, trial_ends_at, subscription_status, stripe_subscription_id, ui_state')
+        .select('brand_name, trial_ends_at, subscription_status, stripe_subscription_id, is_demo, demo_expires_at, ui_state')
         .eq('id', user.id)
         .maybeSingle()
       if (mounted && data) {
@@ -272,10 +278,21 @@ export default function Layout() {
     return !!mod && mod.status !== 'coming-soon' && !dismissedHints[mod.id]
   }
 
+  const isDemo = host?.is_demo === true
+
+  // Tick the countdown while in demo mode (no-op for normal hosts).
+  useEffect(() => {
+    if (!isDemo) return
+    const id = window.setInterval(() => setNow(Date.now()), 30_000)
+    return () => clearInterval(id)
+  }, [isDemo])
+
   const trialRemaining = host?.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(host.trial_ends_at).getTime() - Date.now()) / 86_400_000))
     : 0
-  const showTrial = host?.subscription_status === 'trial' && trialRemaining > 0
+  // Demo hosts carry subscription_status='trial' too — suppress the normal trial widget
+  // for them; they get the demo widget instead.
+  const showTrial = host?.subscription_status === 'trial' && trialRemaining > 0 && !isDemo
   const hasSub = !!host?.stripe_subscription_id
 
   const closeMenu = () => setMenuOpen(false)
@@ -338,7 +355,9 @@ export default function Layout() {
                   {group.label}
                 </div>
               )}
-              {group.items.map(({ to, label, Icon, end }) => (
+              {group.items
+                .filter((it) => !(isDemo && it.to === '/dashboard/billing'))
+                .map(({ to, label, Icon, end }) => (
                 <NavLink key={to} to={to} end={end} onClick={closeMenu} className={navItemClass}>
                   {({ isActive }) => (
                     <>
@@ -405,6 +424,27 @@ export default function Layout() {
 
         {/* Trial widget + account menu */}
         <div className="mt-auto pt-3.5 flex flex-col gap-2.5">
+          {isDemo && (() => {
+            const { expired, label } = demoRemaining(host?.demo_expires_at, now)
+            return (
+              <div className="rounded-[12px] p-[13px] bg-[rgba(200,162,78,0.10)] border border-[rgba(200,162,78,0.22)]">
+                <div className="text-[10px] font-semibold uppercase tracking-[.08em] text-[#e7d6ad]">Live demo</div>
+                <div className="text-[18px] font-['Fraunces'] font-light text-[#f0ede6] leading-tight mt-1">
+                  {expired ? 'Demo ended' : label}
+                </div>
+                <div className="text-[10.5px] text-[#8a8175] mt-0.5 mb-2.5">
+                  {expired ? 'Start a trial to keep your page' : 'Everything you build is saved'}
+                </div>
+                <button
+                  onClick={() => { setKeepOpen(true); closeMenu() }}
+                  className="block w-full text-center py-2 rounded-[8px] text-[11px] font-semibold bg-[#c8a24e] text-[#16100d] hover:bg-[#e7d6ad] transition-colors"
+                >
+                  Start free trial
+                </button>
+              </div>
+            )
+          })()}
+
           {showTrial && (
             <div className="rounded-[12px] p-[13px] bg-[rgba(200,162,78,0.10)] border border-[rgba(200,162,78,0.22)]">
               <div className="text-[10px] font-semibold uppercase tracking-[.08em] text-[#e7d6ad]">Free trial</div>
@@ -487,6 +527,8 @@ export default function Layout() {
         triggerRef={guideTriggerRef}
         requestedModuleId={requestedModuleId}
       />
+
+      <KeepDemoModal open={keepOpen} onClose={() => setKeepOpen(false)} />
     </div>
   )
 }
