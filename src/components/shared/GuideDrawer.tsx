@@ -13,6 +13,7 @@ type Props = {
   open: boolean
   onClose: () => void
   triggerRef: RefObject<HTMLButtonElement | null>
+  requestedModuleId?: string | null
 }
 
 // ── tiny inline markdown renderer ────────────────────────────────────────────
@@ -287,11 +288,17 @@ function GuideBody({
 
 function Tabs() {
   return (
-    <div className="flex items-end gap-4 border-b border-[#e9e4d9] px-4">
-      <div className="pb-2 border-b-2 border-[#c8a24e] text-[13px] font-semibold text-[#231d17]">
-        Browse
-      </div>
+    <div role="tablist" aria-label="Guide sections" className="flex items-end gap-4 border-b border-[#e9e4d9] px-4">
       <button
+        role="tab"
+        aria-selected="true"
+        className={`pb-2 border-b-2 border-[#c8a24e] text-[13px] font-semibold text-[#231d17] ${focusRing} rounded-t`}
+      >
+        Browse
+      </button>
+      <button
+        role="tab"
+        aria-selected="false"
         disabled
         aria-disabled="true"
         title="Available shortly"
@@ -306,7 +313,7 @@ function Tabs() {
 
 // ── drawer ───────────────────────────────────────────────────────────────────
 
-export default function GuideDrawer({ open, onClose, triggerRef }: Props) {
+export default function GuideDrawer({ open, onClose, triggerRef, requestedModuleId = null }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [minimized, setMinimized] = useState(false)
   const [entered, setEntered] = useState(false)
@@ -314,17 +321,20 @@ export default function GuideDrawer({ open, onClose, triggerRef }: Props) {
   const desktopRef = useRef<HTMLElement>(null)
   const sheetRef = useRef<HTMLElement>(null)
   const pillRef = useRef<HTMLDivElement>(null)
+  const desktopHeadingRef = useRef<HTMLHeadingElement>(null)
+  const sheetHeadingRef = useRef<HTMLHeadingElement>(null)
   const prevOpen = useRef(open)
 
   const selected = selectedId ? GUIDE_MODULES.find((m) => m.id === selectedId) ?? null : null
 
-  // Reset to the route section each time the drawer opens.
+  // On open, show the requested article if one was asked for, else reset to the route
+  // section. requestedModuleId is in the deps so a plain sidebar toggle (which clears it
+  // to null) opens to the route section, not the last requested article.
   useEffect(() => {
-    if (open) {
-      setSelectedId(null)
-      setMinimized(false)
-    }
-  }, [open])
+    if (!open) return
+    setSelectedId(requestedModuleId ?? null)
+    setMinimized(false)
+  }, [open, requestedModuleId])
 
   // Slide-in: flip translate on the frame after mount (motion-reduce disables the transition).
   useEffect(() => {
@@ -346,14 +356,19 @@ export default function GuideDrawer({ open, onClose, triggerRef }: Props) {
     return () => document.removeEventListener('keydown', onKey)
   }, [open, onClose])
 
-  // Move focus into whichever surface is visible (desktop panel / mobile sheet / pill).
+  // Move initial focus to the drawer HEADING of whichever surface is visible (not the
+  // Close button). When minimized to the pill, focus the pill button instead.
   useEffect(() => {
     if (!open) return
-    const target = [desktopRef.current, sheetRef.current, pillRef.current].find(
+    const heading = [desktopHeadingRef.current, sheetHeadingRef.current].find(
       (el) => el && el.offsetParent !== null,
     )
-    target?.querySelector<HTMLElement>('button, a[href], [tabindex]:not([tabindex="-1"])')?.focus()
-  }, [open, minimized, selectedId])
+    if (heading) {
+      heading.focus()
+      return
+    }
+    pillRef.current?.querySelector<HTMLElement>('button')?.focus()
+  }, [open, minimized])
 
   // Return focus to the trigger when the drawer fully closes.
   useEffect(() => {
@@ -378,7 +393,13 @@ export default function GuideDrawer({ open, onClose, triggerRef }: Props) {
         }`}
       >
         <div className="flex items-center justify-between px-4 pt-4 pb-3">
-          <span className="font-['Fraunces'] text-[17px] text-[#231d17]">Guide &amp; help</span>
+          <h2
+            ref={desktopHeadingRef}
+            tabIndex={-1}
+            className="font-['Fraunces'] text-[17px] text-[#231d17] focus:outline-none"
+          >
+            Guide &amp; help
+          </h2>
           <button
             onClick={onClose}
             aria-label="Close guide"
@@ -412,7 +433,13 @@ export default function GuideDrawer({ open, onClose, triggerRef }: Props) {
               <ChevronDown size={16} />
               <span className="w-9 h-1 rounded-full bg-[#e0d8c8] block" aria-hidden="true" />
             </button>
-            <span className="font-['Fraunces'] text-[15px] text-[#231d17]">Guide &amp; help</span>
+            <h2
+              ref={sheetHeadingRef}
+              tabIndex={-1}
+              className="font-['Fraunces'] text-[15px] text-[#231d17] focus:outline-none"
+            >
+              Guide &amp; help
+            </h2>
             <button
               onClick={onClose}
               aria-label="Close guide"

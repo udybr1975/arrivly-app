@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
 import {
@@ -17,8 +17,11 @@ import {
 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { ARRIVLY_CONFIG } from '../../config'
+import { moduleForPath } from '../../guide/content'
+import { GuideContext, type GuideContextValue } from '../../guide/guideContext'
 import Logo from './Logo'
 import GuideDrawer from './GuideDrawer'
+import PageHint from './PageHint'
 
 type NavEntry = { to: string; label: string; Icon: ComponentType<{ size?: number; className?: string }>; end?: boolean }
 
@@ -70,6 +73,10 @@ export default function Layout() {
   const [unread, setUnread] = useState(0)
   const [accountOpen, setAccountOpen] = useState(false)
   const [guideOpen, setGuideOpen] = useState(false)
+  const [requestedModuleId, setRequestedModuleId] = useState<string | null>(null)
+  const [userId, setUserId] = useState<string | null>(null)
+  const [dismissedHints, setDismissedHints] = useState<Record<string, boolean>>({})
+  const [uiReady, setUiReady] = useState(false)
   const hamburgerRef = useRef<HTMLButtonElement>(null)
   const asideRef = useRef<HTMLElement>(null)
   const accountRef = useRef<HTMLDivElement>(null)
@@ -93,12 +100,19 @@ export default function Layout() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
       setEmail(user.email ?? '')
+      setUserId(user.id)
       const { data } = await supabase
         .from('hosts')
-        .select('brand_name, trial_ends_at, subscription_status, stripe_subscription_id')
+        .select('brand_name, trial_ends_at, subscription_status, stripe_subscription_id, ui_state')
         .eq('id', user.id)
         .maybeSingle()
-      if (data) setHost(data)
+      if (mounted && data) {
+        setHost(data)
+        const ui = data.ui_state && typeof data.ui_state === 'object' ? data.ui_state : {}
+        const hints = ui.guideHints && typeof ui.guideHints === 'object' ? ui.guideHints : {}
+        setDismissedHints(hints as Record<string, boolean>)
+      }
+      if (mounted) setUiReady(true)
       await countUnread()
       if (mounted) intervalId = window.setInterval(countUnread, 30_000)
     }
@@ -193,6 +207,71 @@ export default function Layout() {
     navigate('/login', { replace: true })
   }
 
+  // ── Guide hints (persisted to hosts.ui_state.guideHints) ───────────────────
+  // Read-modify-write so any other ui_state keys are preserved; scoped to the
+  // owner's row; updates ONLY the ui_state column; errors are swallowed.
+  const persistHints = useCallback(
+    async (nextHints: Record<string, boolean>) => {
+      if (!userId) return
+      try {
+        const { data } = await supabase
+          .from('hosts')
+          .select('ui_state')
+          .eq('id', userId)
+          .maybeSingle()
+        const current = data?.ui_state && typeof data.ui_state === 'object' ? data.ui_state : {}
+        await supabase
+          .from('hosts')
+          .update({ ui_state: { ...current, guideHints: nextHints } })
+          .eq('id', userId)
+      } catch {
+        /* swallow — hint state is best-effort */
+      }
+    },
+    [userId],
+  )
+
+  const dismissHint = useCallback(
+    (moduleId: string) => {
+      const next = { ...dismissedHints, [moduleId]: true }
+      setDismissedHints(next)
+      void persistHints(next)
+    },
+    [dismissedHints, persistHints],
+  )
+
+  const restoreHint = useCallback(
+    (moduleId: string) => {
+      const next = { ...dismissedHints }
+      delete next[moduleId]
+      setDismissedHints(next)
+      void persistHints(next)
+    },
+    [dismissedHints, persistHints],
+  )
+
+  const isDismissed = useCallback((moduleId: string) => !!dismissedHints[moduleId], [dismissedHints])
+
+  const openGuide = useCallback((moduleId?: string) => {
+    setRequestedModuleId(moduleId ?? null)
+    setGuideOpen(true)
+    setMenuOpen(false)
+  }, [])
+
+  const guideValue = useMemo<GuideContextValue>(
+    () => ({ openGuide, isDismissed, dismissHint, restoreHint, uiReady }),
+    [openGuide, isDismissed, dismissHint, restoreHint, uiReady],
+  )
+
+  // Brass "unseen" dot on a nav item whose page hint isn't dismissed yet.
+  // Skips Home and any route with no (or coming-soon) module; gated on uiReady so
+  // dots never flash before the dismissed state has loaded.
+  const showHintDot = (to: string) => {
+    if (!uiReady || to === '/dashboard') return false
+    const mod = moduleForPath(to)
+    return !!mod && mod.status !== 'coming-soon' && !dismissedHints[mod.id]
+  }
+
   const trialRemaining = host?.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(host.trial_ends_at).getTime() - Date.now()) / 86_400_000))
     : 0
@@ -265,6 +344,13 @@ export default function Layout() {
                     <>
                       <Icon size={16} className={isActive ? 'text-[#c8a24e]' : 'text-[#9a9082]'} />
                       <span className="flex-1 truncate">{label}</span>
+                      {showHintDot(to) && (
+                        <span
+                          aria-hidden="true"
+                          title="New page tips"
+                          className="shrink-0 w-1.5 h-1.5 rounded-full bg-[#c8a24e]"
+                        />
+                      )}
                       {to === '/dashboard/messages' && unread > 0 && (
                         <span className="bg-[#c8a24e] text-[#16100d] text-[9px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
                           {unread}
@@ -299,6 +385,7 @@ export default function Layout() {
             <button
               ref={guideTriggerRef}
               onClick={() => {
+                setRequestedModuleId(null)
                 setGuideOpen((o) => !o)
                 setMenuOpen(false)
               }}
@@ -388,10 +475,18 @@ export default function Layout() {
 
       {/* Main — pt-16 clears the fixed mobile top bar; md restores normal padding */}
       <main className="flex-1 px-4 pb-8 pt-16 md:px-8 md:pt-8 overflow-auto min-w-0">
-        <Outlet />
+        <GuideContext.Provider value={guideValue}>
+          <PageHint />
+          <Outlet />
+        </GuideContext.Provider>
       </main>
 
-      <GuideDrawer open={guideOpen} onClose={() => setGuideOpen(false)} triggerRef={guideTriggerRef} />
+      <GuideDrawer
+        open={guideOpen}
+        onClose={() => setGuideOpen(false)}
+        triggerRef={guideTriggerRef}
+        requestedModuleId={requestedModuleId}
+      />
     </div>
   )
 }
