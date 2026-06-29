@@ -20,6 +20,7 @@ import Settings from './components/host/Settings'
 import Messages from './components/host/Messages'
 import GuestPage from './components/guest/GuestPage'
 import SuperAdmin from './components/admin/SuperAdmin'
+import Demo from './components/demo/Demo'
 import Landing from './components/Landing'
 import { ARRIVLY_CONFIG } from './config'
 
@@ -80,6 +81,7 @@ export default function App() {
           <Route path="/signup" element={<Signup />} />
           <Route path="/login" element={<Login />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/demo" element={<Demo />} />
           <Route path="/guest" element={<GuestPage />} />
 
           {/* Protected host routes */}

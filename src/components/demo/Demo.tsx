@@ -1,0 +1,430 @@
+import { useEffect, useRef, useState } from 'react'
+import { Navigate, useNavigate, Link } from 'react-router-dom'
+import { supabase } from '../../lib/supabase'
+import { api } from '../../lib/api'
+import AuthShell from '../auth/AuthShell'
+import TurnstileWidget from './TurnstileWidget'
+
+// Public, flag-gated demo ENTRY flow (no dashboard chrome). Off unless
+// VITE_DEMO_ENABLED === 'true'; otherwise this route redirects to "/".
+const DEMO_ENABLED = import.meta.env.VITE_DEMO_ENABLED === 'true'
+const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+const INPUT =
+  'w-full bg-white border border-[#e0dacd] rounded-[11px] px-[15px] py-[13px] text-sm text-[#1c1c1a] placeholder:text-[#b3ab9b] focus:outline-none focus:border-[#c8a24e] focus:ring-2 focus:ring-[#c8a24e]/20 transition-colors'
+const LABEL = 'block text-[11px] uppercase tracking-[.08em] text-[#8a8170] mb-1.5'
+const PRIMARY =
+  'group flex w-full items-center justify-center gap-2 bg-[#c8a24e] text-[#16100d] font-semibold rounded-[12px] py-[14px] text-sm transition-colors hover:bg-[#e7d6ad] disabled:opacity-40 disabled:hover:bg-[#c8a24e] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/50 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f7f3ec]'
+
+const DEMO_HEADLINE = (
+  <>
+    See it live,
+    <br />
+    <em className="text-[#e7d6ad]">in your city.</em>
+  </>
+)
+const DEMO_SUB =
+  'Spin up a real, branded guest page for your neighbourhood in under a minute — free for 48 hours, no card.'
+
+type Intent = 'create' | 'resume' | 'expired'
+type ApiResp = { ok?: boolean; reason?: string; resume?: boolean; apartmentId?: string; token?: string }
+
+function ArrowIcon() {
+  return (
+    <svg viewBox="0 0 24 24" className="h-4 w-4 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M5 12h14M13 6l6 6-6 6" />
+    </svg>
+  )
+}
+
+function ErrorLine({ children }: { children: React.ReactNode }) {
+  return (
+    <p role="alert" className="text-[12px] text-[#8a1a1a] bg-[#fde4e4] border border-[#f3c9c9] rounded-[9px] px-3 py-2.5">
+      {children}
+    </p>
+  )
+}
+
+function StepHeader({ n, label }: { n: number; label: string }) {
+  return (
+    <div className="mb-6">
+      <div className="flex items-center justify-between text-[11px] uppercase tracking-[.08em] text-[#8a8170]">
+        <span>Step {n} of 3 · {label}</span>
+      </div>
+      <div className="mt-2 h-1 w-full overflow-hidden rounded-full bg-[#e0dacd]">
+        <div className="h-full rounded-full bg-[#c8a24e] transition-all" style={{ width: `${(n / 3) * 100}%` }} />
+      </div>
+    </div>
+  )
+}
+
+// 6-digit one-time-code input with auto-advance, backspace, arrows and paste.
+function CodeBoxes({
+  code,
+  setCode,
+  disabled,
+  onComplete,
+}: {
+  code: string[]
+  setCode: React.Dispatch<React.SetStateAction<string[]>>
+  disabled: boolean
+  onComplete: () => void
+}) {
+  const refs = useRef<Array<HTMLInputElement | null>>([])
+  useEffect(() => {
+    refs.current[0]?.focus()
+  }, [])
+
+  function setDigit(i: number, v: string) {
+    const d = v.replace(/\D/g, '').slice(-1)
+    setCode((prev) => {
+      const n = [...prev]
+      n[i] = d
+      return n
+    })
+    if (d && i < 5) refs.current[i + 1]?.focus()
+  }
+
+  function onKeyDown(i: number, e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Backspace' && !code[i] && i > 0) refs.current[i - 1]?.focus()
+    else if (e.key === 'ArrowLeft' && i > 0) refs.current[i - 1]?.focus()
+    else if (e.key === 'ArrowRight' && i < 5) refs.current[i + 1]?.focus()
+    else if (e.key === 'Enter' && code.join('').length === 6) {
+      // Prevent the surrounding <form> from ALSO submitting (double verifyOtp on one
+      // single-use token). onComplete() owns the submit here.
+      e.preventDefault()
+      onComplete()
+    }
+  }
+
+  function onPaste(e: React.ClipboardEvent<HTMLInputElement>) {
+    const t = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
+    if (!t) return
+    e.preventDefault()
+    setCode(() => {
+      const n = Array(6).fill('')
+      for (let k = 0; k < t.length; k++) n[k] = t[k]
+      return n
+    })
+    refs.current[Math.min(t.length, 5)]?.focus()
+  }
+
+  return (
+    <div className="flex gap-2 justify-between" role="group" aria-label="6-digit verification code">
+      {code.map((c, i) => (
+        <input
+          key={i}
+          ref={(el) => { refs.current[i] = el }}
+          value={c}
+          onChange={(e) => setDigit(i, e.target.value)}
+          onKeyDown={(e) => onKeyDown(i, e)}
+          onPaste={onPaste}
+          inputMode="numeric"
+          autoComplete={i === 0 ? 'one-time-code' : 'off'}
+          maxLength={1}
+          disabled={disabled}
+          aria-label={`Digit ${i + 1}`}
+          className="w-full aspect-square text-center text-[20px] font-['Fraunces'] text-[#1c1c1a] bg-white border border-[#e0dacd] rounded-[11px] focus:outline-none focus:border-[#c8a24e] focus:ring-2 focus:ring-[#c8a24e]/20 transition-colors disabled:opacity-50"
+        />
+      ))}
+    </div>
+  )
+}
+
+export default function Demo() {
+  const navigate = useNavigate()
+
+  const [step, setStep] = useState<1 | 2 | 3>(1)
+  const [intent, setIntent] = useState<Intent>('create')
+  const [firstName, setFirstName] = useState('')
+  const [email, setEmail] = useState('')
+  const [city, setCity] = useState('')
+  const [neighbourhood, setNeighbourhood] = useState('')
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+  const [code, setCode] = useState<string[]>(['', '', '', '', '', ''])
+  const [blocked, setBlocked] = useState(false) // account_exists
+  const [expiredPrompt, setExpiredPrompt] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  // Synchronous in-flight guard: blocks a second verifyOtp before React flushes
+  // `loading` (Enter + form-submit, or a fast double-click on Verify).
+  const verifyingRef = useRef(false)
+
+  // Flag OFF → nothing publicly reachable.
+  if (!DEMO_ENABLED) return <Navigate to="/" replace />
+
+  async function startOtp(nextIntent: Intent): Promise<boolean> {
+    const { error: otpErr } = await supabase.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: {
+        shouldCreateUser: true,
+        ...(captchaToken ? { captchaToken } : {}),
+        data: { first_name: firstName.trim(), is_demo: true },
+      },
+    })
+    if (otpErr) {
+      setError('We couldn’t send your code. Please try again in a moment.')
+      return false
+    }
+    setIntent(nextIntent)
+    setCode(['', '', '', '', '', ''])
+    setStep(2)
+    return true
+  }
+
+  async function submitStep1(e: React.FormEvent) {
+    e.preventDefault()
+    setError('')
+    const em = email.trim().toLowerCase()
+    if (!firstName.trim()) return setError('Please enter your first name.')
+    if (!EMAIL_RE.test(em)) return setError('Please enter a valid email address.')
+    if (!city.trim() || !neighbourhood.trim()) return setError('Please add your city and neighbourhood.')
+
+    setLoading(true)
+    try {
+      const r = await api.post<ApiResp>('/demo-precheck', { email: em })
+      if (r.ok === false) {
+        if (r.reason === 'disposable_email') return setError('Please use a permanent email address (no temporary inboxes).')
+        if (r.reason === 'account_exists') return setBlocked(true)
+        if (r.reason === 'demo_expired') return setExpiredPrompt(true)
+        return setError('Something went wrong. Please try again.')
+      }
+      await startOtp(r.resume === true ? 'resume' : 'create')
+    } catch {
+      setError('Something went wrong. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function continueExpired() {
+    setError('')
+    setLoading(true)
+    try {
+      await startOtp('expired')
+      setExpiredPrompt(false)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function verify(e?: React.FormEvent) {
+    e?.preventDefault()
+    if (verifyingRef.current) return
+    const token = code.join('')
+    if (token.length !== 6) return setError('Enter the 6-digit code from your email.')
+    verifyingRef.current = true
+    setError('')
+    setLoading(true)
+    try {
+      const { error: vErr } = await supabase.auth.verifyOtp({ email: email.trim().toLowerCase(), token, type: 'email' })
+      if (vErr) return setError('That code didn’t work. Please check it and try again.')
+
+      if (intent === 'create') {
+        setStep(3)
+        return
+      }
+      if (intent === 'resume') {
+        const r = await api.post<ApiResp>('/demo-create', {})
+        if (r?.ok) return navigate('/dashboard')
+        return setError('We couldn’t resume your demo. Please try again.')
+      }
+      // intent === 'expired' → just sign in; the expired-demo wall is a later stage.
+      navigate('/dashboard')
+    } catch {
+      setError('Something went wrong. Please try again.')
+    } finally {
+      setLoading(false)
+      verifyingRef.current = false
+    }
+  }
+
+  async function choose(path: 'quick' | 'full') {
+    setError('')
+    setLoading(true)
+    try {
+      const r = await api.post<ApiResp>('/demo-create', {
+        city: city.trim(),
+        neighbourhood: neighbourhood.trim(),
+        path,
+      })
+      if (r?.ok) {
+        if (path === 'full' && r.apartmentId) return navigate(`/dashboard/property/${r.apartmentId}`)
+        return navigate('/dashboard')
+      }
+      if (r?.reason === 'not_eligible') return setError('This account can’t start a demo. Try signing in instead.')
+      setError('We couldn’t set up your demo. Please try again.')
+    } catch {
+      setError('We couldn’t set up your demo. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function resendCode() {
+    setError('')
+    setLoading(true)
+    try {
+      await startOtp(intent)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── account_exists: dead-end with a route to login ───────────────────────────
+  if (blocked) {
+    return (
+      <AuthShell headline={DEMO_HEADLINE} sub={DEMO_SUB}>
+        <h1 className="font-['Fraunces'] font-light text-[31px] leading-tight text-[#1c1c1a]">You already have an account</h1>
+        <p className="mt-3 text-sm leading-relaxed text-[#6f6757]">
+          There’s already an Arrivly account for <strong className="text-[#1c1c1a]">{email.trim().toLowerCase()}</strong>. Sign in to pick up where you left off.
+        </p>
+        <Link to="/login" className={`${PRIMARY} mt-7`}>
+          Go to sign in
+          <ArrowIcon />
+        </Link>
+        <button
+          type="button"
+          onClick={() => { setBlocked(false); setError('') }}
+          className="mt-4 w-full text-center text-[13px] font-medium text-[#a8842f] hover:text-[#c8a24e] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/40 rounded py-1"
+        >
+          Use a different email
+        </button>
+      </AuthShell>
+    )
+  }
+
+  return (
+    <AuthShell headline={DEMO_HEADLINE} sub={DEMO_SUB}>
+      {/* ── STEP 1: Your place ── */}
+      {step === 1 && (
+        <>
+          <StepHeader n={1} label="Your place" />
+          <h1 className="font-['Fraunces'] font-light text-[31px] leading-tight text-[#1c1c1a]">Try Arrivly free for 48 hours</h1>
+          <p className="mt-2 text-sm text-[#6f6757]">Tell us where, and we’ll build you a live guest page to explore. No card needed.</p>
+
+          {expiredPrompt ? (
+            <div className="mt-7">
+              <div className="rounded-[12px] border border-[#e7d6ad] bg-[#fffdf9] px-4 py-3.5 text-sm leading-relaxed text-[#6f6757]">
+                Your demo has ended — start your free trial to keep your page.
+              </div>
+              <button type="button" onClick={continueExpired} disabled={loading} className={`${PRIMARY} mt-5`}>
+                {loading ? 'One moment…' : 'Continue'}
+                {!loading && <ArrowIcon />}
+              </button>
+              <button
+                type="button"
+                onClick={() => { setExpiredPrompt(false); setError('') }}
+                className="mt-4 w-full text-center text-[13px] font-medium text-[#a8842f] hover:text-[#c8a24e] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/40 rounded py-1"
+              >
+                Use a different email
+              </button>
+              {error && <div className="mt-4"><ErrorLine>{error}</ErrorLine></div>}
+            </div>
+          ) : (
+            <form onSubmit={submitStep1} className="mt-7 space-y-4">
+              <div>
+                <label className={LABEL} htmlFor="demo-first">First name</label>
+                <input id="demo-first" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={INPUT} placeholder="Marco" autoComplete="given-name" autoFocus required />
+              </div>
+              <div>
+                <label className={LABEL} htmlFor="demo-email">Email address</label>
+                <input id="demo-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT} placeholder="you@example.com" autoComplete="email" required />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LABEL} htmlFor="demo-city">City</label>
+                  <input id="demo-city" type="text" value={city} onChange={(e) => setCity(e.target.value)} className={INPUT} placeholder="Helsinki" autoComplete="address-level2" required />
+                </div>
+                <div>
+                  <label className={LABEL} htmlFor="demo-hood">Neighbourhood</label>
+                  <input id="demo-hood" type="text" value={neighbourhood} onChange={(e) => setNeighbourhood(e.target.value)} className={INPUT} placeholder="Kallio" required />
+                </div>
+              </div>
+
+              {TURNSTILE_SITE_KEY && (
+                <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} onToken={setCaptchaToken} />
+              )}
+
+              {error && <ErrorLine>{error}</ErrorLine>}
+
+              <button type="submit" disabled={loading} className={PRIMARY}>
+                {loading ? 'Checking…' : 'Continue'}
+                {!loading && <ArrowIcon />}
+              </button>
+              <p className="text-center text-[12px] text-[#8a8170]">Free for 48 hours · No card · Cancel anytime</p>
+            </form>
+          )}
+
+          <p className="mt-6 text-center text-sm text-[#6f6757]">
+            Already have an account?{' '}
+            <Link to="/login" className="font-semibold text-[#a8842f] underline decoration-[#c8a24e]/40 underline-offset-2 hover:text-[#c8a24e]">Sign in</Link>
+          </p>
+        </>
+      )}
+
+      {/* ── STEP 2: Verify ── */}
+      {step === 2 && (
+        <>
+          <StepHeader n={2} label="Verify" />
+          <h1 className="font-['Fraunces'] font-light text-[31px] leading-tight text-[#1c1c1a]">Check your email</h1>
+          <p className="mt-2 text-sm text-[#6f6757]">We sent a 6-digit code to <strong className="text-[#1c1c1a]">{email.trim().toLowerCase()}</strong>. Enter it below.</p>
+
+          <form onSubmit={verify} className="mt-7 space-y-5">
+            <CodeBoxes code={code} setCode={setCode} disabled={loading} onComplete={() => verify()} />
+
+            {error && <ErrorLine>{error}</ErrorLine>}
+
+            <button type="submit" disabled={loading || code.join('').length !== 6} className={PRIMARY}>
+              {loading ? 'Verifying…' : 'Verify & continue'}
+              {!loading && <ArrowIcon />}
+            </button>
+          </form>
+
+          <p className="mt-6 text-center text-sm text-[#6f6757]">
+            Didn’t get it?{' '}
+            <button type="button" onClick={resendCode} disabled={loading} className="font-semibold text-[#a8842f] hover:text-[#c8a24e] transition-colors disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/40 rounded">Resend code</button>
+          </p>
+        </>
+      )}
+
+      {/* ── STEP 3: Choose (create only) ── */}
+      {step === 3 && (
+        <>
+          <StepHeader n={3} label="Choose" />
+          <h1 className="font-['Fraunces'] font-light text-[31px] leading-tight text-[#1c1c1a]">How should we set it up?</h1>
+          <p className="mt-2 text-sm text-[#6f6757]">Pick how much we pre-fill. You can change everything later.</p>
+
+          <div className="mt-7 space-y-3">
+            <button
+              type="button"
+              onClick={() => choose('quick')}
+              disabled={loading}
+              className="group w-full text-left rounded-[14px] border border-[#c8a24e] bg-[#fffdf9] p-4 transition-colors hover:bg-[#fbf6ea] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/40"
+            >
+              <div className="flex items-center justify-between">
+                <span className="font-['Fraunces'] text-[18px] text-[#1c1c1a]">Quick</span>
+                <span className="text-[10px] font-semibold uppercase tracking-[.08em] text-[#a8842f] bg-[rgba(200,162,78,0.16)] rounded-full px-2 py-0.5">Recommended</span>
+              </div>
+              <p className="mt-1 text-[13px] leading-[1.5] text-[#6f6757]">We auto-fill a neighbourhood guide, this week’s local events and a couple of host picks, so your page feels alive in seconds.</p>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => choose('full')}
+              disabled={loading}
+              className="group w-full text-left rounded-[14px] border border-[#e0dacd] bg-[#fffdf9] p-4 transition-colors hover:border-[#c8a24e] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/40"
+            >
+              <div className="font-['Fraunces'] text-[18px] text-[#1c1c1a]">Full setup</div>
+              <p className="mt-1 text-[13px] leading-[1.5] text-[#6f6757]">Start from a blank page and add everything yourself in the editor — WiFi, check-in, rules and picks.</p>
+            </button>
+          </div>
+
+          {loading && <p className="mt-5 text-center text-[13px] text-[#8a8170]">Setting up your demo…</p>}
+          {error && <div className="mt-5"><ErrorLine>{error}</ErrorLine></div>}
+        </>
+      )}
+    </AuthShell>
+  )
+}

@@ -149,11 +149,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const city = typeof body.city === 'string' ? body.city.trim() : ''
   const neighbourhood = typeof body.neighbourhood === 'string' ? body.neighbourhood.trim() : ''
   const path = body.path === 'quick' || body.path === 'full' ? body.path : ''
-  if (!city || city.length > MAX_FIELD) return res.status(400).json({ error: 'Invalid input' })
-  if (!neighbourhood || neighbourhood.length > MAX_FIELD) return res.status(400).json({ error: 'Invalid input' })
-  if (!path) return res.status(400).json({ error: 'Invalid input' })
+  // NOTE: city/neighbourhood/path are validated inside the CREATE branch only — the
+  // idempotent RESUME path is called with an empty body `{}` and never needs them.
 
-  // Service-role client only AFTER auth + validation. Never returned to the client.
+  // Service-role client only AFTER auth. Never returned to the client.
   const admin = createClient(supabaseUrl, serviceKey)
 
   const { data: host, error: hostErr } = await admin
@@ -198,14 +197,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ ok: true, resumed: true, apartmentId, token: tok })
     }
 
+    // ── CREATE-only input validation (resume above never reaches here) ────────
+    if (!city || city.length > MAX_FIELD) return res.status(400).json({ error: 'Invalid input' })
+    if (!neighbourhood || neighbourhood.length > MAX_FIELD) return res.status(400).json({ error: 'Invalid input' })
+    if (!path) return res.status(400).json({ error: 'Invalid input' })
+
     // ── ELIGIBILITY TO CREATE (deny-by-default) ───────────────────────────────
     const { count: aptCount } = await admin
       .from('apartments')
       .select('id', { count: 'exact', head: true })
       .eq('host_id', userId)
-    // `is_demo !== true` (not `=== false`) so a NULL is_demo is treated as non-demo —
-    // robust even if a host row wasn't backfilled to the column default.
+    // The user must ALSO be marked as a demo signup in their auth metadata. Only the
+    // /demo OTP flow sets user_metadata.is_demo=true; a normal trial signup never does,
+    // so a regular new host (same row-state: trial / no sub / 0 apartments) can NEVER be
+    // demo-ified here. `is_demo !== true` (not `=== false`) treats a NULL row value as
+    // non-demo even if a host row wasn't backfilled to the column default.
+    const isDemoMeta = authData.user.user_metadata?.is_demo === true
     const eligible =
+      isDemoMeta &&
       host.is_demo !== true &&
       host.subscription_status === 'trial' &&
       !host.stripe_subscription_id &&

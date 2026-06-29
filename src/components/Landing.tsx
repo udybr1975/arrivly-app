@@ -33,6 +33,10 @@ import {
 type Pricing = { trialDays: number; fromPriceEuros: number; currency: string }
 const DEFAULT_PRICING: Pricing = { trialDays: 14, fromPriceEuros: 10, currency: 'eur' }
 
+// Public demo entry — only live when the flag is exactly 'true'. Otherwise the
+// "See a live demo" button keeps its current inert behaviour.
+const DEMO_ENABLED = import.meta.env.VITE_DEMO_ENABLED === 'true'
+
 // Scroll-reveal wrapper: fades + lifts children into view once. Respects
 // prefers-reduced-motion (shows immediately, no animation) and is SSR-safe
 // (window only touched inside the client-only effect).
@@ -518,16 +522,24 @@ export default function Landing() {
                 {startLabel}
                 <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
-              {/* TODO(landing): wire "See a live demo" to the real demo guest page in a later session.
-                  Intentionally inert for now — marked aria-disabled so it isn't an a11y dead-end. */}
-              <button
-                type="button"
-                aria-disabled="true"
-                title="Live demo coming soon"
-                className="rounded-xl border border-[#2c2925] bg-[#23211d] px-6 py-3.5 text-[15px] text-[#f0ede6]/80 transition-colors hover:border-[#c8a24e]/40 hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
-              >
-                See a live demo
-              </button>
+              {/* "See a live demo" → /demo when the flag is on; inert otherwise. */}
+              {DEMO_ENABLED ? (
+                <Link
+                  to="/demo"
+                  className="rounded-xl border border-[#2c2925] bg-[#23211d] px-6 py-3.5 text-[15px] text-[#f0ede6]/80 transition-colors hover:border-[#c8a24e]/40 hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
+                >
+                  See a live demo
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  aria-disabled="true"
+                  title="Live demo coming soon"
+                  className="rounded-xl border border-[#2c2925] bg-[#23211d] px-6 py-3.5 text-[15px] text-[#f0ede6]/80 transition-colors hover:border-[#c8a24e]/40 hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
+                >
+                  See a live demo
+                </button>
+              )}
             </div>
             <div className="mt-4 text-[12px] text-[#f0ede6]/35">
               {pricing.trialDays}-day free trial · No card needed to start · Cancel anytime
@@ -772,16 +784,24 @@ export default function Landing() {
               {startLabel}
               <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
-            {/* TODO(landing): wire "See a live demo" to the real demo guest page in a later session.
-                Intentionally inert for now — marked aria-disabled so it isn't an a11y dead-end. */}
-            <button
-              type="button"
-              aria-disabled="true"
-              title="Live demo coming soon"
-              className="rounded-xl border border-[#2c2925] bg-[#23211d] px-7 py-4 text-[15px] text-[#f0ede6]/80 transition-colors hover:border-[#c8a24e]/40 hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
-            >
-              See a live demo
-            </button>
+            {/* "See a live demo" → /demo when the flag is on; inert otherwise. */}
+            {DEMO_ENABLED ? (
+              <Link
+                to="/demo"
+                className="rounded-xl border border-[#2c2925] bg-[#23211d] px-7 py-4 text-[15px] text-[#f0ede6]/80 transition-colors hover:border-[#c8a24e]/40 hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
+              >
+                See a live demo
+              </Link>
+            ) : (
+              <button
+                type="button"
+                aria-disabled="true"
+                title="Live demo coming soon"
+                className="rounded-xl border border-[#2c2925] bg-[#23211d] px-7 py-4 text-[15px] text-[#f0ede6]/80 transition-colors hover:border-[#c8a24e]/40 hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
+              >
+                See a live demo
+              </button>
+            )}
           </div>
         </div>
       </section>

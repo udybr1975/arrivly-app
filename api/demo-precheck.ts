@@ -88,6 +88,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (hosts.some((h) => h.is_demo === true && h.demo_expires_at && new Date(h.demo_expires_at).getTime() > now)) {
     return res.status(200).json({ ok: true, resume: true })
   }
-  // No real account, no live demo (none, or only expired demos) → fresh start allowed.
+  // A demo that has already ended → distinct signal so the UI can route to "start your
+  // trial" (this account can no longer fresh-create or resume a demo).
+  if (hosts.some((h) => h.is_demo === true && h.demo_expires_at && new Date(h.demo_expires_at).getTime() <= now)) {
+    return res.status(200).json({ ok: false, reason: 'demo_expired' })
+  }
+  // No host at all (or a demo host with no expiry recorded) → fresh start allowed.
   return res.status(200).json({ ok: true })
 }
