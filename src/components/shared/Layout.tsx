@@ -21,6 +21,7 @@ import { moduleForPath } from '../../guide/content'
 import { GuideContext, type GuideContextValue } from '../../guide/guideContext'
 import { demoRemaining } from '../demo/demoTime'
 import KeepDemoModal from '../demo/KeepDemoModal'
+import UpgradeWall from '../demo/UpgradeWall'
 import Logo from './Logo'
 import GuideDrawer from './GuideDrawer'
 import PageHint from './PageHint'
@@ -295,6 +296,11 @@ export default function Layout() {
   const showTrial = host?.subscription_status === 'trial' && trialRemaining > 0 && !isDemo
   const hasSub = !!host?.stripe_subscription_id
 
+  // Lapsed demo → the upgrade wall replaces the dashboard. Driven by the client clock
+  // (so it appears the instant the demo lapses) OR by the cron-set 'expired' status.
+  const demoExpired =
+    isDemo && (demoRemaining(host?.demo_expires_at, now).expired || host?.subscription_status === 'expired')
+
   const closeMenu = () => setMenuOpen(false)
 
   return (
@@ -516,8 +522,14 @@ export default function Layout() {
       {/* Main — pt-16 clears the fixed mobile top bar; md restores normal padding */}
       <main className="flex-1 px-4 pb-8 pt-16 md:px-8 md:pt-8 overflow-auto min-w-0">
         <GuideContext.Provider value={guideValue}>
-          <PageHint />
-          <Outlet />
+          {demoExpired ? (
+            <UpgradeWall onKeep={() => setKeepOpen(true)} onSignOut={signOut} />
+          ) : (
+            <>
+              <PageHint />
+              <Outlet />
+            </>
+          )}
         </GuideContext.Provider>
       </main>
 

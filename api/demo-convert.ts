@@ -104,6 +104,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Could not convert' })
     }
 
+    // Re-publish the demo apartment(s) — a host converting AFTER expiry had them hidden
+    // by the expiry cron. Idempotent (no-op if already visible). Best-effort: the flip
+    // above is the source of truth, so a republish hiccup must not fail the conversion.
+    const { error: visErr } = await admin
+      .from('apartments')
+      .update({ is_visible: true })
+      .eq('host_id', userId)
+    if (visErr) console.error('[demo-convert] republish failed —', scrub(visErr))
+
     return res.status(200).json({ ok: true })
   } catch (e) {
     console.error('[demo-convert] failed —', scrub(e))

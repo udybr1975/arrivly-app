@@ -6,6 +6,7 @@ import Loader from './Loader'
 interface HostMin {
   stripe_subscription_id: string | null
   is_exempt: boolean | null
+  is_demo: boolean | null
 }
 
 export default function PrivateRoute() {
@@ -28,7 +29,7 @@ export default function PrivateRoute() {
       setAuthed(true)
       const { data } = await supabase
         .from('hosts')
-        .select('stripe_subscription_id, is_exempt')
+        .select('stripe_subscription_id, is_exempt, is_demo')
         .eq('id', user.id)
         .maybeSingle()
       if (!cancelled) {
@@ -53,8 +54,11 @@ export default function PrivateRoute() {
   // A null host row (DB row not yet created or query failed) is treated as needsPlan:
   // better to land on /choose-plan than to show a broken dashboard.
   // undefined = still loading (handled above); null = row absent; HostMin = row found.
+  // DEMO hosts (is_demo=true) have no Stripe sub by design — they must reach the
+  // dashboard (and the expiry wall lives in Layout), so they bypass the /choose-plan
+  // gate. Non-demo hosts are completely unaffected.
   const needsPlan = host === null
-    || (host !== undefined && host.is_exempt !== true && !host.stripe_subscription_id)
+    || (host !== undefined && host.is_exempt !== true && host.is_demo !== true && !host.stripe_subscription_id)
 
   if (needsPlan && !onChoosePlan && !returnedFromCheckout) {
     return <Navigate to="/choose-plan" replace />
