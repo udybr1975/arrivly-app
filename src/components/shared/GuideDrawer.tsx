@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode, RefObject } from 'react'
 import { useLocation } from 'react-router-dom'
-import { X, ChevronLeft, ChevronUp, ChevronDown } from 'lucide-react'
+import { X, ChevronLeft, ChevronUp, ChevronDown, Send } from 'lucide-react'
 import {
   GUIDE_CATEGORIES,
   GUIDE_MODULES,
   moduleForPath,
   type GuideModule,
 } from '../../guide/content'
+import { api } from '../../lib/api'
 
 type Props = {
   open: boolean
@@ -286,28 +287,179 @@ function GuideBody({
   )
 }
 
-function Tabs() {
+type TabId = 'browse' | 'ask'
+
+function Tabs({ tab, onTab }: { tab: TabId; onTab: (t: TabId) => void }) {
+  const tabClass = (active: boolean) =>
+    `pb-2 border-b-2 text-[13px] ${focusRing} rounded-t transition-colors ${
+      active
+        ? 'border-[#c8a24e] font-semibold text-[#231d17]'
+        : 'border-transparent font-medium text-[#8a8276] hover:text-[#231d17]'
+    }`
   return (
     <div role="tablist" aria-label="Guide sections" className="flex items-end gap-4 border-b border-[#e9e4d9] px-4">
-      <button
-        role="tab"
-        aria-selected="true"
-        className={`pb-2 border-b-2 border-[#c8a24e] text-[13px] font-semibold text-[#231d17] ${focusRing} rounded-t`}
-      >
+      <button role="tab" aria-selected={tab === 'browse'} onClick={() => onTab('browse')} className={tabClass(tab === 'browse')}>
         Browse
       </button>
-      <button
-        role="tab"
-        aria-selected="false"
-        disabled
-        aria-disabled="true"
-        title="Available shortly"
-        className="pb-2 border-b-2 border-transparent text-[13px] font-medium text-[#b3aa9b] cursor-not-allowed"
-      >
+      <button role="tab" aria-selected={tab === 'ask'} onClick={() => onTab('ask')} className={tabClass(tab === 'ask')}>
         Ask Arrivly
-        <span className="ml-1.5 text-[10px] font-normal text-[#b3aa9b]">available shortly</span>
       </button>
     </div>
+  )
+}
+
+const ASK_SUGGESTIONS = [
+  'How do I add my first property?',
+  'What do guests see when they scan the QR?',
+  'How do I connect my Airbnb calendar?',
+]
+
+type AskMsg = { role: 'user' | 'assistant'; text: string }
+
+// "Ask Arrivly" — corpus-grounded help via /api/guide-assistant. State is local, so it
+// resets each time the drawer reopens (the drawer unmounts when closed). reportFocus
+// lets the mobile bottom sheet grow to fit the keyboard while the input is focused.
+function AskPanel({ reportFocus }: { reportFocus?: (focused: boolean) => void }) {
+  const [thread, setThread] = useState<AskMsg[]>([])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [errored, setErrored] = useState(false)
+  const scrollRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight })
+  }, [thread, loading])
+
+  const send = async (raw: string) => {
+    const q = raw.trim()
+    if (!q || loading) return
+    setErrored(false)
+    const priorHistory = thread.slice(-8)
+    setThread((t) => [...t, { role: 'user', text: q }])
+    setInput('')
+    setLoading(true)
+    try {
+      const data = await api.post<{ reply?: string; error?: string }>('/guide-assistant', {
+        message: q.slice(0, 600),
+        history: priorHistory,
+      })
+      if (data.reply) setThread((t) => [...t, { role: 'assistant', text: data.reply! }])
+      else setErrored(true)
+    } catch {
+      setErrored(true)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div
+      role="tabpanel"
+      aria-label="Ask Arrivly"
+      tabIndex={0}
+      className="flex-1 min-h-0 flex flex-col focus:outline-none"
+    >
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+        <p className="text-[12.5px] leading-[1.5] text-[#8a8276] mb-3">
+          Ask anything about Arrivly — I answer only from the guide, so I won't invent features or give general advice.
+        </p>
+
+        {thread.length === 0 ? (
+          <div className="flex flex-col gap-1.5">
+            {ASK_SUGGESTIONS.map((s) => (
+              <button
+                key={s}
+                onClick={() => send(s)}
+                className={`text-left rounded-[10px] border border-[#e9e4d9] bg-[#fffdf9] px-3 py-2 text-[12.5px] text-[#231d17] hover:border-[#c8a24e] transition-colors ${focusRing}`}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2.5">
+            {thread.map((m, i) => (
+              <div key={i} className={m.role === 'user' ? 'self-end max-w-[85%]' : 'self-start max-w-[92%]'}>
+                <div
+                  className={
+                    m.role === 'user'
+                      ? 'rounded-[12px] rounded-br-[4px] bg-[rgba(200,162,78,0.16)] text-[#231d17] px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap'
+                      : 'rounded-[12px] rounded-bl-[4px] bg-[#fffdf9] border border-[#e9e4d9] text-[#3f3b34] px-3 py-2 text-[13px] leading-[1.5] whitespace-pre-wrap'
+                  }
+                >
+                  {m.text}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {loading && <div className="self-start mt-2 text-[12px] text-[#8a8276] px-1">Thinking…</div>}
+        {errored && (
+          <div className="mt-2 text-[12px] text-[#8a1a1a] px-1">
+            Something went wrong — please try again in a moment.
+          </div>
+        )}
+      </div>
+
+      <div className="border-t border-[#e9e4d9] p-3">
+        <div className="flex items-center gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onFocus={() => reportFocus?.(true)}
+            onBlur={() => reportFocus?.(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                send(input)
+              }
+            }}
+            maxLength={600}
+            placeholder="Ask about Arrivly…"
+            aria-label="Ask Arrivly a question"
+            className="flex-1 rounded-[10px] border border-[#e9e4d9] bg-white px-3 py-2 text-[13px] text-[#231d17] placeholder:text-[#b3aa9b] focus:outline-none focus:border-[#c8a24e]"
+          />
+          <button
+            onClick={() => send(input)}
+            disabled={!input.trim() || loading}
+            aria-label="Send question"
+            className={`shrink-0 rounded-[10px] bg-[#c8a24e] hover:bg-[#a8842f] disabled:opacity-40 disabled:cursor-not-allowed text-[#16100d] p-2 transition-colors ${focusRing}`}
+          >
+            <Send size={16} />
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Tabs + the active panel. Tab state is local so it resets to Browse each open.
+function DrawerContent({
+  selected,
+  onSelect,
+  onBack,
+  reportAskFocus,
+}: {
+  selected: GuideModule | null
+  onSelect: (id: string) => void
+  onBack: () => void
+  reportAskFocus?: (focused: boolean) => void
+}) {
+  const [tab, setTab] = useState<TabId>('browse')
+  return (
+    <>
+      <Tabs tab={tab} onTab={setTab} />
+      <div className="flex-1 min-h-0 flex flex-col">
+        {tab === 'browse' ? (
+          <div role="tabpanel" aria-label="Browse" className="flex-1 overflow-y-auto px-4 py-4">
+            <GuideBody selected={selected} onSelect={onSelect} onBack={onBack} />
+          </div>
+        ) : (
+          <AskPanel reportFocus={reportAskFocus} />
+        )}
+      </div>
+    </>
   )
 }
 
@@ -317,6 +469,7 @@ export default function GuideDrawer({ open, onClose, triggerRef, requestedModule
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [minimized, setMinimized] = useState(false)
   const [entered, setEntered] = useState(false)
+  const [sheetExpanded, setSheetExpanded] = useState(false)
 
   const desktopRef = useRef<HTMLElement>(null)
   const sheetRef = useRef<HTMLElement>(null)
@@ -334,6 +487,7 @@ export default function GuideDrawer({ open, onClose, triggerRef, requestedModule
     if (!open) return
     setSelectedId(requestedModuleId ?? null)
     setMinimized(false)
+    setSheetExpanded(false)
   }, [open, requestedModuleId])
 
   // Slide-in: flip translate on the frame after mount (motion-reduce disables the transition).
@@ -408,10 +562,7 @@ export default function GuideDrawer({ open, onClose, triggerRef, requestedModule
             <X size={18} />
           </button>
         </div>
-        <Tabs />
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          <GuideBody selected={selected} onSelect={onSelect} onBack={onBack} />
-        </div>
+        <DrawerContent selected={selected} onSelect={onSelect} onBack={onBack} />
       </aside>
 
       {/* Mobile — bottom sheet at 40% height, app usable above */}
@@ -420,9 +571,9 @@ export default function GuideDrawer({ open, onClose, triggerRef, requestedModule
           ref={sheetRef}
           role="complementary"
           aria-label="Guide and help"
-          className={`md:hidden fixed inset-x-0 bottom-0 z-40 h-[40vh] flex flex-col bg-[#fffdf9] border-t border-[#e4ddd0] rounded-t-[18px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] transition-transform duration-200 motion-reduce:transition-none ${
-            entered ? 'translate-y-0' : 'translate-y-full'
-          }`}
+          className={`md:hidden fixed inset-x-0 bottom-0 z-40 flex flex-col bg-[#fffdf9] border-t border-[#e4ddd0] rounded-t-[18px] shadow-[0_-12px_40px_rgba(0,0,0,0.18)] transition-[transform,height] duration-200 motion-reduce:transition-none ${
+            sheetExpanded ? 'h-[85vh]' : 'h-[40vh]'
+          } ${entered ? 'translate-y-0' : 'translate-y-full'}`}
         >
           <div className="flex items-center justify-between px-4 pt-2 pb-2">
             <button
@@ -448,10 +599,12 @@ export default function GuideDrawer({ open, onClose, triggerRef, requestedModule
               <X size={18} />
             </button>
           </div>
-          <Tabs />
-          <div className="flex-1 overflow-y-auto px-4 py-4">
-            <GuideBody selected={selected} onSelect={onSelect} onBack={onBack} />
-          </div>
+          <DrawerContent
+            selected={selected}
+            onSelect={onSelect}
+            onBack={onBack}
+            reportAskFocus={setSheetExpanded}
+          />
         </aside>
       )}
 
