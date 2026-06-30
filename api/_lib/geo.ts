@@ -33,9 +33,12 @@ function rateGate(): Promise<void> {
 interface LocationIQResult {
   lat: string
   lon: string
+  address?: { country?: string }
 }
 
-export async function geocodeAddress(query: string): Promise<{ lat: number; lng: number } | null> {
+export async function geocodeAddress(
+  query: string,
+): Promise<{ lat: number; lng: number; country?: string | null } | null> {
   const apiKey = process.env.LOCATIONIQ_API_KEY
   if (!apiKey) return null
 
@@ -48,7 +51,7 @@ export async function geocodeAddress(query: string): Promise<{ lat: number; lng:
   try {
     // EU forward geocoding. The key is in the URL — keep this path SILENT (no
     // logging anywhere below) so the key is never written to logs.
-    const url = `https://eu1.locationiq.com/v1/search?key=${apiKey}&q=${encodeURIComponent(query)}&format=json&limit=1`
+    const url = `https://eu1.locationiq.com/v1/search?key=${apiKey}&q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1`
     const response = await fetch(url, {
       signal: controller.signal,
       headers: { accept: 'application/json' },
@@ -61,7 +64,8 @@ export async function geocodeAddress(query: string): Promise<{ lat: number; lng:
     const lat = Number(data[0].lat)
     const lng = Number(data[0].lon)
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
-    return { lat, lng }
+    // Additive field — existing callers that read only lat/lng are unaffected.
+    return { lat, lng, country: data[0].address?.country ?? null }
   } catch {
     // Abort, network error, parse error → null. Stay silent.
     return null

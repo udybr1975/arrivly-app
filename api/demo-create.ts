@@ -100,6 +100,8 @@ async function createDemoApartment(
     .insert({
       host_id: userId,
       name: `Your ${neighbourhood} apartment`,
+      // Country derived from the geocoder (Basics tab marks it required); null on a miss.
+      country: coords?.country ?? null,
       city,
       neighborhood: neighbourhood,
       street: hasStreet ? street : null,
