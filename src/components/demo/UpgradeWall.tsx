@@ -16,6 +16,11 @@ const BTN_BRASS =
   'w-full text-[13px] font-semibold py-2.5 rounded-[10px] transition-colors bg-[#c8a24e] text-[#16100d] hover:bg-[#e7d6ad] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/50'
 const BTN_QUIET =
   'w-full text-[13px] font-semibold py-2.5 rounded-[10px] transition-colors bg-transparent border border-[#e4ddd0] text-[#231d17] hover:bg-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/40'
+// Disabled "Coming soon" CTA — mirrors ChoosePlan exactly (tier 4 / Pro is not yet live).
+const BTN_DISABLED_CREAM =
+  'w-full text-[13px] font-semibold py-2.5 rounded-[10px] bg-[#ece6da] text-[#a79e8e] cursor-not-allowed'
+const BTN_DISABLED_FEATURED =
+  'w-full text-[13px] font-semibold py-2.5 rounded-[10px] bg-[rgba(247,243,236,0.10)] text-[#8f887b] cursor-not-allowed'
 
 interface Plan {
   tier: number
@@ -81,7 +86,13 @@ export default function UpgradeWall({ onKeep, onSignOut }: { onKeep: (tier: numb
               plan.max_properties === null
                 ? 'Unlimited properties'
                 : `Up to ${plan.max_properties} ${plan.max_properties === 1 ? 'property' : 'properties'}`
-            const cta = (
+            // Mirror ChoosePlan: tier 4 (Pro) isn't live → disabled "Coming soon", no onKeep.
+            const isDisabled = plan.tier === 4
+            const cta = isDisabled ? (
+              <button disabled className={featured ? BTN_DISABLED_FEATURED : BTN_DISABLED_CREAM}>
+                Coming soon
+              </button>
+            ) : (
               <button onClick={() => onKeep(plan.tier)} className={featured ? BTN_BRASS : BTN_QUIET}>
                 Start my free trial
               </button>
@@ -95,6 +106,7 @@ export default function UpgradeWall({ onKeep, onSignOut }: { onKeep: (tier: numb
                 capacityLabel={capacity}
                 bullets={copy.bullets}
                 featured={featured}
+                comingSoonTag={isDisabled}
                 cta={cta}
               />
             )
