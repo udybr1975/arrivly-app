@@ -100,13 +100,13 @@ export function demoEndedEmail(opts: { firstName: string | null; appUrl: string 
   const who = opts.firstName?.trim() ? opts.firstName.trim() : 'there'
   const dashUrl = `${opts.appUrl.replace(/\/$/, '')}/dashboard`
   const html = layout(
-    'Your demo has ended — your page is saved',
+    'Your demo has ended',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0 0 12px;">Your 48-hour Arrivly demo has ended — but <strong>everything you built is saved</strong>: your property, your guest page, your guide and your picks.</p>
-     <p style="margin:0;">Start your free 14-day trial to bring your guest page back to life. No card needed.</p>`,
+     <p style="margin:0 0 12px;">Your 48-hour Arrivly demo has ended. Everything you built — your property, your guest page, your guide and your picks — is saved <strong>for now</strong>.</p>
+     <p style="margin:0;">Start your free 14-day trial <strong>within 24 hours</strong> to keep your page and everything on it. After that, the demo and its data are permanently removed. No card needed.</p>`,
     'Start my free trial', dashUrl)
-  const text = `Hi ${who},\n\nYour 48-hour Arrivly demo has ended — but everything you built is saved: your property, your guest page, your guide and your picks.\n\nStart your free 14-day trial to bring your guest page back to life. No card needed.\n\nStart my free trial: ${dashUrl}\n\nArrivly`
-  return { subject: 'Your Arrivly demo has ended — your page is saved', html, text }
+  const text = `Hi ${who},\n\nYour 48-hour Arrivly demo has ended. Everything you built — your property, your guest page, your guide and your picks — is saved for now.\n\nStart your free 14-day trial within 24 hours to keep your page and everything on it. After that, the demo and its data are permanently removed. No card needed.\n\nStart my free trial: ${dashUrl}\n\nArrivly`
+  return { subject: 'Your Arrivly demo has ended — start your trial within 24 hours to keep it', html, text }
 }
 
 // ─── Webhook apply-time builders ───
