@@ -5,6 +5,7 @@ import { geocodeAddress } from './_lib/geo.js'
 import { generateGuideForApartment } from './_lib/guide.js'
 import { generateCityEvents } from './_lib/city-events.js'
 import { verifyTurnstile } from './_lib/turnstile.js'
+import { fetchCityImage } from './_lib/city-image.js'
 
 // Host-auth endpoint: turns a fresh trial host into a free 48h DEMO and seeds a
 // ready-to-explore guest page (one apartment + one active "Alex" booking, optionally
@@ -16,6 +17,19 @@ import { verifyTurnstile } from './_lib/turnstile.js'
 
 const DEFAULT_DEMO_HOURS = 48
 const MAX_FIELD = 120
+
+// Static, city-agnostic showcase content — identical for every demo (NOT AI-generated),
+// seeded on BOTH the Quick and Full paths so the guest page + editor are fully populated.
+const HOUSE_RULES = `Make yourself completely at home — this is your space for the stay. A few gentle requests so the next guests arrive to the same warm welcome you did:
+- Check-out is by 11:00. If you need a little longer, just message and we'll do our best.
+- Quiet hours are 22:00–08:00. Please keep things calm for the neighbours late at night.
+- No smoking anywhere indoors — you're very welcome to smoke on the balcony or outside.
+- No parties or events, please. Small gatherings are fine; loud ones aren't.
+- Please switch off the A/C and lights when you head out, and don't move large furniture.
+- Rubbish and recycling go in the bins by the entrance — bags are under the kitchen sink.
+Thank you for treating the home with care. Anything you need, we're a message away.`
+
+const ENTRY_INSTRUCTIONS = `The building entrance is at the address on your booking. Take the lift to the 3rd floor — the apartment is door 3B on your right. The apartment key is in the small lockbox beside the door (code 7310); please return it there on departure. If anything doesn't work on arrival, message your host right here and we'll sort it immediately.`
 
 // Same alphabet/shape as create-booking's randomRef (Crockford-ish, no ambiguous chars).
 function randomRef(): string {
@@ -71,9 +85,16 @@ async function createDemoApartment(
   userId: string,
   city: string,
   neighbourhood: string,
+  street = '',
+  streetNumber = '',
 ): Promise<string> {
-  // Best-effort geocode — the apartment is created either way.
-  const coords = await geocodeAddress(`${neighbourhood}, ${city}`)
+  // Best-effort geocode — the apartment is created either way. With a street, geocode
+  // door-level; otherwise keep the neighbourhood-centroid lookup (unchanged).
+  const hasStreet = street.length > 0
+  const query = hasStreet
+    ? `${street} ${streetNumber}, ${neighbourhood}, ${city}`.replace(/\s+/g, ' ').trim()
+    : `${neighbourhood}, ${city}`
+  const coords = await geocodeAddress(query)
   const { data, error } = await admin
     .from('apartments')
     .insert({
@@ -81,6 +102,8 @@ async function createDemoApartment(
       name: `Your ${neighbourhood} apartment`,
       city,
       neighborhood: neighbourhood,
+      street: hasStreet ? street : null,
+      street_number: hasStreet && streetNumber ? streetNumber : null,
       max_guests: 2,
       is_visible: true,
       lat: coords?.lat ?? null,
@@ -91,6 +114,21 @@ async function createDemoApartment(
     .single()
   if (error || !data) throw new Error(`apartment insert failed — ${error?.message?.slice(0, 120) ?? 'unknown'}`)
   return data.id as string
+}
+
+// Static showcase apartment_details — the EXACT category strings/formats the dashboard
+// editor (PropertySetup) reads, so they appear in the WiFi / House rules / Check-in tabs
+// AND on the guest page. Best-effort; the caller wraps this in one try/catch.
+async function seedShowcaseDetails(admin: SupabaseClient, apartmentId: string): Promise<void> {
+  const { error } = await admin.from('apartment_details').insert([
+    { apartment_id: apartmentId, category: 'WiFi', is_private: false, content: 'Network: ArrivlyStay\nPassword: WelcomeHome2026' },
+    { apartment_id: apartmentId, category: 'House Rules', is_private: false, content: HOUSE_RULES },
+    { apartment_id: apartmentId, category: 'Check-in', is_private: true, content: 'Check-in from: 15:00' },
+    { apartment_id: apartmentId, category: 'Check-in', is_private: true, content: 'Check-out by: 11:00' },
+    { apartment_id: apartmentId, category: 'Check-in', is_private: true, content: 'Door code: 2049#' },
+    { apartment_id: apartmentId, category: 'Check-in', is_private: true, content: ENTRY_INSTRUCTIONS },
+  ])
+  if (error) throw new Error(`details insert failed — ${error.message?.slice(0, 120)}`)
 }
 
 // Seed one active sample booking (guest "Alex", spanning a 48h demo). Fresh guest row
@@ -146,11 +184,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(429).json({ error: 'rate_limited' })
   }
 
-  const body = (req.body ?? {}) as { city?: unknown; neighbourhood?: unknown; path?: unknown; turnstileToken?: unknown }
+  const body = (req.body ?? {}) as {
+    city?: unknown; neighbourhood?: unknown; path?: unknown; turnstileToken?: unknown
+    street?: unknown; streetNumber?: unknown
+  }
   const city = typeof body.city === 'string' ? body.city.trim() : ''
   const neighbourhood = typeof body.neighbourhood === 'string' ? body.neighbourhood.trim() : ''
   const path = body.path === 'quick' || body.path === 'full' ? body.path : ''
   const turnstileToken = typeof body.turnstileToken === 'string' ? body.turnstileToken : ''
+  // OPTIONAL door-level address (CREATE branch only). Absence is valid → centroid geocode.
+  const street = typeof body.street === 'string' ? body.street.trim() : ''
+  const streetNumber = typeof body.streetNumber === 'string' ? body.streetNumber.trim() : ''
   // NOTE: city/neighbourhood/path + the captcha token are used inside the CREATE branch
   // only — the idempotent RESUME path is called with an empty body `{}` and never needs
   // them (resume does no AI spend, so it is captcha-exempt).
@@ -204,6 +248,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!city || city.length > MAX_FIELD) return res.status(400).json({ error: 'Invalid input' })
     if (!neighbourhood || neighbourhood.length > MAX_FIELD) return res.status(400).json({ error: 'Invalid input' })
     if (!path) return res.status(400).json({ error: 'Invalid input' })
+    // Street / street number are OPTIONAL; only their length is bounded when present.
+    if (street.length > MAX_FIELD || streetNumber.length > MAX_FIELD) return res.status(400).json({ error: 'Invalid input' })
 
     // ── CAPTCHA (the money gate) — verify BEFORE the eligibility check, any host
     // mutation, apartment creation, or AI spend. Fail-closed (false on missing token /
@@ -256,8 +302,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(500).json({ error: 'Could not start demo' })
     }
 
-    const apartmentId = await createDemoApartment(admin, userId, city, neighbourhood)
+    const apartmentId = await createDemoApartment(admin, userId, city, neighbourhood, street, streetNumber)
     const tok = await seedActiveBooking(admin, apartmentId)
+
+    // Static showcase details (WiFi / House rules / Check-in) — same for every demo on
+    // BOTH paths, NOT AI-generated. Best-effort (one try/catch, non-fatal).
+    try {
+      await seedShowcaseDetails(admin, apartmentId)
+    } catch (e) {
+      console.warn('[demo-create] details seed failed (non-fatal) —', scrub(e))
+    }
+
+    // City hero image (BOTH paths) via the shared Unsplash-by-city logic. Best-effort:
+    // the guest page already renders the credit when city_image_url is used.
+    try {
+      const ci = await fetchCityImage(city)
+      if (ci) {
+        await admin
+          .from('apartments')
+          .update({ city_image_url: ci.imageUrl, city_image_credit: ci.credit })
+          .eq('id', apartmentId)
+          .eq('host_id', userId)
+      }
+    } catch (e) {
+      console.warn('[demo-create] city image seed failed (non-fatal) —', scrub(e))
+    }
 
     // QUICK path: best-effort AI seeding. Each step is isolated — a generation failure
     // must NEVER fail demo creation (the demo works without them). FULL path skips all AI.

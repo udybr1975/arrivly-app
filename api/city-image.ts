@@ -1,16 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-
-interface UnsplashPhoto {
-  urls: { raw: string }
-  user: { name: string; links: { html: string } }
-  links: { download_location: string }
-}
-interface UnsplashSearch {
-  results?: UnsplashPhoto[]
-}
-
-const APP_NAME = 'Arrivly'
+import { fetchCityImage } from './_lib/city-image.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -49,45 +39,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const city = (apt.city ?? '').trim()
   if (!city) return res.status(200).json({ skipped: 'no city' })
 
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), 4000)
-  try {
-    const query = encodeURIComponent(`${city} city`)
-    const searchUrl = `https://api.unsplash.com/search/photos?query=${query}&per_page=10&orientation=landscape&content_filter=high`
-    const r = await fetch(searchUrl, {
-      headers: { Authorization: `Client-ID ${accessKey}` },
-      signal: controller.signal,
-    })
-    if (!r.ok) return res.status(200).json({ skipped: 'search unavailable' })
+  // Shared best-effort Unsplash fetch (collapses the prior granular skip reasons to null).
+  const result = await fetchCityImage(city)
+  if (!result) return res.status(200).json({ skipped: 'unavailable' })
 
-    const data = await r.json() as UnsplashSearch
-    const photo = data.results?.[0]
-    if (!photo) return res.status(200).json({ skipped: 'no results' })
+  const { error: updateError } = await db.from('apartments')
+    .update({ city_image_url: result.imageUrl, city_image_credit: result.credit })
+    .eq('id', apartmentId)
+    .eq('host_id', authData.user.id)
+  if (updateError) return res.status(200).json({ skipped: 'request failed' })
 
-    const imageUrl = `${photo.urls.raw}&w=1600&q=80&auto=format&fit=crop`
-    const utm = `utm_source=${APP_NAME}&utm_medium=referral`
-    const photographerUrl = photo.user.links.html.startsWith('https://') ? photo.user.links.html : 'https://unsplash.com'
-    const credit = JSON.stringify({
-      name: photo.user.name,
-      userLink: `${photographerUrl}?${utm}`,
-      unsplashLink: `https://unsplash.com/?${utm}`,
-    })
-
-    const { error: updateError } = await db.from('apartments')
-      .update({ city_image_url: imageUrl, city_image_credit: credit })
-      .eq('id', apartmentId)
-      .eq('host_id', authData.user.id)
-    if (updateError) throw updateError
-
-    // Unsplash guideline: register a download when a photo is used. Best-effort.
-    if (photo.links.download_location.startsWith('https://api.unsplash.com/')) {
-      fetch(`${photo.links.download_location}?client_id=${accessKey}`).catch(() => {})
-    }
-
-    return res.status(200).json({ url: imageUrl })
-  } catch {
-    return res.status(200).json({ skipped: 'request failed' })
-  } finally {
-    clearTimeout(timeout)
-  }
+  return res.status(200).json({ url: result.imageUrl })
 }

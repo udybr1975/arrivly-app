@@ -152,6 +152,8 @@ export default function Demo() {
   const [email, setEmail] = useState('')
   const [city, setCity] = useState('')
   const [neighbourhood, setNeighbourhood] = useState('')
+  const [street, setStreet] = useState('')
+  const [streetNumber, setStreetNumber] = useState('')
   const [captchaToken, setCaptchaToken] = useState<string | null>(null)
   // A SEPARATE, fresh token captured on the final Choose step — Turnstile tokens are
   // single-use/short-lived, so the step-1 token is stale by the time we POST create.
@@ -268,6 +270,8 @@ export default function Demo() {
       const r = await api.post<ApiResp>('/demo-create', {
         city: city.trim(),
         neighbourhood: neighbourhood.trim(),
+        street: street.trim(),
+        streetNumber: streetNumber.trim(),
         path,
         turnstileToken: choiceToken ?? '',
       })
@@ -369,6 +373,17 @@ export default function Demo() {
                   <input id="demo-hood" type="text" value={neighbourhood} onChange={(e) => setNeighbourhood(e.target.value)} className={INPUT} placeholder="Kallio" required />
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={LABEL} htmlFor="demo-street">Street</label>
+                  <input id="demo-street" type="text" value={street} onChange={(e) => setStreet(e.target.value)} className={INPUT} placeholder="Runeberginkatu" autoComplete="address-line1" />
+                </div>
+                <div>
+                  <label className={LABEL} htmlFor="demo-streetno">Street number</label>
+                  <input id="demo-streetno" type="text" value={streetNumber} onChange={(e) => setStreetNumber(e.target.value)} className={INPUT} placeholder="17" autoComplete="address-line2" />
+                </div>
+              </div>
+              <p className="-mt-1 text-[12px] text-[#8a8170]">Optional — adds turn-by-turn directions for your guests.</p>
 
               {TURNSTILE_SITE_KEY && (
                 <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} onToken={setCaptchaToken} />
