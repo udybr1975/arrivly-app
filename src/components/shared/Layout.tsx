@@ -83,6 +83,9 @@ export default function Layout() {
   const [dismissedHints, setDismissedHints] = useState<Record<string, boolean>>({})
   const [uiReady, setUiReady] = useState(false)
   const [keepOpen, setKeepOpen] = useState(false)
+  // Tier chosen on the expired upgrade wall (drives the modal → Stripe Checkout for that
+  // tier); null = active 'keep it' with no plan chosen yet → modal routes to /choose-plan.
+  const [selectedTier, setSelectedTier] = useState<number | null>(null)
   const [now, setNow] = useState(() => Date.now())
   const hamburgerRef = useRef<HTMLButtonElement>(null)
   const asideRef = useRef<HTMLElement>(null)
@@ -442,7 +445,7 @@ export default function Layout() {
                   {expired ? 'Start a trial to keep your page' : 'Everything you build is saved'}
                 </div>
                 <button
-                  onClick={() => { setKeepOpen(true); closeMenu() }}
+                  onClick={() => { setSelectedTier(null); setKeepOpen(true); closeMenu() }}
                   className="block w-full text-center py-2 rounded-[8px] text-[11px] font-semibold bg-[#c8a24e] text-[#16100d] hover:bg-[#e7d6ad] transition-colors"
                 >
                   Start free trial
@@ -523,7 +526,10 @@ export default function Layout() {
       <main className="flex-1 px-4 pb-8 pt-16 md:px-8 md:pt-8 overflow-auto min-w-0">
         <GuideContext.Provider value={guideValue}>
           {demoExpired ? (
-            <UpgradeWall onKeep={() => setKeepOpen(true)} onSignOut={signOut} />
+            <UpgradeWall
+              onKeep={(tier) => { setSelectedTier(tier >= 1 ? tier : null); setKeepOpen(true) }}
+              onSignOut={signOut}
+            />
           ) : (
             <>
               <PageHint />
@@ -540,7 +546,7 @@ export default function Layout() {
         requestedModuleId={requestedModuleId}
       />
 
-      <KeepDemoModal open={keepOpen} onClose={() => setKeepOpen(false)} />
+      <KeepDemoModal open={keepOpen} onClose={() => { setKeepOpen(false); setSelectedTier(null) }} tier={selectedTier} />
     </div>
   )
 }

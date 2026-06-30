@@ -4,16 +4,21 @@ import { api } from '../../lib/api'
 
 // Reusable "keep your demo" → convert-to-trial dialog. Sets the password client-side via
 // Supabase auth, then calls /api/demo-convert (which never sees the password) to flip the
-// host from demo to a normal 14-day trial. Also used by the expiry wall in a later stage.
+// host from demo to a normal trial (and re-set the trial baseline + re-publish). It then
+// follows the SAME path a normal new host takes:
+//   • a tier was chosen (expired wall) → /create-subscription { tier, flow:'signup' } →
+//     straight to Stripe Checkout for that tier (free until the trial end, card captured
+//     now). On any failure, fall through to /choose-plan (no dead-end).
+//   • no tier (active 'keep it') → /choose-plan, the standard new-host plan picker.
 // a11y: role=dialog + aria-modal, Escape to close, focus trap, return focus on close.
 
 const INPUT =
   'w-full bg-white border border-[#e0dacd] rounded-[11px] px-[15px] py-[13px] text-sm text-[#1c1c1a] placeholder:text-[#b3ab9b] focus:outline-none focus:border-[#c8a24e] focus:ring-2 focus:ring-[#c8a24e]/20 transition-colors'
 const LABEL = 'block text-[11px] uppercase tracking-[.08em] text-[#8a8170] mb-1.5'
 
-type Props = { open: boolean; onClose: () => void }
+type Props = { open: boolean; onClose: () => void; tier?: number | null }
 
-export default function KeepDemoModal({ open, onClose }: Props) {
+export default function KeepDemoModal({ open, onClose, tier }: Props) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -100,8 +105,27 @@ export default function KeepDemoModal({ open, onClose }: Props) {
         return
       }
       setDone(true)
-      // Full reload so Layout + Dashboard re-fetch the now-normal (non-demo) host state.
-      window.location.assign('/dashboard')
+
+      // Converted (is_demo cleared, apartments re-published, trial baseline set). Now take
+      // the same route a normal new host takes — full navigation so Layout/PrivateRoute
+      // re-evaluate against the now-non-demo host.
+      if (typeof tier === 'number' && tier >= 1) {
+        // A plan was chosen on the expired wall → straight to Stripe Checkout for that tier
+        // (create-subscription reads the host's fresh trial_ends_at as the Stripe trial_end).
+        try {
+          const sub = await api.post<{ url?: string }>('/create-subscription', { tier, flow: 'signup' })
+          if (sub?.url) {
+            window.location.href = sub.url
+            return
+          }
+        } catch {
+          // fall through to /choose-plan so they can retry
+        }
+        window.location.assign('/choose-plan')
+        return
+      }
+      // Active 'keep it' (no plan chosen) → the standard new-host plan picker.
+      window.location.assign('/choose-plan')
     } catch {
       setError('Something went wrong. Please try again.')
     } finally {
@@ -126,7 +150,7 @@ export default function KeepDemoModal({ open, onClose }: Props) {
           Keep your page
         </h2>
         <p className="mt-2 text-[13px] leading-relaxed text-[#6b6354]">
-          Set a password and your demo becomes a full account — everything you’ve built is saved, with 14 days free and no card.
+          Set a password and your demo becomes a full account — everything you’ve built is saved. 14-day free trial — card added at checkout, no charge today, cancel anytime.
         </p>
 
         <form onSubmit={submit} className="mt-6 space-y-4">

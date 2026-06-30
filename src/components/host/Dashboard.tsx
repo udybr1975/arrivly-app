@@ -728,7 +728,7 @@ export default function Dashboard() {
         )}
       </div>
 
-      <KeepDemoModal open={keepOpen} onClose={() => setKeepOpen(false)} />
+      <KeepDemoModal open={keepOpen} onClose={() => setKeepOpen(false)} tier={null} />
     </div>
   )
 }
