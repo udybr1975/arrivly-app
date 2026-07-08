@@ -3,6 +3,7 @@ import { Navigate, useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import AuthShell from '../auth/AuthShell'
+import SocialAuthButtons from '../auth/SocialAuthButtons'
 import TurnstileWidget from './TurnstileWidget'
 
 // Public, flag-gated demo ENTRY flow (no dashboard chrome). Off unless
@@ -28,7 +29,43 @@ const DEMO_SUB =
   'Spin up a real, branded guest page for your neighbourhood in under a minute — free for 48 hours, no card.'
 
 type Intent = 'create' | 'resume' | 'expired'
-type ApiResp = { ok?: boolean; reason?: string; resume?: boolean; apartmentId?: string; token?: string }
+type ApiResp = { ok?: boolean; reason?: string; resume?: boolean; apartmentId?: string; token?: string; already?: boolean }
+
+// Shared demo-intent handoff across the Google OAuth round-trip (/demo → Google →
+// /auth/callback → /demo). sessionStorage so it dies with the tab; stale after 30 min.
+const DEMO_INTENT_KEY = 'arrivly_demo_intent'
+const DEMO_INTENT_TTL_MS = 30 * 60 * 1000
+type DemoIntent = { city: string; neighbourhood: string; street: string; streetNumber: string; firstName: string; ts: number }
+
+function readDemoIntent(): DemoIntent | null {
+  try {
+    const raw = sessionStorage.getItem(DEMO_INTENT_KEY)
+    if (!raw) return null
+    const p = JSON.parse(raw)
+    if (
+      p && typeof p.ts === 'number' && Date.now() - p.ts <= DEMO_INTENT_TTL_MS &&
+      typeof p.city === 'string' && typeof p.neighbourhood === 'string'
+    ) {
+      return {
+        city: p.city,
+        neighbourhood: p.neighbourhood,
+        street: typeof p.street === 'string' ? p.street : '',
+        streetNumber: typeof p.streetNumber === 'string' ? p.streetNumber : '',
+        firstName: typeof p.firstName === 'string' ? p.firstName : '',
+        ts: p.ts,
+      }
+    }
+    sessionStorage.removeItem(DEMO_INTENT_KEY)
+    return null
+  } catch {
+    try { sessionStorage.removeItem(DEMO_INTENT_KEY) } catch {}
+    return null
+  }
+}
+
+function clearDemoIntent() {
+  try { sessionStorage.removeItem(DEMO_INTENT_KEY) } catch {}
+}
 
 // api.post throws `new Error(rawResponseBody)` on non-2xx — pull the reason code out of
 // the JSON body for the 403 captcha_failed case (guarded; the body may not be JSON).
@@ -168,6 +205,83 @@ export default function Demo() {
   // Synchronous in-flight guard: blocks a second verifyOtp before React flushes
   // `loading` (Enter + form-submit, or a fast double-click on Verify).
   const verifyingRef = useRef(false)
+  // True when returning from Google OAuth with a pending demo intent — show a brief
+  // loading state while we claim eligibility, instead of flashing the fresh step-1 form.
+  // Initialised synchronously so no flash occurs on the first paint.
+  const [resuming, setResuming] = useState<boolean>(() => readDemoIntent() !== null)
+
+  // ── POST-OAUTH RESUME ────────────────────────────────────────────────────────
+  // Only runs when a demo intent is pending (normal fresh entry is untouched). On a
+  // valid session it rehydrates the fields and claims demo eligibility, then hands off
+  // to the existing Choose (step 3) → demo-create money-gate path, UNCHANGED.
+  useEffect(() => {
+    const intent = readDemoIntent()
+    if (!intent) return
+    let cancelled = false
+    async function resume(pending: DemoIntent) {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (cancelled) return
+      if (!user) {
+        // No session (e.g. user bailed at Google) → drop the intent, normal fresh flow.
+        clearDemoIntent()
+        setResuming(false)
+        return
+      }
+      setCity(pending.city)
+      setNeighbourhood(pending.neighbourhood)
+      setStreet(pending.street)
+      setStreetNumber(pending.streetNumber)
+      setFirstName(pending.firstName)
+      try {
+        const r = await api.post<ApiResp>('/demo-claim', { firstName: pending.firstName })
+        if (cancelled) return
+        if (r?.ok) {
+          // Eligible (or already a demo) → the existing Choose + Turnstile create path runs.
+          setResuming(false)
+          setStep(3)
+          return
+        }
+        if (r?.reason === 'not_eligible') {
+          // Already has a real account — let them into the dashboard.
+          clearDemoIntent()
+          navigate('/dashboard')
+          return
+        }
+        clearDemoIntent()
+        setResuming(false)
+        setError('We couldn’t start your demo. Please sign in and try again.')
+      } catch {
+        if (cancelled) return
+        clearDemoIntent()
+        setResuming(false)
+        setError('We couldn’t start your demo. Please sign in and try again.')
+      }
+    }
+    resume(intent)
+    return () => { cancelled = true }
+    // Mount-only: the intent handoff is read once on return from OAuth.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Persist the entry fields before the Google redirect; SocialAuthButtons aborts the
+  // OAuth sign-in when this returns false. First name is optional here — Google supplies it.
+  function persistDemoIntent(): boolean {
+    if (!city.trim() || !neighbourhood.trim()) {
+      setError('Please add your city and neighbourhood first.')
+      return false
+    }
+    try {
+      sessionStorage.setItem(DEMO_INTENT_KEY, JSON.stringify({
+        city: city.trim(),
+        neighbourhood: neighbourhood.trim(),
+        street: street.trim(),
+        streetNumber: streetNumber.trim(),
+        firstName: firstName.trim(),
+        ts: Date.now(),
+      }))
+    } catch {}
+    return true
+  }
 
   // Flag OFF → nothing publicly reachable.
   if (!DEMO_ENABLED) return <Navigate to="/" replace />
@@ -204,8 +318,9 @@ export default function Demo() {
       const r = await api.post<ApiResp>('/demo-precheck', { email: em })
       if (r.ok === false) {
         if (r.reason === 'disposable_email') return setError('Please use a permanent email address (no temporary inboxes).')
-        if (r.reason === 'account_exists') return setBlocked(true)
-        if (r.reason === 'demo_expired') return setExpiredPrompt(true)
+        // Defensive: an OTP dead-end shouldn't carry a stale Google demo intent.
+        if (r.reason === 'account_exists') { clearDemoIntent(); return setBlocked(true) }
+        if (r.reason === 'demo_expired') { clearDemoIntent(); return setExpiredPrompt(true) }
         return setError('Something went wrong. Please try again.')
       }
       await startOtp(r.resume === true ? 'resume' : 'create')
@@ -276,6 +391,7 @@ export default function Demo() {
         turnstileToken: choiceToken ?? '',
       })
       if (r?.ok) {
+        clearDemoIntent() // demo created — the OAuth handoff intent is done with.
         if (path === 'full' && r.apartmentId) return navigate(`/dashboard/property/${r.apartmentId}`)
         return navigate('/dashboard')
       }
@@ -301,6 +417,18 @@ export default function Demo() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // ── Returning from Google OAuth: brief claim/loading state ───────────────────
+  if (resuming) {
+    return (
+      <AuthShell headline={DEMO_HEADLINE} sub={DEMO_SUB}>
+        <div className="flex flex-col items-center justify-center py-16 text-center">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#c8a24e]" />
+          <p className="mt-4 text-sm text-[#6f6757]">Starting your demo…</p>
+        </div>
+      </AuthShell>
+    )
   }
 
   // ── account_exists: dead-end with a route to login ───────────────────────────
@@ -354,6 +482,7 @@ export default function Demo() {
               {error && <div className="mt-4"><ErrorLine>{error}</ErrorLine></div>}
             </div>
           ) : (
+            <>
             <form onSubmit={submitStep1} className="mt-7 space-y-4">
               <div>
                 <label className={LABEL} htmlFor="demo-first">First name</label>
@@ -397,6 +526,11 @@ export default function Demo() {
               </button>
               <p className="text-center text-[12px] text-[#8a8170]">Free for 48 hours · No card · Cancel anytime</p>
             </form>
+
+            {/* Google demo entry — self-hides unless VITE_SOCIAL_AUTH==='true'. Persists the
+                entry fields, then Google → /auth/callback → back here to finish (step 3). */}
+            <SocialAuthButtons dividerLabel="or" onBeforeRedirect={persistDemoIntent} />
+            </>
           )}
 
           <p className="mt-6 text-center text-sm text-[#6f6757]">

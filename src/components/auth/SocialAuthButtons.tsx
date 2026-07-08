@@ -53,9 +53,13 @@ function AppleIcon() {
 export default function SocialAuthButtons({
   redirectPath = '/auth/callback',
   dividerLabel = 'or',
+  onBeforeRedirect,
 }: {
   redirectPath?: string
   dividerLabel?: string
+  // Called synchronously before the OAuth redirect (e.g. the demo persists its intent).
+  // Returning false aborts the sign-in (no redirect) — the caller shows its own message.
+  onBeforeRedirect?: () => boolean
 }) {
   const [busy, setBusy] = useState<Provider | null>(null)
   const [error, setError] = useState('')
@@ -63,6 +67,7 @@ export default function SocialAuthButtons({
   if (!SOCIAL_ENABLED) return null
 
   async function signIn(provider: Provider) {
+    if (onBeforeRedirect && !onBeforeRedirect()) return
     setBusy(provider)
     setError('')
     const redirectTo = `${window.location.origin}${redirectPath}`

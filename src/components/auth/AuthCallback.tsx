@@ -11,10 +11,33 @@ import Loader from '../shared/Loader'
  * in the URL hash. detectSessionInUrl (on by default, implicit/hash flow)
  * populates the session asynchronously, so we poll getUser() briefly before
  * giving up. Once the session exists we route the host:
- *   - no brand_name  → /complete-profile (brand bootstrap)
- *   - admin email     → /admin
- *   - otherwise       → /dashboard  (PrivateRoute then sends new hosts to /choose-plan)
+ *   - existing demo (is_demo) → /dashboard (Layout shows the wall if expired)
+ *   - pending demo intent + empty brand → /demo (finish a Google demo)
+ *   - pending demo intent + brand set → /dashboard (real account; ignore intent)
+ *   - no brand_name → /complete-profile (brand bootstrap)
+ *   - admin email → /admin
+ *   - otherwise → /dashboard  (PrivateRoute then sends new hosts to /choose-plan)
  */
+const DEMO_INTENT_KEY = 'arrivly_demo_intent'
+const DEMO_INTENT_TTL_MS = 30 * 60 * 1000
+
+// Returns true if a fresh (non-stale) demo intent is present; clears a stale/broken one.
+function hasFreshDemoIntent(): boolean {
+  try {
+    const raw = sessionStorage.getItem(DEMO_INTENT_KEY)
+    if (!raw) return false
+    const parsed = JSON.parse(raw)
+    if (parsed && typeof parsed.ts === 'number' && Date.now() - parsed.ts <= DEMO_INTENT_TTL_MS) {
+      return true
+    }
+    sessionStorage.removeItem(DEMO_INTENT_KEY)
+    return false
+  } catch {
+    try { sessionStorage.removeItem(DEMO_INTENT_KEY) } catch {}
+    return false
+  }
+}
+
 export default function AuthCallback() {
   const navigate = useNavigate()
 
@@ -53,10 +76,10 @@ export default function AuthCallback() {
       async function readHost() {
         const { data } = await supabase
           .from('hosts')
-          .select('name, brand_name')
+          .select('name, brand_name, is_demo')
           .eq('id', user!.id)
           .maybeSingle()
-        return data as { name: string | null; brand_name: string | null } | null
+        return data as { name: string | null; brand_name: string | null; is_demo: boolean | null } | null
       }
 
       let hostRow = await readHost()
@@ -69,7 +92,20 @@ export default function AuthCallback() {
       }
 
       const brand = hostRow?.brand_name?.trim()
-      if (!brand) {
+      const pendingDemo = hasFreshDemoIntent()
+
+      if (hostRow?.is_demo === true) {
+        // Existing demo host — the demo intent (if any) is moot; let them in.
+        try { sessionStorage.removeItem(DEMO_INTENT_KEY) } catch {}
+        navigate('/dashboard', { replace: true })
+      } else if (pendingDemo && !brand) {
+        // Fresh Google user finishing a demo — /demo consumes the intent (Choose → create).
+        navigate('/demo', { replace: true })
+      } else if (pendingDemo && brand) {
+        // Real existing account that happened to have a demo intent — ignore it.
+        try { sessionStorage.removeItem(DEMO_INTENT_KEY) } catch {}
+        navigate('/dashboard', { replace: true })
+      } else if (!brand) {
         navigate('/complete-profile', { replace: true })
       } else if (user.email === ARRIVLY_CONFIG.adminEmail) {
         navigate('/admin', { replace: true })
