@@ -314,7 +314,14 @@ export default function Dashboard() {
   if (loading) return <Loader />
 
   const firstName = hostData?.name?.split(' ')[0] ?? ''
-  const greeting = firstName ? `Welcome back, ${firstName}` : 'Welcome back'
+  // welcome_seen_at is null only for a brand-new host (existing hosts were backfilled S16).
+  // dismissWelcome writes the flag to the DB but not to local hostData, so this stays true
+  // for the whole first session and flips to false on the next login.
+  const isNewHost = !hostData?.welcome_seen_at
+  const greeting = isNewHost
+    ? (firstName ? `Welcome, ${firstName}` : 'Welcome to Arrivly')
+    : (firstName ? `Welcome back, ${firstName}` : 'Welcome back')
+  const welcomeTitle = firstName ? `Welcome to Arrivly, ${firstName}` : 'Welcome to Arrivly'
 
   // Host-local date label for the header eyebrow (e.g. "Friday, 26 June").
   const todayLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
@@ -392,7 +399,7 @@ export default function Dashboard() {
             onClick={e => e.stopPropagation()}
           >
             <div className="flex items-start justify-between mb-3">
-              <h2 className="text-[20px] font-['Fraunces'] font-light text-[#231d17]">{greeting}</h2>
+              <h2 className="text-[20px] font-['Fraunces'] font-light text-[#231d17]">{welcomeTitle}</h2>
               <button
                 onClick={() => void dismissWelcome()}
                 aria-label="Close welcome"
@@ -402,9 +409,9 @@ export default function Dashboard() {
               </button>
             </div>
             <p className="text-[12.5px] text-[#6b6354] leading-relaxed mb-5">
-              Every guest who scans your QR code lands on a personal page with WiFi details,
-              house rules, a live city guide, and a chatbot that knows your apartment.
-              Add your first property to generate it.
+              You’re all set. Every guest who scans your QR code lands on a personal page with WiFi
+              details, house rules, a live city guide, and a chatbot that knows your apartment —
+              add your first property to bring it to life.
             </p>
             <button
               onClick={async () => { await dismissWelcome(); createProperty() }}
