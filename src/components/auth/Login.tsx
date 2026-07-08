@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import AuthShell from './AuthShell'
+import SocialAuthButtons from './SocialAuthButtons'
 
 const INPUT =
   'w-full bg-white border border-[#e0dacd] rounded-[11px] px-[15px] py-[13px] text-sm text-[#1c1c1a] placeholder:text-[#b3ab9b] focus:outline-none focus:border-[#c8a24e] focus:ring-2 focus:ring-[#c8a24e]/20 transition-colors'
@@ -44,6 +45,8 @@ export default function Login() {
     >
       <h1 className="font-['Fraunces'] font-light text-[31px] leading-tight text-[#1c1c1a]">Welcome back</h1>
       <p className="mt-2 text-sm text-[#6f6757]">Sign in to manage your properties and guest pages.</p>
+
+      <SocialAuthButtons />
 
       <form onSubmit={submit} className="mt-8 space-y-4">
         <div>

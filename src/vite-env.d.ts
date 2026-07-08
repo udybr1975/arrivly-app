@@ -8,6 +8,8 @@ interface ImportMetaEnv {
   readonly VITE_VAPID_PUBLIC_KEY: string
   readonly VITE_DEMO_ENABLED: string | undefined
   readonly VITE_TURNSTILE_SITE_KEY: string | undefined
+  readonly VITE_SOCIAL_AUTH: string | undefined
+  readonly VITE_SOCIAL_APPLE: string | undefined
 }
 
 interface ImportMeta {

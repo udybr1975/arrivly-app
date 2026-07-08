@@ -9,6 +9,8 @@ import Layout from './components/shared/Layout'
 import Login from './components/auth/Login'
 import Signup from './components/auth/Signup'
 import ResetPassword from './components/auth/ResetPassword'
+import AuthCallback from './components/auth/AuthCallback'
+import CompleteProfile from './components/auth/CompleteProfile'
 import ChoosePlan from './components/host/ChoosePlan'
 import Dashboard from './components/host/Dashboard'
 import PropertySetup from './components/host/PropertySetup'
@@ -81,6 +83,8 @@ export default function App() {
           <Route path="/signup" element={<Signup />} />
           <Route path="/login" element={<Login />} />
           <Route path="/reset-password" element={<ResetPassword />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
+          <Route path="/complete-profile" element={<CompleteProfile />} />
           <Route path="/demo" element={<Demo />} />
           <Route path="/guest" element={<GuestPage />} />
 
