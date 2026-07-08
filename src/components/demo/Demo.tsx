@@ -9,6 +9,9 @@ import TurnstileWidget from './TurnstileWidget'
 // Public, flag-gated demo ENTRY flow (no dashboard chrome). Off unless
 // VITE_DEMO_ENABLED === 'true'; otherwise this route redirects to "/".
 const DEMO_ENABLED = import.meta.env.VITE_DEMO_ENABLED === 'true'
+// Mirrors SocialAuthButtons' own gate — used to also hide the standalone "or" divider
+// between the Google buttons and the email form when social sign-in is off.
+const SOCIAL_AUTH_ENABLED = import.meta.env.VITE_SOCIAL_AUTH === 'true'
 const TURNSTILE_SITE_KEY = import.meta.env.VITE_TURNSTILE_SITE_KEY
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -483,19 +486,13 @@ export default function Demo() {
             </div>
           ) : (
             <>
-            <form onSubmit={submitStep1} className="mt-7 space-y-4">
-              <div>
-                <label className={LABEL} htmlFor="demo-first">First name</label>
-                <input id="demo-first" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={INPUT} placeholder="Marco" autoComplete="given-name" autoFocus required />
-              </div>
-              <div>
-                <label className={LABEL} htmlFor="demo-email">Email address</label>
-                <input id="demo-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT} placeholder="you@example.com" autoComplete="email" required />
-              </div>
+            {/* Location first — required, and read from state by both submitStep1 and
+                persistDemoIntent, so these live outside the form without affecting validation. */}
+            <div className="mt-7 space-y-4">
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className={LABEL} htmlFor="demo-city">City</label>
-                  <input id="demo-city" type="text" value={city} onChange={(e) => setCity(e.target.value)} className={INPUT} placeholder="Helsinki" autoComplete="address-level2" required />
+                  <input id="demo-city" type="text" value={city} onChange={(e) => setCity(e.target.value)} className={INPUT} placeholder="Helsinki" autoComplete="address-level2" autoFocus required />
                 </div>
                 <div>
                   <label className={LABEL} htmlFor="demo-hood">Neighbourhood</label>
@@ -513,6 +510,33 @@ export default function Demo() {
                 </div>
               </div>
               <p className="-mt-1 text-[12px] text-[#8a8170]">Optional — adds turn-by-turn directions for your guests.</p>
+            </div>
+
+            {/* Google demo entry — self-hides unless VITE_SOCIAL_AUTH==='true'. Renders its
+                own "continue with" divider above the buttons. Persists the entry fields, then
+                Google → /auth/callback → back here to finish (step 3). */}
+            <SocialAuthButtons dividerLabel="continue with" onBeforeRedirect={persistDemoIntent} />
+
+            {/* Standalone "or" divider between the Google buttons and the email form. Gated on
+                the same flag SocialAuthButtons uses, so it never floats when social is off. */}
+            {SOCIAL_AUTH_ENABLED && (
+              <div className="mt-6 flex items-center gap-3" aria-hidden>
+                <span className="h-px flex-1 bg-[#e0dacd]" />
+                <span className="text-[11px] uppercase tracking-[.14em] text-[#8a8170]">or</span>
+                <span className="h-px flex-1 bg-[#e0dacd]" />
+              </div>
+            )}
+
+            {/* Email / OTP path — kept together in the form so Enter-to-submit still works. */}
+            <form onSubmit={submitStep1} className="mt-6 space-y-4">
+              <div>
+                <label className={LABEL} htmlFor="demo-first">First name</label>
+                <input id="demo-first" type="text" value={firstName} onChange={(e) => setFirstName(e.target.value)} className={INPUT} placeholder="Marco" autoComplete="given-name" required />
+              </div>
+              <div>
+                <label className={LABEL} htmlFor="demo-email">Email address</label>
+                <input id="demo-email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} className={INPUT} placeholder="you@example.com" autoComplete="email" required />
+              </div>
 
               {TURNSTILE_SITE_KEY && (
                 <TurnstileWidget siteKey={TURNSTILE_SITE_KEY} onToken={setCaptchaToken} />
@@ -526,10 +550,6 @@ export default function Demo() {
               </button>
               <p className="text-center text-[12px] text-[#8a8170]">Free for 48 hours · No card · Cancel anytime</p>
             </form>
-
-            {/* Google demo entry — self-hides unless VITE_SOCIAL_AUTH==='true'. Persists the
-                entry fields, then Google → /auth/callback → back here to finish (step 3). */}
-            <SocialAuthButtons dividerLabel="or" onBeforeRedirect={persistDemoIntent} />
             </>
           )}
 
