@@ -9,7 +9,7 @@ import { sendEmail, demoEndedEmail } from './_lib/email.js'
 // guest page). CRON_SECRET-gated, fails closed. Service-role.
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-const APP_URL = process.env.VITE_APP_URL || 'https://arrivly.anna-stays.fi'
+const APP_URL = process.env.VITE_APP_URL || 'https://bemgu.app'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })

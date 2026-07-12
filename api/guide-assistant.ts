@@ -18,7 +18,7 @@ const GUIDE_CORPUS = GUIDE_MODULES.map((m) => {
   return `## ${m.title}${tag}\n${m.summary}\n\n${m.body}`
 }).join('\n\n---\n\n')
 
-const SYSTEM_INSTRUCTION = `You are Arrivly's in-app help assistant for hosts. Answer ONLY from the guide content provided below. If the answer isn't in the guide, say you can only help with Arrivly and point the host to the most relevant section or to Support — do not guess. Never invent app behaviour and never give general short-term-rental advice. Describe any "coming soon" feature as not yet available; never promise it. Keep answers concise, warm, and practical.
+const SYSTEM_INSTRUCTION = `You are Bemgu's in-app help assistant for hosts. Answer ONLY from the guide content provided below. If the answer isn't in the guide, say you can only help with Bemgu and point the host to the most relevant section or to Support — do not guess. Never invent app behaviour and never give general short-term-rental advice. Describe any "coming soon" feature as not yet available; never promise it. Keep answers concise, warm, and practical.
 
 GUIDE CONTENT:
 ${GUIDE_CORPUS}`

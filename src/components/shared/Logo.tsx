@@ -29,7 +29,7 @@ export default function Logo({
       fill="none"
       // When the wordmark is shown, the visible "Arrivly" text names the brand —
       // hide the mark from the a11y tree to avoid "Arrivly Arrivly".
-      {...(withWordmark ? { 'aria-hidden': true } : { role: 'img', 'aria-label': 'Arrivly' })}
+      {...(withWordmark ? { 'aria-hidden': true } : { role: 'img', 'aria-label': 'Bemgu' })}
       className={withWordmark ? '' : className}
     >
       <defs>
@@ -61,7 +61,7 @@ export default function Logo({
   return (
     <span className={`inline-flex items-center gap-2 ${className}`}>
       {mark}
-      <span className={`font-['Fraunces'] font-medium ${wordmarkClassName}`}>Arrivly</span>
+      <span className={`font-['Fraunces'] font-medium ${wordmarkClassName}`}>Bemgu</span>
     </span>
   )
 }

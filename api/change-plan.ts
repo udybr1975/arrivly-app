@@ -141,7 +141,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }),
           }),
           sendNtfy({
-            title: 'Arrivly',
+            title: 'Bemgu',
             message: `${hostNameR ?? 'A host'} undid a scheduled change — staying on ${TIER_NAMES_C[currentTier] ?? `Tier ${currentTier}`}`,
             priority: 'default',
           }),
@@ -270,7 +270,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             }),
           }),
           sendNtfy({
-            title: 'Arrivly',
+            title: 'Bemgu',
             message: `${hostNameD ?? 'A host'} scheduled a downgrade to ${TIER_NAMES_C[newTier] ?? `Tier ${newTier}`} (${formatMoney(newPlanPriceCents, newPlanCurrency)}/mo) — effective ${effectiveAt.split('T')[0]}`,
             priority: 'default',
           }),

@@ -95,7 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           }),
         }),
         sendNtfy({
-          title: 'Arrivly',
+          title: 'Bemgu',
           message: `${hostNameR ?? 'A host'} resumed their subscription`,
           priority: 'default',
         }),
@@ -151,7 +151,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }),
       }),
       sendNtfy({
-        title: 'Arrivly',
+        title: 'Bemgu',
         message: `${hostNameC ?? 'A host'} scheduled a cancellation${cancelAt ? ` — effective ${cancelAt.split('T')[0]}` : ''}`,
         priority: 'high',
       }),

@@ -138,7 +138,7 @@ export default function Settings() {
             {initial}
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-[15px] font-semibold text-[#231d17] truncate">{host?.brand_name ?? 'Arrivly'}</div>
+            <div className="text-[15px] font-semibold text-[#231d17] truncate">{host?.brand_name ?? 'Bemgu'}</div>
             <div className="text-[12px] text-[#8a8276] truncate">{email}</div>
           </div>
           {showTrial ? (
@@ -241,7 +241,7 @@ export default function Settings() {
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[14px] font-semibold text-[#231d17]">Sign out</div>
-            <p className="text-[12px] text-[#8a8276]">Sign out of Arrivly on this browser.</p>
+            <p className="text-[12px] text-[#8a8276]">Sign out of Bemgu on this browser.</p>
           </div>
           <button onClick={signOut} className={`${BTN_DANGER} shrink-0`}>Sign out</button>
         </div>
@@ -253,7 +253,7 @@ export default function Settings() {
 
       {/* ── 5) FOOTER ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 px-1 mt-2">
-        <span className="text-[11px] text-[#8a8276]">Arrivly</span>
+        <span className="text-[11px] text-[#8a8276]">Bemgu</span>
         <div className="flex items-center gap-3 text-[11px] text-[#8a8276]">
           {/* TODO: real Terms/Privacy/Support URLs */}
           <a href="#" className="hover:text-[#231d17] transition-colors">Terms</a>

@@ -40,7 +40,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // A notify failure must never fail the handler (sendNtfy never throws).
   if (deleted > 0) {
     await sendNtfy({
-      title: 'Arrivly message cleanup',
+      title: 'Bemgu message cleanup',
       message: `Deleted ${deleted} messages past ${RETENTION_DAYS}-day retention.`,
       priority: 'default',
     })

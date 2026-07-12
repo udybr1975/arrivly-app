@@ -350,7 +350,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             .maybeSingle()
           if (!adminHost?.id) return
           await sendPushToHost(admin, adminHost.id as string, {
-            title: 'Arrivly subscription',
+            title: 'Bemgu subscription',
             body: adminMsg,
             url: '/admin',
           })
@@ -358,7 +358,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // f) ntfy — enriched for upgrades with charged amount (guard > 0 so €0 proration shows plain text)
         sendNtfy({
-          title: 'Arrivly',
+          title: 'Bemgu',
           message: n === 'upgraded' && amountChargedCents != null && amountChargedCents > 0
             ? `A host upgraded to ${toTierName} — ${formatMoney(amountChargedCents, safeCurrency)} charged, ${formatMoney(safePriceCents, safeCurrency)}/mo`
             : adminMsg,

@@ -302,7 +302,7 @@ function Tabs({ tab, onTab }: { tab: TabId; onTab: (t: TabId) => void }) {
         Browse
       </button>
       <button role="tab" aria-selected={tab === 'ask'} onClick={() => onTab('ask')} className={tabClass(tab === 'ask')}>
-        Ask Arrivly
+        Ask Bemgu
       </button>
     </div>
   )
@@ -316,7 +316,7 @@ const ASK_SUGGESTIONS = [
 
 type AskMsg = { role: 'user' | 'assistant'; text: string }
 
-// "Ask Arrivly" — corpus-grounded help via /api/guide-assistant. State is local, so it
+// "Ask Bemgu" — corpus-grounded help via /api/guide-assistant. State is local, so it
 // resets each time the drawer reopens (the drawer unmounts when closed). reportFocus
 // lets the mobile bottom sheet grow to fit the keyboard while the input is focused.
 function AskPanel({ reportFocus }: { reportFocus?: (focused: boolean) => void }) {
@@ -355,13 +355,13 @@ function AskPanel({ reportFocus }: { reportFocus?: (focused: boolean) => void })
   return (
     <div
       role="tabpanel"
-      aria-label="Ask Arrivly"
+      aria-label="Ask Bemgu"
       tabIndex={0}
       className="flex-1 min-h-0 flex flex-col focus:outline-none"
     >
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
         <p className="text-[12.5px] leading-[1.5] text-[#8a8276] mb-3">
-          Ask anything about Arrivly — I answer only from the guide, so I won't invent features or give general advice.
+          Ask anything about Bemgu — I answer only from the guide, so I won't invent features or give general advice.
         </p>
 
         {thread.length === 0 ? (
@@ -416,8 +416,8 @@ function AskPanel({ reportFocus }: { reportFocus?: (focused: boolean) => void })
               }
             }}
             maxLength={600}
-            placeholder="Ask about Arrivly…"
-            aria-label="Ask Arrivly a question"
+            placeholder="Ask about Bemgu…"
+            aria-label="Ask Bemgu a question"
             className="flex-1 rounded-[10px] border border-[#e9e4d9] bg-white px-3 py-2 text-[13px] text-[#231d17] placeholder:text-[#b3aa9b] focus:outline-none focus:border-[#c8a24e]"
           />
           <button

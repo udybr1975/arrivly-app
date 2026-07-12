@@ -1,4 +1,4 @@
-const CACHE_NAME = 'arrivly-v4'
+const CACHE_NAME = 'arrivly-v5'
 const STATIC_ASSETS = ['/', '/index.html', '/manifest.json']
 
 self.addEventListener('install', (event) => {
@@ -99,7 +99,7 @@ self.addEventListener('push', (event) => {
   try { data = event.data.json() } catch { return }
   const notifUrl = typeof data.url === 'string' ? data.url : '/'
   event.waitUntil(
-    self.registration.showNotification(data.title || 'Arrivly', {
+    self.registration.showNotification(data.title || 'Bemgu', {
       body: data.body || '',
       icon: '/icons/icon-192.png',
       badge: '/icons/icon-192.png',

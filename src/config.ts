@@ -3,7 +3,7 @@ export const ARRIVLY_CONFIG = {
   currencySymbol: '€',
 
   // Branding
-  poweredByText: 'Powered by Arrivly',
+  poweredByText: 'Powered by Bemgu',
 
   // Colour presets for host branding
   colourPresets: [
@@ -19,5 +19,5 @@ export const ARRIVLY_CONFIG = {
   adminEmail: 'udy.bar.yosef@gmail.com',
 
   // App
-  appUrl: import.meta.env.VITE_APP_URL ?? 'https://arrivly.anna-stays.fi',
+  appUrl: import.meta.env.VITE_APP_URL ?? 'https://bemgu.app',
 } as const

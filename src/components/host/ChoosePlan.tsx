@@ -113,7 +113,7 @@ export default function ChoosePlan() {
 
         {/* Header */}
         <div className="mb-7 text-center">
-          <div className="font-mono text-[11px] text-[#a79e8e] uppercase tracking-[.2em] mb-3">Arrivly</div>
+          <div className="font-mono text-[11px] text-[#a79e8e] uppercase tracking-[.2em] mb-3">Bemgu</div>
           <h1 className="text-[26px] font-['Fraunces'] font-light text-[#231d17] mb-1">Choose your plan</h1>
           <p className="text-xs text-[#8a8276]">14-day free trial — no charge today.</p>
         </div>

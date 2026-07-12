@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { getStripe } from './_lib/stripe.js'
 
-const APP_URL = process.env.VITE_APP_URL ?? 'https://arrivly.anna-stays.fi'
+const APP_URL = process.env.VITE_APP_URL ?? 'https://bemgu.app'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })

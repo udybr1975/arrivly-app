@@ -1,4 +1,4 @@
-// Arrivly host Guide — content module (PURE DATA, zero imports).
+// Bemgu host Guide — content module (PURE DATA, zero imports).
 // Sourced from docs/arrivly-host-guide-content-v1.md. Each `##` section there
 // maps to one module here: heading → title, "In one line:" → summary, the rest
 // of the prose → body (markdown), and the `live` / `coming-soon` heading tag → status.
@@ -42,12 +42,12 @@ export const GUIDE_MODULES: GuideModule[] = [
 ### Sign-up (Step 1 of 2 — "Create your account")
 - **First name** — your name, used to greet you in the dashboard. *Why:* it personalises the app and signs your guest page ("— Marco"). You're never asked for it again.
 - **Brand name** (e.g. *Marco's Barcelona Stays*) — the name guests see at the top of their page. *Why:* it's your identity to guests; it also becomes the default name of your first property so you can go live faster.
-- **Email** — your login and where Arrivly sends trial reminders and billing notices. *Why:* it's your account identity; it's never shown to guests.
+- **Email** — your login and where Bemgu sends trial reminders and billing notices. *Why:* it's your account identity; it's never shown to guests.
 - **Password** (at least 8 characters) — secures your account. *Why:* protects your guest data and billing.
 - **Agree to terms** checkbox — confirms you accept the terms. *Why:* required to create the account.
 - **Create account** — creates your login and starts your **14-day free trial**. *Why:* no card is needed to begin; you're charged nothing until you choose a plan.
 
-> The trial badge in the sidebar counts your remaining days. Your guest page is fully live during the trial, with a small "Powered by Arrivly" footer that disappears once you add a card.
+> The trial badge in the sidebar counts your remaining days. Your guest page is fully live during the trial, with a small "Powered by Bemgu" footer that disappears once you add a card.
 
 ### Welcome (shown once)
 - **Add my first property →** — jumps you straight into the property editor. *Why:* the guest page only exists once there's a property to attach it to; this is the one thing to do first.
@@ -74,7 +74,7 @@ export const GUIDE_MODULES: GuideModule[] = [
 - **Country / City / Neighbourhood / Street / Street number** — the full address. *Why:* it's used to place the apartment on the map (for guest walking directions), and to generate the **hyper-local** city guide and events. The exact street is **never shown to guests** on the public page — only verified guests in their stay see it.
 - **Floor note** (e.g. "3rd floor, no lift") — a short access note. *Why:* helps guests find the door; optional.
 - **Max guests** — how many the place sleeps. *Why:* sets expectations and supports later booking features.
-- **Cover photo · Upload / Remove** — your own hero image for the guest page. *Why:* a real photo makes the page feel like *your* place; if you skip it, Arrivly uses a tasteful city image automatically.
+- **Cover photo · Upload / Remove** — your own hero image for the guest page. *Why:* a real photo makes the page feel like *your* place; if you skip it, Bemgu uses a tasteful city image automatically.
 - **Save** — stores the basics and (in the background) looks up the map coordinates. *Why:* this is the save that creates the property and unlocks every other tab. If the address can't be placed, the save still works and you'll see a gentle note to fix it.
 
 ### Tab: WiFi
@@ -97,7 +97,7 @@ export const GUIDE_MODULES: GuideModule[] = [
 
 ### Tab: My picks
 - **Free-text places box** (e.g. "Mercadona on Carrer del Rec, Bar Marsella…") — your personal recommendations. *Why:* your local picks are what make the guide *yours*, not generic.
-- **✦ Add places with AI / Identify** — finds each place, looks up its address, drops a map pin, and guesses a category. *Why:* you type names, Arrivly does the geocoding and tagging so each pick gets a working **Navigate** button for guests.
+- **✦ Add places with AI / Identify** — finds each place, looks up its address, drops a map pin, and guesses a category. *Why:* you type names, Bemgu does the geocoding and tagging so each pick gets a working **Navigate** button for guests.
 - **Re-locate** (per place) — re-runs the address lookup after you edit it. *Why:* if a pin landed on the wrong "Bar Marsella", fix the address and re-locate to correct it.
 - **Remove** (per place) — drops a candidate before saving. *Why:* you review everything before it goes live.
 - **Confirm & add** — saves the reviewed picks to the guest page. *Why:* nothing is published until you confirm, so a wrong AI guess never reaches guests.
@@ -109,7 +109,7 @@ export const GUIDE_MODULES: GuideModule[] = [
 > *Known nicety being improved:* these two buttons sit close together and read alike — a visual fix is on the backlog so they're harder to mix up.
 
 ### Tab: Calendars
-- **iCal feed links** (one URL per line) — your Airbnb / Vrbo / Booking.com calendar links. *Why:* Arrivly syncs blocked and booked **dates** automatically so your availability stays in step without manual entry.
+- **iCal feed links** (one URL per line) — your Airbnb / Vrbo / Booking.com calendar links. *Why:* Bemgu syncs blocked and booked **dates** automatically so your availability stays in step without manual entry.
 - **Save** — stores the feed links. *Why:* sync has nothing to read until they're saved.
 - **Sync now** — pulls the feeds immediately. *Why:* you don't have to wait for the automatic sync to confirm it's working.
 - **Import names** (Airbnb CSV) — uploads your Airbnb reservations export to attach guest **names** to the synced dates. *Why:* iCal feeds carry dates but not names; this is how an Airbnb guest's page greets them by name. Names attach to matching dates and **survive every future sync**.
@@ -252,7 +252,7 @@ export const GUIDE_MODULES: GuideModule[] = [
     related: ['branding', 'billing'],
     tags: ['settings', 'notifications', 'install', 'account', 'sign out'],
     body: `- **Notifications · Enable / Turn off** — host push alerts (new booking, guest scan, trial ending, guest message, checkout reminder). *Why:* know what's happening without watching the dashboard. States shown: on / off / **blocked** (if blocked, you've denied permission in the browser and must re-allow it there).
-- **This device · Install** — add Arrivly to your phone or desktop home screen. *Why:* faster access and reliable push; on iOS, installing to the home screen is what enables alerts.
+- **This device · Install** — add Bemgu to your phone or desktop home screen. *Why:* faster access and reliable push; on iOS, installing to the home screen is what enables alerts.
 - **Edit in Branding → / Manage in Billing →** — shortcuts to those pages. *Why:* one obvious place to change name/colour or plan.
 - **Email & password** *(coming soon)* — change your login details.
 - **Delete account & data** *(coming soon)* — remove your account.

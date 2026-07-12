@@ -1,8 +1,8 @@
 import { Resend } from 'resend'
 
-const FROM = 'Arrivly <hello@anna-stays.fi>'
-const REPLY_TO = 'info@anna-stays.fi'
-const APP_URL = process.env.VITE_APP_URL || 'https://arrivly.anna-stays.fi'
+const FROM = 'Bemgu <hello@bemgu.app>'
+const REPLY_TO = 'info@bemgu.app'
+const APP_URL = process.env.VITE_APP_URL || 'https://bemgu.app'
 
 let client: Resend | null = null
 function getClient(): Resend | null {
@@ -39,17 +39,17 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
 }
 
 function safeUrl(url: string): string {
-  return url.startsWith('https://') ? url : `https://arrivly.anna-stays.fi`
+  return url.startsWith('https://') ? url : `https://bemgu.app`
 }
 
 function layout(heading: string, bodyHtml: string, ctaLabel: string, ctaUrl: string): string {
   return `<div style="margin:0;padding:0;background:#f0ede6;">
   <div style="max-width:480px;margin:0 auto;padding:32px 24px;font-family:Georgia,'Times New Roman',serif;color:#1a1a1a;">
-    <div style="font-size:18px;font-weight:600;letter-spacing:.02em;margin-bottom:24px;">Arrivly</div>
+    <div style="font-size:18px;font-weight:600;letter-spacing:.02em;margin-bottom:24px;">Bemgu</div>
     <h1 style="font-size:20px;font-weight:300;margin:0 0 12px;">${esc(heading)}</h1>
     <div style="font-size:14px;line-height:1.7;color:#444;font-family:Arial,Helvetica,sans-serif;">${bodyHtml}</div>
     <a href="${safeUrl(ctaUrl)}" style="display:inline-block;margin-top:22px;background:#1c1c1a;color:#fff;text-decoration:none;font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:600;padding:11px 20px;border-radius:8px;">${esc(ctaLabel)}</a>
-    <div style="margin-top:28px;font-size:11px;color:#999;font-family:Arial,Helvetica,sans-serif;">Arrivly · ${APP_URL.replace('https://', '')}</div>
+    <div style="margin-top:28px;font-size:11px;color:#999;font-family:Arial,Helvetica,sans-serif;">Bemgu · ${APP_URL.replace('https://', '')}</div>
   </div>
 </div>`
 }
@@ -72,13 +72,13 @@ export function formatMoney(cents: number, currency: string): string {
 export function welcomeEmail(name: string | null): { subject: string; html: string; text: string } {
   const who = name?.trim() ? name.trim() : 'there'
   const html = layout(
-    'Welcome to Arrivly',
+    'Welcome to Bemgu',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
      <p style="margin:0 0 12px;">Your account is set up and your branded guest page is ready.</p>
      <p style="margin:0;">Add your WiFi, check-in details, house rules and local picks, then share your QR code with guests.</p>`,
     'Open your dashboard', `${APP_URL}/dashboard`)
-  const text = `Hi ${who},\n\nYour Arrivly account is set up and your branded guest page is ready. Add your WiFi, check-in details, house rules and local picks, then share your QR code with guests.\n\nOpen your dashboard: ${APP_URL}/dashboard\n\nArrivly`
-  return { subject: 'Welcome to Arrivly', html, text }
+  const text = `Hi ${who},\n\nYour Bemgu account is set up and your branded guest page is ready. Add your WiFi, check-in details, house rules and local picks, then share your QR code with guests.\n\nOpen your dashboard: ${APP_URL}/dashboard\n\nBemgu`
+  return { subject: 'Welcome to Bemgu', html, text }
 }
 
 export function trialReminderEmail(name: string | null, daysLeft: number): { subject: string; html: string; text: string } {
@@ -87,11 +87,11 @@ export function trialReminderEmail(name: string | null, daysLeft: number): { sub
   const html = layout(
     'Your free trial is ending soon',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0 0 12px;">Your Arrivly trial ends in <strong>${daysLeft} ${dayWord}</strong>.</p>
+     <p style="margin:0 0 12px;">Your Bemgu trial ends in <strong>${daysLeft} ${dayWord}</strong>.</p>
      <p style="margin:0;">Add a payment method to keep your guest page live for your guests. Nothing is lost if you do it now.</p>`,
     'Manage billing', `${APP_URL}/dashboard/billing`)
-  const text = `Hi ${who},\n\nYour Arrivly trial ends in ${daysLeft} ${dayWord}. Add a payment method to keep your guest page live for your guests.\n\nManage billing: ${APP_URL}/dashboard/billing\n\nArrivly`
-  return { subject: `Your Arrivly trial ends in ${daysLeft} ${dayWord}`, html, text }
+  const text = `Hi ${who},\n\nYour Bemgu trial ends in ${daysLeft} ${dayWord}. Add a payment method to keep your guest page live for your guests.\n\nManage billing: ${APP_URL}/dashboard/billing\n\nBemgu`
+  return { subject: `Your Bemgu trial ends in ${daysLeft} ${dayWord}`, html, text }
 }
 
 // ─── Demo emails ───
@@ -102,11 +102,11 @@ export function demoEndedEmail(opts: { firstName: string | null; appUrl: string 
   const html = layout(
     'Your demo has ended',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0 0 12px;">Your 48-hour Arrivly demo has ended. Everything you built — your property, your guest page, your guide and your picks — is saved <strong>for now</strong>.</p>
+     <p style="margin:0 0 12px;">Your 48-hour Bemgu demo has ended. Everything you built — your property, your guest page, your guide and your picks — is saved <strong>for now</strong>.</p>
      <p style="margin:0;">Start your free 14-day trial <strong>within 24 hours</strong> to keep your page and everything on it — no charge today, cancel anytime. After that, the demo and its data are permanently removed.</p>`,
     'Start my free trial', dashUrl)
-  const text = `Hi ${who},\n\nYour 48-hour Arrivly demo has ended. Everything you built — your property, your guest page, your guide and your picks — is saved for now.\n\nStart your free 14-day trial within 24 hours to keep your page and everything on it — no charge today, cancel anytime. After that, the demo and its data are permanently removed.\n\nStart my free trial: ${dashUrl}\n\nArrivly`
-  return { subject: 'Your Arrivly demo has ended — start your trial within 24 hours to keep it', html, text }
+  const text = `Hi ${who},\n\nYour 48-hour Bemgu demo has ended. Everything you built — your property, your guest page, your guide and your picks — is saved for now.\n\nStart your free 14-day trial within 24 hours to keep your page and everything on it — no charge today, cancel anytime. After that, the demo and its data are permanently removed.\n\nStart my free trial: ${dashUrl}\n\nBemgu`
+  return { subject: 'Your Bemgu demo has ended — start your trial within 24 hours to keep it', html, text }
 }
 
 // ─── Webhook apply-time builders ───
@@ -135,7 +135,7 @@ export function subscriptionStartedEmail(
      <p style="margin:0;">To upgrade, downgrade, or manage your billing details, visit your dashboard any time.</p>`,
     'Manage your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\n${tierName} — ${price}/month. No charge during your trial; your first payment of ${price} will be on ${nextDate}.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  const text = `Hi ${who},\n\n${tierName} — ${price}/month. No charge during your trial; your first payment of ${price} will be on ${nextDate}.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nBemgu`
   return { subject: `You're on the ${tierName} plan`, html, text }
 }
 
@@ -155,16 +155,16 @@ export function subscriptionChangedEmail(
   if (opts.amountChargedCents != null) {
     const charged = formatMoney(opts.amountChargedCents, opts.currency)
     bodyHtml = `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0;">Your Arrivly plan has been upgraded from <strong>${esc(oldName)}</strong> to <strong>${esc(newName)}</strong>, effective now. We charged <strong>${esc(charged)}</strong> today for the rest of this billing period. Your plan is ${esc(price)}/month, renewing ${esc(renewalDate)}.</p>`
-    bodyText = `Hi ${who},\n\nYour Arrivly plan has been upgraded from ${oldName} to ${newName}, effective now. We charged ${charged} today for the rest of this billing period. Your plan is ${price}/month, renewing ${renewalDate}.`
+     <p style="margin:0;">Your Bemgu plan has been upgraded from <strong>${esc(oldName)}</strong> to <strong>${esc(newName)}</strong>, effective now. We charged <strong>${esc(charged)}</strong> today for the rest of this billing period. Your plan is ${esc(price)}/month, renewing ${esc(renewalDate)}.</p>`
+    bodyText = `Hi ${who},\n\nYour Bemgu plan has been upgraded from ${oldName} to ${newName}, effective now. We charged ${charged} today for the rest of this billing period. Your plan is ${price}/month, renewing ${renewalDate}.`
   } else {
     bodyHtml = `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0;">Your Arrivly plan has been changed from <strong>${esc(oldName)}</strong> to <strong>${esc(newName)}</strong>. Your plan is ${esc(price)}/month from ${esc(renewalDate)}.</p>`
-    bodyText = `Hi ${who},\n\nYour Arrivly plan has been changed from ${oldName} to ${newName}. Your plan is ${price}/month from ${renewalDate}.`
+     <p style="margin:0;">Your Bemgu plan has been changed from <strong>${esc(oldName)}</strong> to <strong>${esc(newName)}</strong>. Your plan is ${esc(price)}/month from ${esc(renewalDate)}.</p>`
+    bodyText = `Hi ${who},\n\nYour Bemgu plan has been changed from ${oldName} to ${newName}. Your plan is ${price}/month from ${renewalDate}.`
   }
   const html = layout(`Your plan has changed to ${newName}`, bodyHtml, 'Manage your plan', `${APP_URL}/dashboard/billing`)
-  const text = `${bodyText}\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
-  return { subject: `Your Arrivly plan has changed to ${newName}`, html, text }
+  const text = `${bodyText}\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nBemgu`
+  return { subject: `Your Bemgu plan has changed to ${newName}`, html, text }
 }
 
 export function subscriptionCancelledEmail(
@@ -177,14 +177,14 @@ export function subscriptionCancelledEmail(
     : ''
   const endedNoteText = opts?.endedIso ? `Your subscription ended on ${formatDateLong(opts.endedIso)}.\n\n` : ''
   const html = layout(
-    'Your Arrivly subscription has been cancelled',
+    'Your Bemgu subscription has been cancelled',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     ${endedNoteHtml}<p style="margin:0 0 12px;">Your Arrivly subscription has been cancelled and your guest page is no longer active.</p>
+     ${endedNoteHtml}<p style="margin:0 0 12px;">Your Bemgu subscription has been cancelled and your guest page is no longer active.</p>
      <p style="margin:0;">You can reactivate at any time from your billing settings — your data and property setup are still there.</p>`,
     'Reactivate your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\n${endedNoteText}Your Arrivly subscription has been cancelled and your guest page is no longer active. You can reactivate at any time from your billing settings.\n\nReactivate: ${APP_URL}/dashboard/billing\n\nArrivly`
-  return { subject: 'Your Arrivly subscription has been cancelled', html, text }
+  const text = `Hi ${who},\n\n${endedNoteText}Your Bemgu subscription has been cancelled and your guest page is no longer active. You can reactivate at any time from your billing settings.\n\nReactivate: ${APP_URL}/dashboard/billing\n\nBemgu`
+  return { subject: 'Your Bemgu subscription has been cancelled', html, text }
 }
 
 export function subscriptionPastDueEmail(
@@ -194,12 +194,12 @@ export function subscriptionPastDueEmail(
   const html = layout(
     'Action needed: payment issue',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0 0 12px;">We couldn't charge your payment method. Your Arrivly guest page is still live for now — please update your card soon to avoid any interruption.</p>
+     <p style="margin:0 0 12px;">We couldn't charge your payment method. Your Bemgu guest page is still live for now — please update your card soon to avoid any interruption.</p>
      <p style="margin:0;">Visit your billing settings to update your payment method.</p>`,
     'Update payment method', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\nWe couldn't charge your payment method. Your Arrivly guest page is still live for now — please update your card soon to avoid any interruption.\n\nUpdate payment method: ${APP_URL}/dashboard/billing\n\nArrivly`
-  return { subject: 'Action needed: payment issue with your Arrivly subscription', html, text }
+  const text = `Hi ${who},\n\nWe couldn't charge your payment method. Your Bemgu guest page is still live for now — please update your card soon to avoid any interruption.\n\nUpdate payment method: ${APP_URL}/dashboard/billing\n\nBemgu`
+  return { subject: 'Action needed: payment issue with your Bemgu subscription', html, text }
 }
 
 // ─── Admin webhook apply-time email ───
@@ -252,8 +252,8 @@ export function adminSubscriptionEventEmail(
   const priceText = priceCents != null && currency ? `New price: ${formatMoney(priceCents, currency)}/month\n` : ''
   const chargedText = amountChargedCents != null && currency ? `Amount charged: ${formatMoney(amountChargedCents, currency)}\n` : ''
   const renewalText = renewalIso ? `Renewal: ${formatDateLong(renewalIso)}\n` : ''
-  const text = `Arrivly subscription event: ${event}\n\nHost: ${nameLabel} <${emailLabel}>\nHost ID: ${hostId}\nTier: ${fromTierName} -> ${toTierName}\nStatus: ${status}\n${priceText}${chargedText}${renewalText}\nAdmin: ${APP_URL}/admin`
-  return { subject: `Arrivly: ${nameLabel} ${event}`, html, text }
+  const text = `Bemgu subscription event: ${event}\n\nHost: ${nameLabel} <${emailLabel}>\nHost ID: ${hostId}\nTier: ${fromTierName} -> ${toTierName}\nStatus: ${status}\n${priceText}${chargedText}${renewalText}\nAdmin: ${APP_URL}/admin`
+  return { subject: `Bemgu: ${nameLabel} ${event}`, html, text }
 }
 
 // ─── Request-time builders (sent immediately on host action; distinct from webhook apply-time) ───
@@ -283,7 +283,7 @@ export function subscriptionScheduledChangeEmail(
      <p style="margin:0;">Your plan will change to <strong>${esc(toName)}</strong> (${esc(price)}/month) on <strong>${esc(date)}</strong>. You stay on ${esc(fromName)} until then — no charge now.${capNoteHtml}</p>`,
     'Manage your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\nYour plan will change to ${toName} (${price}/month) on ${date}. You stay on ${fromName} until then — no charge now.${capNoteText}\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
+  const text = `Hi ${who},\n\nYour plan will change to ${toName} (${price}/month) on ${date}. You stay on ${fromName} until then — no charge now.${capNoteText}\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nBemgu`
   return { subject: `Your plan change to ${toName} is scheduled`, html, text }
 }
 
@@ -307,12 +307,12 @@ export function subscriptionScheduledCancelEmail(
   const html = layout(
     'Your cancellation is scheduled',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0 0 12px;">Your Arrivly subscription will end on <strong>${esc(dateStr)}</strong>. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.</p>
+     <p style="margin:0 0 12px;">Your Bemgu subscription will end on <strong>${esc(dateStr)}</strong>. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.</p>
      ${alsoHtml}${noChargeHtml}`,
     'Manage your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\nYour Arrivly subscription will end on ${dateStr}. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.\n\n${alsoText}${noChargeText}Manage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
-  return { subject: 'Your Arrivly cancellation is scheduled', html, text }
+  const text = `Hi ${who},\n\nYour Bemgu subscription will end on ${dateStr}. Your guest pages stay live until then. You can resume your subscription anytime from your dashboard.\n\n${alsoText}${noChargeText}Manage your plan: ${APP_URL}/dashboard/billing\n\nBemgu`
+  return { subject: 'Your Bemgu cancellation is scheduled', html, text }
 }
 
 export function subscriptionChangeRevertedEmail(
@@ -330,8 +330,8 @@ export function subscriptionChangeRevertedEmail(
      <p style="margin:0;">Your scheduled plan change has been cancelled. You'll stay on <strong>${esc(currentName)}</strong> (${esc(price)}/month), renewing ${esc(renewalDate)}. Nothing changes.</p>`,
     'Manage your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\nYour scheduled plan change has been cancelled. You'll stay on ${currentName} (${price}/month), renewing ${renewalDate}. Nothing changes.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
-  return { subject: 'Your scheduled Arrivly plan change was cancelled', html, text }
+  const text = `Hi ${who},\n\nYour scheduled plan change has been cancelled. You'll stay on ${currentName} (${price}/month), renewing ${renewalDate}. Nothing changes.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nBemgu`
+  return { subject: 'Your scheduled Bemgu plan change was cancelled', html, text }
 }
 
 export function subscriptionResumedEmail(
@@ -349,11 +349,11 @@ export function subscriptionResumedEmail(
   const html = layout(
     'Your subscription is active again',
     `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
-     <p style="margin:0;">Your cancellation has been undone. Your Arrivly subscription${priceHtml}.</p>`,
+     <p style="margin:0;">Your cancellation has been undone. Your Bemgu subscription${priceHtml}.</p>`,
     'Manage your plan', `${APP_URL}/dashboard/billing`,
   )
-  const text = `Hi ${who},\n\nYour cancellation has been undone. Your Arrivly subscription${priceText}.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nArrivly`
-  return { subject: 'Your Arrivly subscription is active again', html, text }
+  const text = `Hi ${who},\n\nYour cancellation has been undone. Your Bemgu subscription${priceText}.\n\nManage your plan: ${APP_URL}/dashboard/billing\n\nBemgu`
+  return { subject: 'Your Bemgu subscription is active again', html, text }
 }
 
 // ─── Admin request-time email ───
@@ -405,6 +405,6 @@ export function adminSubscriptionRequestEmail(
      </table>`,
     'Open admin', `${APP_URL}/admin`,
   )
-  const text = `Arrivly request: ${nameLabel} ${humanEvent}\n\nHost: ${nameLabel} <${emailLabel}>\nHost ID: ${hostId}\nTier: ${fromTierName} -> ${toTierName}\n${priceText}Timing: Requested\nEffective: ${effectiveLabel}\n\nAdmin: ${APP_URL}/admin`
-  return { subject: `Arrivly: ${nameLabel} ${humanEvent}`, html, text }
+  const text = `Bemgu request: ${nameLabel} ${humanEvent}\n\nHost: ${nameLabel} <${emailLabel}>\nHost ID: ${hostId}\nTier: ${fromTierName} -> ${toTierName}\n${priceText}Timing: Requested\nEffective: ${effectiveLabel}\n\nAdmin: ${APP_URL}/admin`
+  return { subject: `Bemgu: ${nameLabel} ${humanEvent}`, html, text }
 }

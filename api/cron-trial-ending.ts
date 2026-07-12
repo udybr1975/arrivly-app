@@ -48,7 +48,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const summary = await sendPushToHost(supabase, host.id, {
       title: 'Trial ending soon',
-      body: `Your Arrivly trial ends in ${daysLeft} ${dayWord}. Add a payment method to keep your guest page live.`,
+      body: `Your Bemgu trial ends in ${daysLeft} ${dayWord}. Add a payment method to keep your guest page live.`,
       url: '/dashboard/billing',
     })
     if (summary.sent > 0) pushed++

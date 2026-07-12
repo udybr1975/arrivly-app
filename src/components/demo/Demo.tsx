@@ -440,7 +440,7 @@ export default function Demo() {
       <AuthShell headline={DEMO_HEADLINE} sub={DEMO_SUB}>
         <h1 className="font-['Fraunces'] font-light text-[31px] leading-tight text-[#1c1c1a]">You already have an account</h1>
         <p className="mt-3 text-sm leading-relaxed text-[#6f6757]">
-          There’s already an Arrivly account for <strong className="text-[#1c1c1a]">{email.trim().toLowerCase()}</strong>. Sign in to pick up where you left off.
+          There’s already a Bemgu account for <strong className="text-[#1c1c1a]">{email.trim().toLowerCase()}</strong>. Sign in to pick up where you left off.
         </p>
         <Link to="/login" className={`${PRIMARY} mt-7`}>
           Go to sign in
@@ -463,7 +463,7 @@ export default function Demo() {
       {step === 1 && (
         <>
           <StepHeader n={1} label="Your place" />
-          <h1 className="font-['Fraunces'] font-light text-[31px] leading-tight text-[#1c1c1a]">Try Arrivly free for 48 hours</h1>
+          <h1 className="font-['Fraunces'] font-light text-[31px] leading-tight text-[#1c1c1a]">Try Bemgu free for 48 hours</h1>
           <p className="mt-2 text-sm text-[#6f6757]">Tell us where, and we’ll build you a live guest page to explore. No card needed.</p>
 
           {expiredPrompt ? (

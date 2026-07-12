@@ -123,7 +123,7 @@ async function createDemoApartment(
 // AND on the guest page. Best-effort; the caller wraps this in one try/catch.
 async function seedShowcaseDetails(admin: SupabaseClient, apartmentId: string): Promise<void> {
   const { error } = await admin.from('apartment_details').insert([
-    { apartment_id: apartmentId, category: 'WiFi', is_private: false, content: 'Network: ArrivlyStay\nPassword: WelcomeHome2026' },
+    { apartment_id: apartmentId, category: 'WiFi', is_private: false, content: 'Network: BemguStay\nPassword: WelcomeHome2026' },
     { apartment_id: apartmentId, category: 'House Rules', is_private: false, content: HOUSE_RULES },
     { apartment_id: apartmentId, category: 'Check-in', is_private: true, content: 'Check-in from: 15:00' },
     { apartment_id: apartmentId, category: 'Check-in', is_private: true, content: 'Check-out by: 11:00' },

@@ -99,7 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Signal only a wholesale failure (likely quota/outage) — never throw.
   if (candidates.length > 0 && refreshed === 0) {
     await sendNtfy({
-      title: 'Arrivly city-events refresh',
+      title: 'Bemgu city-events refresh',
       message: `All ${candidates.length} event refreshes failed today.`,
       priority: 'high',
     })

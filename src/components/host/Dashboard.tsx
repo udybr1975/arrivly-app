@@ -319,9 +319,9 @@ export default function Dashboard() {
   // for the whole first session and flips to false on the next login.
   const isNewHost = !hostData?.welcome_seen_at
   const greeting = isNewHost
-    ? (firstName ? `Welcome, ${firstName}` : 'Welcome to Arrivly')
+    ? (firstName ? `Welcome, ${firstName}` : 'Welcome to Bemgu')
     : (firstName ? `Welcome back, ${firstName}` : 'Welcome back')
-  const welcomeTitle = firstName ? `Welcome to Arrivly, ${firstName}` : 'Welcome to Arrivly'
+  const welcomeTitle = firstName ? `Welcome to Bemgu, ${firstName}` : 'Welcome to Bemgu'
 
   // Host-local date label for the header eyebrow (e.g. "Friday, 26 June").
   const todayLabel = new Date().toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })
@@ -393,7 +393,7 @@ export default function Dashboard() {
             ref={welcomeRef}
             role="dialog"
             aria-modal="true"
-            aria-label="Welcome to Arrivly"
+            aria-label="Welcome to Bemgu"
             tabIndex={-1}
             className="bg-[#fffdf9] rounded-[14px] border border-[#e4ddd0] p-6 max-w-sm w-full shadow-xl outline-none"
             onClick={e => e.stopPropagation()}
@@ -495,7 +495,7 @@ export default function Dashboard() {
               </div>
               <div className="text-[21px] font-['Fraunces'] font-light text-[#231d17] mb-2">{greeting}</div>
               <p className="text-[13px] text-[#6b6354] leading-relaxed mb-6 max-w-[320px] mx-auto">
-                Your guest page is one step away. Add your first property and Arrivly will
+                Your guest page is one step away. Add your first property and Bemgu will
                 generate a personalised page for every scan.
               </p>
               <button

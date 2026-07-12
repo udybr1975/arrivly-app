@@ -100,7 +100,7 @@ export default function Login() {
       </form>
 
       <p className="mt-8 text-center text-sm text-[#6f6757]">
-        New to Arrivly?{' '}
+        New to Bemgu?{' '}
         <Link to="/signup" className="font-semibold text-[#a8842f] underline decoration-[#c8a24e]/40 underline-offset-2 hover:text-[#c8a24e]">
           Start your free trial
         </Link>

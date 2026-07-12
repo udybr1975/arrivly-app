@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { getStripe, priceIdForTier, ARRIVLY_STRIPE_METADATA } from './_lib/stripe.js'
 
-const APP_URL = process.env.VITE_APP_URL ?? 'https://arrivly.anna-stays.fi'
+const APP_URL = process.env.VITE_APP_URL ?? 'https://bemgu.app'
 
 type Flow = 'signup' | 'billing'
 const VALID_FLOWS: Flow[] = ['signup', 'billing']

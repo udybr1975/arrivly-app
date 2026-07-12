@@ -49,7 +49,7 @@ function PropertyQRCard({ apt }: { apt: ApartmentQR }) {
   function download() {
     if (!canvasRef.current) return
     const link = document.createElement('a')
-    link.download = `arrivly-qr-${slugify(apt.name)}.png`
+    link.download = `bemgu-qr-${slugify(apt.name)}.png`
     link.href = canvasRef.current.toDataURL('image/png')
     link.click()
   }

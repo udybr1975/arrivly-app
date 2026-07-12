@@ -112,7 +112,7 @@ export default function AuthShell({ headline, sub, points = DEFAULT_POINTS, chil
               className="mt-8 hidden md:block text-[11px] tracking-wide text-[#f0ede6]/35"
               style={{ textShadow: TEXT_SHADOW }}
             >
-              arrivly.anna-stays.fi
+              bemgu.app
             </div>
           </div>
         </div>

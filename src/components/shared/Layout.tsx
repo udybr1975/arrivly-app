@@ -323,7 +323,7 @@ export default function Layout() {
         </button>
         <Logo size={22} />
         <span className="text-[13px] font-semibold text-[#e9e3d7] truncate">
-          {host?.brand_name ?? 'Arrivly'}
+          {host?.brand_name ?? 'Bemgu'}
         </span>
       </div>
 
@@ -509,7 +509,7 @@ export default function Layout() {
               </div>
               <div className="flex-1 min-w-0">
                 <div className="text-[12px] font-semibold text-[#e9e3d7] truncate">
-                  {host?.brand_name ?? 'Arrivly'}
+                  {host?.brand_name ?? 'Bemgu'}
                 </div>
                 <div className="text-[10px] text-[#8a8175] truncate">{email}</div>
               </div>

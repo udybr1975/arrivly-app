@@ -991,7 +991,7 @@ export default function SuperAdmin() {
         {/* Header */}
         <div className="flex items-center justify-between mb-5 flex-wrap gap-y-2 gap-x-3">
           <div className="flex items-center gap-2.5">
-            <h1 className="text-[18px] font-serif font-light text-[#1a1a1a]">Superadmin — Arrivly</h1>
+            <h1 className="text-[18px] font-serif font-light text-[#1a1a1a]">Superadmin — Bemgu</h1>
             <span className="text-[10px] bg-[#fde4e4] text-[#8a1a1a] px-2 py-0.5 rounded-full font-medium">🔒 Locked</span>
           </div>
           <div className="flex items-center gap-2">

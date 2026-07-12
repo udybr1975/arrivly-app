@@ -15,7 +15,7 @@ import {
 } from './landing-icons'
 
 /**
- * Arrivly marketing landing page.
+ * Bemgu marketing landing page.
  * Dark-charcoal, brass-accented. Fonts (Fraunces display / Inter body) are loaded
  * in index.html and SCOPED to this tree via the root wrapper's font-family — the
  * dashboard's Georgia/system stack is untouched.
@@ -125,7 +125,7 @@ const FEATURES = [
 const FAQS = [
   {
     q: 'Do my guests need to download an app?',
-    a: 'No. Arrivly opens in any browser straight from the QR code — nothing to install, no app store. Guests can optionally add it to their home screen for one-tap access and push messages, but that is entirely their choice.',
+    a: 'No. Bemgu opens in any browser straight from the QR code — nothing to install, no app store. Guests can optionally add it to their home screen for one-tap access and push messages, but that is entirely their choice.',
   },
   {
     q: 'Does it work with Airbnb, Vrbo and Booking.com?',
@@ -463,7 +463,7 @@ export default function Landing() {
       <header className="sticky top-0 z-50 border-b border-[#2c2925] bg-[#1c1c1a]/90 backdrop-blur supports-[backdrop-filter]:bg-[#1c1c1a]/75">
         <nav className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5 sm:px-8">
           <a href="#top" className="font-['Fraunces'] text-[19px] font-medium tracking-tight text-[#f0ede6]">
-            Arrivly
+            Bemgu
           </a>
           <div className="hidden items-center gap-7 md:flex">
             <a href="#how" className="text-[13px] text-[#f0ede6]/60 transition-colors hover:text-[#f0ede6]">How it works</a>
@@ -605,7 +605,7 @@ export default function Landing() {
               Your guide becomes a revenue stream.
             </h2>
             <p className="mt-5 max-w-[460px] text-[15px] leading-[1.7] text-[#1c1c1a]/65">
-              Guests already book tours, tables and tickets during their stay. With Arrivly they
+              Guests already book tours, tables and tickets during their stay. With Bemgu they
               book them from your page — and a share comes back to you.
             </p>
             <ul className="mt-8 space-y-5">
@@ -810,15 +810,15 @@ export default function Landing() {
       <footer className="border-t border-[#2c2925] bg-[#1c1c1a]">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 px-5 py-9 sm:px-8 md:flex-row">
           <div className="text-center md:text-left">
-            <div className="font-['Fraunces'] text-[17px] font-medium text-[#f0ede6]">Arrivly</div>
-            <div className="mt-1 text-[12px] text-[#f0ede6]/40">© 2026 Arrivly. A separate product from Anna&apos;s Stays.</div>
+            <div className="font-['Fraunces'] text-[17px] font-medium text-[#f0ede6]">Bemgu</div>
+            <div className="mt-1 text-[12px] text-[#f0ede6]/40">© 2026 Bemgu. A separate product from Anna&apos;s Stays.</div>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[13px] text-[#f0ede6]/55">
             <a href="#how" className="transition-colors hover:text-[#f0ede6]">How it works</a>
             <a href="#features" className="transition-colors hover:text-[#f0ede6]">Features</a>
             <a href="#pricing" className="transition-colors hover:text-[#f0ede6]">Pricing</a>
             <Link to="/login" className="transition-colors hover:text-[#f0ede6]">Log in</Link>
-            <span className="text-[#f0ede6]/30">arrivly.anna-stays.fi</span>
+            <span className="text-[#f0ede6]/30">bemgu.app</span>
           </div>
         </div>
       </footer>
