@@ -10,6 +10,7 @@ import { getDirectionsUrl } from '../../lib/maps'
 import { resolveImageUrl, FALLBACK_HERO } from '../../lib/imageUtils'
 import InstallPrompt from './InstallPrompt'
 import EventsPage from './EventsPage'
+import ExperiencesSheet, { type ExperienceItem } from './ExperiencesSheet'
 import ChatBot from './ChatBot'
 import MessageHost from './MessageHost'
 import { ARRIVLY_CONFIG } from '../../config'
@@ -109,12 +110,14 @@ function mapsSearchUrl(name: string, address?: string | null): string {
 const EXTRAS_CATEGORIES = ['Parking', 'Recycling & Bins', 'Appliances', 'Transport', 'Amenities', 'Safety', 'Good to know']
 const PREVIEW_SAMPLE_NAME = 'Alex'
 
-// Phase I — third-party monetization surfaces. Built as reserved, reviewed layout
-// now; ship HIDDEN until the affiliate integration lands (Viator/GetYourGuide for
-// experiences, TheFork/OpenTable for tables). Flipping these to true is a SEPARATE,
-// security-reviewed change that also wires the real booking endpoints. Until then
-// these render nothing and make no network calls.
-const SHOW_EXPERIENCES_SLOT = false
+// Phase I — bookable experiences (Viator + Tiqets APIs, GetYourGuide links). The
+// Explore-tab "Tours & tickets" entry + sheet are wired to VITE_EXPERIENCES_ENABLED;
+// OFF unless exactly 'true' (VITE_ vars need a redeploy to take effect). When on, the
+// entry card only appears once /api/experiences returns content for the apartment.
+const EXPERIENCES_ENABLED = import.meta.env.VITE_EXPERIENCES_ENABLED === 'true'
+
+// SLOT 2 — restaurant "Reserve" (TheFork/OpenTable) is a separate later Phase-I surface,
+// still inert + flag-gated OFF. Flipping it wires a different (table-booking) endpoint.
 const SHOW_RESERVE_SLOT = false
 
 function getDayPart(): 'morning' | 'afternoon' | 'evening' | 'night' {
@@ -151,6 +154,10 @@ export default function GuestPage() {
   const [pageState, setPageState] = useState<PageState>('loading')
   const [activeTab, setActiveTab] = useState<ActiveTab>('home')
   const [showEvents, setShowEvents] = useState(false)
+  const [showExperiences, setShowExperiences] = useState(false)
+  const [experiences, setExperiences] = useState<ExperienceItem[] | null>(null)
+  const [gygCityLink, setGygCityLink] = useState<string | null>(null)
+  const [experiencesLoading, setExperiencesLoading] = useState(false)
   const [showMessages, setShowMessages] = useState(false)
 
   const [guestName, setGuestName] = useState<string | null>(null)
@@ -181,6 +188,47 @@ export default function GuestPage() {
     catch { return true }
   })
   const blurbFlagRef = useRef(false)
+
+  // SEO — the guest page must NOT be indexed (Viator licence requires marketplace
+  // content not be crawled/indexed). Injected only while GuestPage is mounted, and
+  // removed on unmount so the landing page and dashboard are never noindexed.
+  useEffect(() => {
+    const meta = document.createElement('meta')
+    meta.name = 'robots'
+    meta.content = 'noindex'
+    document.head.appendChild(meta)
+    return () => { meta.remove() }
+  }, [])
+
+  // Bookable experiences — fetched once when the Explore tab is first opened (only when
+  // the feature flag is on). The entry card renders only if this returns content.
+  useEffect(() => {
+    if (!EXPERIENCES_ENABLED) return
+    if (activeTab !== 'explore') return
+    if (experiences !== null || experiencesLoading) return
+    const targetApt = apartment?.id
+    if (!targetApt) return
+    let cancelled = false
+    setExperiencesLoading(true)
+    fetch('/api/experiences', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ apartmentId: targetApt }),
+    })
+      .then(r => r.ok ? r.json() : { experiences: [], gygCityLink: null })
+      .then((data: { experiences?: ExperienceItem[]; gygCityLink?: string | null }) => {
+        if (cancelled) return
+        setExperiences(Array.isArray(data.experiences) ? data.experiences : [])
+        setGygCityLink(typeof data.gygCityLink === 'string' ? data.gygCityLink : null)
+      })
+      .catch(() => { if (!cancelled) { setExperiences([]); setGygCityLink(null) } })
+      .finally(() => { if (!cancelled) setExperiencesLoading(false) })
+    return () => { cancelled = true }
+    // NOTE: experiencesLoading is intentionally NOT a dep — it is set inside this
+    // effect; listing it would re-run (and cancel) the in-flight fetch, leaving the
+    // spinner stuck forever. The `experiences` data guard alone blocks a re-fetch
+    // once it populates (mirrors the guide effect's guideLoading handling).
+  }, [activeTab, apartment?.id, experiences])
 
   useEffect(() => {
     if (!aptId) { setLoading(false); setPageState('neutral'); return }
@@ -517,6 +565,9 @@ export default function GuestPage() {
   const accentColor = apartment?.accent_color ?? host?.accent_color ?? ARRIVLY_CONFIG.colourPresets[0].hex
   const brandName = host?.brand_name ?? 'Your Host'
   const showPoweredBy = host?.subscription_status === 'trial' || host?.subscription_status === 'grace'
+  // Show the "Tours & tickets" entry only once the experiences fetch has content (or is loading).
+  const showExperiencesEntry =
+    EXPERIENCES_ENABLED && (experiencesLoading || (experiences?.length ?? 0) > 0 || !!gygCityLink)
 
   const wifiDetails = details.filter(d => /wifi|wi-fi|internet|wireless/i.test(d.category ?? ''))
   const wifiParsed = wifiDetails.length > 0
@@ -1091,8 +1142,8 @@ export default function GuestPage() {
             <h2 className="font-['Fraunces'] font-light text-2xl tracking-tight">Around {apt.neighborhood}</h2>
           </div>
           <div className="max-w-lg mx-auto px-6 pt-6 pb-8">
-            {/* "Plan your time" eyebrow only appears once a monetization slot is on */}
-            {SHOW_EXPERIENCES_SLOT && (
+            {/* "Plan your time" eyebrow only appears once the experiences entry is shown */}
+            {showExperiencesEntry && (
               <p className="text-[10px] tracking-widest uppercase text-[#9a958c] mb-2.5">Plan your time</p>
             )}
 
@@ -1113,9 +1164,12 @@ export default function GuestPage() {
               <span style={{ color: accentColor }}>→</span>
             </button>
 
-            {/* SLOT 1 — Tours & tickets (Phase I, inert + flag-gated; renders nothing until SHOW_EXPERIENCES_SLOT) */}
-            {SHOW_EXPERIENCES_SLOT && (
-              <div className="flex items-center justify-between w-full p-4 rounded-[14px] mt-2.5 bg-[#fffdf9] border border-[#e9e4d9] text-left shadow-[0_1px_5px_rgba(0,0,0,0.04)] cursor-default">
+            {/* SLOT 1 — Tours & tickets (Phase I, live behind VITE_EXPERIENCES_ENABLED) */}
+            {showExperiencesEntry && (
+              <button
+                onClick={() => setShowExperiences(true)}
+                className="flex items-center justify-between w-full p-4 rounded-[14px] mt-2.5 bg-[#fffdf9] border border-[#e9e4d9] text-left shadow-[0_1px_5px_rgba(0,0,0,0.04)] cursor-pointer"
+              >
                 <div className="flex items-center gap-3">
                   <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: accentColor + '14', color: accentColor }}>
                     <Ticket size={17} />
@@ -1128,7 +1182,8 @@ export default function GuestPage() {
                     <p className="text-xs text-[#9a958c]">Tours, tickets & experiences — book ahead</p>
                   </div>
                 </div>
-              </div>
+                <span style={{ color: accentColor }}>→</span>
+              </button>
             )}
 
             <div className="mt-6">
@@ -1547,6 +1602,19 @@ export default function GuestPage() {
           brandName={brandName}
           isOnTrial={showPoweredBy}
           onClose={() => setShowEvents(false)}
+        />
+      )}
+
+      {showExperiences && (
+        <ExperiencesSheet
+          apartmentId={apt.id}
+          accentColor={accentColor}
+          brandName={brandName}
+          isOnTrial={showPoweredBy}
+          experiences={experiences ?? []}
+          gygCityLink={gygCityLink}
+          loading={experiencesLoading}
+          onClose={() => setShowExperiences(false)}
         />
       )}
 

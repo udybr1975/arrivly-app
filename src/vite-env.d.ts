@@ -10,6 +10,7 @@ interface ImportMetaEnv {
   readonly VITE_TURNSTILE_SITE_KEY: string | undefined
   readonly VITE_SOCIAL_AUTH: string | undefined
   readonly VITE_SOCIAL_APPLE: string | undefined
+  readonly VITE_EXPERIENCES_ENABLED: string | undefined
 }
 
 interface ImportMeta {
