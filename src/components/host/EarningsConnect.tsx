@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { Link, Navigate, useSearchParams } from 'react-router-dom'
 import { ArrowLeft, ExternalLink, Check, ShieldCheck } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { ARRIVLY_CONFIG } from '../../config'
@@ -40,6 +40,11 @@ export default function EarningsConnect() {
   const [userId, setUserId] = useState<string | null>(null)
   const [host, setHost] = useState<HostRow | null>(null)
   const [applied, setApplied] = useState<AppliedState>({})
+  const [searchParams] = useSearchParams()
+  // ?provider=viator|gyg|tiqets deep-links from the Earnings panel's per-card Connect CTA.
+  const requestedProvider = searchParams.get('provider')
+  const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const scrolledRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -64,6 +69,17 @@ export default function EarningsConnect() {
     load()
     return () => { cancelled = true }
   }, [])
+
+  // Scroll the deep-linked provider section into view ONCE, after content renders.
+  // Invalid/absent param → no-op; guarded so it never re-fires.
+  useEffect(() => {
+    if (scrolledRef.current || loading) return
+    if (requestedProvider !== 'viator' && requestedProvider !== 'gyg' && requestedProvider !== 'tiqets') return
+    const el = sectionRefs.current[requestedProvider]
+    if (!el) return
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    scrolledRef.current = true
+  }, [loading, requestedProvider])
 
   // Read-modify-write ui_state, preserving sibling keys (e.g. guideHints). Best-effort.
   async function persistApplied(next: AppliedState) {
@@ -132,15 +148,20 @@ export default function EarningsConnect() {
       </p>
 
       {EXPERIENCE_PROVIDERS.map(meta => (
-        <ProviderSection
+        <div
           key={meta.key}
-          meta={meta}
-          connectedId={host?.[meta.column] ?? null}
-          appliedAt={applied[meta.key]?.appliedAt ?? null}
-          onMarkApplied={() => markApplied(meta.key)}
-          onSave={(normalized) => savePartnerId(meta, normalized)}
-          onDisconnect={() => disconnect(meta)}
-        />
+          id={`provider-${meta.key}`}
+          ref={(el) => { sectionRefs.current[meta.key] = el }}
+        >
+          <ProviderSection
+            meta={meta}
+            connectedId={host?.[meta.column] ?? null}
+            appliedAt={applied[meta.key]?.appliedAt ?? null}
+            onMarkApplied={() => markApplied(meta.key)}
+            onSave={(normalized) => savePartnerId(meta, normalized)}
+            onDisconnect={() => disconnect(meta)}
+          />
+        </div>
       ))}
 
       {/* Reassurance footer */}

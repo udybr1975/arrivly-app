@@ -159,19 +159,30 @@ function ConnectedState({
               <div className="text-[22px] font-['Fraunces'] font-light text-[#231d17] leading-none">{byProvider[p.key]}</div>
               <div className="text-[11px] text-[#8a8276] mt-0.5 mb-3">taps · 30 days</div>
               <div className="border-t border-[#e4ddd0] pt-2.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[11px] text-[#a79e8e]">Commission</span>
-                  <span className="text-[15px] text-[#231d17] font-['Fraunces']">—</span>
-                </div>
-                <a
-                  href={p.portalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-[11px] font-medium text-[#a8842f] hover:text-[#c8a24e] transition-colors mt-1"
-                >
-                  {connected ? `Reported in your ${p.label} dashboard` : `Open ${p.label}`}
-                  <ExternalLink size={11} />
-                </a>
+                {connected ? (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] text-[#a79e8e]">Commission</span>
+                      <span className="text-[15px] text-[#231d17] font-['Fraunces']">—</span>
+                    </div>
+                    <a
+                      href={p.portalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 text-[11px] font-medium text-[#a8842f] hover:text-[#c8a24e] transition-colors mt-1"
+                    >
+                      Reported in your {p.label} dashboard
+                      <ExternalLink size={11} />
+                    </a>
+                  </>
+                ) : (
+                  <Link
+                    to={`/dashboard/earnings/connect?provider=${p.key}`}
+                    className="w-full justify-center inline-flex items-center gap-1.5 bg-[#c8a24e] text-[#16100d] px-4 py-2.5 rounded-[10px] text-xs font-semibold hover:bg-[#e7d6ad] transition-colors"
+                  >
+                    Connect {p.label} <ArrowUpRight size={14} />
+                  </Link>
+                )}
               </div>
             </div>
           )
