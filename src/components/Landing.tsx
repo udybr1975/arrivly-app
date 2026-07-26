@@ -30,8 +30,47 @@ import {
 // cream #f0ede6 · cream-2 #f6f3ec · cream-line #ddd8ce
 // brass #c8a24e · brass-deep #a8842f · brass-soft #e7d6ad
 
-type Pricing = { trialDays: number; fromPriceEuros: number; currency: string }
-const DEFAULT_PRICING: Pricing = { trialDays: 14, fromPriceEuros: 10, currency: 'eur' }
+type PublicPlan = { tier: number; priceEuros: number; maxProperties: number | null; includesBooking: boolean }
+type Pricing = { trialDays: number; fromPriceEuros: number; currency: string; plans: PublicPlan[] }
+
+// DB-matching fallback so the pricing grid renders fully (no flash) even if the fetch
+// fails. Real prices come from /api/public-pricing when available (never config-only).
+const DEFAULT_PLANS: PublicPlan[] = [
+  { tier: 1, priceEuros: 10, maxProperties: 2, includesBooking: false },
+  { tier: 2, priceEuros: 15, maxProperties: 7, includesBooking: false },
+  { tier: 3, priceEuros: 25, maxProperties: 12, includesBooking: false },
+  { tier: 4, priceEuros: 49, maxProperties: null, includesBooking: true },
+]
+const DEFAULT_PRICING: Pricing = { trialDays: 14, fromPriceEuros: 10, currency: 'eur', plans: DEFAULT_PLANS }
+
+// Marketing labels + copy — defined HERE (never written to the DB/config). Prices and
+// property caps come from the fetched plans; only presentation lives in this map.
+const TIER_META: Record<number, { name: string; badge?: string; featured?: boolean; comingSoon?: boolean; bullets: string[] }> = {
+  1: {
+    name: 'Starter',
+    bullets: ['Every guest-page feature', 'AI concierge, guide & live events', 'Bookable tours & tickets on the page'],
+  },
+  2: {
+    name: 'Host',
+    bullets: ['Everything in Starter', 'Room for a growing portfolio'],
+  },
+  3: {
+    name: 'Portfolio',
+    featured: true,
+    badge: 'Earn with it',
+    bullets: [
+      'Everything in Host',
+      'Connect your own Viator, GetYourGuide & Tiqets accounts',
+      'Keep 100% of experience commissions — paid to you directly',
+    ],
+  },
+  4: {
+    name: 'Full booking',
+    comingSoon: true,
+    badge: 'Coming soon',
+    bullets: ['Everything in Portfolio', 'Complete direct-booking platform'],
+  },
+}
 
 // Public demo entry — only live when the flag is exactly 'true'. Otherwise the
 // "See a live demo" button keeps its current inert behaviour.
@@ -75,6 +114,42 @@ function Reveal({ children, className = '', delay = 0 }: { children: ReactNode; 
       } ${className}`}
     >
       {children}
+    </div>
+  )
+}
+
+// Comparison-table cell content. `dark` = the raised Bemgu column (light text on
+// charcoal). Marks carry an sr-only Yes/No so the table reads correctly to screen readers.
+function CompCellContent({ cell, dark }: { cell: CompCell; dark?: boolean }) {
+  const textColor = dark ? 'text-[#f0ede6]/85' : 'text-[#1c1c1a]/70'
+  const dashColor = dark ? 'text-[#f0ede6]/35' : 'text-[#1c1c1a]/30'
+  return (
+    <div className="flex flex-col items-center gap-1 text-center">
+      {(cell.mark === 'brass' || cell.mark === 'muted') && (
+        <>
+          <svg
+            viewBox="0 0 24 24"
+            className="h-4 w-4"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={3}
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+            style={{ color: cell.mark === 'brass' ? '#c8a24e' : dark ? '#8f887b' : '#b3aa9b' }}
+          >
+            <path d="M5 13l4 4L19 7" />
+          </svg>
+          <span className="sr-only">Yes</span>
+        </>
+      )}
+      {cell.mark === 'dash' && (
+        <>
+          <span className={`text-[15px] leading-none ${dashColor}`} aria-hidden>—</span>
+          <span className="sr-only">No</span>
+        </>
+      )}
+      {cell.text && <span className={`text-[12px] leading-snug ${textColor}`}>{cell.text}</span>}
     </div>
   )
 }
@@ -143,6 +218,76 @@ const FAQS = [
     q: 'Can I cancel anytime?',
     a: 'Yes. Start with a free trial — no card needed to begin — and cancel whenever you like from your dashboard. No lock-in.',
   },
+]
+
+// ── Comparison ("comps") data. Competitor claims are worded exactly as approved and
+// are sourced from public pricing pages (see the fine print in the section). Marks:
+// 'brass' = yes (Bemgu accent), 'muted' = partial/yes on a comp, 'dash' = no.
+type CompMark = 'brass' | 'muted' | 'dash'
+type CompCell = { mark?: CompMark; text?: string }
+type CompRow = { label: string; bemgu: CompCell; hostfully: CompCell; touchstay: CompCell }
+
+const COMPS_ROWS: CompRow[] = [
+  {
+    label: 'Pricing model',
+    bemgu: { text: 'Flat tier / one price, whole portfolio tier' },
+    hostfully: { text: 'Per guidebook / jumps at 1 → 5 → 10' },
+    touchstay: { text: 'Per property / every unit adds cost' },
+  },
+  {
+    label: '10–12 properties, per month',
+    bemgu: { text: '€25 / Portfolio — up to 12 properties' },
+    hostfully: { text: '~$75+ / Professional tier' },
+    touchstay: { text: '~$150+ / ~$12–15 × each property' },
+  },
+  {
+    label: 'Guests can book tours & tickets on the page',
+    bemgu: { mark: 'brass', text: 'Viator · GetYourGuide · Tiqets' },
+    hostfully: { mark: 'muted', text: 'Viator only' },
+    touchstay: { mark: 'dash' },
+  },
+  {
+    label: 'You keep 100% of the commission',
+    bemgu: { mark: 'brass', text: 'on Portfolio — paid to you directly' },
+    hostfully: { mark: 'dash' },
+    touchstay: { mark: 'dash' },
+  },
+  {
+    label: 'AI concierge that answers guest questions',
+    bemgu: { mark: 'brass' },
+    hostfully: { mark: 'dash' },
+    touchstay: { mark: 'dash' },
+  },
+  {
+    label: 'City guide writes itself',
+    bemgu: { mark: 'brass', text: 'AI-built, hyper-local, auto-refreshed' },
+    hostfully: { text: 'Manual curation' },
+    touchstay: { text: 'Manual curation' },
+  },
+  {
+    label: 'Live local events, updated automatically',
+    bemgu: { mark: 'brass' },
+    hostfully: { mark: 'dash' },
+    touchstay: { mark: 'dash' },
+  },
+  {
+    label: 'Direct host ↔ guest messaging',
+    bemgu: { mark: 'brass' },
+    hostfully: { mark: 'dash' },
+    touchstay: { mark: 'muted' },
+  },
+  {
+    label: 'Installs like an app, works offline',
+    bemgu: { mark: 'brass' },
+    hostfully: { mark: 'muted' },
+    touchstay: { mark: 'muted' },
+  },
+]
+
+const COMPS_STATS = [
+  { stat: '2–3 bookings', desc: 'Roughly what it takes per month for guest tour commissions to cover the whole fee' },
+  { stat: '3 marketplaces', desc: 'Viator, GetYourGuide and Tiqets — live on every guest page from day one' },
+  { stat: '100% yours', desc: 'On Portfolio, marketplaces pay commissions to you directly — Bemgu never touches your money' },
 ]
 
 const STEPS = [
@@ -441,10 +586,27 @@ export default function Landing() {
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
         if (alive && data && typeof data.trialDays === 'number' && typeof data.fromPriceEuros === 'number') {
+          // Only accept a well-formed plans array; otherwise keep the DB-matching defaults.
+          const fetchedPlans: PublicPlan[] | null = Array.isArray(data.plans)
+            ? (data.plans as unknown[])
+                .map((p): PublicPlan | null => {
+                  if (!p || typeof p !== 'object') return null
+                  const r = p as Record<string, unknown>
+                  if (typeof r.tier !== 'number' || typeof r.priceEuros !== 'number') return null
+                  return {
+                    tier: r.tier,
+                    priceEuros: r.priceEuros,
+                    maxProperties: typeof r.maxProperties === 'number' ? r.maxProperties : null,
+                    includesBooking: r.includesBooking === true,
+                  }
+                })
+                .filter((p): p is PublicPlan => p !== null)
+            : null
           setPricing({
             trialDays: data.trialDays,
             fromPriceEuros: data.fromPriceEuros,
             currency: typeof data.currency === 'string' ? data.currency : 'eur',
+            plans: fetchedPlans && fetchedPlans.length ? fetchedPlans : DEFAULT_PLANS,
           })
         }
       })
@@ -455,6 +617,7 @@ export default function Landing() {
   }, [])
 
   const startLabel = `Start free — ${pricing.trialDays} days`
+  const plansSorted = [...pricing.plans].sort((a, b) => a.tier - b.tier)
 
   return (
     // Root wrapper SCOPES Inter to the landing only; headings opt into Fraunces.
@@ -688,50 +851,204 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ─────────────────────────── Pricing teaser ─────────────────────────── */}
+      {/* ─────────────────────────── Pricing (4 tiers) ─────────────────────────── */}
       <section id="pricing" className="bg-[#16100d] py-20 sm:py-24">
         <div className="mx-auto max-w-6xl px-5 sm:px-8">
           <Reveal className="mx-auto max-w-2xl text-center">
             <div className="text-[12px] uppercase tracking-[.16em] text-[#c8a24e]">Pricing</div>
             <h2 className="mt-3 font-['Fraunces'] text-[32px] font-light leading-tight text-[#f0ede6] sm:text-[40px]">
-              Simple, per-property pricing.
+              Simple, flat pricing. Never per property.
             </h2>
+            <p className="mx-auto mt-4 max-w-[480px] text-[15px] leading-[1.7] text-[#f0ede6]/55">
+              One price covers your whole tier — add properties without the bill creeping up.
+            </p>
           </Reveal>
-          <Reveal delay={100} className="mx-auto mt-12 max-w-md">
-            <div className="rounded-2xl border border-[#2c2925] bg-[#23211d] p-8 text-center">
-              <div className="text-[12px] uppercase tracking-[.14em] text-[#e7d6ad]">Starts from</div>
-              <div className="mt-2 flex items-end justify-center gap-1.5">
-                <span className="font-['Fraunces'] text-[56px] font-light leading-none text-[#f0ede6]">
-                  €{pricing.fromPriceEuros}
-                </span>
-                <span className="pb-2 text-[14px] text-[#f0ede6]/45">/property / month</span>
-              </div>
-              <ul className="mx-auto mt-7 max-w-[280px] space-y-3 text-left">
-                {[
-                  `${pricing.trialDays}-day free trial — no card`,
-                  'Every guest-page feature included',
-                  'Tiers that scale with your portfolio',
-                  'Cancel anytime',
-                ].map(b => (
-                  <li key={b} className="flex items-center gap-2.5 text-[13.5px] text-[#f0ede6]/75">
-                    <span className="flex h-4 w-4 items-center justify-center rounded-full bg-[#c8a24e] text-[#16100d]">
-                      <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-                        <path d="M5 13l4 4L19 7" />
-                      </svg>
-                    </span>
-                    {b}
-                  </li>
-                ))}
-              </ul>
-              <Link
-                to="/signup"
-                className="mt-8 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#c8a24e] px-6 py-3.5 text-[15px] font-semibold text-[#16100d] transition-colors hover:bg-[#e7d6ad] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e7d6ad] focus-visible:ring-offset-2 focus-visible:ring-offset-[#23211d]"
-              >
-                Start free trial
-                <ArrowRightIcon className="h-4 w-4" />
-              </Link>
-              <div className="mt-3 text-[11.5px] text-[#f0ede6]/35">Higher tiers unlock more properties and the experiences marketplace.</div>
+
+          <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {plansSorted.map((plan, i) => {
+              const meta = TIER_META[plan.tier]
+              if (!meta) return null
+              const propsLine =
+                plan.maxProperties === null
+                  ? 'Unlimited properties'
+                  : `Up to ${plan.maxProperties} ${plan.maxProperties === 1 ? 'property' : 'properties'}`
+              return (
+                <Reveal key={plan.tier} delay={(i % 4) * 70}>
+                  <div
+                    className={`relative flex h-full flex-col rounded-2xl border bg-[#23211d] p-6 ${
+                      meta.featured
+                        ? 'border-[#c8a24e] ring-1 ring-[#c8a24e]/40'
+                        : 'border-[#2c2925]'
+                    } ${meta.badge ? 'pt-8' : ''}`}
+                  >
+                    {meta.badge && (
+                      <span
+                        className={`absolute -top-3 left-1/2 -translate-x-1/2 rounded-full px-3 py-1 text-[10.5px] font-semibold uppercase tracking-[.08em] ${
+                          meta.featured
+                            ? 'bg-[#c8a24e] text-[#16100d]'
+                            : 'border border-[#2c2925] bg-[#16100d] text-[#e7d6ad]/70'
+                        }`}
+                      >
+                        {meta.badge}
+                      </span>
+                    )}
+
+                    <h3 className={`font-['Fraunces'] text-[20px] font-normal ${meta.comingSoon ? 'text-[#f0ede6]/70' : 'text-[#f0ede6]'}`}>
+                      {meta.name}
+                    </h3>
+
+                    <div className="mt-3 flex items-end gap-1.5">
+                      <span className={`font-['Fraunces'] text-[40px] font-light leading-none ${meta.comingSoon ? 'text-[#f0ede6]/70' : 'text-[#f0ede6]'}`}>
+                        €{plan.priceEuros}
+                      </span>
+                      <span className="pb-1 text-[13px] text-[#f0ede6]/45">/month</span>
+                    </div>
+                    <div className="mt-1.5 text-[12.5px] font-medium text-[#e7d6ad]">{propsLine}</div>
+
+                    <ul className="mt-5 flex-1 space-y-2.5">
+                      {meta.bullets.map(b => (
+                        <li key={b} className="flex gap-2.5 text-[13px] leading-snug text-[#f0ede6]/70">
+                          <span className="mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full bg-[#c8a24e] text-[#16100d]">
+                            <svg viewBox="0 0 24 24" className="h-2.5 w-2.5" fill="none" stroke="currentColor" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                              <path d="M5 13l4 4L19 7" />
+                            </svg>
+                          </span>
+                          {b}
+                        </li>
+                      ))}
+                    </ul>
+
+                    <div className="mt-6">
+                      {meta.comingSoon ? (
+                        <button
+                          type="button"
+                          disabled
+                          className="w-full cursor-not-allowed rounded-xl border border-[#2c2925] bg-[#16100d] px-5 py-3 text-[14px] font-semibold text-[#f0ede6]/35"
+                        >
+                          Coming soon
+                        </button>
+                      ) : (
+                        <Link
+                          to="/signup"
+                          className={`inline-flex w-full items-center justify-center gap-2 rounded-xl px-5 py-3 text-[14px] font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-[#23211d] ${
+                            meta.featured
+                              ? 'bg-[#c8a24e] text-[#16100d] hover:bg-[#e7d6ad] focus-visible:ring-[#e7d6ad]'
+                              : 'border border-[#3a352e] bg-transparent text-[#f0ede6] hover:border-[#c8a24e]/50 hover:text-[#e7d6ad] focus-visible:ring-[#c8a24e]'
+                          }`}
+                        >
+                          Start free trial
+                          <ArrowRightIcon className="h-4 w-4" />
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </Reveal>
+              )
+            })}
+          </div>
+
+          <Reveal delay={120}>
+            <p className="mt-8 text-center text-[13px] text-[#f0ede6]/45">
+              {pricing.trialDays}-day free trial on every plan — no card needed. Cancel anytime.
+            </p>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ─────────────────────────── Compare / comps (cream) ─────────────────────────── */}
+      <section className="bg-[#f0ede6] py-20 text-[#1c1c1a] sm:py-24">
+        <div className="mx-auto max-w-6xl px-5 sm:px-8">
+          <Reveal className="mx-auto max-w-2xl text-center">
+            <div className="text-[12px] uppercase tracking-[.16em] text-[#a8842f]">Compare</div>
+            <h2 className="mt-3 font-['Fraunces'] text-[32px] font-light leading-tight text-[#1c1c1a] sm:text-[40px]">
+              Guidebook apps charge per property. Bemgu pays you back.
+            </h2>
+            <p className="mx-auto mt-4 max-w-[560px] text-[15px] leading-[1.7] text-[#1c1c1a]/65">
+              Every Bemgu guest page already sells real, bookable tours &amp; tickets from three marketplaces —
+              live today. Here's how that stacks up against the well-known guidebook tools.
+            </p>
+          </Reveal>
+
+          <Reveal delay={80} className="mt-12">
+            <div
+              className="overflow-x-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f0ede6] rounded-2xl"
+              tabIndex={0}
+              role="region"
+              aria-label="Bemgu vs. competitors comparison"
+            >
+              <table className="w-full min-w-[680px] border-separate border-spacing-0 text-left align-top">
+                <thead>
+                  <tr>
+                    <th scope="col" className="px-4 pb-3 align-bottom">
+                      <span className="sr-only">Feature</span>
+                    </th>
+                    <th scope="col" className="rounded-t-2xl bg-[#1c1c1a] px-4 py-4 text-center align-bottom">
+                      <div className="font-['Fraunces'] text-[18px] font-normal text-[#f0ede6]">Bemgu</div>
+                      <div className="mt-0.5 text-[10px] uppercase tracking-[.14em] text-[#c8a24e]">Live today</div>
+                    </th>
+                    <th scope="col" className="px-4 py-4 text-center align-bottom">
+                      <div className="font-['Fraunces'] text-[15px] font-normal text-[#1c1c1a]">Hostfully</div>
+                      <div className="text-[11px] text-[#1c1c1a]/45">&ldquo;Guidebooks&rdquo;</div>
+                    </th>
+                    <th scope="col" className="px-4 py-4 text-center align-bottom">
+                      <div className="font-['Fraunces'] text-[15px] font-normal text-[#1c1c1a]">Touch Stay</div>
+                      <div className="text-[11px] text-[#1c1c1a]/45">&ldquo;digital guidebook&rdquo;</div>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {COMPS_ROWS.map((row, i) => {
+                    const isLast = i === COMPS_ROWS.length - 1
+                    return (
+                      <tr key={row.label}>
+                        <th
+                          scope="row"
+                          className={`px-4 py-3.5 text-[13px] font-medium text-[#1c1c1a] ${isLast ? '' : 'border-b border-[#ddd8ce]'}`}
+                        >
+                          {row.label}
+                        </th>
+                        <td className={`bg-[#1c1c1a] px-4 py-3.5 align-top ${isLast ? 'rounded-b-2xl' : 'border-b border-white/10'}`}>
+                          <CompCellContent cell={row.bemgu} dark />
+                        </td>
+                        <td className={`px-4 py-3.5 align-top ${isLast ? '' : 'border-b border-[#ddd8ce]'}`}>
+                          <CompCellContent cell={row.hostfully} />
+                        </td>
+                        <td className={`px-4 py-3.5 align-top ${isLast ? '' : 'border-b border-[#ddd8ce]'}`}>
+                          <CompCellContent cell={row.touchstay} />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
+          </Reveal>
+
+          <div className="mt-8 grid gap-4 sm:grid-cols-3">
+            {COMPS_STATS.map((s, i) => (
+              <Reveal key={s.stat} delay={i * 80}>
+                <div className="h-full rounded-2xl border border-[#ddd8ce] bg-white p-6 text-center">
+                  <div className="font-['Fraunces'] text-[26px] font-light text-[#1c1c1a]">{s.stat}</div>
+                  <div className="mt-2 text-[13px] leading-[1.6] text-[#1c1c1a]/60">{s.desc}</div>
+                </div>
+              </Reveal>
+            ))}
+          </div>
+
+          <Reveal delay={120} className="mt-10 text-center">
+            <Link
+              to="/signup"
+              className="group inline-flex items-center gap-2 rounded-xl bg-[#c8a24e] px-7 py-4 text-[15px] font-semibold text-[#16100d] transition-colors hover:bg-[#e7d6ad] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e7d6ad] focus-visible:ring-offset-2 focus-visible:ring-offset-[#f0ede6]"
+            >
+              Start free trial
+              <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+            <p className="mx-auto mt-6 max-w-[640px] text-[11px] leading-[1.6] text-[#1c1c1a]/40">
+              Competitor pricing from their public pricing pages, July 2026 — plans and prices may change; check
+              each provider for current terms. Commission rates are set by each marketplace and typically around
+              ~8%; actual earnings vary. &ldquo;Bookings to cover the fee&rdquo; is illustrative, based on typical
+              rates and an average booking value.
+            </p>
           </Reveal>
         </div>
       </section>
