@@ -254,15 +254,15 @@ const COMPS_ROWS: CompRow[] = [
   },
   {
     label: 'AI concierge that answers guest questions',
-    bemgu: { mark: 'brass' },
-    hostfully: { mark: 'dash' },
-    touchstay: { mark: 'dash' },
+    bemgu: { mark: 'brass', text: 'with live local knowledge — not just your guidebook' },
+    hostfully: { mark: 'muted', text: 'Trip planner; host-side inbox AI' },
+    touchstay: { mark: 'muted', text: 'answers from your guidebook only' },
   },
   {
-    label: 'City guide writes itself',
+    label: 'City guide writes and refreshes itself',
     bemgu: { mark: 'brass', text: 'AI-built, hyper-local, auto-refreshed' },
-    hostfully: { text: 'Manual curation' },
-    touchstay: { text: 'Manual curation' },
+    hostfully: { text: 'Host-curated' },
+    touchstay: { mark: 'muted', text: 'AI draft at setup' },
   },
   {
     label: 'Live local events, updated automatically',
