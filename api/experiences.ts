@@ -161,6 +161,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     productId: e.productId,
     title: e.title,
     imageUrl: e.imageUrl,
+    imageCredit: e.imageCredit ?? null,
     rating: e.rating,
     reviewCount: e.reviewCount,
     priceAmount: e.priceAmount,

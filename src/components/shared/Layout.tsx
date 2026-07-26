@@ -9,6 +9,7 @@ import {
   CalendarDays,
   MessageCircle,
   CreditCard,
+  TrendingUp,
   Settings as SettingsIcon,
   ShieldCheck,
   LogOut,
@@ -48,6 +49,7 @@ const NAV_GROUPS: Array<{ label?: string; items: NavEntry[] }> = [
   {
     label: 'Account',
     items: [
+      { to: '/dashboard/earnings', label: 'Earnings', Icon: TrendingUp },
       { to: '/dashboard/billing', label: 'Billing', Icon: CreditCard },
       { to: '/dashboard/settings', label: 'Settings', Icon: SettingsIcon },
     ],
@@ -365,7 +367,7 @@ export default function Layout() {
                 </div>
               )}
               {group.items
-                .filter((it) => !(isDemo && it.to === '/dashboard/billing'))
+                .filter((it) => !(isDemo && (it.to === '/dashboard/billing' || it.to === '/dashboard/earnings')))
                 .map(({ to, label, Icon, end }) => (
                 <NavLink key={to} to={to} end={end} onClick={closeMenu} className={navItemClass}>
                   {({ isActive }) => (

@@ -17,6 +17,7 @@ export interface NormalizedExperience {
   productId: string
   title: string
   imageUrl: string | null
+  imageCredit: string | null
   rating: number | null
   reviewCount: number | null
   priceAmount: number | null
@@ -152,6 +153,7 @@ export async function fetchViatorExperiences(
         productId,
         title,
         imageUrl,
+        imageCredit: null, // Viator image licence covers partner display; no credit line.
         rating: num(p?.reviews?.combinedAverageRating),
         reviewCount: num(p?.reviews?.totalReviews),
         priceAmount: num(p?.pricing?.summary?.fromPrice ?? p?.pricing?.summary?.fromPriceBeforeDiscount),
@@ -206,6 +208,21 @@ export async function fetchTiqetsExperiences(
 
     const results: any[] = Array.isArray(data?.products) ? data.products : []
 
+    // TEMP DEBUG (remove after we confirm the real field names): reviewCount is parsing
+    // null on every Tiqets product, so log the first product's rating-related fields once.
+    if (results.length) {
+      const p0 = results[0]
+      const probe = {
+        rating: p0?.rating,
+        ratings: p0?.ratings,
+        stars: p0?.stars,
+        review_count: p0?.review_count,
+        reviews_count: p0?.reviews_count,
+        review_score: p0?.review_score,
+      }
+      log('tiqets:debug', JSON.stringify(probe))
+    }
+
     const items: NormalizedExperience[] = []
     for (const p of results) {
       const productId = String(p?.id ?? p?.product_id ?? '').trim()
@@ -213,17 +230,31 @@ export async function fetchTiqetsExperiences(
       const deepLinkPath = toPath(p?.product_url ?? p?.url)
       if (!productId || !title || !deepLinkPath) continue
 
+      const firstImg = p?.images?.[0]
       const img =
-        p?.images?.[0]?.large ??
-        p?.images?.[0]?.medium ??
-        p?.images?.[0]?.small ??
+        firstImg?.large ??
+        firstImg?.medium ??
+        firstImg?.small ??
+        (typeof firstImg?.url === 'string' ? firstImg.url : null) ??
         (typeof p?.image_url === 'string' ? p.image_url : null)
+
+      // Tiqets image objects may carry a credit/copyright line (licence clause 9.1c) —
+      // surface it so the guest UI can render the required attribution caption.
+      const creditRaw =
+        firstImg?.credit ??
+        firstImg?.copyright ??
+        firstImg?.attribution ??
+        p?.image_credit ??
+        null
+      const imageCredit =
+        typeof creditRaw === 'string' && creditRaw.trim() ? creditRaw.trim().slice(0, 160) : null
 
       items.push({
         provider: 'tiqets',
         productId,
         title,
         imageUrl: typeof img === 'string' ? img : null,
+        imageCredit,
         rating: num(p?.ratings?.average ?? p?.rating),
         reviewCount: num(p?.ratings?.count ?? p?.reviews_count ?? p?.review_count),
         priceAmount: num(p?.price?.amount ?? p?.min_price ?? p?.price),

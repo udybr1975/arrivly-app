@@ -18,6 +18,8 @@ import BookingManager from './components/host/BookingManager'
 import QRCodePanel from './components/host/QRCodePanel'
 import BrandingPanel from './components/host/BrandingPanel'
 import BillingPanel from './components/host/BillingPanel'
+import EarningsPanel from './components/host/EarningsPanel'
+import EarningsConnect from './components/host/EarningsConnect'
 import Settings from './components/host/Settings'
 import Messages from './components/host/Messages'
 import GuestPage from './components/guest/GuestPage'
@@ -98,6 +100,8 @@ export default function App() {
               <Route path="/dashboard/qr" element={<QRCodePanel />} />
               <Route path="/dashboard/branding" element={<BrandingPanel />} />
               <Route path="/dashboard/billing" element={<BillingPanel />} />
+              <Route path="/dashboard/earnings" element={<EarningsPanel />} />
+              <Route path="/dashboard/earnings/connect" element={<EarningsConnect />} />
               <Route path="/dashboard/messages" element={<Messages />} />
               <Route path="/dashboard/settings" element={<Settings />} />
             </Route>

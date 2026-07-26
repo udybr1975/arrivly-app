@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:affiliate-links": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/affiliate-links.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.6.0",

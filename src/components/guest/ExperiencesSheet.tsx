@@ -5,6 +5,7 @@ export interface ExperienceItem {
   productId: string
   title: string
   imageUrl: string | null
+  imageCredit: string | null
   rating: number | null
   reviewCount: number | null
   priceAmount: number | null
@@ -109,12 +110,19 @@ export default function ExperiencesSheet({
                 className="block bg-[#fffdf9] border border-[#e9e4d9] rounded-[14px] overflow-hidden no-underline hover:border-[#d8d2c5] transition-colors shadow-[0_1px_5px_rgba(0,0,0,0.04)]"
               >
                 {ex.imageUrl && (
-                  <img
-                    src={ex.imageUrl}
-                    alt=""
-                    loading="lazy"
-                    className="w-full h-36 object-cover"
-                  />
+                  <div className="relative">
+                    <img
+                      src={ex.imageUrl}
+                      alt=""
+                      loading="lazy"
+                      className="w-full h-36 object-cover"
+                    />
+                    {ex.imageCredit && (
+                      <span className="absolute bottom-1 right-1 max-w-[85%] truncate rounded bg-black/45 px-1.5 py-0.5 text-[8px] leading-none text-white/90">
+                        {ex.imageCredit}
+                      </span>
+                    )}
+                  </div>
                 )}
                 <div className="p-4">
                   <h3 className="text-sm font-medium text-[#1c1c1a] leading-snug break-words">{ex.title}</h3>
