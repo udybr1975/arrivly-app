@@ -208,30 +208,6 @@ export async function fetchTiqetsExperiences(
 
     const results: any[] = Array.isArray(data?.products) ? data.products : []
 
-    // TEMP DISCOVERY LOG (REMOVE after we confirm the Tiqets image/credit field names):
-    // one-shot, FIRST product only. Logs the row's top-level keys plus every image/credit/
-    // author/attribution field (and one level into nested image containers, first element
-    // only) so we can wire imageCredit next. These are COMMERCIAL content fields — this is a
-    // content API (/v2/products), not orders, so no customer data is present.
-    if (results.length) {
-      const p0 = (results[0] ?? {}) as Record<string, unknown>
-      const MATCH = /image|credit|author|attribution/i
-      const imageFields: Record<string, unknown> = {}
-      for (const [k, v] of Object.entries(p0)) {
-        if (!MATCH.test(k)) continue
-        imageFields[k] = v
-        const isArr = Array.isArray(v)
-        const nested = isArr ? v[0] : v
-        if (nested && typeof nested === 'object') {
-          const label = isArr ? `${k}[0]` : k
-          for (const [nk, nv] of Object.entries(nested as Record<string, unknown>)) {
-            imageFields[`${label}.${nk}`] = nv
-          }
-        }
-      }
-      console.log('[experiences:tiqets:imgdebug]', JSON.stringify({ keys: Object.keys(p0), imageFields }))
-    }
-
     const items: NormalizedExperience[] = []
     for (const p of results) {
       const productId = String(p?.id ?? p?.product_id ?? '').trim()
@@ -247,9 +223,12 @@ export async function fetchTiqetsExperiences(
         (typeof firstImg?.url === 'string' ? firstImg.url : null) ??
         (typeof p?.image_url === 'string' ? p.image_url : null)
 
-      // Tiqets image objects may carry a credit/copyright line (licence clause 9.1c) —
-      // surface it so the guest UI can render the required attribution caption.
+      // Tiqets image objects carry the attribution line in `credits` (confirmed field;
+      // often null, which is valid — only rendered when provided; licence clause 9.1c).
+      // Read it from the SAME image object selected for imageUrl. Older names kept as
+      // defensive fallbacks.
       const creditRaw =
+        firstImg?.credits ??
         firstImg?.credit ??
         firstImg?.copyright ??
         firstImg?.attribution ??
@@ -257,6 +236,7 @@ export async function fetchTiqetsExperiences(
         null
       const imageCredit =
         typeof creditRaw === 'string' && creditRaw.trim() ? creditRaw.trim().slice(0, 160) : null
+      // TODO: alt_text available in Tiqets payload — wire when touching ExperiencesSheet.
 
       // Confirmed Tiqets shape: ratings: { total: <int>, average: <float> }. Primary source;
       // the older field names stay as defensive fallbacks. rating rounded to 1 decimal.
