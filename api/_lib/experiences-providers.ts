@@ -208,19 +208,28 @@ export async function fetchTiqetsExperiences(
 
     const results: any[] = Array.isArray(data?.products) ? data.products : []
 
-    // TEMP DEBUG (remove after we confirm the real field names): reviewCount is parsing
-    // null on every Tiqets product, so log the first product's rating-related fields once.
+    // TEMP DISCOVERY LOG (REMOVE after we confirm the Tiqets image/credit field names):
+    // one-shot, FIRST product only. Logs the row's top-level keys plus every image/credit/
+    // author/attribution field (and one level into nested image containers, first element
+    // only) so we can wire imageCredit next. These are COMMERCIAL content fields — this is a
+    // content API (/v2/products), not orders, so no customer data is present.
     if (results.length) {
-      const p0 = results[0]
-      const probe = {
-        rating: p0?.rating,
-        ratings: p0?.ratings,
-        stars: p0?.stars,
-        review_count: p0?.review_count,
-        reviews_count: p0?.reviews_count,
-        review_score: p0?.review_score,
+      const p0 = (results[0] ?? {}) as Record<string, unknown>
+      const MATCH = /image|credit|author|attribution/i
+      const imageFields: Record<string, unknown> = {}
+      for (const [k, v] of Object.entries(p0)) {
+        if (!MATCH.test(k)) continue
+        imageFields[k] = v
+        const isArr = Array.isArray(v)
+        const nested = isArr ? v[0] : v
+        if (nested && typeof nested === 'object') {
+          const label = isArr ? `${k}[0]` : k
+          for (const [nk, nv] of Object.entries(nested as Record<string, unknown>)) {
+            imageFields[`${label}.${nk}`] = nv
+          }
+        }
       }
-      log('tiqets:debug', JSON.stringify(probe))
+      console.log('[experiences:tiqets:imgdebug]', JSON.stringify({ keys: Object.keys(p0), imageFields }))
     }
 
     const items: NormalizedExperience[] = []
@@ -249,14 +258,20 @@ export async function fetchTiqetsExperiences(
       const imageCredit =
         typeof creditRaw === 'string' && creditRaw.trim() ? creditRaw.trim().slice(0, 160) : null
 
+      // Confirmed Tiqets shape: ratings: { total: <int>, average: <float> }. Primary source;
+      // the older field names stay as defensive fallbacks. rating rounded to 1 decimal.
+      const ratingRaw = num(p?.ratings?.average ?? p?.rating)
+      const rating = ratingRaw == null ? null : Math.round(ratingRaw * 10) / 10
+      const reviewCount = num(p?.ratings?.total ?? p?.ratings?.count ?? p?.reviews_count ?? p?.review_count)
+
       items.push({
         provider: 'tiqets',
         productId,
         title,
         imageUrl: typeof img === 'string' ? img : null,
         imageCredit,
-        rating: num(p?.ratings?.average ?? p?.rating),
-        reviewCount: num(p?.ratings?.count ?? p?.reviews_count ?? p?.review_count),
+        rating,
+        reviewCount,
         priceAmount: num(p?.price?.amount ?? p?.min_price ?? p?.price),
         priceCurrency: 'EUR',
         durationLabel: null,
