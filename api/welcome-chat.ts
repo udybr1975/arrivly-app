@@ -14,7 +14,7 @@ import { withRetry } from './_lib/retry.js'
 // abuse here can never exhaust the quota that verified in-stay guests depend on. Every
 // request is gated by Cloudflare Turnstile (human check) + a tight per-instance IP limiter.
 
-const MODEL = 'gemini-3.5-flash'
+const MODEL = 'gemini-3.1-flash-lite'
 const MAX_MESSAGE = 1000
 const MAX_HISTORY_TURNS = 8
 const CODE_RE = /^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/
