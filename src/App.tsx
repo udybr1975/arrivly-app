@@ -23,6 +23,7 @@ import EarningsConnect from './components/host/EarningsConnect'
 import Settings from './components/host/Settings'
 import Messages from './components/host/Messages'
 import GuestPage from './components/guest/GuestPage'
+import WelcomePage from './components/guest/WelcomePage'
 import SuperAdmin from './components/admin/SuperAdmin'
 import Demo from './components/demo/Demo'
 import Landing from './components/Landing'
@@ -89,6 +90,7 @@ export default function App() {
           <Route path="/complete-profile" element={<CompleteProfile />} />
           <Route path="/demo" element={<Demo />} />
           <Route path="/guest" element={<GuestPage />} />
+          <Route path="/w/:code" element={<WelcomePage />} />
 
           {/* Protected host routes */}
           <Route element={<PrivateRoute />}>
