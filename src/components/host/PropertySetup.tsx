@@ -490,7 +490,7 @@ export default function PropertySetup() {
       apartment_id: apartmentId,
       category: 'WiFi',
       content: `Network: ${wifi.ssid}\nPassword: ${wifi.password}`,
-      is_private: false,
+      is_private: true,
     })
     if (error) showErr(error.message)
     else showOk()

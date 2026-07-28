@@ -188,6 +188,9 @@ export default function GuestPage() {
     catch { return true }
   })
   const blurbFlagRef = useRef(false)
+  // Holds the picks + guide returned by /api/guest-bootstrap so the Explore tab can reuse
+  // them without a second request (populated in fetchData on the active/success path).
+  const bootstrapExtrasRef = useRef<{ picks: HostPick[]; guide: GuideCategories | null }>({ picks: [], guide: null })
 
   // SEO — the guest page must NOT be indexed (Viator licence requires marketplace
   // content not be crawled/indexed). Injected only while GuestPage is mounted, and
@@ -262,23 +265,26 @@ export default function GuestPage() {
       const cleanedStored = storedToken && storedToken !== 'null' ? storedToken : null
       const activeToken = tokenParam && tokenParam !== 'null' ? tokenParam : cleanedStored ?? null
 
-      const [aptRes, detRes] = await Promise.all([
-        supabase
-          .from('apartments')
-          .select('id,host_id,name,neighborhood,city,country,lat,lng,accent_color,max_guests,hero_image_url,city_image_url,city_image_credit,greeting_blurb')
-          .eq('id', aptId!)
-          .maybeSingle(),
-        supabase
-          .from('apartment_details')
-          .select('id,category,content,is_private')
-          .eq('apartment_id', aptId!),
-      ])
+      // Server-side bootstrap: apartment + public details + picks + guide in one call.
+      // Guests have no auth session, so use plain fetch (not the api helper). A network
+      // or parse failure behaves exactly like an empty result (apartment null) → the
+      // availability check below, then neutral.
+      let boot: { apartment: Apartment | null; details: Detail[]; picks: HostPick[]; guide: GuideCategories | null } =
+        { apartment: null, details: [], picks: [], guide: null }
+      try {
+        const r = await fetch(`/api/guest-bootstrap?apt=${encodeURIComponent(aptId!)}`)
+        if (r.ok) boot = await r.json()
+      } catch {
+        // network/parse error → treat as empty (apartment null) → availability check → neutral
+      }
 
-      if (!aptRes.data) {
-        // The anon read returns nothing for a hidden (unpublished) apartment because
-        // RLS apartments_guest_read gates on is_visible. Ask the server whether this
-        // apt exists-but-is-hidden so we can show a branded "temporarily unavailable"
-        // screen instead of the booking-oriented neutral page. Any failure → neutral.
+      const bootDetails = (boot.details ?? []) as Detail[]
+
+      if (!boot.apartment) {
+        // The bootstrap returns a null apartment for a hidden (unpublished) OR nonexistent
+        // apartment. Ask the server whether this apt exists-but-is-hidden so we can show a
+        // branded "temporarily unavailable" screen instead of the booking-oriented neutral
+        // page. Any failure → neutral. (This call is unchanged.)
         try {
           const r = await fetch(`/api/guest-availability?apt=${encodeURIComponent(aptId!)}`)
           if (r.ok) {
@@ -295,9 +301,11 @@ export default function GuestPage() {
         }
         setPageState('neutral'); setLoading(false); return
       }
-      const apt = aptRes.data as Apartment
+      const apt = boot.apartment as Apartment
       setApartment(apt)
-      setDetails(((detRes.data ?? []) as Detail[]).filter(d => !d.is_private))
+      setDetails(bootDetails.filter(d => !d.is_private))
+      // Stash picks + guide for the Explore tab to reuse (no second request).
+      bootstrapExtrasRef.current = { picks: (boot.picks ?? []) as HostPick[], guide: boot.guide ?? null }
 
       const { data: hostRows } = await supabase
         .rpc('guest_host_card', { p_apartment_id: aptId! })
@@ -337,7 +345,7 @@ export default function GuestPage() {
             return
           }
 
-          const publicRows = ((detRes.data ?? []) as Detail[]).filter(d => !d.is_private)
+          const publicRows = bootDetails.filter(d => !d.is_private)
           try {
             const r = await fetch(`/api/guest-details?apt=${encodeURIComponent(aptId!)}&token=${encodeURIComponent(activeToken)}`)
             if (r.ok) {
@@ -425,22 +433,11 @@ export default function GuestPage() {
 
     async function fetchExplore() {
       setGuideLoading(true)
-      const [picksRes, guideRes] = await Promise.all([
-        supabase
-          .from('host_picks')
-          .select('id,name,category,address,lat,lng,note,display_order')
-          .eq('apartment_id', aptId!)
-          .order('display_order'),
-        supabase
-          .from('guide_recommendations')
-          .select('categories')
-          .eq('apartment_id', aptId!)
-          .maybeSingle(),
-      ])
+      // Reuse the picks + guide already fetched by /api/guest-bootstrap (no second request).
+      const { picks, guide } = bootstrapExtrasRef.current
       if (cancelled) return
-      if (picksRes.data) setHostPicks(picksRes.data as HostPick[])
-      const cats = guideRes.data?.categories as GuideCategories | undefined
-      if (cats && Object.keys(cats).length > 0) setGuideCategories(cats)
+      if (picks.length) setHostPicks(picks)
+      if (guide && Object.keys(guide).length > 0) setGuideCategories(guide)
       setGuideLoading(false)
     }
     fetchExplore()
