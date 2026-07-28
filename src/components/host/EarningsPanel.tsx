@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowUpRight, Lock, MousePointerClick, ExternalLink } from 'lucide-react'
+import { ArrowUpRight, Lock, MousePointerClick, ExternalLink, CheckCircle2 } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { ARRIVLY_CONFIG } from '../../config'
 import { EXPERIENCE_PROVIDERS, type ProviderKey } from '../../lib/experienceProviders'
@@ -35,12 +35,21 @@ function eur(n: number): string {
   return `€${Math.round(n).toLocaleString('en-GB')}`
 }
 
+// Exact euros-and-cents for the CONFIRMED (real) commission figure. Separate from eur()
+// (which rounds to whole euros for the estimate cards — do not merge them).
+function eurExact(n: number): string {
+  return new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'EUR' }).format(n)
+}
+
 export default function EarningsPanel() {
   const [loading, setLoading] = useState(true)
   const [host, setHost] = useState<HostRow | null>(null)
   const [byProvider, setByProvider] = useState<ClicksByProvider>(ZERO_PROVIDERS)
   const [byApt, setByApt] = useState<AptClicks[]>([])
   const [total, setTotal] = useState(0)
+  // Real Tiqets commission (EUR-only, fulfilled, last 30d) — powers the tier 1–2 tease card.
+  const [confirmedEur, setConfirmedEur] = useState(0)
+  const [confirmedCount, setConfirmedCount] = useState(0)
 
   useEffect(() => {
     let cancelled = false
@@ -67,6 +76,10 @@ export default function EarningsPanel() {
       const perApt = new Map<string, AptClicks>()
       for (const a of aList) perApt.set(a.id, { id: a.id, name: a.name, viator: 0, gyg: 0, tiqets: 0, total: 0 })
 
+      // Confirmed real-commission accumulators (EUR-only). Stay 0 when the host has no apartments.
+      let confEur = 0
+      let confCount = 0
+
       if (aptIds.length) {
         // Last 30 days. RLS (host_reads_own_clicks) already scopes to the host's own
         // apartments; the .in() filter is a belt-and-braces narrowing.
@@ -84,6 +97,28 @@ export default function EarningsPanel() {
           const row = perApt.get(c.apartment_id)
           if (row) { row[p] += 1; row.total += 1 }
         }
+
+        // Real Tiqets commissions (ingested by api/cron-refresh-earnings.ts). RLS
+        // (hosts read own experience orders) scopes to the host's own apartments; the
+        // .in() mirrors the clicks query. Same 30-day window (order_fulfilled_at column).
+        // apartment_id-null rows (unattributed) are excluded by .in() — intended.
+        const { data: orders } = await supabase
+          .from('experience_orders')
+          .select('commission_excl_vat, currency')
+          .eq('provider', 'tiqets')
+          .eq('status', 'fulfilled')
+          .in('apartment_id', aptIds)
+          .gte('order_fulfilled_at', since)
+
+        for (const o of (orders ?? []) as Array<{ commission_excl_vat: number | null; currency: string | null }>) {
+          // NEVER cross-sum currencies — count EUR rows only (locked project rule).
+          if (o.currency !== 'EUR') continue
+          const c = Number(o.commission_excl_vat)
+          confEur += Number.isFinite(c) ? c : 0
+          confCount += 1
+        }
+        // Round before formatting to avoid float artefacts (e.g. 6.4000000001).
+        confEur = Math.round(confEur * 100) / 100
       }
 
       if (cancelled) return
@@ -91,6 +126,8 @@ export default function EarningsPanel() {
       setByProvider(provTotals)
       setByApt([...perApt.values()].sort((a, b) => b.total - a.total))
       setTotal(provTotals.viator + provTotals.gyg + provTotals.tiqets)
+      setConfirmedEur(confEur)
+      setConfirmedCount(confCount)
       setLoading(false)
     }
     load()
@@ -121,7 +158,7 @@ export default function EarningsPanel() {
 
       {connectedTier
         ? <ConnectedState byProvider={byProvider} byApt={byApt} total={total} host={host} />
-        : <TeaseState total={total} />}
+        : <TeaseState total={total} confirmedEur={confirmedEur} confirmedCount={confirmedCount} />}
     </div>
   )
 }
@@ -230,10 +267,31 @@ function ConnectedState({
 }
 
 // ── Tier 1–2 : real taps + clearly-labelled estimate + upgrade path ───────────
-function TeaseState({ total }: { total: number }) {
+function TeaseState({ total, confirmedEur, confirmedCount }: { total: number; confirmedEur: number; confirmedCount: number }) {
   const { conversionRate, avgBookingValueEuros, commissionRate } = ARRIVLY_CONFIG.experienceEstimate
   const estBookings = total * conversionRate
   const estCommission = estBookings * avgBookingValueEuros * commissionRate
+
+  // Verified-euros card (gold border to distinguish REAL data from the estimate cards).
+  // Rendered only when there is at least one confirmed EUR booking; otherwise null, so
+  // the tease is byte-identical to before in the zero-orders production state.
+  const confirmedCard = confirmedCount > 0 ? (
+    <div className="bg-[#fffdf9] border border-[#dcc68f] rounded-[14px] p-5">
+      <div className="flex items-center justify-between">
+        <div className={EYEBROW}>Confirmed bookings · Tiqets · last 30 days</div>
+        <span className="text-[9.5px] font-semibold uppercase tracking-[.06em] bg-[#f3ecdb] text-[#7a5c1a] px-2 py-0.5 rounded-full">EUR</span>
+      </div>
+      <div className="flex items-baseline gap-2">
+        <CheckCircle2 size={20} aria-hidden="true" className="text-[#5c8a3a]" />
+        <span className="text-[30px] font-['Fraunces'] font-light text-[#231d17] leading-none">{eurExact(confirmedEur)}</span>
+        <span className="text-[13px] text-[#8a8276]">from {confirmedCount} fulfilled booking{confirmedCount === 1 ? '' : 's'}</span>
+      </div>
+      <p className="text-[10.5px] text-[#a79e8e] leading-relaxed mt-2">
+        Real commission reported by Tiqets (excl. VAT, refunds excluded) — generated by your guests, currently
+        paid to Bemgu. On Portfolio, the marketplaces pay <em>you</em> directly.
+      </p>
+    </div>
+  ) : null
 
   if (total === 0) {
     return (
@@ -250,6 +308,7 @@ function TeaseState({ total }: { total: number }) {
             </p>
           </div>
         </div>
+        {confirmedCard}
         <UpgradeCard />
       </div>
     )
@@ -267,6 +326,8 @@ function TeaseState({ total }: { total: number }) {
           </span>
         </div>
       </div>
+
+      {confirmedCard}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className={CARD}>
