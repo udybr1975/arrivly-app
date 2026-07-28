@@ -696,6 +696,92 @@ Phase I part (b) — third-party bookable experiences on the guest-page Explore 
 - **ENVIRONMENT POLICY — there is NO Preview environment for Bemgu (by decision).** Pre-marketing, **production IS the test environment** (guest pages are unreachable without a QR/link, so there's no exposure). All testing happens on production; the Preview env-var scope is deliberately **not maintained**. `VITE_EXPERIENCES_ENABLED=true` is live in Production (public flag, non-sensitive). **REVISIT-TRIGGER = the first real paying host:** at that point re-establish Preview (add `VIATOR_API_KEY`, `TIQETS_API_TOKEN`, `VITE_EXPERIENCES_ENABLED` to the Preview scope) and stop testing on prod.
 - **Email / comms:** `hello@bemgu.app` sends via Gmail "send mail as" + Resend SMTP (`smtp.resend.com:465` / SSL, username `resend`, a **dedicated send-only key `bemgu-smtp-personal`** — SEPARATE from the production `RESEND_API_KEY`). A real (non-forwarded) mailbox is a pre-live checklist item. **Provider thread log:** **Tiqets — FULLY CLOSED (Jul 27 2026, two replies same day):** all three asks resolved — Reporting API self-serve via a fresh Essential-API token, `tq_campaign` confirmed in writing, images enabled for `bemgu-188668`. **Viator multi-tenant/host-own-ID permission — still OPEN** (sent to `affiliateapi@tripadvisor.com` Jul 24; follow-up ~Jul 30 if silent).
 
+### PRE-MARKETING TO-DO — provider terms review (logged Jul 28 2026, DEFERRED)
+
+**Status: parked by Udy's decision — deal with this immediately before the marketing
+push / live flip, not now.** Research done Jul 28 2026 by reading each provider's
+actual partner terms (not summaries). Claude is not a lawyer; these are readings of
+contract text, and what binds Bemgu is the version accepted at signup.
+
+**Headline finding: no provider forbids carrying the other two.** All three grant
+explicitly non-exclusive licences — GYG clause 13 (NON-EXCLUSIVITY) is explicit;
+Viator B-1.1 and A-3.1 grant non-exclusive licences; Tiqets 2.3.1 grants a worldwide
+non-exclusive content licence. Multi-marketplace affiliate sites are industry-normal.
+The risk is not the three-provider concept — it is three specific clauses about HOW
+they are displayed.
+
+**ITEM 1 (highest priority — VERIFY FIRST). Tiqets non-compete, clause 3.5.2.**
+The publicly retrievable Tiqets Affiliate Partner T&Cs (**Version 4, 27 Jan 2021**)
+state under "3.5 Non-solicitation, non-compete and price comparisons": *"The Partner
+agrees to not offer any products or services and/or Suppliers on its websites that are
+available as Solution on the Tiqets website for the duration of the Agreement… will in
+no event exceed a period of five years following the Effective Date."* Read literally,
+Viator/GYG inventory overlapping Tiqets' museum/attraction/tour catalogue could breach
+this.
+**DATA GAP — UNRESOLVED:** the CURRENT version is dated **January 25 2024** and sits
+behind the Tiqets partner portal; the public URL
+(partners.tiqets.com/en_us/term-conditions-affiliate-and-ticket-agent-HkLKZfYKC)
+returns 404 to an unauthenticated fetch. **The 2021 wording may have changed or been
+dropped — this is UNVERIFIED and must NOT be treated as fact.**
+**Action when this item is picked up:** (a) log into the Tiqets partner portal, open
+the accepted terms, search "non-compete" / "not offer any products"; (b) if the clause
+survives, email Tiqets asking directly whether displaying other marketplaces' affiliate
+links alongside Tiqets is acceptable.
+**Contra-indications (reasons it likely is not fatal):** recital (B) scopes the whole
+agreement to *generating traffic to Tiqets' website* and expressly does NOT extend to
+the Partner's own ticket-sale activities — suggesting the clause targets the Partner
+reselling supplier tickets directly, not carrying a competitor's affiliate links; the
+Tiqets affiliate landing page lists "hotels, travel companies" among welcome partner
+types; and Tiqets knowingly configured per-campaign tracking for a multi-property host
+platform across three support threads.
+
+**ITEM 2 (LOCKED ARCHITECTURAL CONSTRAINT — applies now, no action needed).**
+**GYG Partner TCs 4.2.2(v)** prohibits the Partner from *"edit, modify, filter, change
+the order of, suppress, or replace any part of the GYG Platform Content, including
+intermixing data from sources other than GetYourGuide"*.
+**Bemgu is COMPLIANT today** only because GYG is link-out ONLY (a city-level link, no
+product cards) — the blended Explore list contains Viator + Tiqets content exclusively,
+so no GYG content is intermixed.
+**PERMANENT RULE: GYG product cards must NEVER be added to the blended Explore list.**
+If GYG content is ever displayed, it must live in its own separated, unmixed,
+unreordered section. Treat this as locked, alongside the never-cross-sum currency rule.
+Related GYG constraints: 4.2.2(i) own-site only; 4.2.2(ii) Partner Platform design must
+stay "significantly distinct" from the GYG Platform and GYG content must not be the
+primary content; 3.1.4 no scraping / AI extraction (Bemgu uses official APIs — fine);
+3.2.2 must disclose the GYG relationship as law requires and must never imply the
+Partner Platform is endorsed by or official to GYG.
+
+**ITEM 3 (LOW RISK — fold into the pending Viator email).**
+**Viator General Terms 3.6** requires the Partner to *submit to Viator all proposed uses
+of its names, logos, marks and/or trademarks* and not publish any such use *without
+prior written consent*. The locked "text-only attribution, no logos" decision was
+correct, but the clause covers **names**, not just logos — so the word "Viator" in a
+card caption technically sits inside it. Add a one-line consent request to the open
+Viator thread.
+Also from Viator: **B-1.2** — Travel Product Information/Links may not be displayed
+through any website/channel/platform other than the Partner Site (independently
+CONFIRMS the existing note that per-host custom domains would break Viator); **3.2** —
+must display all Travel Product Information provided and may not add to, alter or amend
+it; **3.2** — no systematic analysis/extraction of the Viator Marketplace incl. reviews;
+**14 (Publicity)** — no press release, advertisement or public statement about the
+existence/contents of the Agreement or the parties' relationship without Viator's prior
+written consent. **Flag:** the landing page comps table's "3 earning marketplaces"
+framing brushes against clause 14 — review the marketing copy against it before launch.
+
+**COMMERCIAL CONTEXT (no legal effect).** Tiqets was **acquired by Expedia Group in
+December 2025**; Viator is TripAdvisor. Two of the three marketplaces are now owned by
+direct competitors. No obstacle for an affiliate, but it means terms on both sides may
+be revised under new ownership — which makes ITEM 1's verification more worth doing,
+not less.
+
+**SOURCES READ (Jul 28 2026):** Viator Partner Program General Terms + Agent Service
+Terms [A] + Affiliate Service Terms [B]
+(partners.vtrcdn.com/static/docs/Viator-Partner-Program-Terms-en_EN.pdf); GetYourGuide
+Partner Terms and Conditions, version Aug 2 2024
+(getyourguide.com/c/partner-terms-and-conditions/); Tiqets Affiliate Partner Terms and
+Conditions **Version 4, 27 Jan 2021** (S3 tiqets-cdn PDF) — **current Jan 2024 version
+NOT retrievable, see ITEM 1 data gap.**
+
 ### Waiting-period queue results (Jul 26 2026)
 Work done while awaiting provider replies. W3/W4 detail lives in the Stage 5 stub above; W5 in the header.
 - **W1 — attribution test CLOSED (results in, checked Jul 27 2026, ~24h after seeding).** Seeded on the Sweet home guest page: 3× Viator, 3× Tiqets, 3× GYG (app-handoff) + 1 browser-control GYG click. Results by provider (tag = `bemgu-d9614d11-…`, the full 42-char apartment tag):
