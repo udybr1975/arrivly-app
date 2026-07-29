@@ -19,10 +19,12 @@ context automatically every session, which is exactly what splitting this file a
 > - **Test-fixture rule reaffirmed:** Sweet home booking `ARR-EVT777` dates must be re-refreshed (`check_in = current_date-1`, `check_out = current_date+3`) before any guest-page test.
 >
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD (Jul 29 2026):** `98017fe` — city-guide geocoding bias + 25 km sanity bound.
-> Preceding this session: `27b881b` (cross-tenant anon leak CLOSED — see the SECURITY section),
-> `82fd0dc` → `5f16b42` → `ff444a0` → `aa446d2` → `d79fd9e` (welcome page `/w/:code` Phase 1 +
-> model/grounding fixes). All live and verified on production.
+> **Current HEAD (Jul 29 2026, session 2):** `d282fe8` — guide dedupe + empty-category retry.
+> This session: `fbf58aa` (fra1 pin + ntfy scrub) → `1af1012` (grounded guide + English
+> descriptions) → `a940158` (distance rules + Coffee + per-generation logging) → `d282fe8`.
+> All four live and SHA-verified against Vercel production. Preceding: `98017fe` (geocoding bias
+> + 25 km bound), `27b881b` (cross-tenant anon leak CLOSED — see the SECURITY section),
+> `82fd0dc` → `5f16b42` → `ff444a0` → `aa446d2` → `d79fd9e` (welcome page `/w/:code` Phase 1).
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -30,7 +32,7 @@ context automatically every session, which is exactly what splitting this file a
 > security pass before Tier 4 is sold.
 >
 > **THE THREE THINGS BLOCKING LAUNCH:** (1) the legal/compliance workstream — inventory DONE,
-> **ten gaps still open**; (2) migrating the eight `gemini-2.5-flash` call sites before its
+> **eight gaps still open** (2 + 3 closed by `fbf58aa`); (2) migrating the eight `gemini-2.5-flash` call sites before its
 > **16 Oct 2026 shutdown**, and sizing the paid-grounding cost; (3) the pentest gate.
 > Also open but smaller: welcome-page Part 2, and the pre-live additions listed further down.
 >
@@ -226,7 +228,6 @@ Each high-volume / public surface has its OWN no-card AI Studio key (separate fr
 - sw.js `showNotification().then()` — if showNotification rejects, badge is not set and the rejection is swallowed by `event.waitUntil`; low risk, standard SW pattern (W2, `c294bda`).
 - `countUnread` in `Layout.tsx` called directly from event listeners with no mounted guard at call site — safe because `mounted` flag is closed over and listeners are removed on cleanup before it matters; no real bug (W3, `c294bda`).
 - `BookingManager.tsx` `arrivly:messages-read` handler calls `loadBookings()` without a cancellation signal — tiny stale-overwrite race on rapid apartment switching; fold into next BookingManager change.
-- **Guide: upsert fires even on empty parse result** — a 0-place guide silently overwrites a previously good guide. Gate the upsert on `placeCount > 0` (see next steps #7).
 - `api/public-pricing.ts` cache is `s-maxage=60` — admin trial/price edits show on the landing within ~1 min.
 
 ### Tracked security follow-ups (S19; updated S24)
@@ -584,6 +585,28 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 > **Marketing strategy — AI video ads (future session).** Ad-creative exploration was done OUTSIDE the repo (Higgsfield lifestyle hero ad with real screen-replacement of the guest page + a branded logo-grow finale using `public/icons/icon-512.png`; ~36s hero/brand cut, plus a reusable hero still). Decision: the landing page KEEPS its existing carousel / auto-cycling phone mockup for now — no landing hero-video swap. Next step (dedicated session): build the marketing strategy around the video ads — 15–30s paid-social cutdowns, 16:9 / 1:1 framings, placements, and where each asset lives. All video assets live outside the repo.
 
 
+### UX — NEEDS A DESIGN CONVERSATION FIRST (discussion list, NOT the build list — Jul 29 2026)
+
+Three items raised this session. **Do not write a prompt for any of them until discussed.**
+
+1. **WELCOME LINK vs QR CODE placement.** The agreed Phase-a mockup puts the welcome link
+   side by side with the QR code. Udy wants to revisit: the two have **completely different
+   jobs** — the link is **SENT** to a guest who has just booked, the QR is **PRINTED** and left
+   in the flat — and side-by-side placement risks a host sending the wrong one. **NOTE: this
+   REOPENS an already-agreed and recorded design decision** (the "Step 1 you send it / Step 2
+   you print it" split under WELCOME PAGE Part 2), so that recorded agreement **must not be
+   treated as settled** at the start of the Phase-a build.
+2. **PROPERTY NAME MISSING from the edit page.** `PropertySetup.tsx` renders a hard-coded
+   `<h1>Property setup</h1>`; the property name **is loaded into state but never displayed**.
+   With several properties every edit page looks identical, so a host cannot tell which one
+   they are editing.
+3. **NO SCROLL RESET ON ROUTE CHANGE — global, not local.** Verified: **no `ScrollRestoration`,
+   no scroll-to-top handler, no `autoFocus`, no `scrollIntoView` anywhere in `src/`.** React
+   Router does not reset scroll position by default, so navigating from a scrolled page lands
+   the next page mid-content — e.g. scrolling the dashboard to reach a property card and
+   clicking Edit opens the setup page **below its own tab bar**. Surfaced on the property edit
+   page, but it affects **EVERY route**.
+
 Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live (LAST)**.
 - G — pre-launch hardening (incl. pentest gate)
 - H — UI/UX polish
@@ -713,6 +736,92 @@ grounding-cost question for the two stuck endpoints.
 retired. Steps (1) and (3) pull in opposite directions for that one endpoint — resolve it
 deliberately rather than by accident.
 
+## SESSION Jul 29 2026 (2) — compliance pins + the guide became grounded
+
+Four commits, all live and SHA-verified against Vercel production.
+
+**`fbf58aa` — compliance.** `vercel.json` gained `"regions": ["fra1"]`. Compute was unpinned and
+defaulting to **iad1 (US East)** while Supabase is eu-central-1 — a transatlantic round-trip on
+every DB call AND an international-transfer entry in the Art. 30 record. **VERIFIED LIVE:** a fetch
+of `bemgu.app/api/public-pricing` returned `x-vercel-id` ending `::fra1::` — the compute region
+itself, not just the config. Also removed the host name from **4 ntfy call sites**
+(`cancel-subscription` ×2, `change-plan` ×2), matching the generic "A host …" phrasing
+`stripe-webhook` already used. Host-facing **emails keep the name** — correct, they go to the host
+themself. **All 7 ntfy call sites in the repo are now free of personal data** (the other three send
+aggregate counts only). Closes legal Gaps 2 and 3.
+
+**`1af1012` — the guide became grounded.** `_lib/guide.ts` adopted the city-events pattern: dropped
+`responseMimeType` JSON, added `tools: [{ googleSearch: {} }]`. The two cannot coexist in Google's
+API — which is why the guide had been generated from training memory with no ability to verify
+anything. Descriptions switched to **ENGLISH, place names kept in local form**: a guest **reads**
+the description but **shows** the name — to a driver, or against the sign on the door. (Previously
+every guide was in the city's own language — Finnish, Spanish, German — on an English page.)
+Per-attempt timeout 20s → 40s, `maxDuration` 60 → 120, plus a first-brace/last-brace parse fallback
+since bare-JSON output is no longer guaranteed. `demo-create.ts` now reads lat/lng/country back and
+passes them through — it had still been calling the generator unbiased, leaving demo guides exposed
+to the regional-centroid bug `98017fe` fixed everywhere else.
+
+**`a940158`** — distance rules, Coffee category, per-generation logging.
+**`d282fe8`** — cross-category dedupe, empty-category retry, ceiling 120 → 150.
+Findings from both are in "GUIDE GENERATION — MEASURED BEHAVIOUR" below.
+
+## GUIDE GENERATION — MEASURED BEHAVIOUR (six live regenerations, Jul 29 2026)
+
+Barcelona/El Born + Berlin/Prenzlauer Berg. Findings, not the blow-by-blow.
+
+**GROUNDING WORKS, WITH A KNOWN BIAS.** Fabrication stopped — best evidence: an apartment at
+Kollwitzstrasse 76 returned four real restaurants at Kollwitzstrasse 47, 53, 58 and 64. **But
+grounding pulls toward FAMOUS, not NEAR** — search surfaces what is most written about, and the
+internet is saturated with the Fernsehturm and near-silent about the small park four streets away.
+Pre-fix runs returned the Fernsehturm (3.5km), Klunkerkranich (8km, Neukolln), Disfrutar (3km,
+Eixample) and Boqueria. **Any future prompt work on this endpoint must actively counter that pull.**
+Grounding also reduces invention but does **NOT** guarantee accuracy: a grounded run still returned
+Mercat de la Boqueria with postcode 08003 (correct 08001) and Mauerpark with a six-digit German
+postcode (133555; correct 13355).
+
+**AN UNFILLABLE CONSTRAINT GETS ABANDONED, NOT PARTIALLY MET.** A flat "15 minutes' walk" across all
+six categories is often impossible for Sight and Nightlife in a residential neighbourhood. Faced
+with no valid answer the model broke the rule **entirely** and reached for the city landmark rather
+than returning a short list. Splitting it — 15 min for daily needs (Restaurant/Bar/Coffee/Essential),
+30 min for destinations (Sight/Nightlife) — fixed it completely in both cities: every city-wide
+drift disappeared AND Sight gained entries while becoming more local. **General principle for prompt
+work: give the model a rule it can satisfy.**
+
+**THE MODEL STOPS VOLUNTARILY AT ~HALF ITS TOKEN BUDGET.** `finishReason` STOP with `rawLen` 3,076
+and 4,188 against `maxOutputTokens` 8192. **Truncation is PERMANENTLY ruled out for this endpoint**,
+`maxOutputTokens` is not binding, and no prompt instruction about quantity increases output —
+"aim for 4-5 per category" produced no change (totals stayed 13–16). **If more places are ever
+needed, the answer is more CALLS, not more prompt.** That is why `d282fe8`'s empty-category fix is a
+second focused call rather than more prompt text.
+
+**PROMPT INSTRUCTIONS CANNOT FORCE A CATEGORY TO FILL.** Coffee returned an empty array in both
+cities even after an explicit definition, being explicitly fenced off from Bar/Restaurant, and being
+told an empty list means the search was insufficient. Berlin then improved to 1, Barcelona stayed at
+0. Evidence suggests cafes get absorbed into Bar/Restaurant (a Berlin Bar entry was described as
+"a relaxed bar and cafe"). **Not truncation** — all six JSON keys were present and the categories
+positioned AFTER Coffee were populated.
+
+**n=1 CANNOT SEPARATE A PROMPT EFFECT FROM VARIANCE.** These generations are non-deterministic:
+Berlin's Restaurant count swung 5 → 2 between runs and could not be attributed to the change. Only
+findings that moved the same way across **both cities and multiple entries** (i.e. the distance
+result) were treated as trustworthy. **Future prompt evaluation on this endpoint needs at least two
+runs per city per condition.**
+
+**TIMING, CORRECTED — the intuitive version is wrong.** The `d282fe8` retry fires only when the main
+call is under 45s elapsed, so 45 + 25 = **70s sits BELOW the 80.6s the main path could already reach
+alone** — the retry **cannot** raise the function's worst case. The 120 → 150 raise closes a
+**different, pre-existing** overrun: `generate-guide.ts` chains `generateGreetingBlurb` (2×12s)
+**after** the guide upsert, giving ~123s against a 120s ceiling — the worst failure shape available,
+since it 504s a generation that already **succeeded AND saved**, sending the host to re-run completed
+work. **Do NOT record the raise as "making room for the retry".** Observed real-world main call:
+~13s Gemini + ~7s geocoding, single attempt, ~20s total — the worst cases here are theoretical.
+Vercel Pro accepted `maxDuration: 150` at build time.
+
+**GUIDE REFRESH IS GATED CLIENT-SIDE ONLY.** `GUIDE_FRESH_HOURS = 24` in `PropertySetup.tsx`: the
+button disables and relabels to "Up to date" for 24h after `generated_at`. For testing, clear the
+lock chat-side by back-dating `guide_recommendations.generated_at` via Supabase MCP — that moves
+only the timestamp and leaves guide content intact.
+
 ## CITY GUIDE — geocoding fix SHIPPED (`98017fe`), plus a bigger unresolved issue
 
 **Measured across 7 guides / 208 places.** Casa Miraflores (Lima) had **17 of 30 places over
@@ -741,49 +850,31 @@ Madrid (1.3) and Berlin (2.4) were never affected and were left un-refreshed.
 
 ### PRE-LIVE ADDITIONS from this session (add to the pre-live checklist)
 
-- **THE GUIDE IS NOT GROUNDED.** `_lib/guide.ts` uses `responseMimeType: 'application/json'`
-  and no `tools` array — **Google's API does not allow forced JSON together with Search.** So
-  a guide refresh **RE-ROLLS the same training knowledge; it does NOT find new places, and a
-  re-roll can make a good guide WORSE.** City events and guest-chat DO use grounding.
-  - **THE FIX IS NOT A NOVEL DESIGN — THE PATTERN ALREADY WORKS IN THIS CODEBASE (Jul 29
-    2026).** `api/_lib/city-events.ts` is **grounded AND returns structured data**: it sets
-    `tools: [{ googleSearch: {} }]`, omits `responseMimeType`, and **parses the JSON out of
-    the model's plain-text reply** (defensive fence-strip then `JSON.parse`). Its own comment
-    states the constraint verbatim: *"googleSearch grounding cannot be combined with
-    responseMimeType JSON, so we parse fenced text defensively."* (Verified in source at
-    `city-events.ts:87-104`.)
-  - **So grounding the guide = copy city-events' approach:** drop `responseMimeType` from
-    `_lib/guide.ts`, add the `googleSearch` tool, parse JSON from text. **This SUPERSEDES the
-    previously-recorded "grounded research call, then a separate formatting call" design —
-    one call, not two, and materially cheaper.** `guide.ts` already has the defensive
-    fence-strip + `JSON.parse` + `{}`-fallback block, so most of the parsing work exists.
-  - **THE COST:** grounding is **free on the 2.5 line (1,500 RPD) but ZERO on Gemini 3**, so
-    a grounded guide is **tied to `gemini-2.5-flash` and therefore to the 16 Oct 2026
-    shutdown**. Grounding the guide and migrating it off 2.5 are in direct tension — see the
-    migration analysis in "AI MODELS AND QUOTA" above.
-- **THE MONTHLY GUIDE CRON APPEARS NEVER TO HAVE RUN.** No guide's `generated_at` matches the
-  10:00 UTC 1st-of-month schedule. It also loops apartments **sequentially at ~20–30s each
-  against a 60s maxDuration**, and would need ~1 Gemini call per apartment against a ~20/day
-  quota. **Needs batching AND staggering.** Staggering needs **no new column** — the rule is
-  "refresh guides older than N days", because `generated_at` already staggers naturally. Also
-  skip expired hosts, and log outcomes.
-- **`generate-guide.ts` has NO server-side cooldown.** `GUIDE_FRESH_HOURS = 24` exists only in
-  `PropertySetup.tsx`, so the endpoint can be called in a loop — and it spends **Bemgu's**
-  quota, not the host's. Same class as the client-side upload caps.
-- **`demo-create.ts` calls the guide generator WITHOUT coordinates**, so demo guides keep the
-  old unbiased, unchecked behaviour. **The demo is the shop window — close this before
-  marketing.**
-- **Fabricated businesses still slip through.** The Lima guide invented "S-market,
-  Runeberginkatu 33-35" (verified: it is an **Alepa at number 28**). **Geocoding cannot catch
-  this — the street exists.** Needs a places lookup or grounding.
-- **Guides generate in the LOCAL LANGUAGE** (the Helsinki guide is entirely in Finnish) on an
-  English guest page.
+- **~~THE GUIDE IS NOT GROUNDED~~ — DONE (`1af1012`).** Grounded via the city-events pattern.
+  **The cost stands and is unchanged:** grounding is free on the 2.5 line (1,500 RPD) but
+  **ZERO on Gemini 3**, so the grounded guide is **tied to `gemini-2.5-flash` and therefore to
+  the 16 Oct 2026 shutdown**. Grounding the guide and migrating it off 2.5 remain in direct
+  tension — see "MODEL-MIGRATION ANALYSIS".
+- **THE MONTHLY GUIDE CRON HAS NEVER RUN, AND IS NOW STRUCTURALLY UNABLE TO.** No guide's
+  `generated_at` matches the 10:00 UTC 1st-of-month schedule. It loops apartments
+  **sequentially**, and a guide call now costs **up to ~99s each** — roughly **one apartment per
+  invocation**. **Batching + staggering is the strongest candidate for the next piece of guide
+  work.** Staggering needs **no new column** — the rule is "refresh guides older than N days",
+  because `generated_at` already staggers naturally. Also skip expired hosts, and log outcomes.
+- **RAISED — `generate-guide.ts` has NO server-side cooldown; move it into the pre-live batch.**
+  `GUIDE_FRESH_HOURS = 24` exists only in `PropertySetup.tsx`, so an authenticated host can loop
+  the endpoint, spending **Bemgu's** quota. `d282fe8` raised the worst-case cost per call by up
+  to 50% (two grounded generations instead of one). The client-side gate protects an honest host
+  from accidental spend **and nothing else**.
+- **NEW, minor: `coercePlaces` does not enforce the 5-per-category cap the prompt requests.**
+  Harmless today — the post-retry total still cannot exceed `MAX_GEOCODE`.
 - **`subscription_status` is DECOUPLED from the access gate.** `PrivateRoute` uses
   `needsPlan = !is_exempt && !is_demo && !stripe_subscription_id`. **Setting a host to
   'active' in the superadmin panel grants no access.** The operator set `is_exempt = true` on
   host `1d5a3b9c` (udy@tlv.capital) to work around this. **Either reconcile the two or make
   the admin panel warn.**
-- **Enable GitHub secret scanning + push protection** (free, public repo, 2 minutes). A full
+- **~~Enable GitHub secret scanning + push protection~~ — VERIFIED ALREADY ENABLED (Jul 29 2026).
+  No action was needed.** A full
   history scan of **all 279 commits found ZERO secrets**, no `.env` ever committed, no
   client-side AI provider calls, and no secret-named `VITE_` vars — **the Anna's Stays failure
   modes are all absent.** Push protection makes that mechanical rather than dependent on
@@ -811,15 +902,21 @@ required. Products routinely get this wrong by writing a single blurred policy.
 processor for guests), a table/column inventory with retention, the subprocessor list with
 residency, client-side disclosures, transfers, and Art. 32 measures.
 
-**TEN OPEN GAPS from that inventory — ALL STILL OPEN. These are the actual remaining work:**
+**TEN GAPS from that inventory — 2 and 3 CLOSED (`fbf58aa`), EIGHT still open:**
 1. **Legal entity details** for the record header (registered name, address, contact).
-2. **Vercel function region is NOT pinned** — so compute is likely US. One config line to
-   pin `fra1`. This is the cheapest gap to close and it changes the transfer analysis.
-3. **ntfy alert payloads unaudited** for personal data.
+2. ~~**Vercel function region is NOT pinned**~~ **CLOSED (`fbf58aa`)** — `"regions": ["fra1"]`,
+   verified live via `x-vercel-id` ending `::fra1::`. **WORDING DISCIPLINE for the Art. 30
+   record: the correct claim is "compute pinned to fra1", NOT "EU-only processing"** — Gemini
+   (US), LocationIQ, wttr.in and Stripe all still receive data outside the EU.
+3. ~~**ntfy alert payloads unaudited**~~ **CLOSED (`fbf58aa`)** — all 7 call sites audited;
+   host names removed from 4, the rest send aggregate counts only.
 4. **Retention undecided** for: `guests`, the bookings↔guest link, `daily_greetings`, guest
    `push_subscriptions`, `admin_audit`. **These BLOCK the Art. 17 erasure feature** — the
    delete flow cannot be built correctly until each has a decided retention period.
-5. **Gemini unpaid-tier data-use terms** + the SCC/DPF transfer basis.
+5. **Gemini unpaid-tier data-use terms** + the SCC/DPF transfer basis. **WIDENED (`1af1012`):
+   the grounded guide now sends the property address into GOOGLE SEARCH, not only to the Gemini
+   model** — a broader disclosure than this entry originally described, and it must be recorded
+   as such. (`guest-chat` and `city-events` were already grounded.)
 6. **No privacy-notice link on the guest page.**
 7. **`guest_optins` is dormant (0 rows)** — decide keep or drop.
 8. **Supabase auth-log and Vercel log retention unverified.**
@@ -827,6 +924,9 @@ residency, client-side disclosures, transfers, and Art. 32 measures.
    third party with no DPA. Client-side, so it is a disclosure/consent question, not a
    server fix.
 10. **LocationIQ corporate seat and DPA.**
+
+**Already verified, no action needed:** Supabase Custom SMTP via Resend (done 17 Jul); GitHub
+secret scanning + push protection confirmed **already enabled** 29 Jul.
 
 **Agreed order of work (Jul 28):**
 1. ~~**Data inventory** (GDPR Art. 30 record of processing) + **subprocessor list**~~ —
