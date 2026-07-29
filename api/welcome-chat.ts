@@ -110,7 +110,7 @@ async function buildPublicSystemInstruction(
     ``,
     `GROUNDING:`,
     `- For anything about THIS apartment, use ONLY the APARTMENT DATA below. If something isn't there, say you don't have it and suggest messaging the host.`,
-    `- For questions about the area (things to do, restaurants, transport, sights, getting around, what to book ahead), you may use Google Search and draw on the HOST RECOMMENDATIONS and NEIGHBOURHOOD GUIDE below. Prefer the host's own picks when they fit. Help them plan an itinerary.`,
+    `- For questions about the area (things to do, restaurants, transport, sights, getting around, what to book ahead), draw on the HOST RECOMMENDATIONS and NEIGHBOURHOOD GUIDE below. Prefer the host's own picks when they fit. Help them plan an itinerary.`,
     ``,
     `STYLE:`,
     `- Warm, concise, conversational. Plain text only — never markdown bold or double asterisks. Keep replies short unless asked for more.`,
@@ -151,9 +151,13 @@ async function callModel(systemInstruction: string, history: unknown, message: s
         const gen = ai.models.generateContent({
           model: MODEL,
           contents,
+          // NO Google Search grounding here — DELIBERATE. Grounding has no free-tier quota on
+          // the bemgu-public-welcome project (verified: same key + model returns 200 without a
+          // tools array and 429 RESOURCE_EXHAUSTED with one), so it would be paid-only. The
+          // welcome page is pre-arrival planning where the cached city guide and host picks sit
+          // on the same screen, so the loss is small.
           config: {
             systemInstruction,
-            tools: [{ googleSearch: {} }] as any,
             thinkingConfig: { thinkingBudget: 0 } as any,
             maxOutputTokens: 2048,
           },
