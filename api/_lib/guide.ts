@@ -13,9 +13,10 @@ type CategoryKey = typeof CATEGORIES[number]
 const MAX_GEOCODE = 30
 const GEOCODE_CONCURRENCY = 5
 // Sanity bound on how far a guide place may sit from the apartment. Generous enough for a
-// large city (the prompt asks for a 15-minute walk, so real picks land far inside it) while
-// still rejecting the regional administrative centroids the geocoder returns where OSM
-// coverage is thin. Beyond this the coordinate is dropped, NOT the place.
+// large city (the prompt's widest limit is a 30-minute walk — ~2.5km — for Sight/Nightlife,
+// 15 minutes for the rest, so real picks land far inside it) while still rejecting the
+// regional administrative centroids the geocoder returns where OSM coverage is thin.
+// Beyond this the coordinate is dropped, NOT the place.
 const MAX_PLACE_KM = 25
 // UTC, day-granular — deterministic regardless of server locale (mirrors city-events.ts).
 const fmt = (d: Date) =>
@@ -69,21 +70,31 @@ function buildPrompt(apt: AptInput): string {
   return (
     `Today is ${today}. You are a hyper-local neighbourhood guide expert. ` +
     `A guest is staying at: ${locationParts.join(', ')}. ` +
-    `Use web search to find real, currently-open places near that address, and verify each one before including it. ` +
-    `Create a neighbourhood guide with up to 5 places per category ` +
-    `(Restaurant, Bar, Coffee, Sight, Essential, Nightlife). ` +
+    `Use web search to find real, currently-open places near that exact address, and verify each one before including it. ` +
+    `Create a neighbourhood guide with up to 5 places in each of these six categories:\n` +
+    `- Restaurant: sit-down places to eat a full meal.\n` +
+    `- Bar: places to drink in the evening — wine bars, beer bars, tapas bars, pubs.\n` +
+    `- Coffee: cafes, coffee roasters, and bakeries with seating — somewhere to sit with a coffee during the day. ` +
+    `This is a SEPARATE category from Bar and Restaurant: do not fold cafes into those. ` +
+    `Almost every city neighbourhood has cafes, so an empty Coffee list nearly always means the search was not thorough enough — search again before returning one.\n` +
+    `- Sight: things to see or visit — parks, museums, markets, notable architecture.\n` +
+    `- Essential: practical daily needs — supermarket, pharmacy, ATM, laundry, drugstore.\n` +
+    `- Nightlife: late-night venues — clubs, live music, late bars.\n` +
+    `DISTANCE RULES, measured on foot from the exact address above. These are hard limits, not preferences:\n` +
+    `- Restaurant, Bar, Coffee, Essential: within a 15-minute walk. These are daily needs; the guest will not cross the city for them.\n` +
+    `- Sight, Nightlife: within a 30-minute walk. Slightly wider because these are destinations, but still WALKABLE.\n` +
+    `Never include a place outside these limits, however famous it is. A city's best-known landmark or restaurant in another district is WRONG for this guide; ` +
+    `an ordinary local place around the corner is RIGHT. If you are recommending somewhere because it is famous rather than because it is close, leave it out.\n` +
+    `Aim for 4-5 verified places per category. Return fewer only where the neighbourhood genuinely lacks them within the distance limit — ` +
+    `but never invent, pad, or guess to reach a number, and never include a place you could not verify.\n` +
     `For each place provide: name (the exact establishment name as written locally — never translate or anglicise it), ` +
     `description (ONE sentence, in ENGLISH), ` +
-    `and address (specific street address with neighbourhood and city). ` +
-    `Prefer places within 15 minutes' walk. ` +
-    `Only include a place if web search confirms it exists at that address and has not permanently closed. ` +
-    `Accuracy matters far more than quantity — return fewer places rather than invent, pad, or guess. ` +
-    `Never include a place you could not verify. ` +
+    `and address (specific street address with neighbourhood and city).\n` +
     `Respond with ONLY raw JSON — no markdown, no code fences, no prose — with exactly these keys: ` +
     `"Restaurant", "Bar", "Coffee", "Sight", "Essential", "Nightlife". ` +
     `Each key maps to an array of up to 5 objects of the form ` +
     `{"name": string, "description": string, "address": string}. ` +
-    `Use an empty array for a category with no verified picks.`
+    `Use an empty array only for a category with no verified places inside the distance limit.`
   )
 }
 
@@ -177,6 +188,24 @@ export async function generateGuideForApartment(
       categories[cat] = places
     }
   }
+
+  // Per-generation diagnostic. Counts + finishReason + raw length ONLY — never the response
+  // text, place names or the address. A thin-but-non-empty result (e.g. an empty Coffee list)
+  // is invisible on the placeCount === 0 path, so log every generation, not just failures.
+  const perCategory = {} as Record<CategoryKey, number>
+  let generatedCount = 0
+  for (const cat of CATEGORIES) {
+    const n = categories[cat]?.length ?? 0
+    perCategory[cat] = n
+    generatedCount += n
+  }
+  console.log('[guide] generated', {
+    aptId: apt.id,
+    finishReason: finishReason ?? null,
+    rawLen: raw.length,
+    perCategory,
+    total: generatedCount,
+  })
 
   // Geocode best-effort: collect place+address pairs, cap at MAX_GEOCODE, batch GEOCODE_CONCURRENCY at a time
   const geocodeTasks: Array<{ cat: CategoryKey; idx: number; query: string }> = []
