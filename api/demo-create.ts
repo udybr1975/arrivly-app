@@ -334,11 +334,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // must NEVER fail demo creation (the demo works without them). FULL path skips all AI.
     if (path === 'quick') {
       try {
+        // Read back the coordinates the insert helper computed — they are not in scope here,
+        // and without them the guide falls back to unbiased, unchecked geocoding (98017fe).
+        const { data: aptGeo } = await admin
+          .from('apartments')
+          .select('lat, lng, country, street, street_number')
+          .eq('id', apartmentId)
+          .eq('host_id', userId)
+          .maybeSingle()
         await generateGuideForApartment(admin, {
           id: apartmentId,
+          street: aptGeo?.street ?? null,
+          street_number: aptGeo?.street_number ?? null,
           neighborhood: neighbourhood,
           city,
-          country: null,
+          country: aptGeo?.country ?? null,
+          lat: aptGeo?.lat ?? null,
+          lng: aptGeo?.lng ?? null,
         })
       } catch (e) {
         console.warn('[demo-create] guide seed failed (non-fatal) —', scrub(e))

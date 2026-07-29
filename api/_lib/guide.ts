@@ -17,6 +17,9 @@ const GEOCODE_CONCURRENCY = 5
 // still rejecting the regional administrative centroids the geocoder returns where OSM
 // coverage is thin. Beyond this the coordinate is dropped, NOT the place.
 const MAX_PLACE_KM = 25
+// UTC, day-granular — deterministic regardless of server locale (mirrors city-events.ts).
+const fmt = (d: Date) =>
+  d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
 
 // Great-circle distance in km.
 function distanceKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
@@ -62,22 +65,25 @@ function buildPrompt(apt: AptInput): string {
     cap(apt.city),
     cap(apt.country),
   ].filter(Boolean)
+  const today = fmt(new Date())
   return (
-    `You are a hyper-local neighbourhood guide expert. ` +
+    `Today is ${today}. You are a hyper-local neighbourhood guide expert. ` +
     `A guest is staying at: ${locationParts.join(', ')}. ` +
+    `Use web search to find real, currently-open places near that address, and verify each one before including it. ` +
     `Create a neighbourhood guide with up to 5 places per category ` +
     `(Restaurant, Bar, Coffee, Sight, Essential, Nightlife). ` +
-    `For each place provide: name (exact establishment name), ` +
-    `description (one sentence in the area's primary language), ` +
+    `For each place provide: name (the exact establishment name as written locally — never translate or anglicise it), ` +
+    `description (ONE sentence, in ENGLISH), ` +
     `and address (specific street address with neighbourhood and city). ` +
-    `Prefer places within 15 minutes' walk. Only include places you are confident exist. ` +
-    `Respond with ONLY a JSON object — no markdown, no prose — with exactly these keys: ` +
+    `Prefer places within 15 minutes' walk. ` +
+    `Only include a place if web search confirms it exists at that address and has not permanently closed. ` +
+    `Accuracy matters far more than quantity — return fewer places rather than invent, pad, or guess. ` +
+    `Never include a place you could not verify. ` +
+    `Respond with ONLY raw JSON — no markdown, no code fences, no prose — with exactly these keys: ` +
     `"Restaurant", "Bar", "Coffee", "Sight", "Essential", "Nightlife". ` +
     `Each key maps to an array of up to 5 objects of the form ` +
     `{"name": string, "description": string, "address": string}. ` +
-    `description is one sentence in the area's primary language; address is a specific ` +
-    `street address including neighbourhood and city. Use an empty array for a category ` +
-    `with no confident picks.`
+    `Use an empty array for a category with no verified picks.`
   )
 }
 
@@ -92,14 +98,16 @@ export async function generateGuideForApartment(
 
   const generate = async () => {
     const controller = new AbortController()
-    // 20s per attempt: 2 attempts × 20s + 600ms delay + ~18s geocoding ≈ 58.6s < 60s maxDuration
-    const timer = setTimeout(() => controller.abort(), 20000)
+    // 40s per attempt: 2 attempts × 40s + 600ms delay + ~18s geocoding ≈ 98.6s < 120s maxDuration
+    const timer = setTimeout(() => controller.abort(), 40000)
     try {
       return await ai.models.generateContent({
         model: MODEL,
         contents: buildPrompt(apt),
+        // googleSearch grounding cannot be combined with responseMimeType JSON,
+        // so we parse the plain-text reply defensively.
         config: {
-          responseMimeType: 'application/json',
+          tools: [{ googleSearch: {} }] as any,
           thinkingConfig: { thinkingBudget: 0 },   // disable thinking — was eating the output budget
           maxOutputTokens: 8192,
           abortSignal: controller.signal,
@@ -137,7 +145,20 @@ export async function generateGuideForApartment(
       parsed = p as Record<string, unknown>
     }
   } catch {
-    parsed = {}
+    // Without responseMimeType the reply is no longer guaranteed to be bare JSON, so the
+    // model may wrap it in leading/trailing prose. Retry on the first-brace..last-brace slice.
+    try {
+      const start = cleaned.indexOf('{')
+      const end = cleaned.lastIndexOf('}')
+      if (start !== -1 && end > start) {
+        const p2 = JSON.parse(cleaned.slice(start, end + 1))
+        if (p2 !== null && typeof p2 === 'object' && !Array.isArray(p2)) {
+          parsed = p2 as Record<string, unknown>
+        }
+      }
+    } catch {
+      parsed = {}
+    }
   }
 
   // Coerce to known shape: keep only items with a non-empty name string
