@@ -12,6 +12,23 @@ const CATEGORIES = ['Restaurant', 'Bar', 'Coffee', 'Sight', 'Essential', 'Nightl
 type CategoryKey = typeof CATEGORIES[number]
 const MAX_GEOCODE = 30
 const GEOCODE_CONCURRENCY = 5
+// Sanity bound on how far a guide place may sit from the apartment. Generous enough for a
+// large city (the prompt asks for a 15-minute walk, so real picks land far inside it) while
+// still rejecting the regional administrative centroids the geocoder returns where OSM
+// coverage is thin. Beyond this the coordinate is dropped, NOT the place.
+const MAX_PLACE_KM = 25
+
+// Great-circle distance in km.
+function distanceKm(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const R = 6371
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(bLat - aLat)
+  const dLng = toRad(bLng - aLng)
+  const h =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(h)))
+}
 
 interface Place {
   name: string
@@ -30,6 +47,10 @@ export interface AptInput {
   neighborhood?: string | null
   city?: string | null
   country?: string | null
+  // Optional: when present, biases geocoding to the apartment's locality and enables the
+  // MAX_PLACE_KM sanity check. Absent → unbiased, unchecked geocoding exactly as before.
+  lat?: number | null
+  lng?: number | null
 }
 
 const cap = (s: string | null | undefined) => (s ?? '').slice(0, 200)
@@ -149,21 +170,48 @@ export async function generateGuideForApartment(
     }
   }
 
+  // Bias geocoding to the apartment when we know where it is. apt.country holds a country
+  // NAME ("Peru"), not the ISO alpha-2 code countrycodes needs, so no countryCode is passed.
+  // Coerce rather than typeof-gate: apartments.lat/lng are double precision (PostgREST sends
+  // real JSON numbers today), but a numeric-as-string would silently disable the whole fix,
+  // so accept either. null/undefined/'' stay null instead of coercing to 0.
+  const num = (v: unknown): number | null => {
+    if (v === null || v === undefined || v === '') return null
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  }
+  const aptLat = num(apt.lat)
+  const aptLng = num(apt.lng)
+  const bias = aptLat !== null && aptLng !== null ? { lat: aptLat, lng: aptLng } : undefined
+
+  let located = 0
   for (let i = 0; i < geocodeTasks.length; i += GEOCODE_CONCURRENCY) {
     const chunk = geocodeTasks.slice(i, i + GEOCODE_CONCURRENCY)
-    const results = await Promise.all(chunk.map(t => geocodeAddress(t.query)))
+    const results = await Promise.all(chunk.map(t => geocodeAddress(t.query, bias)))
     for (let j = 0; j < chunk.length; j++) {
       const coords = results[j]
-      if (coords) {
-        const { cat, idx } = chunk[j]
-        const place = categories[cat]?.[idx]
-        if (place) {
-          place.lat = coords.lat
-          place.lng = coords.lng
-        }
+      if (!coords) continue
+      // Reject an implausible fix (regional centroid). The place STAYS in the guide — its
+      // text is still useful and it is usually real — but with no lat/lng the guest page
+      // renders it without a Navigate button rather than sending someone 100km inland.
+      if (bias && distanceKm(bias.lat, bias.lng, coords.lat, coords.lng) > MAX_PLACE_KM) continue
+      const { cat, idx } = chunk[j]
+      const place = categories[cat]?.[idx]
+      if (place) {
+        place.lat = coords.lat
+        place.lng = coords.lng
+        located++
       }
     }
   }
+
+  // Counts only — no addresses, no keys.
+  console.log('[guide] geocoded', {
+    aptId: apt.id,
+    located,
+    attempted: geocodeTasks.length,
+    biased: Boolean(bias),
+  })
 
   let placeCount = 0
   for (const cat of CATEGORIES) {

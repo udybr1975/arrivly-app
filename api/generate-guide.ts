@@ -29,7 +29,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: apt, error: aptErr } = await supabase
     .from('apartments')
-    .select('id, host_id, street, street_number, neighborhood, city, country')
+    .select('id, host_id, street, street_number, neighborhood, city, country, lat, lng')
     .eq('id', apartment_id)
     .maybeSingle()
 
@@ -44,6 +44,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       neighborhood: apt.neighborhood,
       city: apt.city,
       country: apt.country,
+      lat: apt.lat,
+      lng: apt.lng,
     })
     if (placeCount === 0) {
       // Generation produced nothing usable; the lib left any existing guide intact. 503 +

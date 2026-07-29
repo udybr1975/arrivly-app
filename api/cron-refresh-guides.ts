@@ -16,6 +16,8 @@ interface AptRow {
   neighborhood: string | null
   city: string | null
   country: string | null
+  lat: number | null
+  lng: number | null
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -24,7 +26,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data, error } = await supabase
     .from('apartments')
-    .select('id, name, street, street_number, neighborhood, city, country')
+    .select('id, name, street, street_number, neighborhood, city, country, lat, lng')
     .eq('is_visible', true)
     .not('city', 'is', null)
     .neq('city', '')
@@ -45,6 +47,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         neighborhood: apt.neighborhood,
         city: apt.city,
         country: apt.country,
+        lat: apt.lat,
+        lng: apt.lng,
       })
       if (placeCount > 0) refreshed++
       else errors.push(`${apt.id}: no places (kept previous)`)

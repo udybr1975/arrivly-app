@@ -36,8 +36,54 @@ interface LocationIQResult {
   address?: { country?: string }
 }
 
+// Optional locality bias. LocationIQ's /v1/search has NO proximity parameter, so the bias
+// is expressed as a viewbox + bounded=1 (confirmed against docs.locationiq.com/reference/search:
+// `viewbox` takes "min_lon,min_lat,max_lon,max_lat", `bounded` (0|1) restricts results to it,
+// `countrycodes` takes ISO 3166-1 alpha-2). Without this, a query whose OSM coverage is thin
+// returns a regional ADMINISTRATIVE CENTROID rather than failing — which is how guide places
+// ended up hundreds of km inland.
+export interface GeoBias {
+  lat: number
+  lng: number
+  countryCode?: string
+}
+
+// Half-span of the bias box. Deliberately wider than the caller's own sanity bound so the box
+// is never the binding constraint — the caller's distance check stays authoritative.
+const BIAS_HALF_SPAN_KM = 40
+const KM_PER_DEG_LAT = 111.32
+
+// Build the viewbox/bounded/countrycodes query fragment for a bias. Returns '' when the bias
+// is unusable, so a malformed bias degrades to today's unbiased lookup rather than erroring.
+function biasParams(bias: GeoBias): string {
+  if (!Number.isFinite(bias.lat) || !Number.isFinite(bias.lng)) return ''
+  if (Math.abs(bias.lat) > 90 || Math.abs(bias.lng) > 180) return ''
+
+  const latDelta = BIAS_HALF_SPAN_KM / KM_PER_DEG_LAT
+  // Longitude degrees shrink toward the poles. Clamp the cosine so a near-polar apartment
+  // widens the box instead of dividing by ~0.
+  const cosLat = Math.max(Math.cos((bias.lat * Math.PI) / 180), 0.01)
+  const lonDelta = Math.min(BIAS_HALF_SPAN_KM / (KM_PER_DEG_LAT * cosLat), 180)
+
+  const minLat = Math.max(bias.lat - latDelta, -90)
+  const maxLat = Math.min(bias.lat + latDelta, 90)
+  // Clamped, not wrapped: a box spanning the antimeridian would be malformed, so it is
+  // truncated instead. Only affects apartments within ~40km of ±180° longitude.
+  const minLon = Math.max(bias.lng - lonDelta, -180)
+  const maxLon = Math.min(bias.lng + lonDelta, 180)
+
+  const viewbox = `${minLon.toFixed(6)},${minLat.toFixed(6)},${maxLon.toFixed(6)},${maxLat.toFixed(6)}`
+  let params = `&viewbox=${viewbox}&bounded=1`
+
+  // ISO 3166-1 alpha-2 only; anything else is dropped rather than sent.
+  const cc = bias.countryCode?.trim().toLowerCase()
+  if (cc && /^[a-z]{2}$/.test(cc)) params += `&countrycodes=${cc}`
+  return params
+}
+
 export async function geocodeAddress(
   query: string,
+  bias?: GeoBias,
 ): Promise<{ lat: number; lng: number; country?: string | null } | null> {
   const apiKey = process.env.LOCATIONIQ_API_KEY
   if (!apiKey) return null
@@ -51,7 +97,8 @@ export async function geocodeAddress(
   try {
     // EU forward geocoding. The key is in the URL — keep this path SILENT (no
     // logging anywhere below) so the key is never written to logs.
-    const url = `https://eu1.locationiq.com/v1/search?key=${apiKey}&q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1`
+    // No bias → this string is byte-identical to the pre-bias URL (unbiased behaviour intact).
+    const url = `https://eu1.locationiq.com/v1/search?key=${apiKey}&q=${encodeURIComponent(query)}&format=json&limit=1&addressdetails=1${bias ? biasParams(bias) : ''}`
     const response = await fetch(url, {
       signal: controller.signal,
       headers: { accept: 'application/json' },
