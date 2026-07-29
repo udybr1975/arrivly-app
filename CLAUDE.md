@@ -668,6 +668,51 @@ only, TRUNCATE/TRIGGER/REFERENCES revoked).
 - **`guest-chat` and `city-events` depend on grounding, which is paid-only on Gemini 3.**
   **That is the real AI cost driver to size before marketing.**
 
+### QUOTA IS PER GOOGLE CLOUD PROJECT, NOT PER ACCOUNT (Jul 29 2026)
+
+Bemgu splits AI across **five keys in separate projects**, so each carries its **own daily
+allowance** instead of sharing one pool:
+
+| Key | Surfaces | Note |
+|---|---|---|
+| `GEMINI_API_KEY` | `_lib/greeting`, `_lib/host-picks`, `bulk-import`, `rewrite-rules`, `guide-assistant` | **the only ones that compete with each other** |
+| `GEMINI_API_KEY_GUIDES` | `_lib/guide` | own project |
+| `GEMINI_API_KEY_CHAT` | `guest-chat` | **GROUNDED** |
+| `GEMINI_API_KEY_EVENTS` | `_lib/city-events` | **GROUNDED** |
+| `GEMINI_API_KEY_PUBLIC` | `welcome-chat` | `gemini-3.1-flash-lite`, no grounding |
+
+**CONSEQUENCE: the effective ceiling is well above 20 calls/day, so QUOTA IS NOT CURRENTLY
+THE BINDING CONSTRAINT.** Do not plan around the 20 RPD figure as if it were global. **The
+real deadline is the 16 Oct 2026 model shutdown.**
+
+### MODEL-MIGRATION ANALYSIS — do NOT big-bang this (Jul 29 2026)
+
+**The 500 RPD free allowance belongs specifically to Flash-LITE. Gemini 3 Flash is 5 RPM /
+20 RPD — identical to `gemini-2.5-flash`.** So the 25× quota gain comes from choosing a
+**SMALLER model, not a newer generation**. It is a **capability trade, not a free upgrade**,
+and that is why the migration splits three ways:
+
+- **CANNOT MOVE** (grounded, and grounding is zero-quota on Gemini 3): **`guest-chat`,
+  `_lib/city-events`**. Stuck on `gemini-2.5-flash` until billing is enabled or 16 Oct forces
+  the issue. **This is the genuine deadline.**
+- **SAFE TO MOVE** (simple, text-in/text-out, no strict structure, no deep world knowledge):
+  **`_lib/greeting`, `rewrite-rules`, `guide-assistant`**.
+- **TEST BEFORE MOVING** (knowledge-heavy and/or strict JSON — where a lite model is most
+  likely to degrade): **`_lib/guide`** (must recall 30 real businesses with real addresses,
+  and **guide accuracy is already the known weak spot** — see the fabricated-business note
+  below), **`_lib/host-picks`** (must identify real places from partial names a host typed),
+  **`bulk-import`** (simple classification, so probably fine).
+
+**RECOMMENDED ORDER:** (1) **fix the guide's grounding first** — it is a real defect and the
+pattern is already proven in-house (see the CITY GUIDE section below); (2) move the three
+safe endpoints and verify; (3) **compare real output side by side** for `guide` and
+`host-picks` on Flash-Lite **before** committing to the switch; (4) then decide the
+grounding-cost question for the two stuck endpoints.
+
+**NOTE THE TENSION:** grounding the guide ties it to the 2.5 line, which is the line being
+retired. Steps (1) and (3) pull in opposite directions for that one endpoint — resolve it
+deliberately rather than by accident.
+
 ## CITY GUIDE — geocoding fix SHIPPED (`98017fe`), plus a bigger unresolved issue
 
 **Measured across 7 guides / 208 places.** Casa Miraflores (Lima) had **17 of 30 places over
@@ -699,9 +744,23 @@ Madrid (1.3) and Berlin (2.4) were never affected and were left un-refreshed.
 - **THE GUIDE IS NOT GROUNDED.** `_lib/guide.ts` uses `responseMimeType: 'application/json'`
   and no `tools` array — **Google's API does not allow forced JSON together with Search.** So
   a guide refresh **RE-ROLLS the same training knowledge; it does NOT find new places, and a
-  re-roll can make a good guide WORSE.** City events and guest-chat DO use grounding. **Decide
-  before launch** whether to build two-step grounded generation (a grounded research call,
-  then a formatting call).
+  re-roll can make a good guide WORSE.** City events and guest-chat DO use grounding.
+  - **THE FIX IS NOT A NOVEL DESIGN — THE PATTERN ALREADY WORKS IN THIS CODEBASE (Jul 29
+    2026).** `api/_lib/city-events.ts` is **grounded AND returns structured data**: it sets
+    `tools: [{ googleSearch: {} }]`, omits `responseMimeType`, and **parses the JSON out of
+    the model's plain-text reply** (defensive fence-strip then `JSON.parse`). Its own comment
+    states the constraint verbatim: *"googleSearch grounding cannot be combined with
+    responseMimeType JSON, so we parse fenced text defensively."* (Verified in source at
+    `city-events.ts:87-104`.)
+  - **So grounding the guide = copy city-events' approach:** drop `responseMimeType` from
+    `_lib/guide.ts`, add the `googleSearch` tool, parse JSON from text. **This SUPERSEDES the
+    previously-recorded "grounded research call, then a separate formatting call" design —
+    one call, not two, and materially cheaper.** `guide.ts` already has the defensive
+    fence-strip + `JSON.parse` + `{}`-fallback block, so most of the parsing work exists.
+  - **THE COST:** grounding is **free on the 2.5 line (1,500 RPD) but ZERO on Gemini 3**, so
+    a grounded guide is **tied to `gemini-2.5-flash` and therefore to the 16 Oct 2026
+    shutdown**. Grounding the guide and migrating it off 2.5 are in direct tension — see the
+    migration analysis in "AI MODELS AND QUOTA" above.
 - **THE MONTHLY GUIDE CRON APPEARS NEVER TO HAVE RUN.** No guide's `generated_at` matches the
   10:00 UTC 1st-of-month schedule. It also loops apartments **sequentially at ~20–30s each
   against a 60s maxDuration**, and would need ~1 Gemini call per apartment against a ~20/day
