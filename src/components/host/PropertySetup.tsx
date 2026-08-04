@@ -444,6 +444,13 @@ export default function PropertySetup() {
     if (wasNew && savedId) {
       // Fire-and-forget: generate guide + greeting_blurb for the brand-new property.
       // Navigation is not blocked — the host lands on the edit page while generation runs in the background.
+      // KNOWN, ACCEPTED: the server cooldown is per-HOST, so if this host refreshed any guide in
+      // the last 6h this call returns 429 and the swallow below hides it — the new property gets
+      // no guide and no greeting_blurb until they refresh manually from the Guide & events tab.
+      // The swallow is deliberate (a failed background call must never block navigation).
+      // Do NOT "fix" this with a per-apartment first-generation exemption: keying the gate to
+      // anything that cascades from apartments is what made the previous attempt bypassable via
+      // delete/recreate. A bound keyed on server-side apartments.created_at would be the safe shape.
       void api.post('/generate-guide', { apartment_id: savedId }).catch(() => {})
       navigate(`/dashboard/property/${savedId}`, { replace: true })
     }
@@ -664,9 +671,18 @@ export default function PropertySetup() {
       let code = ''
       try { code = JSON.parse(err instanceof Error ? err.message : '')?.error ?? '' } catch { /* response not JSON */ }
       if (code === 'guide_empty') {
-        setGuideMsg('No places were generated this time. Please try again.')
+        // The server consumes its 6h cooldown claim before generating, so a failed run has
+        // already spent the window — an immediate retry would return 429, not a new guide.
+        setGuideMsg('No places were generated this time — you can try again in a few hours.')
+      } else if (code === 'cooldown') {
+        // Server-side 6h floor in api/generate-guide.ts, separate from GUIDE_FRESH_HOURS.
+        // It is per-HOST, so refreshing any one property's guide gates the others too.
+        setGuideMsg('Guide was refreshed recently — try again in a few hours.')
       } else {
-        setGuideMsg('Could not refresh the guide. Please try again.')
+        // Deliberately "later", not "try again": a 500 means the server already consumed the 6h
+        // claim, so an immediate retry returns 429. This branch also catches network errors
+        // (where no claim was spent), so the wording has to be true for both.
+        setGuideMsg('Could not refresh the guide. Please try again later.')
       }
     } finally {
       setRefreshingGuide(false)
