@@ -19,11 +19,13 @@ context automatically every session, which is exactly what splitting this file a
 > - **Test-fixture rule reaffirmed:** Sweet home booking `ARR-EVT777` dates must be re-refreshed (`check_in = current_date-1`, `check_out = current_date+3`) before any guest-page test.
 >
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD (code) — UNCHANGED at `d282fe8`** — guide dedupe + empty-category retry. The
-> Aug 4 2026 session was **DOCS-ONLY** (see "SESSION Aug 4 2026").
-> This session: `fbf58aa` (fra1 pin + ntfy scrub) → `1af1012` (grounded guide + English
-> descriptions) → `a940158` (distance rules + Coffee + per-generation logging) → `d282fe8`.
-> All four live and SHA-verified against Vercel production. Preceding: `98017fe` (geocoding bias
+> **Current HEAD (code) — `6fd015c`.** This session (Aug 4 2026, session 2):
+> `3c56c95` (shared `scrubErr` helper) → `6fd015c` (atomic per-host `generate-guide` cooldown).
+> Both live and SHA-verified against Vercel production. See "SESSION Aug 4 2026 (2)".
+> PRIOR HISTORY: `d282fe8` (guide dedupe + empty-category retry) closed the Jul 29 session 2
+> chain `fbf58aa` (fra1 pin + ntfy scrub) → `1af1012` (grounded guide + English descriptions)
+> → `a940158` (distance rules + Coffee + per-generation logging) → `d282fe8`.
+> Preceding that: `98017fe` (geocoding bias
 > + 25 km bound), `27b881b` (cross-tenant anon leak CLOSED — see the SECURITY section),
 > `82fd0dc` → `5f16b42` → `ff444a0` → `aa446d2` → `d79fd9e` (welcome page `/w/:code` Phase 1).
 >
@@ -593,13 +595,16 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 - **NEW, TOP OF PRE-LIVE — enable billing on ALL FIVE Gemini projects.** Blocks launch on two
   independent grounds: the **contractual** EEA/CH/UK paid-only restriction, and the
   **grounding processor-DPA** cover that exists only on paid quota. See "SESSION Aug 4 2026".
-- **NEW, MUST PRECEDE BILLING — a pre-billing SECURITY REVIEW (dedicated session).** Moving
-  from no-card to billed keys converts a leaked key from a **quota nuisance into unbounded
-  spend**, and **this repo is PUBLIC**. Scope recorded for that session: **server-side cooldown
-  on `generate-guide`** (still absent; each call can now cost two grounded generations), the
-  **unauthenticated / low-friction spend surfaces including `demo-create`**, **Google Cloud
-  budget caps + alerts per project**, **API key restrictions**, **key rotation after the flip**,
-  and **confirming no key can reach a log or the client bundle**.
+- **MUST PRECEDE BILLING — the pre-billing SECURITY REVIEW, now PARTLY DONE.** Moving from
+  no-card to billed keys converts a leaked key from a **quota nuisance into unbounded spend**,
+  and **this repo is PUBLIC**. ~~server-side cooldown on `generate-guide`~~ **DONE — shipped
+  `6fd015c` (atomic per-host 6h claim on `hosts.guide_claimed_at`, live-proven).** **REMAINING
+  scope:** the other **spend surfaces (`demo-create` — no cooldown built; Turnstile +
+  one-demo-per-account gated for now)**; **per-project budget caps on the remaining FOUR Gemini
+  projects** (only the guides project has billing + a €10 cap); **API key restrictions**; **key
+  rotation after the flip**; and confirming no key reaches a log or the client bundle — the
+  log/bundle half is now **largely satisfied** by the shared `scrubErr` helper (`3c56c95`) plus
+  the clean 279-commit history scan.
 - **RETENTION CRONS move onto the CRITICAL PATH** — they must ship **before any legal document
   is published** (see the SEQUENCING TRAP in the legal workstream).
 - **14 Dependabot alerts (7 high, 7 moderate) do NOT reconcile** with the older note claiming
@@ -895,6 +900,94 @@ it to a partner.
 requirement**. This is the specific point needing **explicit written sign-off**, and it is a
 **TIER 3 LAUNCH DEPENDENCY, not general backlog.**
 
+## SESSION Aug 4 2026 (2) — pre-billing security: scrubErr + atomic per-host guide cooldown SHIPPED
+
+**Two commits, both pushed and SHA-verified against Vercel production. Code HEAD is now `6fd015c`.**
+Chain this session: `3c56c95` (shared scrubErr helper) → `6fd015c` (atomic per-host generate-guide
+cooldown). Both READY on Vercel, SHAs match GitHub.
+
+**GOAL:** close the pre-billing spend-abuse holes on `generate-guide` before Gemini billing is
+enabled (a billed key turns a looped call from a quota nuisance into unbounded spend; the repo is
+PUBLIC).
+
+**`3c56c95` — shared `scrubErr` helper.** New `api/_lib/scrub.ts` (redact `AIza…` + `key=` then
+truncate) centralises the redact-then-truncate logic that was hand-copied across ~15 call sites;
+1 new file + 14 importers, net −23 lines. **Closed Finding 1:** five AI-calling files
+(`_lib/host-picks`, `guest-chat`, `guide-assistant`, `bulk-import`, `welcome-chat`) previously
+scrubbed only `key=` and MISSED the `AIza` pattern. Stripe files deliberately NOT converted (they
+scrub `sk_`/`whsec_`, which scrubErr does not cover). code-reviewer + security-auditor both passed.
+
+**`6fd015c` — atomic per-host cooldown on `generate-guide` (6h server floor).** The real fix for
+the loop-the-endpoint hole. Took THREE security-auditor rounds, each catching a real, exploitable
+bypass — the gate did its job:
+- Round 1 (rejected): read `generated_at` then generate — lost to parallel bursts (TOCTOU), and
+  failed generations never wrote a row so the gate never armed.
+- Round 2 (rejected): claim on `guide_recommendations` — defeated because a host could **delete
+  their apartment (FK cascade destroys the claim row), recreate it, and burst the ungated
+  first-generation path**. The claim must not live on an apartment-linked, host-deletable row.
+- Round 3 (SHIPPED): claim on **`hosts.guide_claimed_at`** — a row a host cannot delete (without
+  destroying their own account) and cannot UPDATE (no table- or column-level UPDATE grant for
+  `authenticated`). Single atomic conditional UPDATE
+  (`.eq('id',userId).or('guide_claimed_at.is.null,guide_claimed_at.lt.<cutoff>')`) taken AFTER
+  auth+ownership and BEFORE generation. Under READ COMMITTED a concurrent burst serialises on the
+  host row lock → exactly one caller wins per 6h window. Claim is stamped BEFORE generation, so a
+  FAILED run also consumes the window (deliberate — a failed grounded gen costs the same money).
+  scrubErr re-applied to the blurb-failure log in the same file.
+
+**TWO MIGRATIONS applied this session via Supabase MCP — DO NOT RE-RUN:**
+- `guide_recommendations_lock_and_claim`: dropped the ALL/PUBLIC `guide_host_all` policy →
+  replaced with SELECT-only `guide_host_select` (apartment-scoped); REVOKEd INSERT/UPDATE/DELETE
+  on `guide_recommendations` from anon+authenticated (verified: `authenticated` now SELECT-only,
+  `anon` no grants). Also added a now-UNUSED `guide_recommendations.guide_claimed_at` column
+  (superseded by the hosts column below — harmless, left in place).
+- `hosts_guide_claim_column`: added `hosts.guide_claimed_at` (nullable timestamptz). VERIFIED
+  server-only: `hosts` has NO table-level UPDATE grant for `authenticated` and NO column-level
+  UPDATE grant on the new column, so a host cannot reset their own claim via PostgREST.
+
+**BEHAVIOUR — INTENDED AND ACCEPTED:** the cooldown is per-HOST, so a host with several properties
+gets **one guide refresh per 6h across ALL their properties**. A property created within 6h of any
+refresh gets no guide/greeting_blurb until refreshed manually. Documented at the call site with a
+warning that a per-apartment exemption would recreate the delete/recreate hole. REVISIT only if a
+real multi-property power-host complains — not before.
+
+**DECISION — fail OPEN on claim-infra error** (Udy): if the claim query itself errors, the request
+proceeds to generate. The auditor preferred fail-closed and classified fail-open as a non-blocking
+decision, not a risk. Rationale accepted: the claim is a trivial single-row update that essentially
+only errors if Supabase is down, in which case `generate-guide` cannot function anyway.
+
+**LIVE TESTS (production, Madrid apt `84c136f7-…`, host `udy.bar.yosef@sterlights.com`):**
+- **Cooldown PROVEN.** 6-call loop after deploy: call 1 → `200 {ok,placeCount:10}` (won the claim,
+  generated); calls 2–6 → **instant** `429 {"error":"cooldown","retry_after_s":~21560}` counting
+  down from 6h, NO `[guide] generated` log, NO Gemini call, €0. This is the in-code,
+  billing-independent protection that was the whole point.
+- **Earlier burst (25 parallel, pre-cooldown) hit Gemini's per-minute 429 rate-limit**, NOT the
+  spend cap — proven from Vercel logs (`429 "exceeded your current quota"` AFTER a full slow
+  generation attempt). Useful: the RPM limit blocks burst hammering instantly.
+
+**GOOGLE CLOUD BILLING — configured on ONE project (the test target):**
+- Created a new **"Bemgu" billing account** (Finland, EUR) and linked the guides project
+  **`gen-lang-client-0816353550`** ("Anna stays guide" — display name is misleading; trust the
+  project ID; this is `GEMINI_API_KEY_GUIDES`).
+- Set a **Spend Cap (enforcement, not alert-only)** scoped to that project + service **Gemini
+  API**, initially €1, **raised to €10** (no real hosts yet). Verified **"Spend cap status =
+  Configured"** — the exact column that read "Not applicable" during the June Anna's Stays €2000
+  leak.
+- **LESSON — the spend cap CANNOT be live-tested to the pause, because Google's cost data LAGS
+  hours** (Reports showed €0.00 after ~€0.80 of real spend). So a lagging spend cap is a SLOW
+  backstop; it cannot stop a fast leak on its own.
+- **The layered defence (what actually protects spend), fast → slow:** (1) the in-code
+  `generate-guide` cooldown — instant, €0, proven live; (2) Gemini per-minute 429 rate-limit —
+  instant, proven; (3) the €10 enforcement spend cap — real but lagging; (4) Google's un-removable
+  ~$250 tier-1 ceiling — the hard wall that makes a €2000 repeat structurally impossible. June had
+  NONE of these (only a €51 alert-only budget).
+- Per-API daily-quota override was ABANDONED (the Cloud Console quota UI would not surface the live
+  per-project generate-content quota; the €10 cap makes it moot).
+
+**STILL OPEN after this session:** the other FOUR Gemini projects still need billing + a spend cap
+each before launch (only the guides project is done). A `demo-create` cooldown was NOT built
+(secondary surface: Turnstile + one-demo gated). Fail-closed reconsideration remains a recorded
+non-blocking option.
+
 ## SESSION Jul 29 2026 (2) — compliance pins + the guide became grounded
 
 Four commits, all live and SHA-verified against Vercel production.
@@ -1021,11 +1114,12 @@ Madrid (1.3) and Berlin (2.4) were never affected and were left un-refreshed.
   invocation**. **Batching + staggering is the strongest candidate for the next piece of guide
   work.** Staggering needs **no new column** — the rule is "refresh guides older than N days",
   because `generated_at` already staggers naturally. Also skip expired hosts, and log outcomes.
-- **RAISED — `generate-guide.ts` has NO server-side cooldown; move it into the pre-live batch.**
-  `GUIDE_FRESH_HOURS = 24` exists only in `PropertySetup.tsx`, so an authenticated host can loop
-  the endpoint, spending **Bemgu's** quota. `d282fe8` raised the worst-case cost per call by up
-  to 50% (two grounded generations instead of one). The client-side gate protects an honest host
-  from accidental spend **and nothing else**.
+- **~~RAISED — `generate-guide.ts` has NO server-side cooldown~~ — RESOLVED (`6fd015c`,
+  Aug 4 2026).** `GUIDE_FRESH_HOURS = 24` in `PropertySetup.tsx` was UI-only, so an
+  authenticated host could loop the endpoint and spend **Bemgu's** quota. Now gated by an
+  **atomic per-host 6h claim on `hosts.guide_claimed_at`**, taken before generation and proven
+  live (calls 2–6 of a loop returned instant `429 cooldown`, no Gemini call, €0). Details in
+  "SESSION Aug 4 2026 (2)".
 - **NEW, minor: `coercePlaces` does not enforce the 5-per-category cap the prompt requests.**
   Harmless today — the post-retry total still cannot exceed `MAX_GEOCODE`.
 - **`subscription_status` is DECOUPLED from the access gate.** `PrivateRoute` uses
