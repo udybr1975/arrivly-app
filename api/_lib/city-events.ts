@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai'
 import { withRetry } from './retry.js'
+import { scrubErr } from './scrub.js'
 
 // Shared city-events generator (mirrors the guide.ts / greeting.ts lib split).
 // The Gemini generation + JSON parse/sanitize logic lives here so both the guest
@@ -28,13 +29,6 @@ export interface CityEventCategory {
 export interface CityEventsPayload {
   week: string
   categories: CityEventCategory[]
-}
-
-function scrubErr(e: unknown): string {
-  return String((e as Error)?.message ?? e)
-    .replace(/AIza[0-9A-Za-z_\-]{10,}/g, 'AIza_REDACTED')
-    .replace(/key=[^&\s]+/gi, 'key=REDACTED')
-    .slice(0, 120)
 }
 
 /**
@@ -113,7 +107,7 @@ export async function generateCityEvents(
     }
     return { payload: null }
   } catch (e) {
-    console.warn(`[city-events] generation failed — ${scrubErr(e)}`)
+    console.warn(`[city-events] generation failed — ${scrubErr(e, 120)}`)
     return { payload: null }
   }
 }

@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { scrubErr } from './_lib/scrub.js'
+
+const scrub = (e: unknown): string => scrubErr(e, 120)
 
 // Host-auth endpoint: marks an ELIGIBLE fresh trial host as a demo signup by setting
 // user_metadata.is_demo=true, so the subsequent /demo-create money-gate (which REQUIRES
@@ -11,13 +14,6 @@ import { createClient } from '@supabase/supabase-js'
 // The demo-only host columns are still written ONLY by demo-create's service-role path.
 
 const MAX_FIELD = 120
-
-function scrub(e: unknown): string {
-  return String((e as Error)?.message ?? e)
-    .replace(/AIza[0-9A-Za-z_\-]{10,}/g, 'AIza_REDACTED')
-    .replace(/key=[^&\s]+/gi, 'key=REDACTED')
-    .slice(0, 120)
-}
 
 // Best-effort, per-instance IP+user rate limiter (same pattern/params as demo-create).
 const RL_MAX = 5

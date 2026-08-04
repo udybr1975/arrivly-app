@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { GoogleGenAI } from '@google/genai'
+import { scrubErr } from './_lib/scrub.js'
 import { GUIDE_MODULES } from '../src/guide/content.js'
 
 // "Ask Arrivly" — a host-authenticated, corpus-grounded help assistant. Answers ONLY
@@ -109,7 +110,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         clearTimeout(timer!)
       }
     } catch (e) {
-      const msg = String((e as Error)?.message ?? e).replace(/key=[^&\s]+/gi, 'key=REDACTED').slice(0, 120)
+      const msg = scrubErr(e, 120)
       console.warn(`[guide-assistant] attempt ${attempt} failed — ${msg}`)
     }
   }

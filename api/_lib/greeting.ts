@@ -1,19 +1,13 @@
 import { GoogleGenAI } from '@google/genai'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { withRetry } from './retry.js'
+import { scrubErr } from './scrub.js'
 import type { AptInput } from './guide.js'
 
 export type { AptInput }
 
 const MODEL = 'gemini-2.5-flash'
 const cap = (s: string | null | undefined) => (s ?? '').slice(0, 200)
-
-function scrubErr(e: unknown): string {
-  return String((e as Error)?.message ?? e)
-    .replace(/AIza[0-9A-Za-z_\-]{10,}/g, 'AIza_REDACTED')
-    .replace(/key=[^&\s]+/gi, 'key=REDACTED')
-    .slice(0, 160)
-}
 
 // Generates and saves a stable neighbourhood character blurb for the apartment.
 // Called after a successful guide generation so location data is already confirmed.

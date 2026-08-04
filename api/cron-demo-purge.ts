@@ -1,6 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { isCronAuthorized } from './_lib/cron.js'
+import { scrubErr } from './_lib/scrub.js'
+
+const scrub = (e: unknown): string => scrubErr(e)
 
 // Daily cron: data-minimisation PURGE. Auto-DELETES unconverted demo accounts + ALL their
 // data 1 day after the demo expired, so nothing belonging to a non-host lingers.
@@ -23,10 +26,6 @@ import { isCronAuthorized } from './_lib/cron.js'
 // Logs counts only — never an email or other PII.
 
 const BATCH = 200
-
-function scrub(e: unknown): string {
-  return String((e as Error)?.message ?? e).replace(/key=[^&\s]+/gi, 'key=REDACTED').slice(0, 160)
-}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   res.setHeader('Cache-Control', 'no-store')

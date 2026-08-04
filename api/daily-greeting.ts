@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { resolveGuestAccess } from './_lib/guest-access.js'
 import { generateDailySuggestion } from './_lib/greeting.js'
+import { scrubErr } from './_lib/scrub.js'
 
 const UUID_RE  = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const TOKEN_RE = /^[A-Za-z0-9-]{4,32}$/
@@ -18,13 +19,6 @@ function svc() {
     process.env.VITE_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
   )
-}
-
-function scrubErr(e: unknown): string {
-  return String((e as Error)?.message ?? e)
-    .replace(/AIza[0-9A-Za-z_\-]{10,}/g, 'AIza_REDACTED')
-    .replace(/key=[^&\s]+/gi, 'key=REDACTED')
-    .slice(0, 160)
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

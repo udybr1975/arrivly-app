@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { GoogleGenAI } from '@google/genai'
 import { verifyTurnstile } from './_lib/turnstile.js'
 import { withRetry } from './_lib/retry.js'
+import { scrubErr } from './_lib/scrub.js'
 
 // PUBLIC concierge for the welcome page (/w/:code). Separate from api/guest-chat.ts on
 // purpose: this endpoint is reachable WITHOUT a booking token, so it carries its own,
@@ -232,7 +233,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (reply) return res.status(200).json({ reply })
     return res.status(500).json({ error: 'chat_failed' })
   } catch (e) {
-    const msg = String((e as Error)?.message ?? e).replace(/key=[^&\s]+/gi, 'key=REDACTED').slice(0, 120)
+    const msg = scrubErr(e, 120)
     console.warn('[welcome-chat] failed —', msg)
     return res.status(500).json({ error: 'chat_failed' })
   }

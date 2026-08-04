@@ -6,6 +6,9 @@ import { generateGuideForApartment } from './_lib/guide.js'
 import { generateCityEvents } from './_lib/city-events.js'
 import { verifyTurnstile } from './_lib/turnstile.js'
 import { fetchCityImage } from './_lib/city-image.js'
+import { scrubErr } from './_lib/scrub.js'
+
+const scrub = (e: unknown): string => scrubErr(e, 120)
 
 // Host-auth endpoint: turns a fresh trial host into a free 48h DEMO and seeds a
 // ready-to-explore guest page (one apartment + one active "Alex" booking, optionally
@@ -37,13 +40,6 @@ function randomRef(): string {
   let r = 'ARR-'
   for (let i = 0; i < 6; i++) r += chars[Math.floor(Math.random() * chars.length)]
   return r
-}
-
-function scrub(e: unknown): string {
-  return String((e as Error)?.message ?? e)
-    .replace(/AIza[0-9A-Za-z_\-]{10,}/g, 'AIza_REDACTED')
-    .replace(/key=[^&\s]+/gi, 'key=REDACTED')
-    .slice(0, 120)
 }
 
 // Best-effort, per-instance IP rate limiter (same pattern as city-events / guest-chat).

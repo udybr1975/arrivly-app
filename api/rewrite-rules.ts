@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { GoogleGenAI } from '@google/genai'
 import { withRetry } from './_lib/retry.js'
+import { scrubErr } from './_lib/scrub.js'
 
 const MODEL = 'gemini-2.5-flash'
 
@@ -63,10 +64,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const result = response.text?.trim() || trimmed
     return res.status(200).json({ result })
   } catch (e) {
-    const msg = String((e as Error)?.message ?? e)
-      .replace(/AIza[0-9A-Za-z_\-]{10,}/g, 'AIza_REDACTED')
-      .replace(/key=[^&\s]+/gi, 'key=REDACTED')
-      .slice(0, 160)
+    const msg = scrubErr(e)
     console.error('[rewrite-rules] generateContent failed —', msg)
     return res.status(502).json({ error: 'rewrite failed' })
   }

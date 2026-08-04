@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { geocodeAddress } from './geo.js'
 import { withRetry } from './retry.js'
+import { scrubErr } from './scrub.js'
 
 export interface GuideResult {
   placeCount: number
@@ -260,10 +261,7 @@ export async function generateGuideForApartment(
   } catch (e) {
     raw = ''
     // Truncate + scrub: the GenAI SDK can embed the API key in error/request-URL strings
-    const msg = String((e as Error)?.message ?? e)
-      .replace(/AIza[0-9A-Za-z_\-]{10,}/g, 'AIza_REDACTED')
-      .replace(/key=[^&\s]+/gi, 'key=REDACTED')
-      .slice(0, 160)
+    const msg = scrubErr(e)
     console.error('[guide] generate threw', { aptId: apt.id, msg })
   }
 
@@ -354,10 +352,7 @@ export async function generateGuideForApartment(
         deduped: retryDeduped,
       })
     } catch (e) {
-      const msg = String((e as Error)?.message ?? e)
-        .replace(/AIza[0-9A-Za-z_\-]{10,}/g, 'AIza_REDACTED')
-        .replace(/key=[^&\s]+/gi, 'key=REDACTED')
-        .slice(0, 160)
+      const msg = scrubErr(e)
       console.warn('[guide] retry failed (non-fatal)', { aptId: apt.id, categories: emptyCats, msg })
     }
   }

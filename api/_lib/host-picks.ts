@@ -1,5 +1,6 @@
 import { GoogleGenAI } from '@google/genai'
 import { geocodeAddress } from './geo.js'
+import { scrubErr } from './scrub.js'
 
 const MODEL = 'gemini-2.5-flash'
 const VALID_CATEGORIES = ['Restaurant', 'Bar', 'Coffee', 'Sight', 'Essential', 'Nightlife'] as const
@@ -69,9 +70,7 @@ export async function enrichHostPicks(
     raw = response.text?.trim() ?? ''
   } catch (e) {
     clearTimeout(timer)
-    const msg = String((e as Error)?.message ?? e)
-      .replace(/key=[^&\s]+/gi, 'key=REDACTED')
-      .slice(0, 120)
+    const msg = scrubErr(e, 120)
     console.error('[host-picks] generate threw', { msg })
     return []
   }

@@ -1,5 +1,8 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { scrubErr } from './_lib/scrub.js'
+
+const scrub = (e: unknown): string => scrubErr(e, 120)
 
 // Host-auth endpoint: converts the caller's own DEMO host into a normal 14-day trial
 // host ("keep it"). The password is set client-side via Supabase auth — this endpoint
@@ -9,10 +12,6 @@ import { createClient } from '@supabase/supabase-js'
 // are written ONLY via the service-role client. There is NO Stripe here.
 
 const DEFAULT_TRIAL_DAYS = 14
-
-function scrub(e: unknown): string {
-  return String((e as Error)?.message ?? e).replace(/key=[^&\s]+/gi, 'key=REDACTED').slice(0, 120)
-}
 
 // Best-effort, per-instance IP rate limiter (same pattern as demo-create / city-events).
 const RL_MAX = 5
