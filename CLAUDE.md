@@ -19,7 +19,8 @@ context automatically every session, which is exactly what splitting this file a
 > - **Test-fixture rule reaffirmed:** Sweet home booking `ARR-EVT777` dates must be re-refreshed (`check_in = current_date-1`, `check_out = current_date+3`) before any guest-page test.
 >
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD (Jul 29 2026, session 2):** `d282fe8` — guide dedupe + empty-category retry.
+> **Current HEAD (code) — UNCHANGED at `d282fe8`** — guide dedupe + empty-category retry. The
+> Aug 4 2026 session was **DOCS-ONLY** (see "SESSION Aug 4 2026").
 > This session: `fbf58aa` (fra1 pin + ntfy scrub) → `1af1012` (grounded guide + English
 > descriptions) → `a940158` (distance rules + Coffee + per-generation logging) → `d282fe8`.
 > All four live and SHA-verified against Vercel production. Preceding: `98017fe` (geocoding bias
@@ -31,9 +32,15 @@ context automatically every session, which is exactly what splitting this file a
 > — so the pentest gate runs on the Tiers 1–3 surface, and Phase F needs its own second
 > security pass before Tier 4 is sold.
 >
-> **THE THREE THINGS BLOCKING LAUNCH:** (1) the legal/compliance workstream — inventory DONE,
-> **eight gaps still open** (2 + 3 closed by `fbf58aa`); (2) migrating the eight `gemini-2.5-flash` call sites before its
-> **16 Oct 2026 shutdown**, and sizing the paid-grounding cost; (3) the pentest gate.
+> **THE FOUR THINGS BLOCKING LAUNCH:** (1) **NEW, TOP — enable billing on ALL FIVE Gemini
+> projects.** Google's terms permit **only Paid Services** for API Clients made available to
+> EEA/CH/UK users, and grounding's processor-DPA cover also requires paid quota — so this is a
+> **CONDITION OF LAWFUL USE, not a quota upgrade**. A **pre-billing security review runs first**
+> (billed keys turn a leak from a quota nuisance into unbounded spend, and this repo is PUBLIC).
+> (2) the legal/compliance workstream — inventory DONE, **eight gaps still open** (2 + 3 closed
+> by `fbf58aa`); documents 3/4/5 **DRAFTED, unpublished** — and the **retention crons must ship
+> before any of them is published**; (3) migrating the eight `gemini-2.5-flash` call sites before
+> its **16 Oct 2026 shutdown**, and sizing the paid-grounding cost; (4) the pentest gate.
 > Also open but smaller: welcome-page Part 2, and the pre-live additions listed further down.
 >
 > Full session-by-session history — including the long HEAD chain this line replaced — is in
@@ -204,6 +211,14 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 ---
 
 ## Gemini AI key map (per-surface isolation)
+
+> **STALE-FRAMING POINTER (Aug 4 2026) — read before acting on any "no-card" wording below.**
+> The per-surface key **ISOLATION is correct and STAYS**. What changed: **all five projects must
+> be on BILLING before launch** — not as a quota improvement, but because Google's terms permit
+> **only Paid Services** for API Clients made available to EEA/CH/UK users, and grounding's
+> processor-DPA cover requires paid quota. See "SESSION Aug 4 2026". The original wording is
+> kept below so the reasoning stays legible.
+
 Each high-volume / public surface has its OWN no-card AI Studio key (separate free-tier daily quota), with `|| GEMINI_API_KEY` fallback so behaviour is unchanged until the dedicated key is present in Vercel. NO secret values live in this repo (public).
 - **Shared `GEMINI_API_KEY`** serves: `rewrite-rules`, `bulk-import`, `greeting` / `daily-greeting`, `host-picks`.
 - **`GEMINI_API_KEY_GUIDES`** → `api/_lib/guide.ts` (guides). Reads `GEMINI_API_KEY_GUIDES || GEMINI_API_KEY`.
@@ -380,11 +395,11 @@ Each high-volume / public surface has its OWN no-card AI Studio key (separate fr
 
 - **Public guest-facing AI endpoints are spend-gated by verifying the booking token BEFORE calling the model, not by rate-limiting alone.** `api/guest-chat.ts` (S21) returns `403 verify_required` for the public tier before any Gemini/brand/prompt work, so only a verified in-dates booking can spend tokens — the same gate `daily-greeting` uses. The added per-instance rate limiter (15/60s, keyed apartmentId+IP) is a second layer but BEST-EFFORT: Vercel spreads requests across lambda instances, each with its own in-memory Map, so the 429 can't be observed reliably from outside and is NOT a hard cross-instance cap. Treat verify-gating (not the limiter) as the real spend control.
 
-- **guest-chat runs on its own AI key (`GEMINI_API_KEY_CHAT`), isolated from the shared `GEMINI_API_KEY`.** It reads `process.env.GEMINI_API_KEY_CHAT || GEMINI_API_KEY` (same fallback shape as the guides key) and is a no-card key created in a SEPARATE AI Studio project so its free-tier DAILY quota is its own. INTERIM (S21): it stays no-card until the Google payment issue is resolved, then this single key flips to BILLED — which removes the daily cap; the verify-gate + limiter bound the spend. Groq cannot replace guest-chat (needs googleSearch grounding).
+- **guest-chat runs on its own AI key (`GEMINI_API_KEY_CHAT`), isolated from the shared `GEMINI_API_KEY`.** It reads `process.env.GEMINI_API_KEY_CHAT || GEMINI_API_KEY` (same fallback shape as the guides key) and is a no-card key created in a SEPARATE AI Studio project so its free-tier DAILY quota is its own. INTERIM (S21): it stays no-card until the Google payment issue is resolved, then this single key flips to BILLED — which removes the daily cap; the verify-gate + limiter bound the spend. Groq cannot replace guest-chat (needs googleSearch grounding). **SUPERSEDED IN PART (Aug 4 2026): this is NOT a one-key quota flip pending a payment issue — ALL FIVE projects must go to billing before launch, for the contractual (EEA paid-only) and grounding-DPA reasons in "SESSION Aug 4 2026". The isolation itself stays correct.**
 
 - **Gemini free-tier quota is a DAILY cap; exhausting it surfaces as intermittent guest-facing 500s — not a code bug.** In S21 testing an 18-call burst exhausted the free-tier daily quota; later chats returned Gemini `429 "exceeded your current quota"` (plus transient `503 "high demand"`), surfaced as a 500. The daily cap does NOT reset within a minute, so "wait a moment" is wrong advice for a quota 429. Before blaming app code for guest-chat failures, check the Vercel runtime logs for the upstream Gemini status code; a dedicated/billed key is the fix, not a code change.
 
-- **city-events runs on its own AI key (`GEMINI_API_KEY_EVENTS`), isolated from the shared `GEMINI_API_KEY`** (`acd16f4`, Jun 25 2026). `api/_lib/city-events.ts` reads `process.env.GEMINI_API_KEY_EVENTS || process.env.GEMINI_API_KEY` (same fallback shape as the guides/chat keys) — a no-card key in a SEPARATE AI Studio project so its free-tier DAILY quota is its own; the `if (!apiKey)` guard and `scrubErr` key-scrubbing are unchanged. Trigger: on 2026-06-25 the `0 4 * * *` events cron 429'd every apartment and fired the ntfy "all refreshes failed" alert because the shared key's daily quota was exhausted at 04:00 UTC (≈21:00 Pacific, the tail of Gemini's quota-day; free-tier resets ~midnight Pacific). The shared key still serves the non-grounded endpoints — keep each high-volume/public Gemini surface on its own dedicated key.
+- **city-events runs on its own AI key (`GEMINI_API_KEY_EVENTS`), isolated from the shared `GEMINI_API_KEY`** (`acd16f4`, Jun 25 2026). `api/_lib/city-events.ts` reads `process.env.GEMINI_API_KEY_EVENTS || process.env.GEMINI_API_KEY` (same fallback shape as the guides/chat keys) — a no-card key in a SEPARATE AI Studio project so its free-tier DAILY quota is its own; the `if (!apiKey)` guard and `scrubErr` key-scrubbing are unchanged. Trigger: on 2026-06-25 the `0 4 * * *` events cron 429'd every apartment and fired the ntfy "all refreshes failed" alert because the shared key's daily quota was exhausted at 04:00 UTC (≈21:00 Pacific, the tail of Gemini's quota-day; free-tier resets ~midnight Pacific). The shared key still serves the non-grounded endpoints — keep each high-volume/public Gemini surface on its own dedicated key. **ANNOTATION (Aug 4 2026): the "no-card" part is now a launch blocker, not a cost choice — all five projects go to billing before launch (see "SESSION Aug 4 2026"). The per-surface isolation stays.**
 
 - **Windows PowerShell dev-env gotchas (setting Vercel env vars locally).** `npx` can fail with `npx.ps1 cannot be loaded` (unsigned script) — fix once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or call `npx.cmd`. In PowerShell `curl` is an alias for `Invoke-WebRequest` (different flags) — use `curl.exe` for real curl. Inline `-d '{json}'` mangles quotes in PowerShell — write the body to a file and pass `--data "@file"`. A Vercel env-var add needs a redeploy (`npx vercel redeploy <url>`) to take effect. **(Jul 27 2026 addendum)** `npx.ps1` can STILL be blocked under `RemoteSigned` when the file carries the downloaded-from-internet flag — use `npx.cmd` or `Unblock-File`.
 
@@ -470,7 +485,7 @@ Phase I part (b) — third-party bookable experiences on the guest-page Explore 
 - **Tiqets:** `partner` + `tq_campaign=bemgu-{apartmentId}` (surfaces as `campaign_name` in both portal reports and the Reporting API; **CONFIRMED IN WRITING by Tiqets support Jul 27 2026** as the correct per-campaign tracking approach).
 - **The link builder (`api/_lib/affiliate-links.ts`) is PARSE-AND-REWRITE (`URLSearchParams.set`), NEVER append.** Provider APIs return **PRE-TAGGED** product URLs (Viator embeds `pid`/`mcid`/`medium=api`; Tiqets embeds `partner`); blindly appending duplicated ids and produced conflicting `medium=api`+`medium=link`. **c-full critical:** a tier-3 host's link carries **ONLY the host's** partner ID — Bemgu's `pid` is REPLACED and Bemgu's `mcid` is **DROPPED** on host-owned Viator links. Covered by a `node:test` suite — **`npm run test:affiliate-links` — keep these assertions green forever** (a dev-only `.ts` resolver hook lets plain-node import the api/ TS; not shipped/imported by runtime).
 
-**Open verification items / external threads:** (a) exact commission rates are account-level and change — product copy must say "typically ~8%", **never promise a number**; (b) **Viator multi-tenant / host-own-ID permission** — email sent to `affiliateapi@tripadvisor.com` Jul 24, **still OPEN** (follow-up ~Jul 30 if silent; until confirmed, tier-3 host Viator IDs are wired but their acceptance by Viator is unverified); (c) **Tiqets image pipeline — VERIFIED LIVE Jul 27 for partner `bemgu-188668`** (cache invalidated via MCP → lazy-fill returned real Tiqets CDN image URLs on all Sweet home cards; ratings + `imageCredit` mapping shipped). Only a final visual caption eyeball on a live card remains (if not already done). **DONE this session (was item d):** the Tiqets `reviewCount`-null bug is fixed (`146173f` — `ratings.total`/`ratings.average` mapping) and the temporary `[experiences:tiqets:debug]` log is removed.
+**Open verification items / external threads:** (a) exact commission rates are account-level and change — product copy must say "typically ~8%", **never promise a number**; (b) **Viator multi-tenant / host-own-ID permission — REPLIED ~Jul 29, NO APPROVAL GIVEN, still OPEN and now a TIER 3 LAUNCH DEPENDENCY** (sent Jul 24; see "SESSION Aug 4 2026" for what the reply did and did not say, and for the drafted-unsent response); (c) **Tiqets image pipeline — VERIFIED LIVE Jul 27 for partner `bemgu-188668`** (cache invalidated via MCP → lazy-fill returned real Tiqets CDN image URLs on all Sweet home cards; ratings + `imageCredit` mapping shipped). Only a final visual caption eyeball on a live card remains (if not already done). **DONE this session (was item d):** the Tiqets `reviewCount`-null bug is fixed (`146173f` — `ratings.total`/`ratings.average` mapping) and the temporary `[experiences:tiqets:debug]` log is removed.
 
 ### Tiqets licence obligations (permanent — confirmed by email Jul 26 2026)
 - **Image credits (clause 9.1c):** image access is **ENABLED + VERIFIED LIVE (Jul 27 2026)** for partner `bemgu-188668`. Confirmed shape from the (now-removed) `[experiences:tiqets:imgdebug]` one-shot log: each `images[]` object carries `{ small, medium, large, extra_large, credits, alt_text }` — the credit field is **`credits`** (string or null; null is valid — a caption renders only when Tiqets provides one, e.g. "Stromma Finland" / "Helsinki Dreamdays Tours" on Sweet home cards). `540d57f` maps `imageCredit` from the selected image's `credits`; `ExperiencesSheet` renders it as a caption — **never strip it.**
@@ -480,7 +495,7 @@ Phase I part (b) — third-party bookable experiences on the guest-page Explore 
 ### Credentials, keys & environment (Stage 4A/4B ops — Jul 26 2026)
 - **Viator has TWO key types on the SAME dashboard page (Tools → Affiliate API): SANDBOX (issued first, top of page) and PRODUCTION (a separate "Get key" step below).** Sandbox keys `401` against the production API — this cost ~2 days of debugging. `VIATOR_API_KEY` in Vercel **Production** is now the **PRODUCTION** key, stored with Vercel's **"sensitive" flag** (write-only — re-copy from the Viator dashboard if it's ever needed again). `TIQETS_API_TOKEN` unchanged. Partner IDs are NON-SECRET; API keys/tokens are SECRETS (server-side env, no `VITE_` prefix). GYG has no API key at this access level (link/widget-based).
 - **ENVIRONMENT POLICY — there is NO Preview environment for Bemgu (by decision).** Pre-marketing, **production IS the test environment** (guest pages are unreachable without a QR/link, so there's no exposure). All testing happens on production; the Preview env-var scope is deliberately **not maintained**. `VITE_EXPERIENCES_ENABLED=true` is live in Production (public flag, non-sensitive). **REVISIT-TRIGGER = the first real paying host:** at that point re-establish Preview (add `VIATOR_API_KEY`, `TIQETS_API_TOKEN`, `VITE_EXPERIENCES_ENABLED` to the Preview scope) and stop testing on prod.
-- **Email / comms:** `hello@bemgu.app` sends via Gmail "send mail as" + Resend SMTP (`smtp.resend.com:465` / SSL, username `resend`, a **dedicated send-only key `bemgu-smtp-personal`** — SEPARATE from the production `RESEND_API_KEY`). A real (non-forwarded) mailbox is a pre-live checklist item. **Provider thread log:** **Tiqets — FULLY CLOSED (Jul 27 2026, two replies same day):** all three asks resolved — Reporting API self-serve via a fresh Essential-API token, `tq_campaign` confirmed in writing, images enabled for `bemgu-188668`. **Viator multi-tenant/host-own-ID permission — still OPEN** (sent to `affiliateapi@tripadvisor.com` Jul 24; follow-up ~Jul 30 if silent).
+- **Email / comms:** `hello@bemgu.app` sends via Gmail "send mail as" + Resend SMTP (`smtp.resend.com:465` / SSL, username `resend`, a **dedicated send-only key `bemgu-smtp-personal`** — SEPARATE from the production `RESEND_API_KEY`). A real (non-forwarded) mailbox is a pre-live checklist item. **Provider thread log:** **Tiqets — FULLY CLOSED (Jul 27 2026, two replies same day):** all three asks resolved — Reporting API self-serve via a fresh Essential-API token, `tq_campaign` confirmed in writing, images enabled for `bemgu-188668`. **Viator — REPLIED ~Jul 29 without approving or rejecting the tier-3 host-own-PID proposal; reply drafted and UNSENT** (see "SESSION Aug 4 2026"). **Provider-thread status in one line: Tiqets CLOSED (27 Jul) · Viator SENT + REPLIED, unresolved · GetYourGuide the only unverified/unstarted thread.** (Corrects any earlier "three unsent provider emails" phrasing — Viator was sent Jul 24 and Tiqets closed Jul 27.)
 
 ### PRE-MARKETING TO-DO — provider terms review (logged Jul 28 2026, DEFERRED)
 
@@ -572,6 +587,25 @@ NOT retrievable, see ITEM 1 data gap.**
 After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 properties; unlimited remains Tier 4's second leg** (alongside the future booking platform). Rationale: keeps T4 sellable BEFORE Phase F ships, and protects pricing power over large property managers; caps can always be **relaxed later, never tightened**. **Marketing MUST always say "up to 12" for Portfolio — NEVER "unlimited".**
 
 ## On the horizon / next steps
+
+### OPEN ITEMS — PRIORITY CHANGES (Aug 4 2026)
+
+- **NEW, TOP OF PRE-LIVE — enable billing on ALL FIVE Gemini projects.** Blocks launch on two
+  independent grounds: the **contractual** EEA/CH/UK paid-only restriction, and the
+  **grounding processor-DPA** cover that exists only on paid quota. See "SESSION Aug 4 2026".
+- **NEW, MUST PRECEDE BILLING — a pre-billing SECURITY REVIEW (dedicated session).** Moving
+  from no-card to billed keys converts a leaked key from a **quota nuisance into unbounded
+  spend**, and **this repo is PUBLIC**. Scope recorded for that session: **server-side cooldown
+  on `generate-guide`** (still absent; each call can now cost two grounded generations), the
+  **unauthenticated / low-friction spend surfaces including `demo-create`**, **Google Cloud
+  budget caps + alerts per project**, **API key restrictions**, **key rotation after the flip**,
+  and **confirming no key can reach a log or the client bundle**.
+- **RETENTION CRONS move onto the CRITICAL PATH** — they must ship **before any legal document
+  is published** (see the SEQUENCING TRAP in the legal workstream).
+- **14 Dependabot alerts (7 high, 7 moderate) do NOT reconcile** with the older note claiming
+  **3 dev-only vulns** (`docs/history.md`, S24 residual). **Triage before the pentest gate.**
+- **Re-test grounding on Gemini 3 once billing is live** — it may **dissolve the 16 Oct
+  migration tension**, since grounding becomes purchasable rather than free-only on the 2.5 line.
 
 > ✓ Plan values confirmed (hard gate CLOSED): T1 €10/cap 2, T2 €15/cap 7, T3 €25/cap 12, T4 €49/unlimited; trial_days = 14.
 > **DECISION (S16, amended S19 cont.): flip-to-live is the LAST step. Build order reordered S19 cont. to G → H → I → F (Phase F / Tier-4 booking moved to the end).**
@@ -708,6 +742,14 @@ allowance** instead of sharing one pool:
 THE BINDING CONSTRAINT.** Do not plan around the 20 RPD figure as if it were global. **The
 real deadline is the 16 Oct 2026 model shutdown.**
 
+> **ANNOTATION (Aug 4 2026) — the free tier is no longer an option, independently of quota.**
+> All five projects are **no-card free tier today**, and Google's terms permit **only Paid
+> Services** for API Clients made available to EEA/CH/UK users; grounding's processor-DPA cover
+> also requires paid quota. **The five-project split stays** — billing is added to each, not
+> consolidated. **Re-test grounding on Gemini 3 once billing is live:** grounding becomes
+> purchasable rather than free-only on the 2.5 line, which may dissolve the 16 Oct migration
+> tension recorded below. See "SESSION Aug 4 2026".
+
 ### MODEL-MIGRATION ANALYSIS — do NOT big-bang this (Jul 29 2026)
 
 **The 500 RPD free allowance belongs specifically to Flash-LITE. Gemini 3 Flash is 5 RPM /
@@ -735,6 +777,123 @@ grounding-cost question for the two stuck endpoints.
 **NOTE THE TENSION:** grounding the guide ties it to the 2.5 line, which is the line being
 retired. Steps (1) and (3) pull in opposite directions for that one endpoint — resolve it
 deliberately rather than by accident.
+
+## SESSION Aug 4 2026 — Gemini terms verified at source; the 30 Jul session recorded
+
+**DOCS-ONLY. Code HEAD unchanged at `d282fe8`.**
+
+### GEMINI API TERMS — READ AT SOURCE, not from summaries
+Source: **https://ai.google.dev/gemini-api/terms** — *Gemini API Additional Terms of Service*,
+effective **23 March 2026**.
+
+1. **CONFIRMED — LAUNCH BLOCKER.** "Use Restrictions", verbatim: *"You may use only Paid
+   Services when making API Clients available to users in the European Economic Area,
+   Switzerland, or the United Kingdom."* Bemgu is a Finnish product serving EU hosts and EU
+   guests on **five no-card free-tier keys** (`GEMINI_API_KEY`, `_GUIDES`, `_CHAT`, `_EVENTS`,
+   `_PUBLIC`). **On the plain reading this is a breach TODAY.** Enabling billing on all five
+   projects is a **CONDITION OF LAWFUL USE, not a quota improvement.**
+2. **CORRECTED — the 30 Jul data-training concern does NOT apply to Bemgu.** That note claimed
+   free-tier guest chat sits under terms permitting Google to use it for product improvement,
+   and called it the worse of the two problems. **Google's terms say the opposite for EEA
+   developers.** End of the "Unpaid Services" section, verbatim: *"If you're in the European
+   Economic Area, Switzerland, or the United Kingdom, the terms under 'How Google uses Your
+   Data' in 'Paid Services' apply to all Services, including Google AI Studio and unpaid quota
+   in the Gemini API, even though they are offered free of charge."* Bemgu is established in
+   Finland, so the **paid data terms already govern**: Google does **not** use prompts or
+   responses to improve its products, and processes them under the **Data Processing Addendum
+   for Products Where Google is a Data Processor**.
+   **CONSEQUENCE:** the DPA's no-AI-training commitment and the guest notice's chat paragraph
+   **were never false and did not block publication.**
+   **LESSON TO RECORD:** the 30 Jul conclusion came from a **developer-forum thread plus
+   secondary sources and was explicitly flagged as unverified**; acting on it would have
+   written a **materially wrong statement INTO a privacy document**. **Read the binding text at
+   source before recording a compliance fact.**
+3. **NEW — grounding carries its OWN data terms on top of the tier terms.** "Grounding with
+   Google Search" → "Data Collection and How Google Uses Your Data": Google **stores prompts,
+   contextual information provided, and output for THIRTY DAYS** to create Grounded Results and
+   Search Suggestions, and that stored information **can be used for debugging and testing** of
+   the systems supporting grounding. Critically, that debugging/testing processing falls under
+   the **processor DPA only "when using Grounding with Google Search via paid quota of Gemini
+   API"**. Bemgu grounds **`guest-chat`, `_lib/guide`, `_lib/city-events`** → this is a
+   **SECOND, INDEPENDENT reason billing must be enabled**, and the **30-day storage must appear
+   in the guest privacy notice either way.**
+4. **NEW OPEN QUESTION — potentially architectural, NOT resolved. Do not attempt to resolve it
+   in code or here; flag it for the lawyer alongside the three documents.** The grounding "Use
+   Restrictions" state the developer *"will only display the Grounded Results with the
+   associated Search Suggestion(s) to the end user who submitted the prompt"*, and will not
+   *"cache, frame, syndicate, resell, analyze, train on, or otherwise learn from Grounded
+   Results"*. **The city guide CACHES grounded output in `guide_recommendations` and displays it
+   to EVERY guest of that property**, not only whoever triggered the refresh. Whether a
+   host-initiated refresh makes the **host** the submitting end user is **genuinely unclear**.
+   There is a narrow permitted carve-out for storing Grounded Result text (evaluation/
+   optimisation, end-user chat history, refinement round-trips) — **whether the guide cache fits
+   any of those is exactly the question.**
+
+### THE 30 JUL 2026 SESSION — never recorded until now
+- **All three legal documents DRAFTED** — host privacy policy, guest privacy notice, DPA.
+  Status: **draft, unpublished, not in force**, pending lawyer review. **They are still outside
+  the repo** — see the ⚠ note in the legal workstream's step list.
+- **CONTROLLER STRUCTURE IS THREE-WAY, not two** — now corrected in the legal workstream
+  section. The load-bearing part: **Bemgu is CONTROLLER IN ITS OWN RIGHT for server logs and the
+  anti-abuse check on the pre-arrival chat**, because those are Bemgu's own security decisions,
+  not the host's instructions. **Claiming processor status for that slice would be wrong.**
+- **SEQUENCING TRAP — ON THE CRITICAL PATH** (recorded in full in the legal workstream): the
+  drafts promise 30-day erasure that **the code does not perform**. **Retention crons ship
+  BEFORE publication and BEFORE the lawyer review.**
+- **WEATHER (Gap 9) — a better answer than disclosure:** proxy wttr.in through Bemgu's own
+  server and the guest's IP never reaches the third party, **deleting a subprocessor and a
+  disclosure instead of documenting them.**
+- **TWO SMALL BUILD TASKS:** link the guest notice from every guest page and welcome page
+  (Gap 6 — currently linked from nowhere), and inject the host's brand name so a guest can see
+  who the controller is.
+
+### GUIDE GROUNDING — WORKSTREAM CLOSED (verified 30 Jul)
+Both test guides regenerated on `d282fe8`. **Casa Marco** (Barcelona/El Born): **11 places,
+Coffee 2**. **Villa in the sky** (Berlin/Prenzlauer Berg): **28 places, Coffee 4**. Coffee was
+**0 in both** before the empty-category retry — **so the retry works**; Berlin's total doubled
+from 14. Barcelona stays the weaker case at 11 but is **no longer empty**.
+**DECISION RECORDED: no further prompt tuning on this endpoint — if a category is thin, host
+picks are the product answer.** Guide-quality items are off the open list.
+
+### AIRBNB LINK DELIVERY — researched 29 Jul; changes a Phase-a assumption
+**Airbnb blocks external links PRE-BOOKING only.** Links are permitted **once a reservation is
+confirmed** — which is exactly when the welcome link is sent. Competitor **Touch Stay's
+documented workflow is pasting the guidebook link into Airbnb message templates**, so the
+channel works in practice.
+**TRAP TO RECORD:** a link added to a **SCHEDULED** message **appears non-functional in the
+editor but works once sent** — the most likely cause of a host reporting "Airbnb blocked my
+link".
+**FALLBACKS** if a confirmed-booking link is genuinely stripped: send an **IMAGE containing the
+QR code plus the URL in readable text** (Airbnb permits photo attachments in scheduled
+messages), or use Airbnb's own **check-in-instructions / house-manual** fields.
+**PERMANENT CONSTRAINT: OTAs often do not pass the guest's email to the host**, so Bemgu
+**cannot rely on email as a fallback channel.**
+**STILL UNVERIFIED:** the confirmed-booking link test has not been run; **Vrbo and Booking.com
+policies are entirely unresearched.**
+
+### NEW MUST-HAVE (Udy, 29 Jul) — a host guide on communicating with guests, per booking platform
+Belongs in the **existing Host Guide system** (docked drawer + hint strips + Ask Bemgu; content
+source `docs/arrivly-host-guide-content-v1.md`) as a **new section plus a hint strip on the
+Share panel** — **not new architecture**. Must cover, per channel: **Airbnb** (post-confirmation
+only, the scheduled-message trap, the image+QR fallback), **Vrbo**, **Booking.com**, direct
+bookings, WhatsApp, SMS, email; plus a **"my link was blocked" troubleshooting section**.
+**BLOCKED ON:** the Airbnb test result, and Vrbo/Booking.com research. **Do not write platform
+instructions that have not been verified.**
+
+### VIATOR REPLIED (~29 Jul) — NO APPROVAL GIVEN
+Their message confirms **Viator's affiliate relationship is with Bemgu**, and that **under the
+current setup payouts can only be issued to Bemgu, never to individual hosts** — which
+**validates the T1–T2 half of c-full as built**. It asks whether commissions are intended for
+Bemgu or the hosts, and **restates the tier-3 host-own-PID proposal WITHOUT approving or
+rejecting it**. The message is **ambiguous as to which passages are Viator's words and which are
+Bemgu's quoted back**.
+**A reply is drafted and UNSENT**, pending (a) Udy confirming which passages are whose, and
+(b) **verifying whether the noindex claim is actually true in the live code** before asserting
+it to a partner.
+**RECORD THE RISK:** tier 3 asks Viator to credit a **host's** affiliate account for traffic on
+**bemgu.app — a domain that host does not own**, which sits against **Viator's own-domain
+requirement**. This is the specific point needing **explicit written sign-off**, and it is a
+**TIER 3 LAUNCH DEPENDENCY, not general backlog.**
 
 ## SESSION Jul 29 2026 (2) — compliance pins + the guide became grounded
 
@@ -850,11 +1009,12 @@ Madrid (1.3) and Berlin (2.4) were never affected and were left un-refreshed.
 
 ### PRE-LIVE ADDITIONS from this session (add to the pre-live checklist)
 
-- **~~THE GUIDE IS NOT GROUNDED~~ — DONE (`1af1012`).** Grounded via the city-events pattern.
-  **The cost stands and is unchanged:** grounding is free on the 2.5 line (1,500 RPD) but
-  **ZERO on Gemini 3**, so the grounded guide is **tied to `gemini-2.5-flash` and therefore to
-  the 16 Oct 2026 shutdown**. Grounding the guide and migrating it off 2.5 remain in direct
-  tension — see "MODEL-MIGRATION ANALYSIS".
+- **~~GUIDE GROUNDING / GUIDE QUALITY~~ — WORKSTREAM CLOSED (verified 30 Jul; see "SESSION
+  Aug 4 2026").** No further prompt tuning on this endpoint; a thin category is answered by
+  host picks, not by prompt work. **What REMAINS open is only the cost/model question:**
+  grounding is free on the 2.5 line (1,500 RPD) but **ZERO on Gemini 3**, so the grounded guide
+  is tied to `gemini-2.5-flash` and the 16 Oct 2026 shutdown — **re-test once billing is live**,
+  since paid grounding may dissolve the tension. See "MODEL-MIGRATION ANALYSIS".
 - **THE MONTHLY GUIDE CRON HAS NEVER RUN, AND IS NOW STRUCTURALLY UNABLE TO.** No guide's
   `generated_at` matches the 10:00 UTC 1st-of-month schedule. It loops apartments
   **sequentially**, and a guide call now costs **up to ~99s each** — roughly **one apartment per
@@ -890,12 +1050,21 @@ EU hosts and processes personal data about their guests (names, stay dates, chat
 messages). The following are mandatory, not polish, and are the only fully UNSTARTED
 launch blocker.
 
-**THE STRUCTURAL POINT — two simultaneous legal relationships. Get this right first:**
-- **Host data** (name, email, address, billing) → **Bemgu is the CONTROLLER**.
+**THE STRUCTURAL POINT — the relationships are THREE-WAY, not two (corrected 30 Jul 2026):**
+- **Host account data** (name, email, address, billing) → **Bemgu is the CONTROLLER**.
 - **Guest data** (names, stay dates, messages) → **the HOST is the CONTROLLER, Bemgu is
   the PROCESSOR**. The host collects it; Bemgu handles it on their behalf.
+- **Server logs + the anti-abuse check on the pre-arrival chat** → **Bemgu is the CONTROLLER
+  IN ITS OWN RIGHT**, because those are **Bemgu's own security decisions, not the host's
+  instructions**. **Claiming processor status for that slice would be wrong.**
 This split means TWO privacy documents, not one, and it is why a DPA (GDPR Art. 28) is
 required. Products routinely get this wrong by writing a single blurred policy.
+
+**SEQUENCING TRAP — ON THE CRITICAL PATH. The retention crons must ship BEFORE publication
+and BEFORE the lawyer review.** The drafts state guest names and messages are erased **30 days
+after check-out**. **THE CODE DOES NOT DO THIS:** messages are on **90 days**, and the
+guest-name, greeting and push sweeps **do not exist at all**. Publishing first would put a
+**FALSE STATEMENT into a privacy notice** — materially worse than having no notice.
 
 **STEP 1 IS DONE (Jul 28–29 2026) — the data inventory exists, as an external `.docx`
 (not in this repo).** It covers the Art. 30 record in BOTH roles (controller for hosts,
@@ -913,16 +1082,29 @@ residency, client-side disclosures, transfers, and Art. 32 measures.
 4. **Retention undecided** for: `guests`, the bookings↔guest link, `daily_greetings`, guest
    `push_subscriptions`, `admin_audit`. **These BLOCK the Art. 17 erasure feature** — the
    delete flow cannot be built correctly until each has a decided retention period.
-5. **Gemini unpaid-tier data-use terms** + the SCC/DPF transfer basis. **WIDENED (`1af1012`):
-   the grounded guide now sends the property address into GOOGLE SEARCH, not only to the Gemini
-   model** — a broader disclosure than this entry originally described, and it must be recorded
-   as such. (`guest-chat` and `city-events` were already grounded.)
-6. **No privacy-notice link on the guest page.**
+5. **Gemini terms — VERIFIED AT SOURCE Aug 4 2026, and the answer changed.** The **unpaid-tier
+   data-training worry is DEAD**: for EEA/CH/UK developers Google applies the **paid** data
+   terms to all Services, so no training on prompts/responses and the processor DPA already
+   governs. What replaces it: **(a) the free tier is contractually not permitted at all for
+   EEA users** → billing on all five projects is a launch blocker; **(b) grounding stores
+   prompts, context and output for 30 DAYS** and its debugging/testing use is covered by the
+   processor DPA **only on paid quota** — **the 30-day storage must be stated in the guest
+   notice**; **(c) an UNRESOLVED question for the lawyer** — the guide caches grounded output
+   and shows it to every guest, against a "display only to the submitting end user / do not
+   cache" restriction. Full text and citations in "SESSION Aug 4 2026". SCC/DPF transfer basis
+   still to be recorded. **WIDENED (`1af1012`): the grounded guide sends the property address
+   into GOOGLE SEARCH, not only to the Gemini model** — a broader disclosure than this entry
+   originally described. (`guest-chat` and `city-events` were already grounded.)
+6. **No privacy-notice link on the guest page.** **BUILD TASK (30 Jul):** link the guest notice
+   from **every guest page AND welcome page**, and **inject the host's brand name** so a guest
+   can see who the controller is.
 7. **`guest_optins` is dormant (0 rows)** — decide keep or drop.
 8. **Supabase auth-log and Vercel log retention unverified.**
 9. **wttr.in weather is fetched by the GUEST'S BROWSER** — that sends the guest's IP to a
-   third party with no DPA. Client-side, so it is a disclosure/consent question, not a
-   server fix.
+   third party with no DPA. **RECOMMENDED ANSWER (30 Jul), better than disclosure: route the
+   call through Bemgu's own server.** The guest's IP then never reaches the third party,
+   **deleting a subprocessor and a disclosure instead of documenting them.** Preferred over
+   writing the consent paragraph.
 10. **LocationIQ corporate seat and DPA.**
 
 **Already verified, no action needed:** Supabase Custom SMTP via Resend (done 17 Jul); GitHub
@@ -936,11 +1118,19 @@ secret scanning + push protection confirmed **already enabled** 29 Jul.
    EU; **Gemini is Google in the US = an international transfer needing explicit
    handling**. Also in scope: Vercel, Stripe, LocationIQ, Cloudflare Turnstile, and the
    three experience marketplaces.
-3. Host-facing **privacy policy** + **terms of service**.
-4. Guest-facing **privacy notice**.
-5. **Data processing agreement** (host = controller, Bemgu = processor).
-6. **Delete account & data** feature (Art. 17 right to erasure) — build LAST, because it
-   needs the retention decisions from step 1 to be correct.
+3. Host-facing **privacy policy** + terms of service — **DRAFTED 30 Jul.** NOT published, NOT in force.
+4. Guest-facing **privacy notice** — **DRAFTED 30 Jul.** NOT published, NOT in force.
+5. **Data processing agreement** (host = controller, Bemgu = processor) — **DRAFTED 30 Jul.** NOT published, NOT in force.
+   **⚠ THE THREE DRAFTS ARE STILL OUTSIDE THE REPO.** Committing them to
+   `docs/legal-host-privacy-policy-DRAFT.md`, `docs/legal-guest-privacy-notice-DRAFT.md` and
+   `docs/legal-dpa-DRAFT.md` was attempted on **Aug 4 2026 and could not be completed — the
+   text was never pasted into the session.** Until that happens, a future session reading this
+   file has **no way to see the drafts**. Do this first next session.
+   Each keeps its **"DRAFT for legal review. Not published, not in force."** header and its
+   **`[CONFIRM]` markers verbatim — never resolve, tidy or remove a `[CONFIRM]`.**
+   Steps 3–5 are gated by the SEQUENCING TRAP above (retention crons first).
+6. **Delete account & data** feature (Art. 17 right to erasure) — **still unbuilt**; build LAST,
+   because it needs the retention decisions from step 1 to be correct.
 
 **Steps 1–2 Claude can do properly from the codebase. Steps 3–5 Claude can draft, but a
 Finnish lawyer must review before publication — handing over a completed inventory cuts
