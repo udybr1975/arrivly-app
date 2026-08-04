@@ -1121,14 +1121,19 @@ secret scanning + push protection confirmed **already enabled** 29 Jul.
 3. Host-facing **privacy policy** + terms of service — **DRAFTED 30 Jul.** NOT published, NOT in force.
 4. Guest-facing **privacy notice** — **DRAFTED 30 Jul.** NOT published, NOT in force.
 5. **Data processing agreement** (host = controller, Bemgu = processor) — **DRAFTED 30 Jul.** NOT published, NOT in force.
-   **⚠ THE THREE DRAFTS ARE STILL OUTSIDE THE REPO.** Committing them to
-   `docs/legal-host-privacy-policy-DRAFT.md`, `docs/legal-guest-privacy-notice-DRAFT.md` and
-   `docs/legal-dpa-DRAFT.md` was attempted on **Aug 4 2026 and could not be completed — the
-   text was never pasted into the session.** Until that happens, a future session reading this
-   file has **no way to see the drafts**. Do this first next session.
-   Each keeps its **"DRAFT for legal review. Not published, not in force."** header and its
-   **`[CONFIRM]` markers verbatim — never resolve, tidy or remove a `[CONFIRM]`.**
-   Steps 3–5 are gated by the SEQUENCING TRAP above (retention crons first).
+   **ALL FOUR DOCUMENTS ARE NOW COMMITTED (Aug 4 2026), verbatim, under `docs/`:**
+   `legal-host-privacy-policy-DRAFT.md`, `legal-guest-privacy-notice-DRAFT.md`,
+   `legal-dpa-DRAFT.md`, plus the Art. 30 data inventory as both
+   `legal-data-inventory-2026-07-28.md` (readable/diffable) and
+   `legal-data-inventory-2026-07-28.docx` (the format counsel will want).
+   All remain **DRAFT, NOT published, NOT in force**, pending the **retention crons shipping**
+   (SEQUENCING TRAP above) and **Finnish lawyer review**. Every `[CONFIRM]` / `[BUILD]` marker
+   is intact and IS the outstanding to-do list — **never resolve, tidy, renumber or remove one.**
+   **Three `[CONFIRM]` markers are now answerable from the 4 Aug Gemini terms verification**
+   (host policy open item 6; the host policy §7 transfer-mechanism marker citing "Google's terms
+   for unpaid API tiers"; and the guest notice §4 chat paragraph, which does not yet mention the
+   30-day grounding storage) — **queued for a post-billing editing pass, deliberately left as-is
+   for now because two of the answers depend on billing being live.**
 6. **Delete account & data** feature (Art. 17 right to erasure) — **still unbuilt**; build LAST,
    because it needs the retention decisions from step 1 to be correct.
 
