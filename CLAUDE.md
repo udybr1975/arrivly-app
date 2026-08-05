@@ -39,6 +39,10 @@ context automatically every session, which is exactly what splitting this file a
 > EEA/CH/UK users, and grounding's processor-DPA cover also requires paid quota — so this is a
 > **CONDITION OF LAWFUL USE, not a quota upgrade**. A **pre-billing security review runs first**
 > (billed keys turn a leak from a quota nuisance into unbounded spend, and this repo is PUBLIC).
+> **ITS IN-CODE HALF IS COMPLETE (Aug 5 2026)** — see "SPEND-ABUSE HARDENING — COMPLETE,
+> CANONICAL SUMMARY", the single source of truth for that workstream. What still gates the flip
+> is the **per-project Google spend caps (~2x the in-app limits) on the four remaining projects**,
+> plus key restrictions and post-flip rotation.
 > (2) the legal/compliance workstream — inventory DONE, **eight gaps still open** (2 + 3 closed
 > by `fbf58aa`); documents 3/4/5 **DRAFTED, unpublished** — and the **retention crons must ship
 > before any of them is published**; (3) migrating the eight `gemini-2.5-flash` call sites before
@@ -595,16 +599,18 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 - **NEW, TOP OF PRE-LIVE — enable billing on ALL FIVE Gemini projects.** Blocks launch on two
   independent grounds: the **contractual** EEA/CH/UK paid-only restriction, and the
   **grounding processor-DPA** cover that exists only on paid quota. See "SESSION Aug 4 2026".
-- **MUST PRECEDE BILLING — the pre-billing SECURITY REVIEW, now PARTLY DONE.** Moving from
+- **MUST PRECEDE BILLING — the pre-billing SECURITY REVIEW. THE IN-CODE HALF IS NOW COMPLETE
+  (Aug 5 2026) — see "SPEND-ABUSE HARDENING — COMPLETE, CANONICAL SUMMARY" for the whole
+  picture; that section is the single source of truth and this entry defers to it.** Moving from
   no-card to billed keys converts a leaked key from a **quota nuisance into unbounded spend**,
-  and **this repo is PUBLIC**. ~~server-side cooldown on `generate-guide`~~ **DONE — shipped
-  `6fd015c` (atomic per-host 6h claim on `hosts.guide_claimed_at`, live-proven).** **REMAINING
-  scope:** the other **spend surfaces (`demo-create` — no cooldown built; Turnstile +
-  one-demo-per-account gated for now)**; **per-project budget caps on the remaining FOUR Gemini
-  projects** (only the guides project has billing + a €10 cap); **API key restrictions**; **key
-  rotation after the flip**; and confirming no key reaches a log or the client bundle — the
-  log/bundle half is now **largely satisfied** by the shared `scrubErr` helper (`3c56c95`) plus
-  the clean 279-commit history scan.
+  and **this repo is PUBLIC**. Every expensive (grounded) Gemini surface and both pass-minting
+  doors are now capped cross-instance, with rolling + cross-host detection live. **REMAINING and
+  still blocking the flip:** **per-project budget caps on the remaining FOUR Gemini projects at
+  ~2x the in-app limits** (only the guides project has billing + a €10 cap) — the only non-code
+  net for the bounded residual; **API key restrictions**; **key rotation after the flip**. Also
+  still open but NOT blocking: `demo-create` has no cooldown (Turnstile + one-demo-per-account
+  gated). The log/bundle half is satisfied by the shared `scrubErr` helper (`3c56c95`) plus the
+  clean 279-commit history scan.
 - **RETENTION CRONS move onto the CRITICAL PATH** — they must ship **before any legal document
   is published** (see the SEQUENCING TRAP in the legal workstream).
 - **14 Dependabot alerts (7 high, 7 moderate) do NOT reconcile** with the older note claiming
@@ -988,6 +994,97 @@ each before launch (only the guides project is done). A `demo-create` cooldown w
 (secondary surface: Turnstile + one-demo gated). Fail-closed reconsideration remains a recorded
 non-blocking option.
 
+## SPEND-ABUSE HARDENING — COMPLETE (Aug 5 2026) — CANONICAL SUMMARY
+
+STATUS: Every expensive (grounded) Gemini surface is capped cross-instance; both pass-minting
+doors are capped; sustained + cross-host (Sybil) detection is live; alarm remediation advice is
+corrected. The fast-spend threat (running up the Gemini bill faster than Google billing/caps
+react) is CLOSED on all pricey endpoints. Remaining items are low-value polish (see checklist),
+none reopening the fast-spend risk.
+
+FOUNDATION: `api_call_counters` table + `bump_api_counter(p_host_id, p_endpoint)` RPC
+(SECURITY DEFINER, service-role only, RLS on, all grants revoked from public/anon/authenticated).
+Cross-instance atomic per-host/endpoint/UTC-hour counter — the real cap (per-instance Map
+limiters are porous on Vercel and do NOT count). Alarms via `_lib/ntfy.ts` sendNtfy (private
+topic, ASCII-only, env-var NAME + public project ID only, never a key value).
+
+BRAKES (per host per UTC hour):
+- create-booking 30/h, FAIL-OPEN, blocked mints nothing. Caller-keyed (userId). Amplifier
+  (mints passes; spends no Gemini itself). (f0a1cb8)
+- sync-ical 5 syncs/h + MAX_ICAL_EVENTS=100/sync + MAX_ICAL_URLS=20, FAIL-OPEN, over-cap mints
+  NOTHING; dropped/failed/over-cap feeds all treated as "incomplete" so soft-cancel never
+  wrongly cancels live bookings. Caller-keyed. Dominant amplifier. (6b33d40)
+- generate-guide: real gate is the atomic 1-per-6h claim (guide_claimed_at); counter is
+  alarm-only at 10/h. Caller-keyed. Key GEMINI_API_KEY_GUIDES. (5423285)
+- daily-greeting 50/h, FAIL-CLOSED, degrades to {suggestion:null}. VICTIM-keyed (apt.host_id).
+  Shared GEMINI_API_KEY. (f8952b0)
+- guest-chat 40/h, FAIL-CLOSED, 429 -> soft ChatBot copy. VICTIM-keyed. Dearest (grounded)
+  call. Key GEMINI_API_KEY_CHAT. (6f915b5)
+- city-events public 'city-events-public' 7/h, FAIL-CLOSED. VICTIM-keyed (unauthenticated;
+  caller needs only the apartment UUID). Key GEMINI_API_KEY_EVENTS. (66cb385 -> split bcf9396)
+- refresh-events host 'city-events-host' 3/h, FAIL-CLOSED. Caller-keyed (ownership check
+  precedes bump). Key GEMINI_API_KEY_EVENTS. (66cb385 -> split bcf9396)
+RULE: never share one counter key across a trust boundary (public flood must not eat the
+host's own reserve).
+
+FAIL-OPEN vs FAIL-CLOSED (do NOT "harmonise"): fail-open where blocking costs a host real work
+(create-booking, sync-ical); fail-closed where the blocked behaviour is the free fallback
+(greeting/chat/events). Fail-open is indefensible when the fallback is free.
+
+DETECTION (cron-spend-audit, `0 */3 * * *`):
+- Rolling: sums each host's last-6h usage per endpoint, alarms ~3x the hourly limit
+  (guest-chat 120, daily-greeting 150, create-booking 90, sync-ical 15, generate-guide 30,
+  city-events-public 21, city-events-host 9). (3b1a128)
+- Cross-host (Sybil): sums ALL hosts per endpoint, alarms at GLOBAL_HOST_EQUIVALENT(5) x the
+  per-host rolling threshold; logs top contributors. Turns the "N accounts" leak from
+  unbounded-in-N into a fixed constant. GLOBAL_HOST_EQUIVALENT is a SUM (not "5 hosts") ->
+  false-positives around ~50-150 active hosts; raise from the per-run fleet-totals log. (196f073)
+- Retention: prunes counter rows >48h every run (also GDPR minimisation). Prune's `.lt()`
+  filter is load-bearing (without it -> full table wipe that resets every current-hour counter).
+  Paginated scan (unbounded PostgREST select truncates silently -> would under-count). (3b1a128)
+
+VICTIM-vs-CALLER (operator safety, fa8fa32): victim-keyed alarms (guest-chat, daily-greeting,
+city-events-public) say "INVESTIGATE, do not auto-block" (named host may be the victim: leaked
+booking token, or public UUID) -> revoke booking token / rotate QR / block source per findings.
+Caller-keyed alarms (create-booking, sync-ical, generate-guide, refresh-events) correctly say
+"block this host". NEVER blanket-rewrite the caller-keyed ones. Classify by the ownership check
+that precedes the bump, not the variable name (refresh-events passes apt.host_id but is
+caller-keyed).
+
+KEY MAP (env var -> project; alarms name these, never a key value):
+- GEMINI_API_KEY_CHAT   = gen-lang-client-0221179352 (guest-chat only; CONFIRMED)
+- GEMINI_API_KEY_EVENTS = gen-lang-client-0131909896 (city-events + refresh-events; CONFIRMED)
+- GEMINI_API_KEY_GUIDES = gen-lang-client-0816353550 (guide)
+- GEMINI_API_KEY shared = gen-lang-client-0819525902 (daily-greeting + host-picks + rewrite +
+  bulk-import -> disabling is blunt)
+
+2x CEILING RULE: a counter unit != a Google call. Automatic retry (and empty-reply
+fall-through) means real billed calls ~= 2x the limit; AbortSignal does NOT reduce Google
+billing (SDK: client-only). Size Google per-project spend caps at ~2x the limits.
+
+CLIENT FIX: GuestPage daily-greeting fired twice/load (weather-keyed effect) -> fire-once ref
++ 2.5s weather grace (6382174). Lowers real usage, not the ceiling.
+
+DELIVERABLE (outside repo): plain-English risk & response guide for Udy —
+Bemgu-AI-spend-risk-and-response-guide.md/.docx (incident cheat-sheet + full measures record).
+
+PRE-BILLING CHECKLIST (before flipping Gemini to billed):
+1. Set a per-project spend cap on Google Cloud for each of the 4 projects above at ~2x the
+   in-app limits — the only non-code net for the bounded multi-account residual.
+2. Optional polish (none blocking): meter cheap non-grounded host endpoints (host-picks,
+   bulk-import, rewrite-rules); add an api/ typecheck to the build; the 3 city-events alert
+   refinements (over-asserted innocence, revoke-token vs rotate-QR, log the tripping IP); a
+   cron "never ran" heartbeat; raise city-events-host reserve (3/h) before multi-property
+   hosts; welcome-chat/guide-assistant abort tidy-ups.
+3. Flip GEMINI_API_KEY_CHAT to a billed key once the Google payment issue is resolved.
+
+RESIDUAL (accepted, not holes): bounded (not zero) spend possible for a determined
+multi-account attacker -> covered by the Google cap. One remaining blind spot: a single host
+at ~49% on all endpoints at once (cross-endpoint, lower value).
+
+COMMIT TRAIL: DB counter migration -> 5423285 -> f0a1cb8 -> 6b33d40 -> f8952b0 -> 6f915b5 ->
+66cb385 -> bcf9396 -> 6382174 -> 6259e9e -> 3b1a128 -> 196f073 -> fa8fa32.
+
 ## SPEND-ABUSE ALARM + CALL COUNTER (Aug 5 2026 — commit 5423285 + migration
 api_call_counters_and_bump_fn, applied CHAT-SIDE via Supabase MCP)
 - Table `public.api_call_counters` (host_id uuid FK→hosts ON DELETE CASCADE, endpoint
@@ -1162,9 +1259,8 @@ not third-party-exhaustible across tenants.
       `dailySuggestion` — re-audit then rather than trusting the deps list.
   (b) The apartment select still discards its error string — the fail-closed log says THAT it
       failed, not WHY. Observability only now that the branch is closed.
-  (c) `guest-chat` remains UNCAPPED cross-instance (per-Lambda 15/min per apt+IP only) and is
-      GROUNDED, so dearer per call. **The amplifier chain is NOT fully capped — do not record it
-      as such.** This is the next brake.
+  (c) ~~`guest-chat` remains UNCAPPED cross-instance~~ **CLOSED (`6f915b5`, Aug 5 2026)** — now
+      40/host/hour, fail-closed. Every grounded surface is capped; see the CANONICAL SUMMARY.
   (d) Optional: page via `sendNtfy` on RPC shape drift instead of only logging.
 - **BUILD CAVEAT, GENERAL — `npm run build` DOES NOT TYPECHECK `api/`.** `tsconfig.app.json`
   includes only `src`, `tsconfig.node.json` only `vite.config.ts`, and the root tsconfig is
@@ -1216,17 +1312,19 @@ counter error; non-numeric return logs loudly and proceeds. ONE ntfy at limit+1.
   Both pass CONSUMERS are capped per host per hour **regardless of how many passes exist**, so
   the standing-pass total no longer converts into AI spend — which DEMOTES the tracked
   "active-bookings-per-apartment cap" from a security item to a product one.
-- **NEXT BRAKE — `api/city-events.ts` lazy fill is now the WEAKEST AI SURFACE IN THE SYSTEM,
-  weaker than guest-chat was before this change.** Fully UNAUTHENTICATED (no token, no captcha,
+- **~~NEXT BRAKE~~ — `api/city-events.ts` lazy fill was the WEAKEST AI SURFACE IN THE SYSTEM,
+  weaker than guest-chat was before this change. CLOSED (`66cb385`, split `bcf9396`).** The
+  description below is retained because it is why it mattered: fully UNAUTHENTICATED (no captcha,
   no verify gate), GROUNDED on `GEMINI_API_KEY_EVENTS`, guarded only by a per-instance 5/min
   apt+IP Map — and it writes its cache row AFTER the model call, so the cache-race applies
   (concurrent requests on one uncached apartment all miss and all spend). Any account that can
   create/delete apartments manufactures fresh uncached rows at will.
-- ALSO STILL UNCAPPED cross-instance: `refresh-events` (20h gate is read-then-generate, so
-  concurrent refreshes for one apartment all pass); `rewrite-rules`, `generate-host-picks`,
-  `bulk-import` (NO limiter at all, host-auth, one shared-key call per request);
+- ~~ALSO STILL UNCAPPED: `refresh-events`~~ **CLOSED (`66cb385`, split `bcf9396`)** — 3/host/hour
+  on `'city-events-host'`. STILL UNCAPPED cross-instance, all CHEAP + NON-GROUNDED + host-auth,
+  so none reopens the fast-spend risk (checklist item 2 polish): `rewrite-rules`,
+  `generate-host-picks`, `bulk-import` (NO limiter at all, one shared-key call per request);
   `guide-assistant` (per-instance 20/min only); all crons (per-apartment fan-out, no per-host
-  counter — unbounded for `is_exempt`/Tier 4).
+  counter — unbounded for `is_exempt`/Tier 4); `demo-create` (Turnstile + one-demo gated).
 - ALARM BLIND SPOT — **NARROWED, NOT CLOSED (`cron-spend-audit`, Aug 5 2026). Never record it as
   closed.** The per-hour brakes are spend CAPS, not detectors: the alarm is a strict intra-hour
   `=== limit+1` and the counter resets on the UTC hour, so an attacker pacing at the limit
