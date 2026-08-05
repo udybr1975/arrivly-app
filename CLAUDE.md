@@ -34,15 +34,14 @@ context automatically every session, which is exactly what splitting this file a
 > — so the pentest gate runs on the Tiers 1–3 surface, and Phase F needs its own second
 > security pass before Tier 4 is sold.
 >
-> **THE FOUR THINGS BLOCKING LAUNCH:** (1) **NEW, TOP — enable billing on ALL FIVE Gemini
-> projects.** Google's terms permit **only Paid Services** for API Clients made available to
-> EEA/CH/UK users, and grounding's processor-DPA cover also requires paid quota — so this is a
-> **CONDITION OF LAWFUL USE, not a quota upgrade**. A **pre-billing security review runs first**
-> (billed keys turn a leak from a quota nuisance into unbounded spend, and this repo is PUBLIC).
-> **ITS IN-CODE HALF IS COMPLETE (Aug 5 2026)** — see "SPEND-ABUSE HARDENING — COMPLETE,
-> CANONICAL SUMMARY", the single source of truth for that workstream. What still gates the flip
-> is the **per-project Google spend caps (~2x the in-app limits) on the four remaining projects**,
-> plus key restrictions and post-flip rotation.
+> **THE FOUR THINGS BLOCKING LAUNCH:** (1) **~~enable billing on ALL FIVE Gemini projects~~ —
+> REPLACED Aug 5 2026 by the ZERO-GOOGLE AI PILOT (see its canonical section; the Bemgu billing
+> account is CLOSED and there is no billing flip).** The reason billing was ever required stands
+> and is what the pilot answers: Google's terms permit **only Paid Services** for API Clients made
+> available to EEA/CH/UK users, and grounding's processor-DPA cover also requires paid quota — a
+> **CONDITION OF LAWFUL USE, not a quota upgrade**. The pilot removes Google from the stack rather
+> than paying for it. **The pre-billing security review's in-code half is COMPLETE** — see
+> "SPEND-ABUSE HARDENING — COMPLETE, CANONICAL SUMMARY". **Next action: PILOT STEP 1 CHECKS.**
 > (2) the legal/compliance workstream — inventory DONE, **eight gaps still open** (2 + 3 closed
 > by `fbf58aa`); documents 3/4/5 **DRAFTED, unpublished** — and the **retention crons must ship
 > before any of them is published**; (3) migrating the eight `gemini-2.5-flash` call sites before
@@ -218,12 +217,16 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 
 ## Gemini AI key map (per-surface isolation)
 
-> **STALE-FRAMING POINTER (Aug 4 2026) — read before acting on any "no-card" wording below.**
-> The per-surface key **ISOLATION is correct and STAYS**. What changed: **all five projects must
-> be on BILLING before launch** — not as a quota improvement, but because Google's terms permit
-> **only Paid Services** for API Clients made available to EEA/CH/UK users, and grounding's
-> processor-DPA cover requires paid quota. See "SESSION Aug 4 2026". The original wording is
-> kept below so the reasoning stays legible.
+> **STALE-FRAMING POINTER (Aug 4 2026, REVISED Aug 5 2026) — read before acting on any "no-card"
+> wording below.** The per-surface key **ISOLATION is correct and STAYS**. The Aug 4 position was
+> that **all five projects must be on BILLING before launch**, because Google's terms permit
+> **only Paid Services** for API Clients made available to EEA/CH/UK users and grounding's
+> processor-DPA cover requires paid quota. **That requirement is now answered a different way:
+> the ZERO-GOOGLE AI PILOT (Aug 5) REMOVES Google from the stack instead of paying for it — the
+> Bemgu billing account is CLOSED and all five projects are back on no-card free tier as an
+> accepted pre-launch bridge state.** So "no-card" wording below is once again accurate for the
+> interim, and the key map itself is superseded per-surface as each one migrates. See the
+> ZERO-GOOGLE AI PILOT section (canonical) and "SESSION Aug 4 2026" for the terms reasoning.
 
 Each high-volume / public surface has its OWN no-card AI Studio key (separate free-tier daily quota), with `|| GEMINI_API_KEY` fallback so behaviour is unchanged until the dedicated key is present in Vercel. NO secret values live in this repo (public).
 - **Shared `GEMINI_API_KEY`** serves: `rewrite-rules`, `bulk-import`, `greeting` / `daily-greeting`, `host-picks`.
@@ -401,7 +404,7 @@ Each high-volume / public surface has its OWN no-card AI Studio key (separate fr
 
 - **Public guest-facing AI endpoints are spend-gated by verifying the booking token BEFORE calling the model, not by rate-limiting alone.** `api/guest-chat.ts` (S21) returns `403 verify_required` for the public tier before any Gemini/brand/prompt work, so only a verified in-dates booking can spend tokens — the same gate `daily-greeting` uses. The added per-instance rate limiter (15/60s, keyed apartmentId+IP) is a second layer but BEST-EFFORT: Vercel spreads requests across lambda instances, each with its own in-memory Map, so the 429 can't be observed reliably from outside and is NOT a hard cross-instance cap. Treat verify-gating (not the limiter) as the real spend control.
 
-- **guest-chat runs on its own AI key (`GEMINI_API_KEY_CHAT`), isolated from the shared `GEMINI_API_KEY`.** It reads `process.env.GEMINI_API_KEY_CHAT || GEMINI_API_KEY` (same fallback shape as the guides key) and is a no-card key created in a SEPARATE AI Studio project so its free-tier DAILY quota is its own. INTERIM (S21): it stays no-card until the Google payment issue is resolved, then this single key flips to BILLED — which removes the daily cap; the verify-gate + limiter bound the spend. Groq cannot replace guest-chat (needs googleSearch grounding). **SUPERSEDED IN PART (Aug 4 2026): this is NOT a one-key quota flip pending a payment issue — ALL FIVE projects must go to billing before launch, for the contractual (EEA paid-only) and grounding-DPA reasons in "SESSION Aug 4 2026". The isolation itself stays correct.**
+- **guest-chat runs on its own AI key (`GEMINI_API_KEY_CHAT`), isolated from the shared `GEMINI_API_KEY`.** It reads `process.env.GEMINI_API_KEY_CHAT || GEMINI_API_KEY` (same fallback shape as the guides key) and is a no-card key created in a SEPARATE AI Studio project so its free-tier DAILY quota is its own. INTERIM (S21): it stays no-card until the Google payment issue is resolved, then this single key flips to BILLED — which removes the daily cap; the verify-gate + limiter bound the spend. Groq cannot replace guest-chat (needs googleSearch grounding). **SUPERSEDED IN PART (Aug 4 2026): this is NOT a one-key quota flip pending a payment issue — ALL FIVE projects must go to billing before launch, for the contractual (EEA paid-only) and grounding-DPA reasons in "SESSION Aug 4 2026". The isolation itself stays correct.** **FULLY SUPERSEDED (Aug 5 2026) by the ZERO-GOOGLE AI PILOT — TWO corrections: (a) there is NO billing flip, the Bemgu billing account is CLOSED; (b) "Groq cannot replace guest-chat" is NO LONGER TRUE — the pilot replaces grounding with a ROUTER (cheap LLM for ungrounded turns, Geoapify/LocationIQ POI for "nearby X", Tavily for open-web), so guest-chat does not need googleSearch at all. The per-surface key isolation still stays correct, and its brake (40/h, victim-keyed, fail-closed) moves with it.**
 
 - **Gemini free-tier quota is a DAILY cap; exhausting it surfaces as intermittent guest-facing 500s — not a code bug.** In S21 testing an 18-call burst exhausted the free-tier daily quota; later chats returned Gemini `429 "exceeded your current quota"` (plus transient `503 "high demand"`), surfaced as a 500. The daily cap does NOT reset within a minute, so "wait a moment" is wrong advice for a quota 429. Before blaming app code for guest-chat failures, check the Vercel runtime logs for the upstream Gemini status code; a dedicated/billed key is the fix, not a code change.
 
@@ -596,27 +599,37 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 
 ### OPEN ITEMS — PRIORITY CHANGES (Aug 4 2026)
 
-- **NEW, TOP OF PRE-LIVE — enable billing on ALL FIVE Gemini projects.** Blocks launch on two
-  independent grounds: the **contractual** EEA/CH/UK paid-only restriction, and the
+- **NEXT ACTION — PILOT STEP 1 CHECKS (no code):** Groq terms/DPA; Tavily DPA + post-Nebius
+  ownership; LocationIQ plan POI endpoint + quota; Geoapify quotas + commercial use. GATE before
+  any code. See "ZERO-GOOGLE AI PILOT — APPROVED PLAN", which is canonical for this workstream.
+- **~~NEW, TOP OF PRE-LIVE — enable billing on ALL FIVE Gemini projects~~ — SUPERSEDED Aug 5 2026
+  by the ZERO-GOOGLE AI PILOT.** The Bemgu billing account is now CLOSED with zero linked
+  projects; **there is no billing flip**. The two grounds recorded below still explain WHY Google
+  free tier cannot be the launch basis — which the pilot resolves by REMOVING Google from the
+  stack, not by paying for it: the **contractual** EEA/CH/UK paid-only restriction, and the
   **grounding processor-DPA** cover that exists only on paid quota. See "SESSION Aug 4 2026".
 - **MUST PRECEDE BILLING — the pre-billing SECURITY REVIEW. THE IN-CODE HALF IS NOW COMPLETE
   (Aug 5 2026) — see "SPEND-ABUSE HARDENING — COMPLETE, CANONICAL SUMMARY" for the whole
   picture; that section is the single source of truth and this entry defers to it.** Moving from
   no-card to billed keys converts a leaked key from a **quota nuisance into unbounded spend**,
   and **this repo is PUBLIC**. Every expensive (grounded) Gemini surface and both pass-minting
-  doors are now capped cross-instance, with rolling + cross-host detection live. **REMAINING and
-  still blocking the flip:** **per-project budget caps on the remaining FOUR Gemini projects at
-  ~2x the in-app limits** (only the guides project has billing + a €10 cap) — the only non-code
-  net for the bounded residual; **API key restrictions**; **key rotation after the flip**. Also
-  still open but NOT blocking: `demo-create` has no cooldown (Turnstile + one-demo-per-account
-  gated). The log/bundle half is satisfied by the shared `scrubErr` helper (`3c56c95`) plus the
-  clean 279-commit history scan.
+  doors are now capped cross-instance, with rolling + cross-host detection live. **~~REMAINING and
+  still blocking the flip: per-project budget caps on the four remaining Gemini projects, API key
+  restrictions, key rotation after the flip~~ — MOOT under the ZERO-GOOGLE AI PILOT: the billing
+  account is CLOSED, so there are no Google keys to cap, restrict or rotate.** Those steps return
+  only if a surface graduates back to Google, and the pilot already specifies a fresh enforcement
+  cap sized by the 2x ceiling rule at that point. Still open but NOT blocking: `demo-create` has
+  no cooldown (Turnstile + one-demo-per-account gated). The log/bundle half is satisfied by the
+  shared `scrubErr` helper (`3c56c95`) plus the clean 279-commit history scan.
 - **RETENTION CRONS move onto the CRITICAL PATH** — they must ship **before any legal document
   is published** (see the SEQUENCING TRAP in the legal workstream).
 - **14 Dependabot alerts (7 high, 7 moderate) do NOT reconcile** with the older note claiming
   **3 dev-only vulns** (`docs/history.md`, S24 residual). **Triage before the pentest gate.**
-- **Re-test grounding on Gemini 3 once billing is live** — it may **dissolve the 16 Oct
-  migration tension**, since grounding becomes purchasable rather than free-only on the 2.5 line.
+- **~~Re-test grounding on Gemini 3 once billing is live~~ — SUPERSEDED by the ZERO-GOOGLE AI
+  PILOT.** Billing is closed, so there is nothing to re-test. The pilot **dissolves the 16 Oct
+  `gemini-2.5-flash` shutdown pressure by a different route**: grounded surfaces move to
+  Tavily/POI + a cheap LLM, so no surface depends on Google grounding at all. Revisit only if a
+  surface graduates back.
 
 > ✓ Plan values confirmed (hard gate CLOSED): T1 €10/cap 2, T2 €15/cap 7, T3 €25/cap 12, T4 €49/unlimited; trial_days = 14.
 > **DECISION (S16, amended S19 cont.): flip-to-live is the LAST step. Build order reordered S19 cont. to G → H → I → F (Phase F / Tier-4 booking moved to the end).**
@@ -753,13 +766,15 @@ allowance** instead of sharing one pool:
 THE BINDING CONSTRAINT.** Do not plan around the 20 RPD figure as if it were global. **The
 real deadline is the 16 Oct 2026 model shutdown.**
 
-> **ANNOTATION (Aug 4 2026) — the free tier is no longer an option, independently of quota.**
-> All five projects are **no-card free tier today**, and Google's terms permit **only Paid
-> Services** for API Clients made available to EEA/CH/UK users; grounding's processor-DPA cover
-> also requires paid quota. **The five-project split stays** — billing is added to each, not
-> consolidated. **Re-test grounding on Gemini 3 once billing is live:** grounding becomes
-> purchasable rather than free-only on the 2.5 line, which may dissolve the 16 Oct migration
-> tension recorded below. See "SESSION Aug 4 2026".
+> **ANNOTATION (Aug 4 2026, SUPERSEDED Aug 5 2026).** The Aug 4 position was that the free tier
+> is not an option independently of quota — Google's terms permit **only Paid Services** for API
+> Clients made available to EEA/CH/UK users, and grounding's processor-DPA cover also requires
+> paid quota — so billing would be added to each of the five projects. **The ZERO-GOOGLE AI PILOT
+> (Aug 5, canonical) replaces that: billing is CLOSED, the five projects are back on no-card free
+> tier as an accepted bridge, and the surfaces migrate OFF Google instead.** ~~Re-test grounding
+> on Gemini 3 once billing is live~~ — moot; the pilot dissolves the 16 Oct migration tension
+> below by a different route, since the grounded surfaces move to Tavily/POI + a cheap LLM and no
+> surface depends on Google grounding. See "SESSION Aug 4 2026" for the terms reasoning.
 
 ### MODEL-MIGRATION ANALYSIS — do NOT big-bang this (Jul 29 2026)
 
@@ -769,8 +784,10 @@ real deadline is the 16 Oct 2026 model shutdown.**
 and that is why the migration splits three ways:
 
 - **CANNOT MOVE** (grounded, and grounding is zero-quota on Gemini 3): **`guest-chat`,
-  `_lib/city-events`**. Stuck on `gemini-2.5-flash` until billing is enabled or 16 Oct forces
-  the issue. **This is the genuine deadline.**
+  `_lib/city-events`**. ~~Stuck on `gemini-2.5-flash` until billing is enabled or 16 Oct forces
+  the issue.~~ **RESOLVED DIFFERENTLY (Aug 5 2026): the ZERO-GOOGLE AI PILOT moves both to
+  Tavily/POI + a cheap LLM, so neither needs Google grounding and neither is stuck.** The 16 Oct
+  deadline stops binding once they migrate.
 - **SAFE TO MOVE** (simple, text-in/text-out, no strict structure, no deep world knowledge):
   **`_lib/greeting`, `rewrite-rules`, `guide-assistant`**.
 - **TEST BEFORE MOVING** (knowledge-heavy and/or strict JSON — where a lite model is most
@@ -792,6 +809,12 @@ deliberately rather than by accident.
 ## SESSION Aug 4 2026 — Gemini terms verified at source; the 30 Jul session recorded
 
 **DOCS-ONLY. Code HEAD unchanged at `d282fe8`.**
+
+> **REMEDY SUPERSEDED Aug 5 2026 — the FINDINGS below are unchanged and still true.** Every
+> "enable billing on all five projects" instruction in this section is answered instead by the
+> **ZERO-GOOGLE AI PILOT** (canonical section above): the Bemgu billing account is CLOSED and the
+> surfaces migrate OFF Google. The terms analysis is exactly WHY that plan exists — read the
+> findings here, take the remedy from there.
 
 ### GEMINI API TERMS — READ AT SOURCE, not from summaries
 Source: **https://ai.google.dev/gemini-api/terms** — *Gemini API Additional Terms of Service*,
@@ -989,10 +1012,89 @@ only errors if Supabase is down, in which case `generate-guide` cannot function 
 - Per-API daily-quota override was ABANDONED (the Cloud Console quota UI would not surface the live
   per-project generate-content quota; the €10 cap makes it moot).
 
-**STILL OPEN after this session:** the other FOUR Gemini projects still need billing + a spend cap
-each before launch (only the guides project is done). A `demo-create` cooldown was NOT built
-(secondary surface: Turnstile + one-demo gated). Fail-closed reconsideration remains a recorded
-non-blocking option.
+**~~STILL OPEN after this session: the other FOUR Gemini projects need billing + a spend cap
+each~~ — MOOT Aug 5 2026.** The Bemgu billing account is CLOSED with zero linked projects; the
+guides project's billing and €10 cap were removed with it, so nothing here needs a cap. See the
+**ZERO-GOOGLE AI PILOT** (canonical). The layered-defence and lagging-cost-data lessons above
+remain valid and are why the in-code brakes, not a spend cap, are the primary control. A
+`demo-create` cooldown was NOT built (secondary surface: Turnstile + one-demo gated). Fail-closed
+reconsideration remains a recorded non-blocking option.
+
+## ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026) — CANONICAL, supersedes the pre-billing checklist
+
+**STATUS.** Approved by Udy, Aug 5 2026. The Bemgu Google Cloud billing account
+**01EC0F-C6FE15-32E552 is CLOSED with zero linked projects** (screenshots verified in-session).
+All five Gemini projects are back on **no-card free tier**, and **no payment instrument exists
+anywhere in Bemgu's AI stack**. The guides project `gen-lang-client-0816353550` was the only one
+ever billed (~€0.80 accrued Aug 4; a trailing sub-€1 invoice may still arrive — that is history,
+not exposure). The €10 spend cap is moot. **The "PRE-BILLING CHECKLIST" in the spend-hardening
+summary below is SUPERSEDED by this plan: there is no billing flip.** Instead, surfaces graduate
+one at a time (below). Anna's Stays billing is a separate account and is untouched.
+
+**DECISION.** Run production with **ZERO Google AI keys and no postpaid meter until 50 hosts** —
+the graduation milestone, a number Udy set on Aug 5.
+- **WALLET POLICY:** every AI / search / POI provider must be **no-card free tier or prepaid**.
+  Providers that require an **uncapped card on file are BANNED** (Brave-class).
+- **LLM PROVIDER ORDER:** Groq if its EEA/commercial terms + DPA pass **the same Aug 4 standard
+  applied to Google**; else Mistral; or Groq paid **with a hard spend limit set BEFORE the first
+  call**.
+
+**HARD CONSTRAINT — unchanged from the spend-hardening work.** Every brake, counter key, limit,
+fail-open/fail-closed choice, the rolling + Sybil audit, retention/prune, and the
+victim-vs-caller alarm rule stay **100% intact**. When a surface changes provider **its brake
+moves WITH it: one counter bump = one FULL pipeline run**, search/POI and LLM legs included. The
+**only** permitted alarm change is remediation **TEXT** (Google-project advice → pilot-provider
+key revoke/rotate), preserving the `fa8fa32` victim-vs-caller wording rule. `cron-spend-audit`
+needs **no logic change** — the endpoint keys do not move.
+
+**TARGET STACK (9 surfaces).**
+1. **guest-chat** — a router: ungrounded leg on a cheap LLM; "nearby X" → Geoapify/LocationIQ POI
+   query; open-web → Tavily + cheap LLM. Brake unchanged (40/h, victim-keyed, fail-closed).
+2. / 3. **city-events public + host refresh** — Tavily + cheap LLM, same DB cache. Counters
+   unchanged (`city-events-public` 7/h, `city-events-host` 3/h).
+4. **guide** — rebuilt on POI DATA: Geoapify (or LocationIQ, if the current plan covers
+   Nearby/POI) categories around the apartment coords → cheap LLM writes the prose. **Coordinates
+   come from the POI data, which structurally kills BOTH the fabricated-business problem and the
+   geocoding weakness.** 6h atomic claim + 10/h alarm counter unchanged. Existing cached guides
+   are untouched.
+5. **daily-greeting**, 7. **rewrite-rules**, 8. **bulk-import**, 9. **guide-assistant +
+   welcome-chat** (last) — cheap LLM, quality indistinguishable. Greeting brake 50/h unchanged.
+6. **host-picks** — cheap LLM (host-reviewed; LocationIQ geocoding untouched).
+- **create-booking and sync-ical brakes: untouched** — they were never AI.
+
+**MECHANISM.** A new thin `api/_lib/ai-provider.ts` abstraction plus **per-surface env vars**
+(`AI_PROVIDER_CHAT=groq|gemini`, `AI_PROVIDER_GUIDE=poi|gemini`, …). **The Gemini code paths are
+KEPT as the `gemini` branch and never deleted.** Graduation is then an env-var flip + redeploy,
+per surface.
+
+**WORK PLAN.** Every code step: single-block prompt, code-reviewer + security-auditor blocking,
+HEAD == Vercel READY verified after.
+- **Step 0** — this docs commit.
+- **Step 1 — checks, NO code:** Groq terms/DPA; Tavily DPA + post-Nebius ownership; LocationIQ
+  plan POI endpoint + quota; Geoapify quotas + commercial use. **GATE: 1a-or-fallback and
+  1d-or-1c green before ANY code.**
+- **Step 2 — quality benchmark** on Sweet home (guide side-by-side + ~20 guest questions), **Udy
+  judges. GATE.**
+- **Step 3** — `ai-provider.ts` + migrate greeting / rewrite-rules / bulk-import / guide-assistant.
+- **Step 4** — guide on POI data. **Step 5** — events on Tavily. **Step 6** — guest-chat router +
+  host-picks.
+- **Step 7** — alarm-text sweep + **SELF-ATTACK DRILL** (burst chat past 40, hammer
+  `city-events-public`, booking flood; verify the brakes trip and the ntfy wording is right).
+  **The drill is a graduation PREREQUISITE.**
+- **Step 8** — Udy deletes the five `GEMINI_API_KEY*` vars from Vercel Production (the `gemini`
+  branch stays dormant in code).
+- **Step 9** — learning phase. **Iteration 2** (automated responses, victim-vs-caller-aware) and
+  **Iteration 3** (superadmin attack dashboard) are built DURING this phase.
+
+**GRADUATION.** At 50 hosts + Step 7 drill passed + alarms observed on real traffic + dashboard
+live: per surface, **guest-chat first, events second**; **guide only if the POI version
+underperforms** (it may never return); the cheap four likely never return. Each return =
+reopen the closed Bemgu billing account, set a fresh **enforcement** spend cap sized by the **2x
+ceiling rule**, then flip the env var.
+
+**SIDE EFFECT OF THE NO-CARD INTERIM — stated plainly.** Per the Aug 4 terms finding, the Gemini
+free tier is **not** the compliant EEA basis. That is **accepted as a pre-launch BRIDGE state,
+and this plan removes it entirely.**
 
 ## SPEND-ABUSE HARDENING — COMPLETE (Aug 5 2026) — CANONICAL SUMMARY
 
@@ -1068,7 +1170,8 @@ CLIENT FIX: GuestPage daily-greeting fired twice/load (weather-keyed effect) -> 
 DELIVERABLE (outside repo): plain-English risk & response guide for Udy —
 Bemgu-AI-spend-risk-and-response-guide.md/.docx (incident cheat-sheet + full measures record).
 
-PRE-BILLING CHECKLIST (before flipping Gemini to billed):
+PRE-BILLING CHECKLIST — **SUPERSEDED Aug 5 2026 by the ZERO-GOOGLE AI PILOT plan above — kept
+for history.** (There is no billing flip; surfaces graduate individually instead.)
 1. Set a per-project spend cap on Google Cloud for each of the 4 projects above at ~2x the
    in-app limits — the only non-code net for the bounded multi-account residual.
 2. Optional polish (none blocking): meter cheap non-grounded host endpoints (host-picks,
@@ -1639,8 +1742,11 @@ Madrid (1.3) and Berlin (2.4) were never affected and were left un-refreshed.
   Aug 4 2026").** No further prompt tuning on this endpoint; a thin category is answered by
   host picks, not by prompt work. **What REMAINS open is only the cost/model question:**
   grounding is free on the 2.5 line (1,500 RPD) but **ZERO on Gemini 3**, so the grounded guide
-  is tied to `gemini-2.5-flash` and the 16 Oct 2026 shutdown — **re-test once billing is live**,
-  since paid grounding may dissolve the tension. See "MODEL-MIGRATION ANALYSIS".
+  is tied to `gemini-2.5-flash` and the 16 Oct 2026 shutdown — ~~re-test once billing is live~~
+  **ANSWERED Aug 5 2026 by the ZERO-GOOGLE AI PILOT: the guide is rebuilt on POI DATA (Geoapify /
+  LocationIQ) + a cheap LLM, so it needs no grounding at all — and because the coordinates come
+  from the POI data, that structurally kills both the fabricated-business problem and the
+  geocoding weakness.** See "MODEL-MIGRATION ANALYSIS" for the old framing.
 - **THE MONTHLY GUIDE CRON HAS NEVER RUN, AND IS NOW STRUCTURALLY UNABLE TO.** No guide's
   `generated_at` matches the 10:00 UTC 1st-of-month schedule. It loops apartments
   **sequentially**, and a guide call now costs **up to ~99s each** — roughly **one apartment per
@@ -1713,7 +1819,8 @@ residency, client-side disclosures, transfers, and Art. 32 measures.
    data-training worry is DEAD**: for EEA/CH/UK developers Google applies the **paid** data
    terms to all Services, so no training on prompts/responses and the processor DPA already
    governs. What replaces it: **(a) the free tier is contractually not permitted at all for
-   EEA users** → billing on all five projects is a launch blocker; **(b) grounding stores
+   EEA users** → **ANSWERED Aug 5 2026 by the ZERO-GOOGLE AI PILOT (Google leaves the stack;
+   billing account CLOSED), not by enabling billing**; **(b) grounding stores
    prompts, context and output for 30 DAYS** and its debugging/testing use is covered by the
    processor DPA **only on paid quota** — **the 30-day storage must be stated in the guest
    notice**; **(c) an UNRESOLVED question for the lawyer** — the guide caches grounded output
@@ -1759,8 +1866,11 @@ secret scanning + push protection confirmed **already enabled** 29 Jul.
    **Three `[CONFIRM]` markers are now answerable from the 4 Aug Gemini terms verification**
    (host policy open item 6; the host policy §7 transfer-mechanism marker citing "Google's terms
    for unpaid API tiers"; and the guest notice §4 chat paragraph, which does not yet mention the
-   30-day grounding storage) — **queued for a post-billing editing pass, deliberately left as-is
-   for now because two of the answers depend on billing being live.**
+   30-day grounding storage) — ~~queued for a post-billing editing pass~~ **REFRAMED Aug 5 2026:
+   under the ZERO-GOOGLE AI PILOT these answers depend on the FINAL PROVIDER SET, not on Google
+   billing. Resolve them once the pilot's provider checks (Step 1) land, since the transfer
+   mechanism and the chat/grounding storage paragraphs will name Groq/Tavily/Geoapify rather than
+   Google.**
 6. **Delete account & data** feature (Art. 17 right to erasure) — **still unbuilt**; build LAST,
    because it needs the retention decisions from step 1 to be correct.
 
