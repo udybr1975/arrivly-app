@@ -43,6 +43,15 @@ const KEY_HINT: Record<string, string> = {
   'sync-ical': 'amplifier (mints guest passes) - watch guest-chat + daily-greeting spend',
 }
 
+// Cross-host aggregate (Sybil detection). Every per-host check below (and every brake) keys on
+// ONE host, so an attacker spread across many accounts, each held under its per-host limit, is
+// invisible to them. The global check sums EVERY host per endpoint over the same window and
+// alarms when an endpoint's fleet-wide total exceeds GLOBAL_HOST_EQUIVALENT worth of the
+// per-host rolling threshold - i.e. "this many hosts all sustaining the rolling limit at once",
+// implausible at current scale and a clear Sybil signal. RAISE THIS as the real host base grows,
+// or it will false-positive once that many hosts are legitimately busy at the same time.
+const GLOBAL_HOST_EQUIVALENT = 5
+
 // Cap the per-run alert fan-out. Each sendNtfy holds up to a 5s abort timeout, so an uncapped
 // sequential loop could burn the whole maxDuration and starve everything after it. Overflow is
 // summarised in one extra message so nothing is silently dropped.
@@ -65,6 +74,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // sinceIso is a rolling wall-clock offset while window_start is hour-truncated, so the oldest
   // partial bucket is included. That biases toward MORE sensitivity, which is the safe direction.
   const totals = new Map<string, { host: string; endpoint: string; total: number }>()
+  const globalByEndpoint = new Map<string, { total: number; hosts: Set<string> }>()
   let rows = 0
   let truncated = false
 
@@ -114,6 +124,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const prev = totals.get(k)
       if (prev) prev.total += cnt
       else totals.set(k, { host, endpoint, total: cnt })
+
+      const g = globalByEndpoint.get(endpoint)
+      if (g) { g.total += cnt; g.hosts.add(host) }
+      else globalByEndpoint.set(endpoint, { total: cnt, hosts: new Set([host]) })
     }
 
     // Advance by the ACTUAL count, so a server-side clamp below PAGE cannot be mistaken for
@@ -160,6 +174,67 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.warn('[cron-spend-audit] over threshold:', JSON.stringify(over.map(o => `${o.host}|${o.endpoint}=${o.total}`)))
   }
 
+  // Cross-host aggregate. Fires independently of the per-host alerts: a Sybil attacker spread
+  // under the per-host limit produces NO per-host over-row yet a large fleet-wide total. Only
+  // the tracked endpoints (via ROLLING_LIMITS) ever entered globalByEndpoint. There are at most
+  // as many entries as tracked endpoints, so no overflow handling is needed here.
+  //
+  // COMPUTED AND LOGGED BEFORE ANY FAN-OUT, deliberately: the per-host fan-out below can hold
+  // up to 22 x 5s of ntfy timeouts, so leaving this after it meant a WIDE run could exhaust
+  // maxDuration before the cross-host finding was ever computed - losing both the alert and the
+  // only record of the contributors. The pure-Sybil case was safe (no per-host rows to alert
+  // on); the mixed case was not.
+  const globalOver: Array<{ endpoint: string; total: number; hosts: number; threshold: number }> = []
+  for (const [endpoint, g] of globalByEndpoint) {
+    const rolling = ROLLING_LIMITS[endpoint]
+    if (typeof rolling !== 'number') continue
+    const threshold = GLOBAL_HOST_EQUIVALENT * rolling
+    if (g.total >= threshold) globalOver.push({ endpoint, total: g.total, hosts: g.hosts.size, threshold })
+  }
+  globalOver.sort((a, b) => b.total - a.total)
+
+  // Fleet total for EVERY tracked endpoint, over threshold or not. This is the calibration
+  // baseline: without it the first evidence that GLOBAL_HOST_EQUIVALENT is too low arrives as a
+  // FALSE POSITIVE, which trains a reactive raise - the wrong direction for a detector.
+  console.log('[cron-spend-audit] fleet totals:', JSON.stringify(
+    [...globalByEndpoint.entries()].map(([e, g]) => `${e}=${g.total}/${GLOBAL_HOST_EQUIVALENT * (ROLLING_LIMITS[e] ?? 0)} (${g.hosts.size} hosts)`)
+  ))
+
+  // For each globally-over endpoint, log its top per-host contributors. In the Sybil case NONE
+  // of them appears in the per-host `over` list, so this is the ONLY place their identities are
+  // recorded - the alert points here.
+  for (const { endpoint } of globalOver) {
+    const contributors = [...totals.values()]
+      .filter(t => t.endpoint === endpoint)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 30)
+      .map(t => `${t.host}=${t.total}`)
+    console.warn(`[cron-spend-audit] GLOBAL ${endpoint} top contributors:`, JSON.stringify(contributors))
+  }
+
+  // GLOBAL fan-out runs BEFORE the per-host one: order a fan-out by severity and boundedness,
+  // not by computation order. This is the higher-signal finding and is structurally bounded to
+  // 7 messages, while the per-host loop can hold up to 22 x 5s of ntfy timeouts ahead of it and
+  // would otherwise be able to exhaust maxDuration before the cross-host alert ever sent.
+  for (const { endpoint, total, hosts, threshold } of globalOver) {
+    try {
+      await sendNtfy({
+        title: 'Bemgu GLOBAL spend alert (cross-host, rolling 6h)',
+        // Kept under sendNtfy's 500-char body slice, with ACTION second so truncation can never
+        // eat the actionable part. The victim-vs-caller warning is load-bearing, not padding.
+        message:
+          `Endpoint ${endpoint}: ${total} calls across ${hosts} hosts in ${WINDOW_HOURS}h (threshold ${threshold}).\n` +
+          `ACTION: see GLOBAL top-contributors in the Vercel logs, then INVESTIGATE BEFORE BLOCKING.\n` +
+          `Contributors are counter KEYS: on guest-chat/daily-greeting/city-events-public the key is the VICTIM host, not the caller - rotate QR secrets / revoke tokens instead.\n` +
+          `A Sybil spread under the per-host limits shows here only.\n` +
+          `${KEY_HINT[endpoint] ?? 'see the endpoint owner'}`,
+        priority: 'high',
+      })
+    } catch (e) {
+      console.warn('[cron-spend-audit] global alert failed (non-fatal)', scrubErr(e, 120))
+    }
+  }
+
   let alerts = 0
   for (const { host, endpoint, total } of over.slice(0, MAX_ALERTS)) {
     alerts++
@@ -168,9 +243,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         title: 'Bemgu SUSTAINED spend alert (rolling 6h)',
         message:
           `Host ${host}: ${total} ${endpoint} calls in the last ${WINDOW_HOURS}h (rolling threshold ${ROLLING_LIMITS[endpoint]}).\n` +
+          `ACTION: INVESTIGATE BEFORE BLOCKING - on guest-chat/daily-greeting/city-events-public this key is the VICTIM host, not the caller (rotate QR secrets / revoke tokens instead).\n` +
           `Paced at/under the hourly cap, so the per-hour alarm alone may not have flagged this.\n` +
-          `${KEY_HINT[endpoint] ?? 'see the endpoint owner'}\n` +
-          `ACTION: block this host in Supabase.`,
+          `${KEY_HINT[endpoint] ?? 'see the endpoint owner'}`,
         priority: 'high',
       })
     } catch (e) {
@@ -208,6 +283,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch { /* best-effort */ }
   }
 
-  console.log(`[cron-spend-audit] scanned=${totals.size} rows=${rows} over=${over.length} alerts=${alerts} pruned=${pruned ?? 'n/a'}${truncated ? ' TRUNCATED' : ''}`)
-  return res.status(200).json({ ok: true, scanned: totals.size, alerts, over: over.length, pruned, truncated })
+  console.log(`[cron-spend-audit] scanned=${totals.size} rows=${rows} over=${over.length} globalOver=${globalOver.length} alerts=${alerts} pruned=${pruned ?? 'n/a'}${truncated ? ' TRUNCATED' : ''}`)
+  return res.status(200).json({ ok: true, scanned: totals.size, alerts, over: over.length, globalOver: globalOver.length, pruned, truncated })
 }

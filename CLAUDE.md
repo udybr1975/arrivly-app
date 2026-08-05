@@ -1236,12 +1236,66 @@ counter error; non-numeric return logs loudly and proceeds. ONE ntfy at limit+1.
   reduction.** Undetected sustained rates that remain: guest-chat ~19.8/hr (~476/day, grounded,
   and remember a unit can be 2 model calls), daily-greeting ~24.8/hr on the SHARED key,
   create-booking ~14.8 passes/hr.
-  **TWO STRUCTURAL GAPS THE PER-HOST DESIGN CANNOT CLOSE — tuning thresholds will never fix
-  either:** (i) **NO CROSS-HOST AGGREGATE, and on the guest surfaces the counter key is the
-  VICTIM host's id** (`apt.host_id`), so an attacker holding tokens across N hosts' apartments
-  runs at N x 49.6%, invisible to BOTH the brakes and this detector. A single global "all
-  tracked endpoints, all hosts, 6h" threshold is the highest-value next addition. (ii) no
-  cross-endpoint view — a host at 49% on all seven endpoints at once is invisible.
+  (i) ~~NO CROSS-HOST AGGREGATE~~ **CLOSED (Aug 5 2026)** — see the Sybil check below.
+  (ii) STILL OPEN: no cross-endpoint view — a host at 49% on all seven endpoints at once is
+  invisible.
+
+CROSS-HOST (SYBIL) AGGREGATE — SHIPPED (Aug 5 2026), closing the top item of three audits.
+`cron-spend-audit` now also sums EVERY host per endpoint and alarms at
+`GLOBAL_HOST_EQUIVALENT (5) x` the per-host rolling threshold. **The framing matters: the old
+residual was `N x 119` and grew WITHOUT LIMIT in N; the fleet residual is now a FIXED CONSTANT
+independent of N.** That is an unbounded leak becoming a bounded one — a genuine closure of the
+SCALING, with a fixed floor.
+- **BUDGETING INPUT (size the Google per-project spend caps against this, it is not a defect):**
+  an attacker with >=6 host keys per surface can still sustain ~599 guest-chat + ~749
+  daily-greeting + ~104 city-events-public units per 6h ~= **5,800 counter units/day**, and since
+  a unit can be 2 model calls, **up to ~11,600 model calls/day** — invisible to every layer. No
+  threshold tweak removes this; every detector has a threshold.
+- The real evadable RATE is lower than `threshold/6` because the window is 6-7 buckets, so a
+  constant-rate attacker must hold any 7-bucket sum under the line: ~85/hr guest-chat, ~107/hr
+  daily-greeting. The `0 */3 * * *` schedule gives full temporal coverage (every instant seen by
+  two runs) — no scheduling blind gap.
+- COVERS BOTH ATTACKER MODELS because the sum discards the host dimension: Sybil-ACCOUNTS (many
+  created accounts hitting the caller-keyed endpoints) and Sybil-VICTIMS (harvested apartment
+  UUIDs/tokens hitting the victim-keyed guest endpoints) land in the same total.
+- **`GLOBAL_HOST_EQUIVALENT = 5` IS A FLEET-SIZE-DEPENDENT KNOB — the first threshold here that
+  scales with fleet size rather than per-host behaviour.** The comment's mental model ("5 hosts
+  at the limit") does NOT match the arithmetic: it is a SUM, so 600 guest-chat calls is 6 calls
+  each from 100 hosts. First false positives land around **50-150 active hosts**, and the binding
+  constraints are the low-limit HOST-AUTH endpoints (`city-events-host` ~45 refresh clicks/6h
+  fleet-wide, `sync-ical` ~75 manual syncs). `city-events-public` and `daily-greeting` are far
+  safer than raw traffic suggests because both bump on **cache MISS only**. A per-run
+  **fleet-totals log** was added so calibration has a BASELINE — otherwise the first evidence the
+  knob is too low arrives as a FALSE POSITIVE, which trains a reactive raise, the wrong direction
+  for a detector. Revisit trigger: any endpoint over 50% of its global threshold on three
+  consecutive runs, or 50 paying hosts, whichever first.
+- **VICTIM-vs-CALLER — THE OPERATOR-SAFETY RULE. An alert's ACTION line is REMEDIATION ADVICE and
+  must be audited as such.** Both alerts previously said "block this host in Supabase". On
+  `guest-chat` / `daily-greeting` / `city-events-public` the counter key is the **VICTIM host**,
+  not the caller — following that instruction disables an innocent PAYING host while the attacker
+  moves on. Both now lead with "INVESTIGATE BEFORE BLOCKING" plus the endpoint-scoped caveat
+  (rotate QR secrets / revoke tokens instead). **Do NOT blanket-rewrite the others:**
+  `create-booking`, `sync-ical`, `generate-guide` are caller-keyed (`userId`), and
+  `city-events-host` passes `apt.host_id` but is caller-keyed because an ownership check precedes
+  it — for those four, blocking IS right.
+- FAN-OUT IS ORDERED BY SEVERITY AND BOUNDEDNESS, NOT COMPUTATION ORDER: the global finding is
+  higher-signal and structurally bounded to 7 messages, so it sends BEFORE the per-host loop,
+  which can hold 22 x 5s of ntfy timeouts. Compute-and-log every finding before ANY fan-out.
+- NTFY LENGTH BUDGETING: bodies are sliced at 500 chars, so an ACTION line placed last can be
+  SILENTLY TRUNCATED away. Measure the worst case as a JOINT max (longest endpoint paired with
+  ITS OWN `KEY_HINT` — the 72-char amplifier hint belongs to the SHORT endpoint names). Measured
+  ceilings: per-host ~443, global ~464. Re-count before adding any line.
+
+**FOLLOW-UP, HIGH PRIORITY, NOT DONE — the same misdirected-remediation defect is live in three
+PER-HOUR brake alarms:** `api/guest-chat.ts`, `api/daily-greeting.ts`, `api/city-events.ts` — all
+three victim-keyed, all three still saying "block this host in Supabase". **`daily-greeting` is
+the worst: it also asserts "Likely mass self-minted guest passes", a FALSE CAUSAL STORY** about a
+host whose guests were the ones targeted. Costs nothing until an alarm fires — but it fires
+exactly once, when the operator is under time pressure with a billed key burning money, and the
+wrong action both fails to stop the attacker and takes a paying host offline. Three-line-per-file
+edit, no logic change. Order: `daily-greeting` (drop the false line), then `guest-chat` (dearest
+call), then `city-events` (already partly hedged). Do this BEFORE the Gemini billing flip, after
+the four remaining project spend caps.
 - `cron-spend-audit` DESIGN NOTES worth keeping: the scan is PAGINATED because an unbounded
   PostgREST select silently truncates at max-rows with NO error — it would have UNDER-COUNTED
   exactly the abusers it exists to catch while still reporting `ok:true`. **A detection control
