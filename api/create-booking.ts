@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { sendNtfy } from './_lib/ntfy.js'
 
 // Host-auth endpoint: creates a manual booking + its own guest row server-side, so
 // the client no longer reads or inserts `guests` directly (which had forced the
@@ -65,6 +66,44 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .eq('host_id', userId)
     .maybeSingle()
   if (!apt) return res.status(403).json({ error: 'Forbidden' })
+
+  // ── Booking-flood brake + alarm (the "amplifier" fix) ───────────────────────────
+  // create-booking mints a fresh in-dates guest pass on every call, with no cap and
+  // host-controlled dates, so a script could mint unlimited valid passes that unlock the
+  // paid guest AI (guest-chat, daily-greeting). This is a REAL cross-instance rate limit
+  // via the atomic bump_api_counter RPC (per host, per UTC hour): the counter IS the brake,
+  // so blocked attempts still increment and stay blocked for the rest of the hour. Fires
+  // ONE ntfy when the host first crosses the limit. Fails OPEN on an infra error so a
+  // counter outage never locks a real host out of adding bookings.
+  const BOOKING_HOURLY_LIMIT = 30
+  {
+    const { data: hourCount, error: counterErr } = await admin.rpc('bump_api_counter', {
+      p_host_id: userId,
+      p_endpoint: 'create-booking',
+    })
+    if (counterErr) {
+      // Fail open: never block a legitimate booking on a counter/infra failure.
+      console.error('[create-booking] counter bump failed (fail-open) —', counterErr.message?.slice(0, 120))
+    } else if (typeof hourCount === 'number' && hourCount > BOOKING_HOURLY_LIMIT) {
+      if (hourCount === BOOKING_HOURLY_LIMIT + 1) {
+        try {
+          await sendNtfy({
+            title: 'Bemgu abuse alert: booking flood',
+            message:
+              `Feature: Booking creation (/api/create-booking)\n` +
+              `Host ${userId} tripped the rate limit (over ${BOOKING_HOURLY_LIMIT}/hour) - now blocked this hour.\n` +
+              `This is the AMPLIFIER: mass bookings mint guest passes that unlock the paid AI features.\n` +
+              `Watch/curb spend on: guest-chat (GEMINI_API_KEY_CHAT) and daily-greeting (GEMINI_API_KEY).\n` +
+              `ACTION: block this host in Supabase. This endpoint itself spends nothing. Vercel logs: /api/create-booking`,
+            priority: 'high',
+          })
+        } catch (e) {
+          console.warn('[create-booking] flood alarm failed (non-fatal)', (e instanceof Error ? e.message : 'unknown').slice(0, 120))
+        }
+      }
+      return res.status(429).json({ error: 'rate_limited' })
+    }
+  }
 
   // Fresh guest row per booking — no cross-host dedup.
   const { data: guest, error: guestErr } = await admin

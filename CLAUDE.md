@@ -1041,6 +1041,40 @@ BOOKING AMPLIFIER — DECISION + PLAN (Aug 5 2026)
   of valid passes (the hourly rate limit only slows minting, it does not bound the standing
   total). Lower priority than the per-endpoint AI brakes (guest-chat, daily-greeting) still
   to come.
+- SHIPPED (Aug 5 2026): the brake is live in `create-booking.ts` — atomic `bump_api_counter`
+  (endpoint key `'create-booking'`) after auth+ownership and BEFORE the guest/booking inserts,
+  so a blocked attempt writes no rows; `429 {error:'rate_limited'}` over 30/hour; ONE ntfy at
+  exactly limit+1. code-reviewer PASS (0 must-fix), security-auditor PASS.
+- DECISION RECORDED — FAIL-OPEN ON COUNTER ERROR IS DELIBERATE AND ACCEPTED (Udy, Aug 5).
+  Unlike `generate-guide` — where the counter is only an alarm and the real gate is the atomic
+  `hosts.guide_claimed_at` claim — here THE COUNTER IS THE ONLY GATE, so a counter/infra error
+  removes the limit entirely. The security-auditor's objection, recorded in full so it is not
+  rediscovered as new: the error conditions CORRELATE WITH THE ATTACK, because a burst from one
+  host hammers a single hot counter row (one row per host/endpoint/UTC-hour) — exactly the shape
+  that produces lock-wait, statement-timeout and pool exhaustion. `p_host_id` is JWT-derived and
+  `p_endpoint` is a literal, so no client-controlled value reaches the RPC and the error path is
+  not directly attacker-triggerable. Accepted anyway because adding a booking is a low-frequency
+  human action and locking real hosts out of their own calendar is the worse failure. REVISIT
+  (flip to `503 unavailable`) if counter-bump errors are ever actually observed in the logs.
+- RESIDUAL BYPASS, CONFIRMED, NOT FIXED — `sync-ical.ts` is the OTHER token-minting path.
+  The rationed asset is `bookings.reference_number` (the guest pass), not "calls to
+  create-booking". `sync-ical` → `syncApartmentBookings` → `reconcile_ical_bookings` mints ONE
+  `ARR-` token PER VEVENT from a host-supplied feed URL, guarded only by a per-Lambda-instance
+  5/min `Map` limiter (best-effort, not a cross-instance cap) and NO `bump_api_counter`. So the
+  uncapped path dominates the capped one: create-booking = 1 token/request hard-capped at 30/h;
+  sync-ical = N tokens/request with N attacker-chosen. FIX WHEN PICKED UP: add
+  `bump_api_counter` with endpoint `'sync-ical'` after the ownership check, and/or cap
+  `p_events.length` before the RPC. `import-airbnb-csv.ts` was checked and CLEARED (it only
+  names existing bookings, never inserts one); `demo-create.ts` seeds exactly one behind
+  Turnstile.
+- SCOPE HONESTY — what 30/hour does NOT bound. `daily-greeting` caches on
+  `(booking_id, local_date, day_part)`, so EVERY new booking is a guaranteed cache miss (up to
+  4 fresh generations per token per day on `GEMINI_API_KEY`); at 30/h ≈ 720 tokens/day that is
+  up to ~2,880 generations/day/host. `guest-chat`'s limiter is keyed apartment+IP per-instance,
+  NOT per-token, so ONE token already permits substantial chat spend — the booking brake is not
+  the control there. The per-endpoint AI brakes (guest-chat, daily-greeting) are still the real
+  fix and are still to come. Also note `create-booking` has NO plan/subscription check, so the
+  global bound is 30/hour x number of accounts an attacker registers.
 
 ## SESSION Jul 29 2026 (2) — compliance pins + the guide became grounded
 
