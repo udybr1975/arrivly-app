@@ -1286,16 +1286,42 @@ SCALING, with a fixed floor.
   ITS OWN `KEY_HINT` — the 72-char amplifier hint belongs to the SHORT endpoint names). Measured
   ceilings: per-host ~443, global ~464. Re-count before adding any line.
 
-**FOLLOW-UP, HIGH PRIORITY, NOT DONE — the same misdirected-remediation defect is live in three
-PER-HOUR brake alarms:** `api/guest-chat.ts`, `api/daily-greeting.ts`, `api/city-events.ts` — all
-three victim-keyed, all three still saying "block this host in Supabase". **`daily-greeting` is
-the worst: it also asserts "Likely mass self-minted guest passes", a FALSE CAUSAL STORY** about a
-host whose guests were the ones targeted. Costs nothing until an alarm fires — but it fires
-exactly once, when the operator is under time pressure with a billed key burning money, and the
-wrong action both fails to stop the attacker and takes a paying host offline. Three-line-per-file
-edit, no logic change. Order: `daily-greeting` (drop the false line), then `guest-chat` (dearest
-call), then `city-events` (already partly hedged). Do this BEFORE the Gemini billing flip, after
-the four remaining project spend caps.
+**~~FOLLOW-UP — misdirected remediation in the three PER-HOUR brake alarms~~ DONE (Aug 5 2026).**
+`guest-chat`, `daily-greeting` and `city-events` (public) are victim-keyed and all three said
+"block this host in Supabase"; `daily-greeting` additionally asserted "Likely mass self-minted
+guest passes", a FALSE CAUSAL STORY about a host whose guests were the target. All three now lead
+their ACTION with "INVESTIGATE, do not auto-block" plus why (the key may be a victim) and what to
+do instead. **The four caller-keyed alarms — `create-booking`, `sync-ical`, `generate-guide`,
+`refresh-events` — deliberately still say "block this host", which is CORRECT for them. Never
+blanket-rewrite them.** `refresh-events` must be classified by the ownership check that PRECEDES
+its bump, not by the variable name: it passes `apt.host_id` but is caller-keyed.
+- **NTFY 500-CHAR BUDGET — the spec'd replacements would have OVERFLOWED all three (~520 / ~585 /
+  ~528) and silently truncated the very ACTION line being fixed.** Tightened, and the trailing
+  `Logs: /api/...` clause dropped because line 1 of every message already carries the endpoint
+  path. Measured finals: **guest-chat 453, city-events 465, daily-greeting 473.** These are PROOFS
+  not samples — the alarm fires only at `count === LIMIT + 1` (a constant) and the only other
+  interpolation is a fixed 36-char UUID, so **worst case == typical case, no variable-length
+  fields**. `daily-greeting` at 27 chars spare is the TIGHTEST MESSAGE IN THE REPO: measure before
+  touching it.
+- RECOMMENDED, NOT DONE (all three text-only, so batch them — each edit re-runs both gates):
+  (a) **`city-events` now OVER-ASSERTS innocence** — "= the VICTIM here, not the caller". A
+      hostile host CAN be the caller: hitting their own apartment UUID unauthenticated gives them
+      **7 grounded generations/hour vs the 3/hour their authenticated `refresh-events` reserve
+      allows**, so the anonymous path is the CHEAPER one for them. This is the SYMMETRIC defect to
+      the one just fixed — **an alert can mislead by over-asserting innocence, not only by
+      accusing the victim.** Fix: "USUALLY the VICTIM, not the caller" (+4 chars, budget-safe).
+  (b) "Revoke token" is ACTIONABLE (an operator `UPDATE bookings SET status='cancelled'` kills the
+      token across guest-chat/daily-greeting/guest-state) **but INCOMPLETE: it does not close a
+      leaked QR key.** `guest-state` returns the current in-dates booking's `reference_number` to
+      anyone presenting the apartment's `qr_secret`, so revoking one token only holds until the
+      next booking. The GLOBAL alert already says "rotate QR secrets / revoke tokens"; the
+      per-endpoint ones say only "Revoke token". Adding it costs 18 of daily-greeting's 27 spare
+      chars, so trim its line 4 in the same edit.
+  (c) "Check source IPs" is UNVERIFIED, not wrong: `city-events` computes `clientIp(req)` for the
+      per-instance limiter and DISCARDS it, so nothing on the flood path emits an IP — the
+      instruction depends on Vercel exposing request IPs in the log view AND on log retention
+      outliving the alert. Self-supporting fix = log the tripping IP beside the alarm (value is
+      already in scope). That is a LOGIC change, so it needs its own pass.
 - `cron-spend-audit` DESIGN NOTES worth keeping: the scan is PAGINATED because an unbounded
   PostgREST select silently truncates at max-rows with NO error — it would have UNDER-COUNTED
   exactly the abusers it exists to catch while still reporting `ok:true`. **A detection control

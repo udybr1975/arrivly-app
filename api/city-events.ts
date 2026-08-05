@@ -94,7 +94,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               `Host ${apt.host_id} hit ${evCount} public events generations this hour (limit ${CITY_EVENTS_PUBLIC_LIMIT}).\n` +
               `GROUNDED gemini-2.5-flash on GEMINI_API_KEY_EVENTS. Reachable with only an apartment UUID (public).\n` +
               `DISABLE if needed: GEMINI_API_KEY_EVENTS = project gen-lang-client-0131909896 (city events only).\n` +
-              `ACTION: block this host in Supabase, or check for a flood on one apartment UUID. Vercel logs: /api/city-events`,
+              `ACTION: INVESTIGATE, do not auto-block. Key = apartment host = the VICTIM here, not the caller. Check source IPs.`,
             priority: 'high',
           })
         } catch (e) {

@@ -106,7 +106,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               `Host ${apt.host_id} hit ${chatCount} chat calls this hour (limit ${CHAT_HOURLY_LIMIT}).\n` +
               `GROUNDED gemini-2.5-flash on GEMINI_API_KEY_CHAT - the dearest call in the system.\n` +
               `DISABLE if needed: GEMINI_API_KEY_CHAT = project gen-lang-client-0221179352 (guest-chat only).\n` +
-              `ACTION: block this host in Supabase. Vercel logs: /api/guest-chat`,
+              `ACTION: INVESTIGATE, do not auto-block. Key = apartment host: culprit (self-minted passes) or VICTIM (leaked token). Revoke token or block per findings.`,
             priority: 'high',
           })
         } catch (e) {
