@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { generateCityEvents } from './_lib/city-events.js'
+import { sendNtfy } from './_lib/ntfy.js'
 
 // PUBLIC guest read path. Cache-first: ~all guests hit a DB read only. The ONLY way
 // to trigger a Gemini call is to be the first caller for an uncached apartment
@@ -46,7 +47,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Authoritative apartment from DB — never trust a client-supplied city.
   const { data: apt, error: aptErr } = await supabase
     .from('apartments')
-    .select('id, city, country, is_visible')
+    .select('id, host_id, city, country, is_visible')
     .eq('id', apartmentId)
     .maybeSingle()
   if (aptErr || !apt || apt.is_visible === false || !apt.city) {
@@ -64,6 +65,43 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Lazy first-fill: rate-limit (this is the only Gemini-touching guest path).
   if (rateLimited(`${apartmentId}:${clientIp(req)}`, Date.now())) {
     return res.status(429).json({ error: true })
+  }
+
+  // Cross-instance per-host cap on the GROUNDED events generation (GEMINI_API_KEY_EVENTS).
+  // The per-instance limiter above is porous across Lambdas; a null/failed generation writes
+  // no cache row, so without this a host with a failing city could loop the grounded call
+  // unbounded. Shared 'city-events' budget with refresh-events. FAIL CLOSED (like the other
+  // grounded guest paths): a block just yields the no-events state, while failing open would
+  // spend the events key during the burst that breaks the counter. ONE ntfy at limit+1.
+  const CITY_EVENTS_HOURLY_LIMIT = 10
+  {
+    const { data: evCount, error: evCountErr } = await supabase.rpc('bump_api_counter', {
+      p_host_id: apt.host_id,
+      p_endpoint: 'city-events',
+    })
+    if (evCountErr) {
+      console.warn('[city-events] counter bump failed (fail-closed) -', evCountErr.message?.slice(0, 120))
+      return res.status(200).json({ error: true })
+    }
+    if (typeof evCount === 'number' && evCount > CITY_EVENTS_HOURLY_LIMIT) {
+      if (evCount === CITY_EVENTS_HOURLY_LIMIT + 1) {
+        try {
+          await sendNtfy({
+            title: 'Bemgu spend alert: city-events',
+            message:
+              `Feature: City events generation (city-events / refresh-events)\n` +
+              `Host ${apt.host_id} hit ${evCount} events generations this hour (limit ${CITY_EVENTS_HOURLY_LIMIT}).\n` +
+              `GROUNDED gemini-2.5-flash on GEMINI_API_KEY_EVENTS.\n` +
+              `DISABLE if needed: GEMINI_API_KEY_EVENTS = project gen-lang-client-0131909896 (city events only).\n` +
+              `ACTION: block this host in Supabase. Vercel logs: /api/city-events + /api/refresh-events`,
+            priority: 'high',
+          })
+        } catch (e) {
+          console.warn('[city-events] alarm failed (non-fatal)', (e instanceof Error ? e.message : 'unknown').slice(0, 120))
+        }
+      }
+      return res.status(429).json({ error: true })
+    }
   }
 
   const { payload } = await generateCityEvents({ id: apt.id, city: apt.city, country: apt.country })

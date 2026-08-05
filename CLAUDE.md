@@ -1204,6 +1204,59 @@ counter error; non-numeric return logs loudly and proceeds. ONE ntfy at limit+1.
   alert is **UNVERIFIED against Google Cloud** — it appears nowhere else in the repo. CONFIRM IT
   AND ADD IT TO THE KEY MAP: if wrong, the operator disables the wrong key mid-incident.
 
+CITY-EVENTS SPEND BRAKE — SHIPPED (Aug 5 2026), closing the last uncapped grounded surface.
+Both `city-events.ts` (PUBLIC lazy-fill) and `refresh-events.ts` (host refresh) now bump
+`bump_api_counter` before `generateCityEvents`, sharing ONE per-host budget of 10/hour under the
+key `'city-events'`. Both FAIL CLOSED on a counter error using their own soft shape
+(`200 {error:true}` / `200 {refreshed:false,reason:'busy'}`). ONE ntfy at limit+1.
+- WHY IT WAS UNBOUNDED: a null/failed generation writes NO cache row, so the cache-miss branch
+  re-fires forever; `refresh-events`' 20h freshness gate has the identical never-arms defect
+  (read-then-generate, and the gate only arms once a row exists). Both closed by the counter.
+- ORDERING IS THE LOAD-BEARING PART: the brake sits AFTER the cache read, and `city-events` has
+  NO cache TTL — so once any generation succeeds, every later public call is a DB read forever.
+  The public path can only spend on apartments that are uncached AND whose generation keeps
+  failing. Warm guests cost 0 units; a host clicking Refresh on a fresh property costs 0.
+- REAL CEILING: 10 units x the `withRetry(retries:1)` in `_lib/city-events.ts` = **<=20 grounded
+  calls/host/hour, <=480/day** (realistic ~10/hr — the retry only fires on transient errors).
+  AND `EventsPage.tsx` retries 3x on `{error:true}`, so ONE failing guest view burns 3 of the 10
+  units; ~4 page-opens exhaust the hour. Size expectations off that, not off "10".
+- **W-1, OPEN DESIGN CALL — THE SHARED KEY IS THE FIRST COUNTER SPANNING AN UNAUTHENTICATED AND
+  AN AUTHENTICATED SURFACE, and the auditor recommends splitting it.** An anonymous stranger
+  holding ONE apartment UUID can, in ~11 cheap requests, make the HOST'S OWN "Refresh events"
+  button fail for the rest of the hour, across ALL that host's properties — never
+  authenticating, never proving any relationship to the property. Suggested split, same total
+  wallet: `'city-events-public'` limit 7 + `'city-events-host'` limit 3, which reserves a
+  host allowance no stranger can touch AND makes the two surfaces independently observable (the
+  alert currently cannot say which surface caused it — note it hedges by naming both endpoints).
+  NOT SHIPPED — recorded as a deliberate open decision. Mitigations that make it non-urgent: the
+  attack is partly SELF-DEFEATING (the attacker's own first request fills the cache, after which
+  both surfaces short-circuit before the counter), the cache row is never touched, guests keep
+  last-good events, and the daily cron refreshes regardless.
+- **APARTMENT UUIDs ARE FREELY OBTAINABLE — treat "the attacker knows one" as GIVEN for every
+  public endpoint keyed on one.** Not enumerable (UUIDv4, 122 bits), but: every guest link
+  carries it in plain sight (`/guest?apt=UUID`, kept forever by any past guest/cleaner/QR
+  photographer, with no per-guest revocation), and **`api/welcome.ts` returns the raw
+  `apartment.id` in the body of the fully public `/w/:code` endpoint** — and welcome links are
+  DESIGNED to be broadcast over Airbnb/WhatsApp/email. This makes W-1 a real targeted attack,
+  though it rules out mass random abuse.
+- W-2, NOT APPLIED: both files use the 2-branch `if (typeof evCount === 'number' && …)` shorthand
+  instead of the 3-branch house convention set by `daily-greeting`/`guest-chat`. Consequence: if
+  the RPC's return shape ever changes, the brake SILENTLY DISABLES ITSELF and generates unbraked
+  **with no log line anywhere** — on the unauthenticated endpoint, where it matters most. Fix is
+  purely the missing `console.error` (2 lines per file).
+- CACHE RACE: still structurally present (N concurrent cold callers all miss, all generate), but
+  it can no longer OVER-SPEND — each request bumps its own unit first, so N concurrent requests
+  consume N units. The race just compresses the hour's budget into seconds.
+- THIRD CALLER NOT BRAKED: `demo-create.ts` also calls `generateCityEvents` on the same key
+  (Turnstile + one-demo gated). The shared-budget comments read as if `'city-events'` covers the
+  whole key — it does not.
+- `cron-refresh-events` deliberately does NOT bump: it is cron-authorised, daily, booking-
+  filtered. Keep it that way — adding it would let a guest starve the cron.
+- INFO: `city-events.ts`'s `rlHits` Map has NO bounded-memory sweep (unlike `guest-chat`'s
+  `RL_MAX_KEYS`), on the endpoint with the least-trusted callers. `GEMINI_API_KEY_EVENTS =
+  gen-lang-client-0131909896` is likewise UNVERIFIED against Google Cloud — confirm with the
+  chat project ID and record both in the key map.
+
 ## SESSION Jul 29 2026 (2) — compliance pins + the guide became grounded
 
 Four commits, all live and SHA-verified against Vercel production.
