@@ -6,6 +6,7 @@ export interface SyncResult {
   imported: number
   skipped: number
   errors: string[]
+  capped?: boolean
 }
 
 // Clean, unambiguous reference token for a brand-new feed booking. Unbiased pick from
@@ -18,6 +19,15 @@ function generateRef(): string {
   for (let i = 0; i < 6; i++) s += REF_ALPHABET[randomInt(REF_ALPHABET.length)]
   return `ARR-${s}`
 }
+
+// Host-controlled volume caps. A malicious host can point ical_urls at a feed with tens
+// of thousands of VEVENTs (each event mints a fresh ARR- guest pass) or paste many URLs.
+// A real single-unit calendar is far smaller: one unit holds one guest at a time, so a
+// typical host has ~20-50 current+future events. 100 leaves headroom while still cutting
+// the attack; a rare maxed-out far-booked unit may exceed it and be skipped (visible
+// error). Over the event cap we mint NOTHING (safe default), never a partial batch. Tunable.
+const MAX_ICAL_URLS = 20
+const MAX_ICAL_EVENTS = 100
 
 export function detectSource(url: string): string {
   if (/airbnb/i.test(url)) return 'airbnb'
@@ -74,17 +84,31 @@ export async function syncApartmentBookings(
   let skipped = 0
   const errors: string[] = []
 
-  const urls = (apartment.ical_urls ?? '')
+  const allUrls = (apartment.ical_urls ?? '')
     .split('\n')
     .map((u) => u.trim())
     .filter((u) => u.startsWith('https://'))
+  const urls = allUrls.slice(0, MAX_ICAL_URLS)
+  if (allUrls.length > urls.length) {
+    errors.push(`only the first ${MAX_ICAL_URLS} calendar links were synced`)
+  }
   if (urls.length === 0) return { imported, skipped, errors }
+
+  let totalEvents = 0
+  let capped = false
 
   // Accumulate parsed events per base source; track which sources had ≥1 URL and which
   // had at least one failed fetch (so they're excluded from reconciliation this run).
   const eventsBySource = new Map<string, ReconcileEvent[]>()
   const sourcesSeen = new Set<string>()
   const incompleteSources = new Set<string>()
+
+  // A URL dropped by MAX_ICAL_URLS is an UNREAD feed, exactly like a failed fetch — so its
+  // source must be marked incomplete too. Without this, a dropped link sharing a source with
+  // a kept one (e.g. two airbnb feeds, the 21st dropped) would reconcile that source from a
+  // PARTIAL uid set, and the RPC's soft-cancel would cancel live bookings that existed only
+  // in the dropped feed.
+  for (const dropped of allUrls.slice(MAX_ICAL_URLS)) incompleteSources.add(detectSource(dropped))
 
   for (const url of urls) {
     const source = detectSource(url)
@@ -100,6 +124,7 @@ export async function syncApartmentBookings(
       const events = parseIcal(response.text)
       const bucket = eventsBySource.get(source)!
       for (const event of events) {
+        if (totalEvents >= MAX_ICAL_EVENTS) { capped = true; break }
         bucket.push({
           uid: event.uid,
           check_in: event.start,
@@ -107,7 +132,9 @@ export async function syncApartmentBookings(
           is_block: /blocked|not available|unavailable|closed/i.test(event.summary),
           new_ref: generateRef(),
         })
+        totalEvents++
       }
+      if (capped) break
     } catch {
       // safeFetchIcal threw (blocked host, timeout, oversize, non-https, redirect cap,
       // transport error). Generic host-facing string only — no URL, no blocked-vs-network
@@ -115,6 +142,12 @@ export async function syncApartmentBookings(
       errors.push(`${source}: couldn't be used (check it's a public https calendar link)`)
       incompleteSources.add(source)
     }
+  }
+
+  // Over the per-sync event cap => an abusive or malformed feed. Mint NOTHING and let the
+  // caller alert: a partial 100-pass batch would still be an amplifier.
+  if (capped) {
+    return { imported: 0, skipped: 0, errors: [...errors, 'too many calendar events - sync skipped'], capped: true }
   }
 
   // Reconcile each fully-fetched source exactly once. A source with any failed fetch is

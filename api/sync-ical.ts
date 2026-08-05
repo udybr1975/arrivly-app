@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { sendPushToHost } from './_lib/push.js'
 import { syncApartmentBookings } from './_lib/ical.js'
+import { sendNtfy } from './_lib/ntfy.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
@@ -21,6 +22,28 @@ function rateLimited(key: string, now: number): boolean {
   }
   entry.count += 1
   return entry.count > RL_MAX
+}
+
+const SYNC_HOURLY_LIMIT = 5
+
+// Shared abuse alert for the two iCal-flood signals (hourly-limit trip, or a single sync
+// hitting the per-sync event cap). Best-effort; never throws. ASCII-only; env var NAMES
+// only, never a key value.
+async function fireSyncAbuseAlert(userId: string, reason: string): Promise<void> {
+  try {
+    await sendNtfy({
+      title: 'Bemgu abuse alert: iCal sync flood',
+      message:
+        `Feature: iCal calendar sync (/api/sync-ical)\n` +
+        `Host ${userId}: ${reason}.\n` +
+        `This is an AMPLIFIER: each calendar event mints a guest pass that unlocks the paid AI.\n` +
+        `Watch/curb spend on: guest-chat (GEMINI_API_KEY_CHAT) and daily-greeting (GEMINI_API_KEY).\n` +
+        `ACTION: block this host in Supabase. This endpoint itself spends nothing. Vercel logs: /api/sync-ical`,
+      priority: 'high',
+    })
+  } catch (e) {
+    console.warn('[sync-ical] abuse alarm failed (non-fatal)', (e instanceof Error ? e.message : 'unknown').slice(0, 120))
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -54,10 +77,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (aptErr || !apt) return res.status(404).json({ error: 'Apartment not found' })
   if (apt.host_id !== userId) return res.status(403).json({ error: 'Forbidden' })
 
-  const { imported, skipped, errors } = await syncApartmentBookings(supabase, {
+  // Cross-instance hourly brake. The per-instance 5/min limiter above is best-effort only
+  // (Vercel spreads load across lambdas); this atomic counter is the real cross-instance
+  // cap on syncs per host per hour. Fail-open on an infra error so a counter outage never
+  // blocks a legitimate calendar sync.
+  {
+    const { data: syncCount, error: counterErr } = await supabase.rpc('bump_api_counter', {
+      p_host_id: userId,
+      p_endpoint: 'sync-ical',
+    })
+    if (counterErr) {
+      console.error('[sync-ical] counter bump failed (fail-open) -', counterErr.message?.slice(0, 120))
+    } else if (typeof syncCount === 'number' && syncCount > SYNC_HOURLY_LIMIT) {
+      if (syncCount === SYNC_HOURLY_LIMIT + 1) {
+        await fireSyncAbuseAlert(userId, `rate limit tripped (over ${SYNC_HOURLY_LIMIT} syncs/hour)`)
+      }
+      return res.status(429).json({ error: 'rate_limited' })
+    }
+  }
+
+  const { imported, skipped, errors, capped } = await syncApartmentBookings(supabase, {
     id: apartment_id,
     ical_urls: apt.ical_urls,
   })
+
+  if (capped) {
+    await fireSyncAbuseAlert(userId, 'a single sync exceeded the per-sync calendar-event cap')
+  }
 
   if (imported > 0) {
     try {

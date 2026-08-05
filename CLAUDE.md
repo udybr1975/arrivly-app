@@ -1076,6 +1076,48 @@ BOOKING AMPLIFIER — DECISION + PLAN (Aug 5 2026)
   fix and are still to come. Also note `create-booking` has NO plan/subscription check, so the
   global bound is 30/hour x number of accounts an attacker registers.
 
+ICAL AMPLIFIER — CLOSED (Aug 5 2026). The residual bypass above is fixed in `_lib/ical.ts` +
+`sync-ical.ts`. `MAX_ICAL_URLS = 20`, `MAX_ICAL_EVENTS = 100` per sync (the counter is GLOBAL to
+the sync, not per URL or per source), plus a cross-instance `bump_api_counter` cap of 5 syncs/
+host/UTC-hour (endpoint key `'sync-ical'`) on top of the retained per-instance 5/min limiter.
+Over the event cap the sync mints NOTHING — it returns before the reconcile loop, because a
+partial 100-pass batch would still be an amplifier. NEW WORST CASE: 5 x 100 = **500 passes/host/
+hour** (was unbounded). Re-syncing the same feed mints nothing (the RPC never writes
+`reference_number` ON CONFLICT), so sustaining that needs 100 NEW uids per sync.
+- LOAD-BEARING INVARIANT, do not refactor away: a dropped URL, a failed fetch and an over-cap
+  parse are all "we did not read this feed completely", and ALL THREE must converge on "do not
+  reconcile this source". The security-auditor caught a real regression here — URL truncation
+  sliced dropped links off BEFORE the fetch loop, so their source never entered
+  `incompleteSources`; a dropped link sharing a source with a kept one (two airbnb feeds, the
+  21st dropped) would have reconciled from a PARTIAL uid set and SOFT-CANCELLED live bookings
+  that existed only in the dropped feed. Fixed by marking dropped sources incomplete. NOTE the
+  RPC's `cardinality(uids)>0` guard does NOT cover this case — the uid array is non-empty (the
+  kept feed's uids), which is exactly why the guard would not have saved it.
+- STILL OPEN / tracked (none blocking):
+  (a) NO ALERT ON VOLUME MINTED. Both alarms fire on RATE (5/h) and on CAP (100). An attacker
+      serving exactly 100 uids and stopping at 5 syncs/hour mints 500 passes/hour with BOTH
+      ALARMS SILENT. Cheapest fix: alert on `imported` per sync, not just request count.
+  (b) The capped alert is NOT one-shot (unlike the rate alert's strict `=== LIMIT + 1`), so a
+      capped host can fire up to 5 high-priority ntfy/hour. Give it the same dedupe.
+  (c) `MAX_ICAL_URLS = 20` x the 10s `safeFetchIcal` timeout = up to 200s against
+      `maxDuration: 150` — interactive: a self-inflicted 504 with the counter already spent;
+      CRON: with `mapPool` concurrency 4, one host's slow feeds can burn the window and starve
+      other hosts' syncs (a cross-tenant availability lever). Pre-existing and IMPROVED by the
+      URL cap, not introduced. Consider `MAX_ICAL_URLS ~= 10` and/or a cron wall-clock budget.
+  (d) `cron-sync-ical.ts` (deliberately unmodified) has NO `bump_api_counter`, so it remains the
+      residual per-host-uncapped path (100 x #apartments/day; unbounded for `is_exempt`/Tier 4).
+      It also never fires the capped alert — cron-side cap trips are silent.
+  (e) FAIL-OPEN on `counterErr` retained per spec, matching the create-booking decision above.
+      Auditor's distinction, recorded: here each slipped call mints up to 100 passes rather than
+      1, so the same infra error costs 100x — and an interactive sync is not needed for a host to
+      function (the daily cron covers the scheduled path). Revisit to `503` before the other one.
+  (f) Third shrink path, benign today: the `startsWith('https://')` filter also drops URLs
+      without marking the source incomplete. Only bites if a previously-synced https link is
+      edited to http. Fold in if that filter is ever touched.
+  (g) UX: `PropertySetup.syncNow` toasts success even when a sync was capped or truncated, and
+      renders only `errors.length` as "N links couldn't be read"; the 429 shows raw. Same
+      user-visible gap already tracked for create-booking.
+
 ## SESSION Jul 29 2026 (2) — compliance pins + the guide became grounded
 
 Four commits, all live and SHA-verified against Vercel production.
