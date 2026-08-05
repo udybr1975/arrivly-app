@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { resolveGuestAccess } from './_lib/guest-access.js'
 import { generateDailySuggestion } from './_lib/greeting.js'
 import { scrubErr } from './_lib/scrub.js'
+import { sendNtfy } from './_lib/ntfy.js'
 
 const UUID_RE  = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const TOKEN_RE = /^[A-Za-z0-9-]{4,32}$/
@@ -83,12 +84,71 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ suggestion: cached.suggestion })
     }
 
-    // Cache miss: load apartment context for the prompt
+    // Cache miss: load apartment context for the prompt (host_id added for the spend brake)
     const { data: apartment } = await db
       .from('apartments')
-      .select('neighborhood, city')
+      .select('host_id, neighborhood, city')
       .eq('id', apt)
       .maybeSingle()
+
+    // ── Per-host spend brake + alarm on the paid path (cache MISS only, BEFORE Gemini) ──
+    // Each miss spends one gemini-2.5-flash call on the shared GEMINI_API_KEY. The cache
+    // caps a single booking at 4/day, so the exposure is MANY passes (self-minted by a
+    // hostile host). This cross-instance atomic counter, keyed on the apartment's HOST,
+    // caps generations per host per hour regardless of accumulated passes. Guest-facing:
+    // on breach we DEGRADE to null (static copy), never 429 the guest hero. ONE ntfy at
+    // limit+1. FAIL-CLOSED on both an unresolved host_id and a counter error — see below.
+    // ASCII-only alert; env var NAME + public project ID only, never a key value. LIMIT is
+    // intentionally low for current scale (few hosts); raise when Tier 4 / many hosts exist.
+    const DAILY_GREETING_HOURLY_LIMIT = 50
+    const greetingHostId = typeof apartment?.host_id === 'string' ? apartment.host_id : null
+    // FAIL CLOSED. `.maybeSingle()` returns {data:null,error} instead of throwing, so a failed
+    // apartment read would otherwise SKIP the whole brake and generate unbraked+unalarmed —
+    // under the very DB stress that also breaks the counter. `apartments.host_id` is NOT NULL
+    // and the row must exist (resolveGuestAccess just matched a booking against it), so null
+    // here means DB failure, never a valid state. Costs only the static fallback line.
+    if (!greetingHostId) {
+      console.warn('[daily-greeting] host_id unresolved (fail-closed)')
+      return res.status(200).json({ suggestion: null })
+    }
+    {
+      const { data: greetCount, error: greetCountErr } = await db.rpc('bump_api_counter', {
+        p_host_id: greetingHostId,
+        p_endpoint: 'daily-greeting',
+      })
+      if (greetCountErr) {
+        // FAIL CLOSED, deliberately — the opposite of the sibling brakes, because here the
+        // blocked behaviour IS the fallback: a guest gets the same static line either way.
+        // Failing closed costs a cosmetic sentence; failing open would spend uncapped Gemini
+        // during exactly the burst that broke the counter (a hot single-row counter under
+        // load is what produces lock contention and statement timeouts).
+        console.warn('[daily-greeting] counter bump failed (fail-closed)', scrubErr(greetCountErr, 120))
+        return res.status(200).json({ suggestion: null })
+      } else if (typeof greetCount !== 'number') {
+        // No usable count (e.g. the RPC's return shape changed) — the brake would otherwise
+        // disable itself silently. Log loudly and generate: the shape is stable today, so a
+        // hard block here would be a self-inflicted outage on an unproven failure mode.
+        console.error('[daily-greeting] counter returned a non-numeric count — brake inactive', typeof greetCount)
+      } else if (greetCount > DAILY_GREETING_HOURLY_LIMIT) {
+        if (greetCount === DAILY_GREETING_HOURLY_LIMIT + 1) {
+          try {
+            await sendNtfy({
+              title: 'Bemgu spend alert: daily-greeting',
+              message:
+                `Feature: Daily guest greeting (/api/daily-greeting)\n` +
+                `Host ${greetingHostId} generated ${greetCount} greetings this hour (limit ${DAILY_GREETING_HOURLY_LIMIT}).\n` +
+                `Spends gemini-2.5-flash on the shared GEMINI_API_KEY. Likely mass self-minted guest passes.\n` +
+                `DISABLE if needed: GEMINI_API_KEY = project gen-lang-client-0819525902 (also powers host-picks/rewrite/bulk-import).\n` +
+                `ACTION: block this host in Supabase. Vercel logs: /api/daily-greeting`,
+              priority: 'high',
+            })
+          } catch (e) {
+            console.warn('[daily-greeting] alarm failed (non-fatal)', scrubErr(e, 120))
+          }
+        }
+        return res.status(200).json({ suggestion: null })
+      }
+    }
 
     // Gather up to 5 nearby place names: host_picks first, then guide_recommendations
     const [{ data: picks }, { data: guide }] = await Promise.all([

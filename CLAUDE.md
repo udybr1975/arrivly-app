@@ -1118,6 +1118,50 @@ hour** (was unbounded). Re-syncing the same feed mints nothing (the RPC never wr
       renders only `errors.length` as "N links couldn't be read"; the 429 shows raw. Same
       user-visible gap already tracked for create-booking.
 
+DAILY-GREETING SPEND BRAKE — SHIPPED (Aug 5 2026). Per-host cross-instance cap of 50
+generations/host/UTC-hour via `bump_api_counter` (endpoint key `'daily-greeting'`), counted ONLY
+on the cache-MISS paid path and placed BEFORE Gemini. Guest-facing, so a breach returns
+`200 {suggestion:null}` (static copy) — NEVER a 4xx/5xx to the guest hero. ONE ntfy at limit+1.
+Counter keyed on the APARTMENT'S HOST (the caller is unauthenticated); a token for host X can
+only ever charge host X, and unverified/public callers return before the RPC, so the limit is
+not third-party-exhaustible across tenants.
+- **THE REAL FINDING — A CACHE KEY CAPS SPEND ONLY SEQUENTIALLY.** The cache row is written
+  AFTER the 2-13s Gemini call, so K CONCURRENT requests on ONE valid pass all miss the cache and
+  all spend. The "4 generations/day per booking" ceiling was therefore never a spend bound —
+  before this brake, a single legitimate in-dates pass was worth UNBOUNDED Gemini spend, capped
+  only by Gemini's own per-minute 429. This is why the counter matters far more than the
+  pass-minting arithmetic suggested. Recognise this shape anywhere a cache is treated as a cap.
+- **FAIL-CLOSED HERE, DELIBERATELY OPPOSITE TO THE SIBLING BRAKES — do not "fix" the
+  inconsistency.** `create-booking`/`sync-ical` fail OPEN because blocking costs a host real
+  work. Here the blocked behaviour IS the free fallback (the same static line the UI renders
+  anyway), so failing closed costs a cosmetic sentence while failing open would spend uncapped
+  Gemini during exactly the burst that breaks the counter. GENERAL RULE: fail-open is
+  indefensible when the failure fallback is free.
+- **A FAIL-CLOSED GATE IS ONLY COMPLETE WHEN EVERY QUERY FEEDING THE GATE'S CONDITION ALSO FAILS
+  CLOSED.** Closing the counter-error leg moved the hole one line up: the apartment select uses
+  `.maybeSingle()`, which reports query FAILURE as `data:null` — indistinguishable from "no row"
+  — so a failed read skipped the whole brake and generated unbraked+unalarmed, under the same DB
+  stress. Now an early return. `.maybeSingle()` is the specific trap.
+- Non-numeric RPC return logs loudly (`console.error`, brake inactive) and still generates —
+  reachable only via an operator-side change to the RPC's return shape, never by attacker input.
+- STILL OPEN / tracked:
+  (a) `GuestPage.tsx` fires this endpoint TWICE per load (the effect is keyed on `weather`: once
+      with `temp:null`, once after weather resolves), so effective legit headroom is ~25 fresh
+      loads/host/hour, not 50. A multi-property host at a morning boundary could self-trip the
+      brake, degrade their own guests AND fire a false "likely mass self-minted passes" alert.
+      De-dupe that fetch, or raise the limit, BEFORE real multi-property hosts exist.
+  (b) The apartment select still discards its error string — the fail-closed log says THAT it
+      failed, not WHY. Observability only now that the branch is closed.
+  (c) `guest-chat` remains UNCAPPED cross-instance (per-Lambda 15/min per apt+IP only) and is
+      GROUNDED, so dearer per call. **The amplifier chain is NOT fully capped — do not record it
+      as such.** This is the next brake.
+  (d) Optional: page via `sendNtfy` on RPC shape drift instead of only logging.
+- **BUILD CAVEAT, GENERAL — `npm run build` DOES NOT TYPECHECK `api/`.** `tsconfig.app.json`
+  includes only `src`, `tsconfig.node.json` only `vite.config.ts`, and the root tsconfig is
+  `"files": []`; `api/` is compiled by Vercel at deploy time. A green build is therefore NOT
+  evidence that an api/ change typechecks — that is what the review gates read by hand, and it
+  is the same reason the `.js`-suffix ESM rule can only fail at Lambda startup.
+
 ## SESSION Jul 29 2026 (2) — compliance pins + the guide became grounded
 
 Four commits, all live and SHA-verified against Vercel production.
