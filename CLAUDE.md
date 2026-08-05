@@ -988,6 +988,39 @@ each before launch (only the guides project is done). A `demo-create` cooldown w
 (secondary surface: Turnstile + one-demo gated). Fail-closed reconsideration remains a recorded
 non-blocking option.
 
+## SPEND-ABUSE ALARM + CALL COUNTER (Aug 5 2026 — commit 5423285 + migration
+api_call_counters_and_bump_fn, applied CHAT-SIDE via Supabase MCP)
+- Table `public.api_call_counters` (host_id uuid FK→hosts ON DELETE CASCADE, endpoint
+  text, window_start timestamptz, count int; PK (host_id,endpoint,window_start)). RLS ON,
+  ZERO policies (service-role only). ALL grants revoked from public/anon/authenticated
+  (incl. TRUNCATE/TRIGGER/REFERENCES) — a host cannot read, delete, or truncate their own
+  counter rows, so the alarm cannot be erased. Verified live: grants = postgres +
+  service_role only.
+- Function `public.bump_api_counter(p_host_id uuid, p_endpoint text) returns integer` —
+  SECURITY DEFINER, search_path pinned public,pg_temp, EXECUTE granted to service_role
+  ONLY. Atomic upsert: increments the (host, endpoint, current-UTC-hour) row and returns
+  the new count. This is the reusable cross-instance counter primitive for all spend
+  endpoints.
+- generate-guide.ts: after auth+ownership and BEFORE the cooldown claim, calls
+  bump_api_counter and fires ONE sendNtfy (priority high) when the hourly count === 10.
+  Placed before the cooldown so cooldown-blocked (429) attempts count too. Best-effort:
+  try/catch, never throws/blocks/alters the response. The ntfy message carries the feature
+  name, endpoint path, host UUID, and env-var NAME + PUBLIC Google project IDs to disable
+  (GEMINI_API_KEY_GUIDES=gen-lang-client-0816353550 primary; GEMINI_API_KEY=
+  gen-lang-client-0819525902 secondary, blurb) — never a key value.
+- OPEN / tracked:
+  (a) RETENTION: api_call_counters has no cleanup yet. Add a delete of rows older than
+      ~48h during the counter-generalization pass (fold into an existing daily cron).
+      Tiny today; must land before live/billing (GDPR minimization — stores host UUIDs).
+  (b) COMPLIANCE: ntfy spend alerts now MAY include a host account UUID (pseudonymous).
+      NTFY_URL confirmed a PRIVATE topic. Update the Art. 30 ntfy row from "no personal
+      data" to "may include a host account UUID" (fbf58aa's blanket claim is now narrower).
+  (c) KEY-NAMING TRAP: shared key GEMINI_API_KEY is nicknamed "Arrivly guide"
+      (0819525902) but the PRIMARY guide spend goes to GEMINI_API_KEY_GUIDES
+      (0816353550, billed, no recorded console nickname). Consider renaming project
+      0816353550 to e.g. "bemgu-guides-billed" so an incident responder disables the
+      right project.
+
 ## SESSION Jul 29 2026 (2) — compliance pins + the guide became grounded
 
 Four commits, all live and SHA-verified against Vercel production.
