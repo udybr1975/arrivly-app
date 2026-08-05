@@ -1021,6 +1021,27 @@ api_call_counters_and_bump_fn, applied CHAT-SIDE via Supabase MCP)
       0816353550 to e.g. "bemgu-guides-billed" so an incident responder disables the
       right project.
 
+BOOKING AMPLIFIER — DECISION + PLAN (Aug 5 2026)
+- create-booking.ts is the "amplifier": it mints a fresh in-dates guest pass on every call,
+  with NO cap and HOST-CONTROLLED dates. Those passes are what unlock the paid guest AI
+  (guest-chat, daily-greeting), so uncapped booking creation = uncapped valid passes. The
+  endpoint itself calls NO paid API (no Gemini key) — it only writes rows. It feeds:
+  guest-chat (GEMINI_API_KEY_CHAT) and daily-greeting (GEMINI_API_KEY).
+- DECISION (Aug 5): the fix for this endpoint is a SECURITY BRAKE ONLY — a real
+  cross-instance rate limit via bump_api_counter (per host, per UTC hour, block over
+  30/hour, fail-open on infra error) plus one ntfy alarm at first breach. Double-booking
+  prevention is explicitly OUT OF SCOPE of this security fix (kept small + reviewable).
+- BACKLOG (product, separate task): double-booking prevention — reject a new MANUAL booking
+  whose dates overlap an existing confirmed booking for the same apartment. TWO CAVEATS that
+  make this fiddly: (1) must ALLOW same-day turnover (checkout day == next check-in day);
+  (2) must be source-aware so it does not collide with iCal-imported blocks (source != 'manual').
+  This is a data-integrity/product feature, NOT the security brake.
+- BACKLOG (security, belt-and-suspenders): active-bookings-per-apartment cap — bound the
+  number of concurrent in-dates confirmed bookings per apartment, to stop SLOW accumulation
+  of valid passes (the hourly rate limit only slows minting, it does not bound the standing
+  total). Lower priority than the per-endpoint AI brakes (guest-chat, daily-greeting) still
+  to come.
+
 ## SESSION Jul 29 2026 (2) — compliance pins + the guide became grounded
 
 Four commits, all live and SHA-verified against Vercel production.
