@@ -1009,9 +1009,8 @@ api_call_counters_and_bump_fn, applied CHAT-SIDE via Supabase MCP)
   (GEMINI_API_KEY_GUIDES=gen-lang-client-0816353550 primary; GEMINI_API_KEY=
   gen-lang-client-0819525902 secondary, blurb) — never a key value.
 - OPEN / tracked:
-  (a) RETENTION: api_call_counters has no cleanup yet. Add a delete of rows older than
-      ~48h during the counter-generalization pass (fold into an existing daily cron).
-      Tiny today; must land before live/billing (GDPR minimization — stores host UUIDs).
+  (a) ~~RETENTION: api_call_counters has no cleanup yet~~ **DONE (Aug 5 2026)** — `cron-spend-audit`
+      prunes rows older than 48h on every run (every 3h). Closes the GDPR-minimisation gap.
   (b) COMPLIANCE: ntfy spend alerts now MAY include a host account UUID (pseudonymous).
       NTFY_URL confirmed a PRIVATE topic. Update the Art. 30 ntfy row from "no personal
       data" to "may include a host account UUID" (fbf58aa's blanket claim is now narrower).
@@ -1228,10 +1227,39 @@ counter error; non-numeric return logs loudly and proceeds. ONE ntfy at limit+1.
   `bulk-import` (NO limiter at all, host-auth, one shared-key call per request);
   `guide-assistant` (per-instance 20/min only); all crons (per-apartment fan-out, no per-host
   counter — unbounded for `is_exempt`/Tier 4).
-- ALARM BLIND SPOT, shared by every brake in the set: these are spend CAPS, not detectors. An
-  attacker pacing at exactly the limit sustains the full ceiling INDEFINITELY WITH ZERO ALERTS,
-  because the counter resets on the UTC hour and the alarm is a strict intra-hour `=== limit+1`.
-  Detection needs a rolling multi-hour total.
+- ALARM BLIND SPOT — **NARROWED, NOT CLOSED (`cron-spend-audit`, Aug 5 2026). Never record it as
+  closed.** The per-hour brakes are spend CAPS, not detectors: the alarm is a strict intra-hour
+  `=== limit+1` and the counter resets on the UTC hour, so an attacker pacing at the limit
+  sustained the full ceiling indefinitely with ZERO alerts. `api/cron-spend-audit.ts` (every 3h)
+  now sums `api_call_counters` per (host, endpoint) over a rolling 6h window and alerts at ~3x
+  the hourly limit. **Effect: the silent band drops from 100% of the ceiling to ~49.6% — a 2x
+  reduction.** Undetected sustained rates that remain: guest-chat ~19.8/hr (~476/day, grounded,
+  and remember a unit can be 2 model calls), daily-greeting ~24.8/hr on the SHARED key,
+  create-booking ~14.8 passes/hr.
+  **TWO STRUCTURAL GAPS THE PER-HOST DESIGN CANNOT CLOSE — tuning thresholds will never fix
+  either:** (i) **NO CROSS-HOST AGGREGATE, and on the guest surfaces the counter key is the
+  VICTIM host's id** (`apt.host_id`), so an attacker holding tokens across N hosts' apartments
+  runs at N x 49.6%, invisible to BOTH the brakes and this detector. A single global "all
+  tracked endpoints, all hosts, 6h" threshold is the highest-value next addition. (ii) no
+  cross-endpoint view — a host at 49% on all seven endpoints at once is invisible.
+- `cron-spend-audit` DESIGN NOTES worth keeping: the scan is PAGINATED because an unbounded
+  PostgREST select silently truncates at max-rows with NO error — it would have UNDER-COUNTED
+  exactly the abusers it exists to catch while still reporting `ok:true`. **A detection control
+  that silently under-counts is worse than none: it manufactures confidence.** Pagination is
+  sound here only because the PK `(host_id, endpoint, window_start)` gives a total order and
+  `bump_api_counter` only writes the current-hour row (which sorts AFTER the cursor). Prune runs
+  BEFORE the alert fan-out so a long fan-out can never starve retention; fan-out is capped at 20
+  (worst offenders first) with an overflow summary; both a failed scan AND a truncated scan page
+  the operator, since an incomplete audit must not look like a clean one.
+  **The prune's `.lt()` filter is LOAD-BEARING FOR ENFORCEMENT:** without it the delete becomes a
+  full table wipe that resets every host's CURRENT-hour counter and silently disables all six
+  brakes on every run. The cutoff guard catches an inverted/too-recent VALUE only — it cannot
+  detect a dropped filter, and the comment says so.
+- STILL OPEN on the detector: **NO CRON HEARTBEAT — "never ran" remains undetectable**, the exact
+  shape of the monthly guide cron that has never run. The failure ntfy covers "ran and failed",
+  not "never ran". Also `city-events-host` (9) and `sync-ical` (15) WILL false-positive on a
+  legitimate Tier 3/4 multi-property setup sweep (12 properties > 9), firing a high-priority
+  "block this host" alert at a paying customer — revisit when a real portfolio host exists.
 - TWO CORRECTIONS TO THE SHIPPED COMMENTS (cosmetic, not fixed, so the gate verdicts stand on
   the reviewed bytes): (i) the block comment says a 429 renders the "lots of questions" copy —
   that is the **500** branch of `ChatBot.tsx`; 429 renders "You're sending messages quickly".
