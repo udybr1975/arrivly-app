@@ -631,29 +631,50 @@ export default function GuestPage() {
   }
 
   // Progressive enhancement: fetch a personalised time/weather-aware suggestion for the hero.
-  // Keyed on weather so the call includes current conditions if available; server caches by
-  // (apartment, date, day_part) so a second call after weather loads returns the cached row.
-  // Skip in preview mode (no verified token → server always returns null anyway).
+  // Fires EXACTLY ONCE per active load. Previously this effect was keyed on `weather` with no
+  // guard, so it ran twice — once on mount (temp null) and again when wttr.in resolved ~1-2s
+  // later. The server caches by (booking, date, day_part), NOT temp, and writes that row only
+  // AFTER the 2-13s generation, so both calls missed the cache and both spent a Gemini
+  // generation — doubling greeting cost per legitimate guest and halving the per-host hourly
+  // headroom. Now we wait briefly for weather (so the suggestion can reference it) but never
+  // block on it: if weather has not resolved within the grace window we fire once anyway with
+  // nulls. The ref guarantees a single request no matter how many times the effect re-runs.
+  const greetingFiredRef = useRef(false)
   useEffect(() => {
     if (preview) return
     if (pageState !== 'active') return
     if (!aptId || !tokenParam) return
-    // Plain fetch — guests have no auth session; api.post would attach a null Bearer header
-    // which is harmless but violates the guest-page convention (see CLAUDE.md lessons).
-    fetch('/api/daily-greeting', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        apt: aptId,
-        token: tokenParam,
-        day_part: getDayPart(),
-        temp: weather?.temp ?? null,
-        condition: weather?.condition ?? null,
-      }),
-    })
-      .then(r => r.json())
-      .then((r: { suggestion: string | null }) => setDailySuggestion(r.suggestion))
-      .catch(() => {})
+    if (greetingFiredRef.current) return
+
+    const fire = () => {
+      if (greetingFiredRef.current) return
+      greetingFiredRef.current = true
+      // Plain fetch — guests have no auth session; api.post would attach a null Bearer header
+      // which is harmless but violates the guest-page convention (see CLAUDE.md lessons).
+      fetch('/api/daily-greeting', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apt: aptId,
+          token: tokenParam,
+          day_part: getDayPart(),
+          temp: weather?.temp ?? null,
+          condition: weather?.condition ?? null,
+        }),
+      })
+        .then(r => r.json())
+        .then((r: { suggestion: string | null }) => setDailySuggestion(r.suggestion))
+        .catch(() => {})
+    }
+
+    // Weather already in → fire now with conditions. Otherwise wait up to 2.5s, then fire once
+    // regardless, so a slow/failed weather fetch never leaves the hero without a greeting.
+    if (weather) {
+      fire()
+    } else {
+      const t = setTimeout(fire, 2500)
+      return () => clearTimeout(t)
+    }
   }, [aptId, tokenParam, weather, preview, pageState])
 
   if (loading) {

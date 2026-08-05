@@ -422,7 +422,7 @@ Each high-volume / public surface has its OWN no-card AI Studio key (separate fr
 - `api/_lib/greeting.ts` = generateGreetingBlurb (Gemini → apartments.greeting_blurb; called best-effort after guide generation, so refreshing the guide refreshes the blurb) + generateDailySuggestion (pure prose; the endpoint handles caching). Both follow guide.ts conventions: gemini-2.5-flash, thinkingConfig.thinkingBudget 0, withRetry, AbortController, AIza/key= error scrubbing.
 - `api/daily-greeting.ts` = guest POST { apt, token, day_part, temp?, condition? }. Auth via resolveGuestAccess (booking token) — ONLY 'verified' guests trigger Gemini (protects spend); everything else returns { suggestion: null } → static fallback. local_date is derived SERVER-SIDE (Helsinki) to prevent cache flooding; the client must NOT send a date. **(S28) Caches/reads/race-reselects PER BOOKING on `(booking_id, local_date, day_part)`** (gated on `verified && bookingId`); computes `stay_day = local_date − check_in + 1` (UTC-midnight diff); feeds the booking's last-6 suggestions to generation as a do-not-repeat list. ALWAYS returns 200 (null on any error) — never 5xx the guest hero.
 - **(S28) `generateDailySuggestion` is now per-booking, day-part-HARD-constrained (explicit ALLOW/DENY per part — morning never shows evening/night content and vice-versa), anti-repeat (a SLIDING WINDOW of the booking's last ~6 lines, not absolute), and stay-day aware (a variety nudge from `stay_day`).** Old shared `(apartment, date, day_part)` cache is gone. All model config preserved (gemini-2.5-flash, thinkingBudget 0, withRetry, AIza/key scrubbing); response shape `{ suggestion }` unchanged (no client contract change). The old PARKED sketch (blurb VARIANTS + a big "Right now in {neighborhood}" slot) was SUPERSEDED — variants were dropped as unnecessary once the blurb became first-open-only.
-- **(S28) UI (`GuestPage.tsx`): the blurb is FIRST-OPEN-ONLY** (per-booking `localStorage` flag `arrivly_guest_blurb_seen_<token>`); on later opens the letter reads as a stable host note. The time/weather/suggestion moved OUT of the letter into a dedicated **"Right now" card** (the visibly-fresh element). **KNOWN LIMITATION (pre-existing, out of scope, recorded):** the suggestion generates on the FIRST `/api/daily-greeting` fetch, which fires before weather resolves, so the suggestion text itself is NOT weather-influenced; the "Right now" card's weather pill is independently live.
+- **(S28) UI (`GuestPage.tsx`): the blurb is FIRST-OPEN-ONLY** (per-booking `localStorage` flag `arrivly_guest_blurb_seen_<token>`); on later opens the letter reads as a stable host note. The time/weather/suggestion moved OUT of the letter into a dedicated **"Right now" card** (the visibly-fresh element). **~~KNOWN LIMITATION~~ — LARGELY CLOSED (Aug 5 2026):** the suggestion used to generate on the FIRST `/api/daily-greeting` fetch, which fired before weather resolved, so the text was NOT weather-influenced. The fire-once fix added a **2.5s grace window**, so in the common path the request now carries real `temp`/`condition` and the suggestion CAN reference the weather. If weather is slow or fails it still fires once with nulls (never blocks the hero) — and note the server cache key `(booking_id, local_date, day_part)` excludes weather, so a weather-less suggestion is then persisted for the whole slot. The "Right now" card's weather pill remains independently live.
 - The blurb generates only when the guide runs (property Basic save is client-side, no server hook). To make a new property warm immediately, PropertySetup fires `api.post('/generate-guide')` fire-and-forget on first creation (wasNew) — guide + blurb populate in the background without blocking navigation.
 
 ---
@@ -1145,11 +1145,22 @@ not third-party-exhaustible across tenants.
 - Non-numeric RPC return logs loudly (`console.error`, brake inactive) and still generates —
   reachable only via an operator-side change to the RPC's return shape, never by attacker input.
 - STILL OPEN / tracked:
-  (a) `GuestPage.tsx` fires this endpoint TWICE per load (the effect is keyed on `weather`: once
-      with `temp:null`, once after weather resolves), so effective legit headroom is ~25 fresh
-      loads/host/hour, not 50. A multi-property host at a morning boundary could self-trip the
-      brake, degrade their own guests AND fire a false "likely mass self-minted passes" alert.
-      De-dupe that fetch, or raise the limit, BEFORE real multi-property hosts exist.
+  (a) ~~`GuestPage.tsx` fires this endpoint TWICE per load~~ **FIXED (Aug 5 2026).** The effect
+      was keyed on `weather` with no guard, so it ran once on mount (`temp:null`) and again when
+      wttr.in resolved — and because the server writes its cache row only AFTER the 2-13s
+      generation, BOTH calls missed and BOTH spent. Now a `greetingFiredRef` latch + a 2.5s
+      weather grace window = exactly ONE request per active load. Effective legit headroom went
+      ~25 → ~50 fresh loads/host/hour, which removes the false-abuse-alert risk for a
+      multi-property host. **BUT NOTE WHAT IT DID NOT CHANGE: the worst-case ceiling is still
+      ~100 model calls/host/hour** — an attacker calls the endpoint directly and never runs this
+      effect, so a CLIENT fix moves throughput UNDER the ceiling, never the ceiling itself.
+      TWO DURABLE CONSEQUENCES: (i) the ref is a permanent latch set BEFORE the fetch, so a
+      transient network failure means NO suggestion for the life of that page (deliberate — the
+      old accidental retry was the double-spend); (ii) **a fire-once ref silently converts its
+      own dependency array into a no-op.** That is safe TODAY only because every path changing
+      `aptId`/`tokenParam` does a full `window.location.replace`. If GuestPage is ever refactored
+      to switch booking without remounting, this effect will neither refetch nor clear
+      `dailySuggestion` — re-audit then rather than trusting the deps list.
   (b) The apartment select still discards its error string — the fail-closed log says THAT it
       failed, not WHY. Observability only now that the branch is closed.
   (c) `guest-chat` remains UNCAPPED cross-instance (per-Lambda 15/min per apt+IP only) and is
