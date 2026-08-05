@@ -1205,10 +1205,12 @@ counter error; non-numeric return logs loudly and proceeds. ONE ntfy at limit+1.
   AND ADD IT TO THE KEY MAP: if wrong, the operator disables the wrong key mid-incident.
 
 CITY-EVENTS SPEND BRAKE — SHIPPED (Aug 5 2026), closing the last uncapped grounded surface.
-Both `city-events.ts` (PUBLIC lazy-fill) and `refresh-events.ts` (host refresh) now bump
-`bump_api_counter` before `generateCityEvents`, sharing ONE per-host budget of 10/hour under the
-key `'city-events'`. Both FAIL CLOSED on a counter error using their own soft shape
-(`200 {error:true}` / `200 {refreshed:false,reason:'busy'}`). ONE ntfy at limit+1.
+Both `city-events.ts` (PUBLIC lazy-fill) and `refresh-events.ts` (host refresh) bump
+`bump_api_counter` before `generateCityEvents`. **SPLIT KEYS (final, shipped): public =
+`'city-events-public'` 7/hour, host = `'city-events-host'` 3/hour** — same 10-unit wallet, but
+the host reserve is unreachable from the public surface. Both FAIL CLOSED on a counter error
+using their own soft shape (`200 {error:true}` / `200 {refreshed:false,reason:'busy'}`), both use
+the 3-branch typeof convention, and each fires its own distinctly-titled ntfy at limit+1.
 - WHY IT WAS UNBOUNDED: a null/failed generation writes NO cache row, so the cache-miss branch
   re-fires forever; `refresh-events`' 20h freshness gate has the identical never-arms defect
   (read-then-generate, and the gate only arms once a row exists). Both closed by the counter.
@@ -1216,22 +1218,27 @@ key `'city-events'`. Both FAIL CLOSED on a counter error using their own soft sh
   NO cache TTL — so once any generation succeeds, every later public call is a DB read forever.
   The public path can only spend on apartments that are uncached AND whose generation keeps
   failing. Warm guests cost 0 units; a host clicking Refresh on a fresh property costs 0.
-- REAL CEILING: 10 units x the `withRetry(retries:1)` in `_lib/city-events.ts` = **<=20 grounded
-  calls/host/hour, <=480/day** (realistic ~10/hr — the retry only fires on transient errors).
-  AND `EventsPage.tsx` retries 3x on `{error:true}`, so ONE failing guest view burns 3 of the 10
-  units; ~4 page-opens exhaust the hour. Size expectations off that, not off "10".
-- **W-1, OPEN DESIGN CALL — THE SHARED KEY IS THE FIRST COUNTER SPANNING AN UNAUTHENTICATED AND
-  AN AUTHENTICATED SURFACE, and the auditor recommends splitting it.** An anonymous stranger
-  holding ONE apartment UUID can, in ~11 cheap requests, make the HOST'S OWN "Refresh events"
-  button fail for the rest of the hour, across ALL that host's properties — never
-  authenticating, never proving any relationship to the property. Suggested split, same total
-  wallet: `'city-events-public'` limit 7 + `'city-events-host'` limit 3, which reserves a
-  host allowance no stranger can touch AND makes the two surfaces independently observable (the
-  alert currently cannot say which surface caused it — note it hedges by naming both endpoints).
-  NOT SHIPPED — recorded as a deliberate open decision. Mitigations that make it non-urgent: the
-  attack is partly SELF-DEFEATING (the attacker's own first request fills the cache, after which
-  both surfaces short-circuit before the counter), the cache row is never touched, guests keep
-  last-good events, and the daily cron refreshes regardless.
+- REAL CEILING, RE-VERIFIED AFTER THE SPLIT (it moved budget, it did NOT add any): 7x2 + 3x2 =
+  **<=20 grounded calls/host/hour, <=480/day** — identical to the pre-split single key, because
+  `withRetry(retries:1)` in `_lib/city-events.ts` doubles every unit (realistic ~10/hr; the retry
+  only fires on transient errors). AND `EventsPage.tsx` retries 3x on `{error:true}` AND on a
+  429, so ONE failing guest view burns 3 of the 7 public units — ~2 page-opens exhaust the public
+  hour. Size expectations off 7/3, never off "7".
+- **W-1 — CLOSED by the split (shipped).** The shared key had been the first counter spanning an
+  unauthenticated and an authenticated surface: an anonymous stranger holding ONE apartment UUID
+  could, in ~11 cheap requests, make the HOST'S OWN "Refresh events" button fail for the rest of
+  the hour across ALL their properties, never authenticating. `bump_api_counter` keys on
+  `(host_id, endpoint, window_start)`, so the two keys are physically distinct rows and the host
+  reserve is now unreachable from `/api/city-events`. **GENERALISABLE RULE: never share one
+  counter key across a trust boundary — the untrusted side will spend the trusted side's
+  allowance.**
+- **A KEY SPLIT IS NOT AN UPSTREAM SPLIT (the honest limit of the fix).** Both surfaces plus the
+  uncapped cron still spend the SAME `GEMINI_API_KEY_EVENTS` project, so a public flood ACROSS
+  MANY HOSTS can still exhaust that project's per-minute limit or spend cap and degrade a host
+  refresh. The host reserve is guaranteed ALLOWANCE, not guaranteed CAPACITY.
+- Benign residual coupling: a successful anon lazy-fill writes `city_events_cache.generated_at`,
+  so the host's 20h freshness gate then short-circuits for 20h. The host gets exactly the content
+  their refresh would have produced, at zero cost to their reserve — not a denial of value.
 - **APARTMENT UUIDs ARE FREELY OBTAINABLE — treat "the attacker knows one" as GIVEN for every
   public endpoint keyed on one.** Not enumerable (UUIDv4, 122 bits), but: every guest link
   carries it in plain sight (`/guest?apt=UUID`, kept forever by any past guest/cleaner/QR
@@ -1239,11 +1246,26 @@ key `'city-events'`. Both FAIL CLOSED on a counter error using their own soft sh
   `apartment.id` in the body of the fully public `/w/:code` endpoint** — and welcome links are
   DESIGNED to be broadcast over Airbnb/WhatsApp/email. This makes W-1 a real targeted attack,
   though it rules out mass random abuse.
-- W-2, NOT APPLIED: both files use the 2-branch `if (typeof evCount === 'number' && …)` shorthand
-  instead of the 3-branch house convention set by `daily-greeting`/`guest-chat`. Consequence: if
-  the RPC's return shape ever changes, the brake SILENTLY DISABLES ITSELF and generates unbraked
-  **with no log line anywhere** — on the unauthenticated endpoint, where it matters most. Fix is
-  purely the missing `console.error` (2 lines per file).
+- W-2 — CLOSED. Both files now use the 3-branch typeof convention (fail closed on RPC error; loud
+  `console.error` "brake inactive" and PROCEED on a non-numeric return; alarm then 429 over the
+  limit), matching `daily-greeting`/`guest-chat`. The 2-branch shorthand they replaced would have
+  SILENTLY DISABLED the brake with no log anywhere if the RPC's return shape ever changed.
+- **OPEN, RAISED BY BOTH GATES — THE 3/HOUR HOST RESERVE IS PROBABLY TOO TIGHT, AND ITS FAILURE
+  MODE IS AN ALARM NAMING AN INNOCENT PAYING CUSTOMER.** `PropertySetup` does NOT auto-retry, so
+  1 host click = 1 unit, and only STALE properties consume (the 20h gate is free). But a Tier-2/3
+  host doing a setup sweep across >=4 stale properties gets a 429 on the 4th click — surfaced as
+  the generic "Could not refresh events. Please try again.", advice that is FALSE for the next
+  hour — and that same legitimate 4th click is exactly limit+1, so it fires a HIGH-priority ntfy
+  titled "Bemgu spend alert" against a host who did nothing wrong. **Tier 3 sells "up to 12
+  properties", so this is reachable by a paying customer on day one.** Options: raise host to ~6
+  and drop public to 4 (keeps the 10 total), or keep 3/7 and make the 429 copy say "you've
+  refreshed several properties recently — try again in an hour". Not urgent only because there
+  are no real hosts yet. DECIDE BEFORE LAUNCH.
+- The public alarm is an ATTACKER-CONTROLLED PAGER: `/api/city-events` is unauthenticated, so
+  anyone with an apartment UUID can deliberately fire a high-priority operator notification with
+  8 requests (pacing or rotating IPs defeats the 5/min per-instance limiter). Bounded to 1 per
+  host per hour per key — so 2 per host-hour across both surfaces, no flood — but with N known
+  host UUIDs it is N alerts/hour, and the trigger is NOT trustworthy.
 - CACHE RACE: still structurally present (N concurrent cold callers all miss, all generate), but
   it can no longer OVER-SPEND — each request bumps its own unit first, so N concurrent requests
   consume N units. The race just compresses the hour's budget into seconds.

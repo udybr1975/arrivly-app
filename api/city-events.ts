@@ -68,32 +68,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   // Cross-instance per-host cap on the GROUNDED events generation (GEMINI_API_KEY_EVENTS).
-  // The per-instance limiter above is porous across Lambdas; a null/failed generation writes
-  // no cache row, so without this a host with a failing city could loop the grounded call
-  // unbounded. Shared 'city-events' budget with refresh-events. FAIL CLOSED (like the other
-  // grounded guest paths): a block just yields the no-events state, while failing open would
-  // spend the events key during the burst that breaks the counter. ONE ntfy at limit+1.
-  const CITY_EVENTS_HOURLY_LIMIT = 10
+  // SEPARATE key from the host refresh path: apartment UUIDs are public, so a shared budget
+  // would let an anonymous flood on one UUID starve the host's own refresh. Public gets its
+  // own 7/hour; the host reserve is untouchable from here. FAIL CLOSED (a block just yields
+  // the no-events state). ONE ntfy at limit+1. Non-numeric RPC return logs loudly and proceeds.
+  const CITY_EVENTS_PUBLIC_LIMIT = 7
   {
     const { data: evCount, error: evCountErr } = await supabase.rpc('bump_api_counter', {
       p_host_id: apt.host_id,
-      p_endpoint: 'city-events',
+      p_endpoint: 'city-events-public',
     })
     if (evCountErr) {
       console.warn('[city-events] counter bump failed (fail-closed) -', evCountErr.message?.slice(0, 120))
       return res.status(200).json({ error: true })
     }
-    if (typeof evCount === 'number' && evCount > CITY_EVENTS_HOURLY_LIMIT) {
-      if (evCount === CITY_EVENTS_HOURLY_LIMIT + 1) {
+    if (typeof evCount !== 'number') {
+      console.error('[city-events] bump_api_counter returned non-numeric - brake inactive', typeof evCount)
+    } else if (evCount > CITY_EVENTS_PUBLIC_LIMIT) {
+      if (evCount === CITY_EVENTS_PUBLIC_LIMIT + 1) {
         try {
           await sendNtfy({
-            title: 'Bemgu spend alert: city-events',
+            title: 'Bemgu spend alert: city-events (public)',
             message:
-              `Feature: City events generation (city-events / refresh-events)\n` +
-              `Host ${apt.host_id} hit ${evCount} events generations this hour (limit ${CITY_EVENTS_HOURLY_LIMIT}).\n` +
-              `GROUNDED gemini-2.5-flash on GEMINI_API_KEY_EVENTS.\n` +
+              `Feature: City events - public lazy-fill (/api/city-events)\n` +
+              `Host ${apt.host_id} hit ${evCount} public events generations this hour (limit ${CITY_EVENTS_PUBLIC_LIMIT}).\n` +
+              `GROUNDED gemini-2.5-flash on GEMINI_API_KEY_EVENTS. Reachable with only an apartment UUID (public).\n` +
               `DISABLE if needed: GEMINI_API_KEY_EVENTS = project gen-lang-client-0131909896 (city events only).\n` +
-              `ACTION: block this host in Supabase. Vercel logs: /api/city-events + /api/refresh-events`,
+              `ACTION: block this host in Supabase, or check for a flood on one apartment UUID. Vercel logs: /api/city-events`,
             priority: 'high',
           })
         } catch (e) {
