@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { generateGuideForApartment } from './_lib/guide.js'
 import { generateGreetingBlurb } from './_lib/greeting.js'
 import { scrubErr } from './_lib/scrub.js'
+import { sendNtfy } from './_lib/ntfy.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
@@ -42,6 +43,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (aptErr || !apt) return res.status(404).json({ error: 'Apartment not found' })
   if (apt.host_id !== userId) return res.status(403).json({ error: 'Forbidden' })
+
+  // ── Spend-abuse alarm (best-effort; never blocks or breaks the guide flow) ──────
+  // Counts EVERY owned attempt for this host+endpoint in the current UTC hour via the
+  // atomic cross-instance DB counter. Placed BEFORE the cooldown check on purpose: a
+  // looping attacker gets mostly 429s, and those blocked attempts must count too.
+  // Fires ONE ntfy at exactly the threshold, so a flood pings once, not repeatedly.
+  // The project IDs below are PUBLIC identifiers (safe to send) — never a key value — so
+  // the alert points straight at the Google project to disable.
+  const GUIDE_ALERT_THRESHOLD = 10
+  try {
+    const { data: hourCount, error: counterErr } = await supabase.rpc('bump_api_counter', {
+      p_host_id: userId,
+      p_endpoint: 'generate-guide',
+    })
+    if (counterErr) {
+      console.warn('[generate-guide] counter bump failed (non-fatal)', scrubErr(counterErr, 120))
+    } else if (typeof hourCount === 'number' && hourCount === GUIDE_ALERT_THRESHOLD) {
+      await sendNtfy({
+        title: 'Bemgu spend alert: Guide refresh',
+        message:
+          `Feature: Guide refresh (/api/generate-guide)\n` +
+          `Host ${userId} called it ${hourCount}x this hour (threshold ${GUIDE_ALERT_THRESHOLD}).\n` +
+          `DISABLE (Google Console > APIs & Services > Credentials):\n` +
+          `- Primary: GEMINI_API_KEY_GUIDES = project gen-lang-client-0816353550 (billed; grounded guide spend)\n` +
+          `- Secondary: GEMINI_API_KEY = project gen-lang-client-0819525902 (blurb)\n` +
+          `Or block this host in Supabase. Vercel logs: /api/generate-guide`,
+        priority: 'high',
+      })
+    }
+  } catch (e) {
+    console.warn('[generate-guide] spend alarm failed (non-fatal)', scrubErr(e, 120))
+  }
 
   // ── Atomic per-host spend gate ─────────────────────────────────────────────────
   // GUIDE_FRESH_HOURS in PropertySetup.tsx is UI-only and is bypassed by calling this
