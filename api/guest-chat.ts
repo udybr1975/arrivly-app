@@ -138,10 +138,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       if (attempt > 1) await new Promise(r => setTimeout(r, attempt * 1500))
-      let timer!: ReturnType<typeof setTimeout>
+      // Per-attempt AbortController: at 20s the in-flight HTTP request to Google is torn
+      // down, not merely abandoned as the previous Promise.race did (which left a detached
+      // request running to completion while the loop fired its retry). Mirrors the pattern
+      // in _lib/city-events.ts.
+      //
+      // NOT A SPEND CAP - do not restate it as one. The SDK is explicit
+      // (@google/genai genai.d.ts): "AbortSignal is a client-only operation. Using it to
+      // cancel an operation will not cancel the request in the service. You will still be
+      // charged usage for any applicable operations." So this is a COST REDUCER (expected
+      // value), not a ceiling: the retry still fires regardless, so 40 counter units remain
+      // up to 80 request attempts. Quote the brake in ATTEMPTS x retry factor, never in
+      // billed generations.
+      const controller = new AbortController()
+      const timer = setTimeout(() => controller.abort(), 20000)
       try {
-        const timeout = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), 20000) })
-        const gen = ai.models.generateContent({
+        const response = await ai.models.generateContent({
           model: MODEL,
           contents,
           config: {
@@ -149,13 +161,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             tools: [{ googleSearch: {} }] as any,
             thinkingConfig: { thinkingBudget: 0 } as any,
             maxOutputTokens: 2048,
+            abortSignal: controller.signal,
           },
         })
-        const response = await Promise.race([gen, timeout])
         const reply = (response.text || '').replace(/\*\*/g, '').trim()
         if (reply) return res.status(200).json({ reply })
       } finally {
-        clearTimeout(timer!)
+        clearTimeout(timer)
       }
     } catch (e) {
       const msg = scrubErr(e, 120)

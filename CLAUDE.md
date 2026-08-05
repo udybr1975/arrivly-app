@@ -1178,13 +1178,38 @@ GUEST-CHAT SPEND BRAKE — SHIPPED (Aug 5 2026), the last of the five. 40 calls/
 per-instance 15/min limiter, and BEFORE the Gemini key read / brand fetch / system-instruction
 build / generateContent. A blocked request costs 3 cheap queries and EUR 0. FAIL-CLOSED (429) on
 counter error; non-numeric return logs loudly and proceeds. ONE ntfy at limit+1.
-- **A COUNTER UNIT IS NOT A MODEL CALL — SIZE THE GOOGLE BUDGET OFF 80, NOT 40.** The 20s timeout
-  is a `Promise.race`, NOT an AbortController: on timeout the first `generateContent` KEEPS
-  RUNNING AT GOOGLE and is still billed, then the loop issues a second (`MAX_RETRIES = 2`). An
-  empty `reply` also falls through to a retry. So 40 is a REQUEST cap and an 80-grounded-call
-  SPEND cap — deterministic 2x, not unbounded. Same correction applies to `daily-greeting`:
-  50 units = up to 100 calls (`withRetry retries:1`). To make the ceiling literal, either bump
-  inside the loop, halve the limit, or pass an AbortSignal so a timed-out call is truly cancelled.
+- **A COUNTER UNIT IS NOT A MODEL CALL — SIZE THE GOOGLE BUDGET OFF 80, NOT 40.** `MAX_RETRIES=2`
+  plus an empty-`reply` fall-through means 40 is a REQUEST cap and an 80-ATTEMPT spend ceiling.
+  Same correction for `daily-greeting`: 50 units = up to 100 attempts (`withRetry retries:1`).
+- **`abortSignal` IS NOT A SPEND CONTROL — THE MOST IMPORTANT CORRECTION IN THIS WORKSTREAM.**
+  The per-attempt `Promise.race` was replaced with a real AbortController (Aug 5 2026), which
+  tears down the in-flight HTTP request instead of merely abandoning it. It does NOT reduce the
+  ceiling. The SDK is explicit (`@google/genai` `genai.d.ts`, doc comment on
+  `GenerateContentConfig.abortSignal`): *"AbortSignal is a client-only operation. Using it to
+  cancel an operation will not cancel the request in the service. You will still be charged
+  usage for any applicable operations."* So abort is a COST REDUCER (expected value), never a
+  cap — **and the retry fires regardless, so the number of calls is unchanged.** ALWAYS quote a
+  brake as ATTEMPTS x retry factor, NEVER as billed generations. (The earlier note here claimed
+  an AbortSignal would make the ceiling literal — that was WRONG; it does not.)
+  **METHOD LESSON: this was caught by reading the vendor's installed `.d.ts`, not by reasoning
+  about what abort "should" do — the same read-the-binding-text-at-source rule that the 4 Aug
+  Gemini terms verification produced. Note the quote WRAPS ACROSS LINES in the `.d.ts`, so a
+  single-line grep returns no match and can look like a fabricated citation.**
+- ABORT-COVERAGE INVENTORY across every AI call site (Aug 5 2026):
+  **Real AbortController (correct):** `guest-chat`, `_lib/city-events`, `_lib/greeting` (x2),
+  `_lib/guide` (x2), `rewrite-rules`.
+  **Bare `Promise.race` INSIDE a retry — abandons a billed call AND issues a second:**
+  **`welcome-chat.ts` (PRIORITY 1 — the only one on an UNAUTHENTICATED surface, `/w/:code`;
+  mitigated only by being ungrounded flash-lite on `GEMINI_API_KEY_PUBLIC`)** and
+  `guide-assistant.ts` (host-auth = a named, blockable actor, so lower urgency).
+  **Single-shot `Promise.race` — wastes the call it already paid for but CANNOT amplify:**
+  `bulk-import.ts`, `_lib/host-picks.ts`. No AI call site lacks a timeout entirely.
+- NOTE `_lib/retry.ts` treats BOTH `AbortError` and the literal string `"timeout"` as transient,
+  so converting any site to AbortController does NOT stop the retry by itself — it only changes
+  what the abandoned attempt costs.
+- The `if (reply) return` empty-reply fall-through costs a second FULL call and **no abort
+  mechanism can ever reach it** (it is a successful, fully-billed, non-throwing response). It
+  belongs to any future work that tries to make one counter unit equal one model call.
 - `apt.host_id` needs NO null guard here (unlike `daily-greeting`): `api_call_counters` carries
   `host_id` in its PK plus an FK to `hosts`, so a null key RAISES on the upsert → `chatCountErr`
   → the fail-closed 429. It can never silently skip the brake. Do not "harmonise" it.
