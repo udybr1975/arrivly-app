@@ -1162,6 +1162,48 @@ not third-party-exhaustible across tenants.
   evidence that an api/ change typechecks — that is what the review gates read by hand, and it
   is the same reason the `.js`-suffix ESM rule can only fail at Lambda startup.
 
+GUEST-CHAT SPEND BRAKE — SHIPPED (Aug 5 2026), the last of the five. 40 calls/host/UTC-hour via
+`bump_api_counter` (endpoint key `'guest-chat'`), placed AFTER the verify-gate 403 and the
+per-instance 15/min limiter, and BEFORE the Gemini key read / brand fetch / system-instruction
+build / generateContent. A blocked request costs 3 cheap queries and EUR 0. FAIL-CLOSED (429) on
+counter error; non-numeric return logs loudly and proceeds. ONE ntfy at limit+1.
+- **A COUNTER UNIT IS NOT A MODEL CALL — SIZE THE GOOGLE BUDGET OFF 80, NOT 40.** The 20s timeout
+  is a `Promise.race`, NOT an AbortController: on timeout the first `generateContent` KEEPS
+  RUNNING AT GOOGLE and is still billed, then the loop issues a second (`MAX_RETRIES = 2`). An
+  empty `reply` also falls through to a retry. So 40 is a REQUEST cap and an 80-grounded-call
+  SPEND cap — deterministic 2x, not unbounded. Same correction applies to `daily-greeting`:
+  50 units = up to 100 calls (`withRetry retries:1`). To make the ceiling literal, either bump
+  inside the loop, halve the limit, or pass an AbortSignal so a timed-out call is truly cancelled.
+- `apt.host_id` needs NO null guard here (unlike `daily-greeting`): `api_call_counters` carries
+  `host_id` in its PK plus an FK to `hosts`, so a null key RAISES on the upsert → `chatCountErr`
+  → the fail-closed 429. It can never silently skip the brake. Do not "harmonise" it.
+- WHAT THE FIVE BRAKES ACTUALLY ACHIEVED: the token-derived chain is now bounded END TO END.
+  Both pass CONSUMERS are capped per host per hour **regardless of how many passes exist**, so
+  the standing-pass total no longer converts into AI spend — which DEMOTES the tracked
+  "active-bookings-per-apartment cap" from a security item to a product one.
+- **NEXT BRAKE — `api/city-events.ts` lazy fill is now the WEAKEST AI SURFACE IN THE SYSTEM,
+  weaker than guest-chat was before this change.** Fully UNAUTHENTICATED (no token, no captcha,
+  no verify gate), GROUNDED on `GEMINI_API_KEY_EVENTS`, guarded only by a per-instance 5/min
+  apt+IP Map — and it writes its cache row AFTER the model call, so the cache-race applies
+  (concurrent requests on one uncached apartment all miss and all spend). Any account that can
+  create/delete apartments manufactures fresh uncached rows at will.
+- ALSO STILL UNCAPPED cross-instance: `refresh-events` (20h gate is read-then-generate, so
+  concurrent refreshes for one apartment all pass); `rewrite-rules`, `generate-host-picks`,
+  `bulk-import` (NO limiter at all, host-auth, one shared-key call per request);
+  `guide-assistant` (per-instance 20/min only); all crons (per-apartment fan-out, no per-host
+  counter — unbounded for `is_exempt`/Tier 4).
+- ALARM BLIND SPOT, shared by every brake in the set: these are spend CAPS, not detectors. An
+  attacker pacing at exactly the limit sustains the full ceiling INDEFINITELY WITH ZERO ALERTS,
+  because the counter resets on the UTC hour and the alarm is a strict intra-hour `=== limit+1`.
+  Detection needs a rolling multi-hour total.
+- TWO CORRECTIONS TO THE SHIPPED COMMENTS (cosmetic, not fixed, so the gate verdicts stand on
+  the reviewed bytes): (i) the block comment says a 429 renders the "lots of questions" copy —
+  that is the **500** branch of `ChatBot.tsx`; 429 renders "You're sending messages quickly".
+  Note the guest wording implies THE GUEST was fast, but a per-HOST hourly cap can trip for a
+  guest who sent one message. (ii) `GEMINI_API_KEY_CHAT = gen-lang-client-0221179352` in the
+  alert is **UNVERIFIED against Google Cloud** — it appears nowhere else in the repo. CONFIRM IT
+  AND ADD IT TO THE KEY MAP: if wrong, the operator disables the wrong key mid-incident.
+
 ## SESSION Jul 29 2026 (2) — compliance pins + the guide became grounded
 
 Four commits, all live and SHA-verified against Vercel production.
