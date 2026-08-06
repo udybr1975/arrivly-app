@@ -464,8 +464,16 @@ async function generateCityEventsTavily(
   //   worst case  140 title + 300 url + 900 content + 40 scaffolding + 20 theme = ~1400 chars
   //   typical     ~60 title + ~80 url + ~600 content + 40 + 20 = ~800 chars
   // Against the 6K TPM ORG-WIDE Groq ceiling, which counts INPUT PLUS OUTPUT:
-  //   TYPICAL  14 x 800 = ~11.2k chars ~= 2.8k in + ~750 prompt + ~1.2k real output ~= 4.75k.
-  //   ALL-CAPS 14 x 1400 = ~19.6k chars ~= 5.3k in + ~750 + 2048 out ~= 8.1k — OVER the ceiling.
+  //   TYPICAL  14 x 800 = ~11.2k chars ~= 2.8k in + ~585 prompt + ~1.2-2k real output ~= 4.6-5.4k.
+  //   ALL-CAPS 14 x 1400 = ~19.6k chars ~= 5.3k in + ~585 + 2048 out ~= 7.9k — OVER the ceiling.
+  // PROMPT OVERHEAD IS NOW MEASURED, NOT ESTIMATED (B3.5): the instruction block expands to 2330
+  // chars ~= 583 tokens for a Helsinki-shaped window (a point estimate — it moves with `place`
+  // length and a month-crossing `weekLabel`), DOWN 19 chars from B3.4 — the rebalance REPLACED
+  // clauses rather than stacking them, so it cost no input budget, and `themeCounts` is a log field
+  // that never enters the prompt. The earlier ~750 figure was a conservative guess.
+  // NOTE THE OUTPUT SIDE MOVED, THOUGH: B3.5's 10-15 event target raises real output from ~250
+  // tokens to ~1.2-2k, so the TYPICAL total rises even as the prompt shrinks. That is why `desc` is
+  // now length-capped in the prompt — see the field spec below.
   // The theme tag costs ~280 chars (~70 tokens) across the whole corpus — inside the rounding of
   // the figures above, so nothing was taken out of another field to pay for it. VERIFIED against
   // the real B3.3 smoke run: corpusChars 11921 for 14 snippets, i.e. ~850/snippet actual, so the
@@ -523,51 +531,106 @@ async function generateCityEventsTavily(
     return { payload: null }
   }
 
+  // Theme spread of what SURVIVED selection (B3.5 diagnostic — see the log site for why it exists).
+  // Keys can only be the four server-side literals from `queries`, never snippet-derived.
+  // Object.create(null): keys can only be the four server literals today, so this is belt-and-braces
+  // — but it makes the no-prototype-key property STRUCTURAL rather than argued from provenance.
+  const themeCounts: Record<string, number> = Object.create(null)
+  for (const s of snippets) themeCounts[s.theme] = (themeCounts[s.theme] ?? 0) + 1
+
   // 2. ONE Groq extraction call over the snippets.
+  //
+  // B3.5 REBALANCED FOR RECALL. Correctness was SOLVED by B3.4 (that smoke run: all events correct,
+  // the aggregator guard fired 3x, nothing fabricated, nothing out of window). What remained was
+  // RECALL, and it was SELF-INFLICTED: the count fell 15 (Gemini) → 5 → 3 as each round added
+  // another reason to DROP, until TEN suppressive clauses stood against one weak "Aim for up to 15"
+  // and 14 good snippets yielded 3 events. The corpus was never the constraint.
+  //
+  // THE DURABLE RULE THIS ENCODES: A PROMPT CLAUSE THAT DUPLICATES A GUARANTEE ALREADY ENFORCED IN
+  // CODE COSTS RECALL AND BUYS NOTHING. Three of those ten did exactly that — `eventDateInWindow`
+  // enforces the window, the provenance allowlist enforces url origin, `urlIsEventSpecific` enforces
+  // url aboutness. Restating them here bought no safety the parse block does not already provide,
+  // while the model generalised "be strict about dates" into "be strict about everything". So when a
+  // rule MOVES INTO CODE, its wording must be RELAXED, not left standing.
+  //
+  // B3.5 IS LOOSENING ONLY — no new mechanism, field or check. And it is THE LAST EVENTS ROUND: if
+  // recall is still short after this, the remaining levers are `include_raw_content` and a paid tier
+  // at graduation, NOT more prompt tuning.
   const prompt =
-    `Today is ${today}. Extract real, specific events happening in ${place} between ${today} and ` +
-    `${untilStr} — the next 7 days only — from the SNIPPETS below. Aim for up to 15. ` +
+    `Today is ${today}. Extract real, specific events happening in ${place} in the next 7 days ` +
+    `from the SNIPPETS below. ` +
+    // THE TARGET, with a FLOOR. The line this replaces ("Accuracy matters more than quantity —
+    // returning few events, or none, is CORRECT") was the single most suppressive clause in the
+    // prompt: it explicitly AUTHORISED the thin result we kept getting. Both failure modes are now
+    // named, because only stating one of them is what biased the model.
+    `AIM FOR 10-15 EVENTS; fewer than 8 only if the snippets genuinely contain fewer. BOTH ` +
+    `directions are failures: inventing an event, AND returning 3 events when the snippets ` +
+    `support 12. ` +
+    // THE ONE CLAUSE DELIBERATELY KEPT AT FULL STRENGTH, and the reason is structural: fabricating a
+    // title or venue is the ONLY failure mode with NO code guard behind it. The window check,
+    // provenance allowlist and specificity check between them catch every url and date problem, but
+    // NOTHING in the pipeline can verify that an event exists at all. Never soften this line.
+    `NEVER INVENT AN EVENT — every event must be supported by the snippets. ` +
     `Include concerts, exhibitions, markets, festivals, sports, theatre, food and nightlife with real venues and dates. ` +
-    // DATE RULE, strengthened (B3.3): a smoke run returned an event dated three days BEFORE the
-    // window despite the older "drop anything outside that window" wording. The window is now
-    // stated as explicit start and end dates, and the burden is inverted — an event that cannot be
-    // PLACED inside the window is dropped, rather than kept unless it can be proven outside.
-    // NO LONGER PROMPT-ONLY (B3.4): this wording is now the FIRST of two layers — `eventDateInWindow`
-    // enforces the same window in code at parse time, because this instruction leaked twice. The
-    // wording still earns its place (it stops most out-of-window events being generated at all, which
-    // is cheaper than dropping them), but it is no longer the guarantee. A full locale/multi-language
-    // date parser remains the separate recorded piece of work.
-    `THE WINDOW IS ${today} to ${untilStr} INCLUSIVE. Keep an event ONLY if you can place its date ` +
-    `inside that window. If the date cannot be placed inside the window, DROP the event even if the ` +
-    `snippet is otherwise good. A weekday name alone (e.g. "Saturday") is acceptable ONLY when the ` +
-    `snippet makes the actual date unambiguous. ` +
-    `Also DROP anything with no date, duplicates, generic "things to do", ` +
-    `and anything not supported by the snippets. ` +
-    `Accuracy matters more than quantity — returning few events, or none, is CORRECT. Never invent an event. ` +
+    // DATE RULE — JOB HANDED TO THE CODE (B3.5). B3.3 inverted the burden in wording and B3.4 then
+    // enforced the window in code at parse time, but the hard "DROP the event even if the snippet is
+    // otherwise good" wording was left in place, so the prompt kept paying recall for a guarantee it
+    // no longer provided. Worse, "DROP anything with no date" actively FOUGHT the code's chosen
+    // safety direction: `eventDateInWindow` returns null (KEEP) for a date it cannot parse, so the
+    // prompt was discarding exactly what the server had decided to keep. A guest seeing a
+    // vaguely-dated real event is better served than seeing nothing.
+    `THE WINDOW IS ${today} to ${untilStr} INCLUSIVE. State each event's date as precisely as the ` +
+    `snippet supports — the server verifies the window independently, so give your best reading ` +
+    `rather than discarding anything uncertain. Omit an event only when its snippet carries NO ` +
+    `date information at all. ` +
+    `Skip exact duplicates and generic "things to do" filler. ` +
     `Return ONLY raw JSON — no markdown, no code fences — shaped exactly as: ` +
     `{"week":"${weekLabel}","categories":[{"name":"This week","events":[{"title":"","venue":"","date":"","desc":"","price":"","url":""}]}]}. ` +
-    `Each event: title (name), venue (place), date (day or date within the window), desc (one short sentence), ` +
+    // `date (as stated in the snippet)` — was "day or date within the window", the ELEVENTH clause
+    // duplicating what `eventDateInWindow` enforces, and it sat AFTER the softened paragraph so it
+    // partially re-armed the burden that paragraph deliberately released.
+    //
+    // `desc` IS LENGTH-CAPPED IN THE PROMPT, and that is an AVAILABILITY control, not style: `desc`
+    // is the largest per-event output field (server cap 300 chars), and `maxTokens: 2048` was sized
+    // in B3.3 against a CORPUS, not against B3.5's 10-15 event target. At 10-15 events expected
+    // output rises from ~250 tokens to ~1.2-2k, and the ceiling is reached at ~136 tokens/event —
+    // reachable, not remote. Truncation is WORSE than a 429 because it is DETERMINISTIC: JSON.parse
+    // fails → payload null → on the public path with no cached row the guest gets an error and
+    // EventsPage retries 3x, spending 3 of the 7 hourly units and 12 Tavily credits on a failure
+    // that retrying cannot fix. Bounding desc is the cheapest lever and costs no input budget.
+    // DETECTION: `[city-events] extraction parse failed` logs `rawLen` — ~6-8k chars means
+    // truncation, not malformed JSON. Then, in cost order: tighten desc, drop the target to 10-12,
+    // or raise maxTokens (which must come OUT of the input budget, never on top of it).
+    `Each event: title (name), venue (place), date (as stated in the snippet), ` +
+    `desc (one short sentence, max ~100 characters), ` +
     `price (very short, e.g. "Free" or "€20" — max ~12 characters, no parentheses or notes), ` +
-    // URL RULE, made specific (B3.3): the older "use a url taken from the snippets" never said
-    // WHICH url, and every url in the smoke run came back empty. Each snippet already carries its
-    // own `url` field, so the instruction now names the field and the source snippet.
-    `url (copy it VERBATIM from the "url" field of the snippet the event was taken from; if the ` +
-    `event was assembled from more than one snippet, use the url of the snippet that names the ` +
-    `event; NEVER construct, shorten or guess a url; use an empty string only if genuinely none applies). ` +
-    // B3.4: the SERVER now rejects site-level urls, so this only tells the model what will be
-    // thrown away. An empty string is genuinely the better answer here — the guest page falls back
-    // to a search — so it is stated as a preference rather than a prohibition.
-    `PREFER AN EMPTY url over a generic one: if the only url available is a site homepage, a ` +
-    `language landing page or a city-wide listing rather than a page about THIS event, return "". ` +
-    `If you cannot find any real events, return {"week":"${weekLabel}","categories":[]}.\n` +
-    // DIVERSITY (B3.4). NOT more "aim for up to 15" wording — that already existed and still
-    // returned 5 all-concert events while the culture query's 8 results survived into nothing.
-    // Instead the corpus's own spread is made VISIBLE: each snippet carries a server-assigned
-    // `theme` naming the search that found it, and the model is told to spend attention across
-    // themes rather than on whichever is most abundant.
+    // URL RULE. B3.3 named the source field (before that every url came back empty); B3.4 added the
+    // server-side aboutness rejection. B3.5 removes the wording that discouraged ATTEMPTING one at
+    // all — a wrong url now costs nothing, it is rejected and counted, never shown.
+    `url (copy it VERBATIM from the "url" field of the snippet the event came from; if assembled ` +
+    `from several, use the url of the snippet that names the event; never construct or edit a url). ` +
+    `PREFER AN EMPTY url over a generic one (site homepage, language landing page, city-wide ` +
+    `listing). Always attempt a specific url: a wrong one is discarded by the server, never shown. ` +
+    // The empty-result shape stays available as a SAFETY VALVE for the never-invent rule — without a
+    // legitimate way to return nothing, a model with a thin corpus is pushed toward padding. Framed
+    // as "only if" so it no longer reads as permission to be thin.
+    `Only if the snippets truly contain no events, return {"week":"${weekLabel}","categories":[]}.\n` +
+    // DIVERSITY (B3.4, made CONCRETE once in B3.5). The B3.4 exhortation ("draw from EVERY theme")
+    // did not work, so this states a countable rule instead. It is strengthened exactly ONCE.
+    //
+    // DO NOT WRITE A THIRD ROUND OF DIVERSITY WORDING ON A GUESS: `themeCounts` in the diagnostic log
+    // now reports the theme spread of the SELECTED snippets. If it shows culture at 0-1, the problem
+    // is SELECTION (dedupe/quota eliminating those snippets before the extractor ever sees them), not
+    // extraction — a different fix, and more prompt text would be wasted effort. Measure first.
     `Each snippet has a "theme" field we assigned from the search that found it ` +
-    `(calendar, whats-on, music, culture). Draw events from EVERY theme present in the snippets, ` +
-    `not only the most abundant one. A list of only concerts is a FAILURE if the snippets also ` +
+    // "has EVENTS in", not "is present in": a theme whose snippets yield no extractable events would
+    // make a presence-conditioned floor UNSATISFIABLE, and a literal reading then stops at 2 per
+    // theme = 6 — under the floor of 8 two clauses above. That is precisely the clause-stacking
+    // failure B3.5 exists to undo, so it must not be reintroduced in the one clause that got
+    // STRENGTHENED. Note `themeCounts` cannot detect this: it counts SNIPPETS, not per-theme events.
+    `(calendar, whats-on, music, culture). If a theme has events in the snippets, include AT LEAST ` +
+    `TWO events from it before taking a third event from any single other theme. ` +
+    `A list of only concerts is a FAILURE if the snippets also ` +
     `contain museum, exhibition, market or festival events — cover those too.\n` +
     // DATA FENCE. This is the least-trusted input in the stack: arbitrary third-party WEB text,
     // not OSM place names. JSON.stringify blocks structural injection; this fences it
@@ -629,6 +692,7 @@ async function generateCityEventsTavily(
   let urlsRejectedProvenance = 0
   let urlsRejectedNonSpecific = 0
   let eventsDroppedOutOfWindow = 0
+  let datesUnparseable = 0
   const categories: CityEventCategory[] = []
   for (const rawCat of obj.categories as unknown[]) {
     if (eventsExtracted >= MAX_EVENTS) break
@@ -646,10 +710,16 @@ async function generateCityEventsTavily(
       // WINDOW ENFORCED SERVER-SIDE (B3.4). `null` = unparseable = KEEP, so an unhandled date
       // shape degrades to the prompt-only behaviour rather than emptying a city. Checked BEFORE
       // the url work so a dropped event costs nothing.
-      if (eventDateInWindow(date, startMs, endMs) === false) {
+      const dateVerdict = eventDateInWindow(date, startMs, endMs)
+      if (dateVerdict === false) {
         eventsDroppedOutOfWindow++
         continue
       }
+      // B3.5 made the prompt stop fighting this branch, so it now carries real traffic — and a
+      // vaguely-dated OUT-of-window event rides in on it, counted nowhere. Without this, a rise in
+      // `eventsExtracted` cannot be separated from "vague dates now pass", which would make the
+      // round's headline number uninterpretable. Counts only.
+      if (dateVerdict === null) datesUnparseable++
 
       const url = capStr(ev['url'], 500)
       // Same sanitiser rule as the Gemini path, PLUS the provenance check above: a url must be
@@ -685,11 +755,23 @@ async function generateCityEventsTavily(
     // and is the only way to tell whether the 900-char content cap is actually being reached or
     // whether `basic` snippets fall well short of it (in which case the raise bought nothing).
     corpusChars: JSON.stringify(snippets).length,
+    // THEME SPREAD OF THE SELECTED SNIPPETS (B3.5) — counts only, keys are our own four literals.
+    // This exists to ANSWER a question rather than to guess at it: B3.4's diversity instruction did
+    // not work, and "culture snippets reach the extractor and are ignored" (an EXTRACTION problem)
+    // versus "culture snippets are eliminated by dedupe/quota first" (a SELECTION problem) demand
+    // opposite fixes. Read this before touching the diversity wording again.
+    themeCounts,
     eventsExtracted,
     urlsKept,
     urlsRejectedProvenance,
     urlsRejectedNonSpecific,
     eventsDroppedOutOfWindow,
+    datesUnparseable,
+    // FABRICATION PROXY — no new field needed, it is DERIVABLE: blank-url share =
+    // eventsExtracted - urlsKept - urlsRejectedProvenance - urlsRejectedNonSpecific. An invented
+    // title cannot match a corpus url slug, so padding shows up as that share rising, and/or as
+    // urlsRejectedNonSpecific climbing in step with eventsExtracted. This is the only visibility we
+    // have into the one failure mode with no code guard — see CLAUDE.md.
   })
 
   return { payload: { week: capStr(obj.week, 120) || weekLabel, categories } }

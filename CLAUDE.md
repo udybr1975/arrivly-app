@@ -1364,6 +1364,162 @@ AbortController.
   "AIza / key=" — now also `gsk_` / `tvly-`). Cosmetic; the alarm text is already provider-aware.
   Fold into the Step 7 sweep alongside the other stale-alarm residuals.
 
+#### B3.5 (Aug 6 2026) — THE LAST EVENTS ROUND: the prompt rebalanced for RECALL
+
+**CORRECTNESS IS SOLVED — B3.4 closed it, and B3.5 touches no guard.** The `863e6e1` smoke run had
+every mechanism fire correctly: **`urlsRejectedNonSpecific` 3** (the aggregator guard caught all
+three), **`urlsRejectedProvenance` 0** (nothing fabricated), **`eventsDroppedOutOfWindow` 0** and no
+out-of-window event even generated, `tavilyResults` [8,8,8,8], `snippets` 14, `corpusChars` 13638.
+All three returned events were correct (Hellsinki Metal Festival at Nordis 7-8 Aug; Haloo Helsinki!
+at Allas Live Fri 7 Aug; Jethro Tull at Kulttuuritalo Mon 10 Aug EUR106). **B3.5 is LOOSENING ONLY —
+prompt and diagnostics, no new mechanism, field or server-side check.**
+
+- **THE REMAINING PROBLEM WAS RECALL, AND IT WAS SELF-INFLICTED: 15 (Gemini) → 5 → 3 across
+  successive rounds, because every round added another reason to DROP.** Counted in the shipped
+  prompt: keep only if datable; drop even if the snippet is otherwise good; weekday only if
+  unambiguous; drop anything undated; drop duplicates; drop generic "things to do"; drop anything
+  unsupported; *"accuracy matters more than quantity — returning few events, or none, is CORRECT"*;
+  never invent; prefer an empty url; return `[]` if nothing found. **TEN suppressive instructions
+  against one weak "Aim for up to 15" — so fourteen good snippets yielded three events. The corpus
+  was never the constraint; the instructions were.**
+- **THE DURABLE RULE — A PROMPT CLAUSE THAT DUPLICATES A GUARANTEE ALREADY ENFORCED IN CODE COSTS
+  RECALL AND BUYS NOTHING.** Three of the ten did exactly that: `eventDateInWindow` enforces the
+  window, the provenance allowlist enforces url origin, `urlIsEventSpecific` enforces url aboutness.
+  Restating them bought no safety the parse block does not already provide, while the model
+  generalised *"be strict about dates"* into *"be strict about everything"*. **So when a rule MOVES
+  INTO CODE, its wording must be RELAXED, not left standing.** This is the mirror image of the B3.3/
+  B3.4 lesson (a prompt instruction is not an invariant): once the invariant exists in code, the
+  instruction should stop trying to be one.
+- **THE PROMPT WAS FIGHTING THE CODE'S OWN SAFETY DIRECTION.** `eventDateInWindow` returns
+  **`null` = KEEP** for a date it cannot parse — a deliberate choice — while the prompt said *"DROP
+  anything with no date"*, i.e. it discarded exactly what the server had decided to keep. Now: state
+  the date as precisely as the snippet supports, the server verifies the window independently, and
+  omit an event **only** when its snippet carries no date information at all. **A guest seeing a
+  vaguely-dated real event is better served than seeing nothing.**
+- **THE SINGLE MOST SUPPRESSIVE LINE IS GONE.** *"Accuracy matters more than quantity — returning
+  few events, or none, is CORRECT"* explicitly **authorised** the thin result. Replaced by a
+  statement naming **both** failure modes — inventing an event is a failure, AND returning 3 events
+  when the snippets support 12 is equally a failure — plus a concrete target with a floor: **aim for
+  10-15; fewer than 8 only if the snippets genuinely contain fewer.** `MAX_EVENTS` stays 15.
+- **"NEVER INVENT AN EVENT" IS DELIBERATELY KEPT AT FULL STRENGTH, and the reason is structural:
+  fabricating a title or venue is the ONLY failure mode with NO code guard behind it.** The window
+  check, provenance allowlist and specificity check between them catch every url and date problem,
+  but **nothing in the pipeline can verify that an event exists at all.** Never soften that clause.
+  For the same reason the empty-result shape stays available as a **safety valve** (reworded to "only
+  if"): without a legitimate way to return nothing, a model facing a thin corpus is pushed toward
+  padding — which is the one thing there is no guard for.
+- **DIVERSITY — MEASURE BEFORE RE-ASKING. `themeCounts` (counts-only) now reports the theme spread of
+  the SELECTED snippets**, because B3.4's instruction did not work and nobody knows why. The two
+  candidate causes demand **opposite** fixes: culture snippets **reaching** the extractor and being
+  ignored is an EXTRACTION problem; culture snippets **eliminated by dedupe/quota first** is a
+  SELECTION problem. **If `themeCounts` shows culture at 0-1, it is SELECTION and no amount of prompt
+  text will help** — that is a different fix for another day, and it is stated in a comment so the
+  next reader does not re-tune the prompt on a guess. The theme instruction was strengthened exactly
+  ONCE and made countable: **if a theme HAS EVENTS in the snippets, include at least two events from
+  it before taking a third from any single other theme** (the "a list of only concerts is a FAILURE"
+  line stays). **The "has events" conditioning is load-bearing — see the defect note below; do not
+  paraphrase it back to "is present".**
+- **THE URL CLAUSE RELAXED because a wrong url now costs nothing** — it is rejected and counted,
+  never shown. "PREFER AN EMPTY url over a generic one" stays; the wording discouraging *attempting*
+  one at all is gone.
+- **TOKEN ARITHMETIC — THE PROMPT GOT SHORTER, AND IT IS NOW MEASURED RATHER THAN ESTIMATED.**
+  Clauses were **replaced, not stacked**: the instruction block expands to **2330 chars ≈ 583 tokens**
+  (a Helsinki-shaped POINT estimate — it moves with `place` length and a month-crossing `weekLabel`),
+  **down 19 chars from B3.4**, so the rebalance cost no INPUT budget and `themeCounts` never enters
+  the prompt (log field only). The earlier `~750` figure was a conservative guess; typical run is now
+  **~4.6-5.4k** and all-caps ~7.9k against the 6K TPM org ceiling — **the all-caps overshoot recorded
+  in B3.3 is unchanged, not worsened.** First draft actually GREW the prompt by 231 chars; it was
+  trimmed back rather than paid for out of another field.
+  **KEEP THESE IN STEP WITH THE IN-CODE COMMENT — they are what future budget decisions are
+  re-derived from, and they drifted once already** (the docs held 2314/579/-35 from before the desc
+  and date-field edits landed, while the code had 2330/583/-19).
+- **UNCHANGED:** every guard (`eventDateInWindow`, `urlIsEventSpecific`, the provenance allowlist,
+  `SAFE_SCHEME`, drop-never-truncate, the data fence, every cap); every brake, counter, cooldown,
+  rate limiter, freshness gate, alarm text, auth and ownership check; all three callers; the B3.1
+  guard; the B3.2 alarm and toast; the ENTIRE Gemini branch; queries, quota split, `MAX_SNIPPETS`,
+  `MAX_CONTENT_LEN`, `timeRange`. **The 17 tests pass UNCHANGED — which is the evidence that no
+  predicate moved** (the only diff lines mentioning a predicate are comments).
+- **HOW TO READ THE NEXT SMOKE RUN — A HIGHER COUNT IS NOT, BY ITSELF, EVIDENCE THE ROUND WORKED.**
+  Both gates landed on the same structural point and it is the most important caveat here: **the one
+  axis with no code guard (fabrication) is also the one axis with no metric.** Every other diagnostic
+  measures something that IS guarded, so `eventsExtracted` going 3 → 12 is indistinguishable from
+  padding. Acceptance criteria:
+  - **Blank-url share** = `eventsExtracted − urlsKept − urlsRejectedProvenance − urlsRejectedNonSpecific`.
+    An invented title cannot match a corpus url slug, so **padding shows as that share rising**,
+    and/or `urlsRejectedNonSpecific` climbing in step with `eventsExtracted`. Derivable from the
+    existing counters — no new field needed.
+  - **`datesUnparseable`** (new) separates "recall improved" from "vague dates now pass". B3.5 made
+    the prompt stop fighting `eventDateInWindow`'s `null` = KEEP branch, so that branch now carries
+    real traffic and a vaguely-dated out-of-window event rides in on it, counted nowhere before.
+    **READ IT ALONGSIDE `eventsDroppedOutOfWindow`, never alone:** rising sharply while that one stays
+    flat means vague dates passing, not the window guard working. **AND NOTE IT ALSO ABSORBS THE
+    EMPTY-DATE CASE** (`''` yields no month, so the predicate returns `null`) — so a rise can also
+    mean "the model stopped stating dates at all", which would contradict the new "omit an event only
+    when its snippet carries NO date information" wording. Three readings, one counter.
+  - **Expect `eventsDroppedOutOfWindow` to RISE — that is a SUCCESS signal**, not a regression: the
+    code guard is doing work the prompt used to do badly.
+  - **12 events with 9 blank urls is padding, not recall.** Spot-check three titles against the web
+    by hand before believing the round worked, exactly as B3.4's run was verified.
+- **NEW AVAILABILITY RISK THIS ROUND INTRODUCES, and it is deterministic rather than transient:
+  `maxTokens: 2048` was sized in B3.3 against a CORPUS, not against a 10-15 event target.** Expected
+  output rises from ~250 tokens to **~1.2-2k**, and the ceiling is reached at **~136 tokens/event —
+  reachable, not remote**. On truncation `JSON.parse` fails → `payload: null` → B3.1 correctly
+  preserves a cached week, **but on the PUBLIC path with no cached row the guest gets an error and
+  `EventsPage` retries 3x, spending 3 of the 7 hourly units and 12 Tavily credits on a failure
+  retrying CANNOT fix** (unlike a 429). **DETECTION: `[city-events] extraction parse failed` logs
+  `rawLen` — ~6-8k chars means TRUNCATION, not malformed JSON.** Mitigated by length-capping `desc`
+  in the prompt (the largest per-event output field): per event at honoured caps ~340 chars ≈ ~100
+  tokens, so 15 events ≈ 1540 against 2048 — **~25% spare, where pre-cap it was 2000-2400, i.e. at or
+  over the ceiling.** The cap converts "reachable" into "unlikely".
+  **BUT THE RESIDUAL DRIVER HAS SHIFTED FROM `desc` TO `url`, AND THAT ONE IS NOT PROMPTABLE:** urls
+  must be copied **VERBATIM** or the provenance allowlist cannot match, so their length is
+  CORPUS-DETERMINED. A city whose calendar sites use long slugged/query-string urls (250 chars ≈ ~85
+  output tokens each) reaches ~165 tokens/event and truncates at **~12 events — deterministically for
+  that city, every run.** So if a smoke run shows `rawLen` in the 6-8k band, **prefer dropping the
+  target to 10-12 over raising `maxTokens`**, because the long-url cost scales with COUNT and cannot
+  be trimmed per event. Only then raise `maxTokens`, out of the input budget.
+  **TWO GENERAL RULES.** (1) **Output tokens are an availability control**, because Groq's TPM counts
+  input PLUS output — a recall target is a budget change even when the prompt gets shorter.
+  (2) **This is one of the few places where "a prompt instruction is not an invariant" CANNOT be
+  fixed by moving the rule into code:** truncation happens at GENERATION time, before the server sees
+  a byte, so no `capStr` can bound it. Prompt persuasion plus `maxTokens` headroom is the entire
+  control — and when a field must be verbatim for a guard, its length is not even persuadable.
+- **A PROMPT-ONLY CHANGE CAN WEAKEN A GUARANTEE WITHOUT TOUCHING A GUARD, by shifting which BRANCH
+  input lands on.** `eventDateInWindow` is byte-identical, yet strictly more vaguely-dated events now
+  reach its permissive `null` branch, so *effective* window strictness is lower. That is the intended
+  product trade (harm ceiling: a real event with a vague date), but **"no guard moved" and "the
+  guarantee is unchanged in practice" are different statements** — audit prompt changes for branch
+  steering, not only for edited predicates.
+- **TWO DEFECTS THE GATES CAUGHT IN THE REBALANCE ITSELF, both in the direction of the bug being
+  fixed:** (a) the strengthened diversity clause was conditioned on a theme being **present in the
+  snippets** rather than **having events** in them — unsatisfiable when a theme yields nothing, and a
+  literal reading then stops at 2 per theme = 6, **under the floor of 8 two clauses above**, i.e. the
+  clause-stacking failure B3.5 exists to undo, reintroduced in the one clause that got strengthened.
+  Note **`themeCounts` cannot detect this** — it counts snippets, not per-theme events. (b) An
+  **ELEVENTH** duplicate clause survived the sweep: `date (day or date within the window)` in the
+  field spec, sitting AFTER the softened paragraph and partially re-arming the burden it released.
+  **Lesson: when removing duplicated clauses, sweep the FIELD SPEC too, not just the rules prose.**
+- **OPEN, comment-accuracy only — DELIBERATELY folded into the Step 7 sweep rather than fixed inline,
+  because editing `city-events.ts` re-runs both gates and these have zero runtime effect:**
+  (a) the `maxTokens` comment still says 2048 "has headroom" on the B3.3 reasoning, which **disagrees
+  with the desc-cap comment** calling the ceiling "reachable, not remote" — both readings are true but
+  an incident reader will trust the confident one, so drop that clause or point it at the desc cap;
+  (b) "2 per theme = 6" reads as bad arithmetic (4 themes x 2 = 8) — it is correct only for THREE
+  productive themes, which is the preceding sentence's scenario, so say "3 productive themes x 2 = 6";
+  (c) the file header still says keys are scrubbed "AIza / key=" when `scrubErr` also covers `gsk_` /
+  `tvly-` (pre-existing, already on the sweep list).
+- **ALSO CONSIDERED AND NOT DONE:** a code-side `desc` cap (~140 via `capStr`) would make the
+  availability lever enforced rather than advisory, and is a cheaper enforcement point than the two
+  levers after it — but it is a **guest-visible content change** (it would truncate descriptions
+  mid-sentence), so it is a product decision, not a comment fix. Note it does **not** solve
+  truncation either, for the generation-time reason above; it only bounds what is stored.
+- **B3.5 IS THE LAST EVENTS ROUND — an explicit decision, not a pause. If recall is still short, the
+  remaining levers are `include_raw_content` and a paid tier at graduation, NOT further prompt
+  tuning.** Both are recorded in Step 5 with their costs (raw content would blow the TPM ceiling;
+  the wallet policy permits paid Groq only with a hard spend limit set BEFORE the first call).
+  **If `themeCounts` shows culture at 0-1 the diversity problem is SELECTION, which is a different
+  fix and NOT a further prompt round.**
+
 #### B3.4 (Aug 6 2026) — the wrong-url blocker, theme diversity, and the date window enforced in code
 
 **SMOKE EVIDENCE ON `8e62b83` (Helsinki) — B3.3's retrieval fix WORKED.** All four searches
