@@ -1073,10 +1073,11 @@ HEAD == Vercel READY verified after.
 - **Step 1 — checks, NO code:** Groq terms/DPA; Tavily DPA + post-Nebius ownership; LocationIQ
   plan POI endpoint + quota; Geoapify quotas + commercial use. **GATE: 1a-or-fallback and
   1d-or-1c green before ANY code.**
-- **Step 2 — quality benchmark** on Sweet home (guide side-by-side + ~20 guest questions), **Udy
-  judges. GATE.**
-- **Step 3 — SHIPPED (Aug 6 2026).** `ai-provider.ts` + greeting / rewrite-rules / bulk-import /
-  guide-assistant migrated to Groq. Details in "PILOT STEP 3 — SHIPPED" below.
+- **Step 2 — CLOSED, APPROVED BY UDY (Aug 6 2026).** Quality benchmark on Sweet home. Evidence
+  and the three binding design rules it produced are in "PILOT STEP 2 — BENCHMARK CLOSED" below.
+- **Step 3 — SHIPPED + SMOKE-VERIFIED + LOG-VERIFIED (Aug 6 2026, `b90a648`).** `ai-provider.ts`
+  + greeting / rewrite-rules / bulk-import / guide-assistant on Groq. Details in "PILOT STEP 3 —
+  SHIPPED" below.
 - **Step 4** — guide on POI data. **Step 5** — events on Tavily. **Step 6** — guest-chat router +
   host-picks.
 - **Step 7** — alarm-text sweep + **SELF-ATTACK DRILL** (burst chat past 40, hammer
@@ -1097,7 +1098,62 @@ ceiling rule**, then flip the env var.
 free tier is **not** the compliant EEA basis. That is **accepted as a pre-launch BRIDGE state,
 and this plan removes it entirely.**
 
-### PILOT STEP 3 — SHIPPED (Aug 6 2026): provider abstraction + the four cheap surfaces on Groq
+### PILOT STEP 2 — BENCHMARK CLOSED, APPROVED BY UDY (Aug 6 2026)
+
+**The gate is passed and the POI approach is proven on real data, not assumed.** An
+OSM/Overpass query around Sweet home (Runeberginkatu 17) returned **423 named POIs within 800 m**
+— 172 restaurants, 64 cafés, 59 bars/pubs, 8 supermarkets, 4 pharmacies with opening hours,
+7 museums. Metadata coverage: **73% carry `opening_hours`, 67% a website, 80% a street address.**
+**11 of the live Google guide's 15 picks were found directly**, and the four misses were radius
+artifacts rather than data gaps. **Udy judged the POI-built guide draft "even better than
+Google".**
+
+**THREE BINDING DESIGN RULES for the remaining migrations — each came from measurement, not
+taste. Do not rediscover them:**
+- **(a) CATEGORY MAPPING must include `place_of_worship` / `historic` / `memorial` tags**, or
+  Temppeliaukio-class sights are silently missed.
+- **(b) THE ROUTER'S UNGROUNDED LEG MUST NOT EMBED THE GUIDE.** `guest-chat`'s system prompt is
+  currently **~1,600 tokens because it embeds the full guide JSON (~960 tok)**. Retrieve the
+  relevant category on demand instead; floor is ~700 tok. **Context that makes this binding:
+  Groq free tier is 6K TPM ORG-WIDE ≈ 2-3 chat calls/minute at the current footprint** — the
+  prompt size, not the request count, is what would throttle chat first.
+- **(c) CHAT HISTORY MUST BE TRUNCATED SERVER-SIDE.**
+
+**Geoapify Free is capped at 5 req/s**, so guide POI queries must run **SEQUENTIALLY with a
+small gap** — reuse the LocationIQ ≥550 ms module-level gate pattern rather than fanning out.
+
+**THE 20-QUESTION GUEST-CHAT BENCHMARK SET — agreed and recorded now, for B4 acceptance
+testing:** 8 apartment-context questions (WiFi, checkout, door code and similar — **these must
+come back identical in quality**, they are the regression guard); 6 POI-answerable (pharmacy
+open Sunday, closest supermarket, café within walking distance, sushi tonight, something for
+kids nearby, best bar); 6 live-web (events this weekend, is Temppeliaukio open now, airport
+route, concerts tonight, weather tomorrow, tram status).
+
+**TEST FIXTURE:** `ARR-EVT777` dates refreshed Aug 6 2026 via MCP — check_in Aug 5, check_out
+Aug 9. (Standing rule: re-roll before any guest-page test.)
+
+**NEXT ACTION — B2 / Step 4: the guide on Geoapify POI data + Groq prose.** Chat-Claude reads
+`generate-guide.ts` + the geo/guide libs + `cron-refresh-guides.ts` **from HEAD** before writing
+the prompt. Then **B3** events on Tavily, **B4** chat router + host-picks, **Step 7** the
+self-attack drill (**remember the recorded stale-alarm residual list**), **Step 8** delete the
+`GEMINI_*` vars.
+
+### PILOT STEP 3 — SHIPPED + VERIFIED (Aug 6 2026): provider abstraction + four surfaces on Groq
+
+**VERIFIED IN PRODUCTION, not just deployed.** All four endpoints returned **200** on deployment
+`dpl_74aKfERWZhW3YHGcZRnXNTAT3DZA` (= `b90a648`): daily-greeting 10:28, rewrite-rules 10:31,
+bulk-import 10:32, guide-assistant 10:36 UTC. Runtime logs show **zero `[ai-provider]` failure
+lines, zero Gemini-key messages, zero 5xx**. **The proof that the Groq branch actually ran: NO
+`AI_PROVIDER_*` vars are set in Vercel, so `resolveProvider` fell through to its `'groq'`
+terminal default on every call** — a Gemini execution would have been impossible without those
+vars being present.
+- **Output quality confirmed by screenshot, not just status codes:** the greeting rendered
+  in-dates local content (Hietaniemi Beach + live weather); rewrite-rules returned warm prose
+  with no bullets; bulk-import produced **4 correct categories — so the JSON-envelope unwrap is
+  working against real Groq output**; Ask Bemgu answered grounded in the guide corpus.
+- **No ntfy fired during normal use** — the brakes stayed quiet, as intended.
+- The `DEP0169 url.parse` deprecation warnings in `guest-state` / `guest-details` logs are
+  **pre-existing Node noise, unrelated to this change**. Do not chase them as a regression.
 
 **FOUR SURFACES NOW DEFAULT TO GROQ:** `daily-greeting` (via `_lib/greeting.ts`),
 `rewrite-rules`, `bulk-import`, `guide-assistant`. New `api/_lib/ai-provider.ts` exports
@@ -1173,13 +1229,15 @@ and this plan removes it entirely.**
   subprocessor list includes **Groq, Cohere and OpenAI, all US**. **HARD BUILD RULE for Steps 5-6:
   no guest text and no personal data may ever enter a Tavily query.** The compliance position
   rests on that rule, not on a signed document.
-- **GROQ ZDR IS UNVERIFIED — OPEN, and it gates the guest-notice wording.** `docs/providers/README.md`
-  asserted "Inference APIs ZDR = Enabled", but its own screenshot shows **ZDR Disabled** under
-  the breadcrumb **"Personal / Default Project"**, not the **Bemgu** org the production key
-  belongs to. The README now carries the contradiction and an ACTION rather than the claim.
-  **If ZDR is off, Groq retains inputs + outputs for 30 days** — the same disclosure shape as
-  the Gemini grounding 30-day finding (legal Gap 5). Verify inside the Bemgu org and re-capture
-  a dated screenshot before any legal document relies on it.
+- **GROQ ZDR — RESOLVED (Aug 6 2026), and it no longer gates the guest-notice wording.**
+  **Inference APIs ZDR = Enabled**, verified by dated screenshot inside the `hello@bemgu.app`
+  account (avatar "H"). **Global ZDR is deliberately left OFF** — enabling it would disable
+  Batch. **With ZDR enabled Groq retains no inference inputs or outputs**, so the feared 30-day
+  retention (which would have been a guest-notice + Art. 30 disclosure, same shape as the Gemini
+  grounding finding) **does not apply**. The earlier README contradiction is closed — the
+  screenshot that showed "Disabled" was of the wrong project, exactly as suspected.
+  **COSMETIC, OPEN, blocking nothing:** the Groq org display name is still "Personal" — rename
+  to "Bemgu" under Settings → General so future evidence screenshots read unambiguously.
 - **NEW DATA EGRESS TO GROQ — record for Art. 30 / the subprocessor list**, ranked by what each
   prompt can actually carry: (1) **`bulk-import`** — up to 8000 chars of arbitrary host-pasted
   property info; the prompt tells the model to SKIP WiFi/check-in content, **but the input

@@ -11,17 +11,10 @@ Zero-Google AI pilot plan: see CLAUDE.md section "ZERO-GOOGLE AI PILOT".
   signed on contracting; GDPR/CCPA/UK GDPR scoped; deletion ≤180 days post-termination.
 - GROQ_ACCEPTABLE_USE___RESPONSIBLE_AI_POLICY (.docx + .pdf) — "circumvent" clause targets
   abuse/safety bypasses, not separate business accounts.
-- **ZDR STATUS — UNVERIFIED, DO NOT RELY ON IT (flagged 2026-08-06 by the security-auditor).**
-  This line previously asserted "Console setting applied: Inference APIs ZDR = Enabled". Its own
-  evidence contradicts that: `screenshots/groq_data_controls_zdr_page.png` shows **Global ZDR =
-  Disabled AND Inference APIs ZDR = Disabled**, and the breadcrumb reads **"Personal / Default
-  Project"** — not the **"Bemgu"** org the production key belongs to (see the account line
-  above). So the screenshot may simply be of the wrong project, or ZDR may genuinely be off.
-  **If ZDR is off, Groq retains inputs and outputs for 30 days**, which is a guest-notice and
-  Art. 30 disclosure obligation — structurally the same finding as the Gemini grounding 30-day
-  storage (legal Gap 5). **ACTION: check Data Controls inside the Bemgu org, re-capture a dated
-  screenshot, then restate this line as fact.** It is also the only screenshot without a date
-  suffix.
+- **ZDR STATUS — VERIFIED 2026-08-06: Inference APIs ZDR = Enabled** in the `hello@bemgu.app`
+  account (dated screenshot in Udy's records; org display name still "Personal", rename
+  pending). **Global ZDR deliberately off.** With ZDR enabled Groq retains no inference
+  inputs/outputs.
 
 ## tavily/  (account: hello@bemgu.app, Researcher free plan, no card, PAYG prohibited by policy)
 - Tavily_Platform_Terms_of_Service.pdf — fetched from tavily.com/terms (contracting party:
