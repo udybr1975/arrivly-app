@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { geocodeAddress } from './geo.js'
-import { placesNear } from './geoapify.js'
+import { placesNear, type PoiPlace } from './geoapify.js'
 import { aiGenerate, resolveProvider } from './ai-provider.js'
 import { withRetry } from './retry.js'
 import { scrubErr } from './scrub.js'
@@ -239,21 +239,38 @@ const POI_RADIUS_M: Record<CategoryKey, number> = {
   Nightlife: 2500,
 }
 // Geoapify category ids, verified against their supported list on 2026-08-06 — do not guess
-// these, an unsupported id returns an error rather than being ignored. `tourism.sights` covers
-// the place_of_worship, memorial, castle and monastery subtrees, which is what satisfies the
-// recorded benchmark rule that worship/historic/memorial content must not be missed.
-const POI_CATEGORIES: Record<CategoryKey, string> = {
+// these, an unsupported id returns an error rather than being ignored.
+// Sight is DELIBERATELY ABSENT: it is tiered (SIGHT_TIERS below), and the type excludes it so a
+// future edit cannot quietly reintroduce the flat single query this replaced.
+const POI_CATEGORIES: Record<Exclude<CategoryKey, 'Sight'>, string> = {
   Restaurant: 'catering.restaurant',
   Bar: 'catering.bar,catering.pub,catering.biergarten,catering.taproom',
   Coffee: 'catering.cafe,commercial.food_and_drink.bakery',
-  Sight:
-    'tourism.attraction,tourism.sights,entertainment.museum,entertainment.culture,' +
-    'leisure.park,religion.place_of_worship,heritage',
   Essential:
     'commercial.supermarket,commercial.convenience,healthcare.pharmacy,' +
     'commercial.marketplace,service.cleaning.laundry',
   Nightlife: 'adult.nightclub,entertainment.cinema',
 }
+
+// SIGHT IS TIERED — SIGNIFICANCE BEFORE PROXIMITY (pilot B2.1).
+// Geoapify returns NEAREST-FIRST, so the original flat query filled all five Sight slots with
+// tiny statues within 220m of Sweet home while Temppeliaukio Church — the Step 2 benchmark's own
+// named example — was missed entirely. Proximity is the wrong sort key for "what is worth
+// seeing", so the tiers are tried in order and a LOWER TIER IS QUERIED ONLY IF SLOTS REMAIN.
+// Economy: a lower tier is fetched only when slots remain, so Sight costs 1-3 queries, not a
+// fixed 3. When Tier 1 alone fills five the run is 6 queries total — the SAME as the old flat
+// query, zero extra; the +1 or +2 is paid only where Tier 1 comes back thin.
+// NOTE tourism.attraction (Tier 3) is a PARENT of tourism.attraction.artwork, so a statue can
+// still surface — but only once nothing more significant is left. That is the intended
+// behaviour, not a residual defect to tune further.
+const SIGHT_TIERS: readonly string[] = [
+  // Tier 1 — significant: worship, named sights, museums, heritage.
+  'religion.place_of_worship,tourism.sights,entertainment.museum,heritage',
+  // Tier 2 — cultural venues and green space.
+  'entertainment.culture,leisure.park',
+  // Tier 3 — minor, top-up only.
+  'tourism.attraction',
+]
 const POI_FETCH_LIMIT = 20
 const POI_KEEP_PER_CATEGORY = 5
 const PROSE_TIMEOUT_MS = 25000
@@ -506,8 +523,10 @@ async function generateGuideGemini(
  * fought: fabricated businesses, and the regional-centroid geocoding that once put guide places
  * hundreds of km inland (hence no MAX_PLACE_KM check here; the radius filter is authoritative).
  *
- * TIMING: 6 sequential POI queries x (3s timeout + 250ms gate) ~= 20s worst, + Groq prose
- * 2 attempts x 25s, + the caller's blurb 2 x 12s ~= 95s worst — inside the 150s maxDuration.
+ * TIMING (B2.1, Sight is now tiered): WORST case 8 sequential POI queries — five untiered
+ * categories plus all three Sight tiers — x (3s timeout + 250ms gate) ~= 26s, + Groq prose
+ * 2 attempts x 25s, + the caller's blurb 2 x 12s ~= 100s, still inside the 150s maxDuration.
+ * COMMON case stays 6-7 queries, because Tiers 2-3 are skipped once Tier 1 fills the five slots.
  *
  * Failure contract is identical to the Gemini path: placeCount === 0 means NO upsert, so a bad
  * run leaves any existing guide row exactly as it was.
@@ -522,9 +541,9 @@ async function generateGuidePoi(
   let centre: { lat: number; lng: number } | null = null
   // Recorded in the diagnostic log: the fallback geocode is UNBIASED (there is no coordinate to
   // bias with — that is why it fired), which is the exact call shape that used to return regional
-  // administrative centroids. On this path a bad centre relocates ALL SIX radius queries, not one
-  // place, and there is no MAX_PLACE_KM net to catch it — so a wrong-city guide must at least be
-  // diagnosable from the logs.
+  // administrative centroids. On this path a bad centre relocates EVERY radius query (up to eight
+  // since B2.1 tiered Sight), not one place, and there is no MAX_PLACE_KM net to catch it — so a
+  // wrong-city guide must at least be diagnosable from the logs.
   let centreSource: 'apartment' | 'geocoded' = 'apartment'
   const aptLat = num(apt.lat)
   const aptLng = num(apt.lng)
@@ -549,37 +568,32 @@ async function generateGuidePoi(
     return { placeCount: 0 }
   }
 
-  // 2. Six SEQUENTIAL Geoapify queries (never fan out — free tier is 5 req/s and the module
-  //    gate spaces starts at 250ms).
-  const incoming: CategoriesMap = {}
-  const poisFetched = {} as Record<CategoryKey, number>
-  for (const cat of CATEGORIES) {
-    const pois = await placesNear(centre, POI_CATEGORIES[cat], POI_RADIUS_M[cat], POI_FETCH_LIMIT)
-    poisFetched[cat] = pois.length
-    incoming[cat] = pois.map((p) => ({
-      name: p.name,
-      ...(p.street || p.formatted ? { address: p.street || p.formatted } : {}),
-      lat: p.lat,
-      lng: p.lng,
-    }))
-  }
-
-  // 3. CAP-AWARE dedupe walk — deliberately NOT `dedupeInto` followed by a slice.
-  //    dedupeInto registers every candidate it accepts in the shared `seen` set, so trimming to 5
-  //    afterwards would reserve all 20 fetched names per category and then discard 15 of them:
-  //    a place trimmed out of an earlier category would still suppress itself from a later one
-  //    and vanish from the guide entirely. Nightlife is LAST in CATEGORIES and has the thinnest
-  //    source categories, so it is the one that silently empties — precisely the failure the
-  //    Gemini path spent a whole session building its empty-category retry to fix.
-  //    A name is reserved ONLY when the place is actually kept. Everything else matches the
-  //    shipped semantics: first-occurrence-wins in canonical CATEGORIES order, and a name that
-  //    normalises to '' (wholly non-Latin script) is always kept and never reserved.
+  // 2 + 3. SEQUENTIAL Geoapify queries, each one selected into its category immediately (never
+  //    fan out — free tier is 5 req/s and the module gate spaces starts at 250ms).
+  //
+  //    Fetch and select are ONE pass, not two, because Sight's tiers must decide whether to fetch
+  //    a lower tier based on how many slots the higher tiers already filled. The pass still walks
+  //    canonical CATEGORIES order and still dedupes against the same shared seen-set, so the
+  //    kept result is identical to the previous fetch-all-then-dedupe shape for the five
+  //    untiered categories.
+  //
+  //    CAP-AWARE selection — deliberately NOT `dedupeInto` followed by a slice. dedupeInto
+  //    registers every candidate it accepts in the shared seen-set, so trimming to 5 afterwards
+  //    would reserve all 20 fetched names per category and then discard 15 of them: a place
+  //    trimmed out of an earlier category would still suppress itself from a later one and
+  //    vanish entirely. Nightlife is LAST in CATEGORIES with the thinnest sources, so it is the
+  //    one that silently empties — precisely the failure the Gemini path spent a whole session
+  //    building its empty-category retry to fix.
+  //    A name is reserved ONLY when the place is actually kept, and a name that normalises to ''
+  //    (wholly non-Latin script) is always kept and never reserved.
   const categories: CategoriesMap = {}
   const seenNames = new Set<string>()
+  const poisFetched = {} as Record<CategoryKey, number>
   let deduped = 0
-  for (const cat of CATEGORIES) {
-    const kept: Place[] = []
-    for (const p of incoming[cat] ?? []) {
+  let sightTiersUsed = 0
+
+  const keepFrom = (kept: Place[], pois: PoiPlace[]): void => {
+    for (const p of pois) {
       if (kept.length >= POI_KEEP_PER_CATEGORY) break
       const key = normName(p.name)
       if (key !== '') {
@@ -589,8 +603,33 @@ async function generateGuidePoi(
         }
         seenNames.add(key)
       }
-      kept.push(p)
+      kept.push({
+        name: p.name,
+        ...(p.street || p.formatted ? { address: p.street || p.formatted } : {}),
+        lat: p.lat,
+        lng: p.lng,
+      })
     }
+  }
+
+  for (const cat of CATEGORIES) {
+    const kept: Place[] = []
+    let fetched = 0
+    if (cat === 'Sight') {
+      // Tier by tier, stopping as soon as the five slots are full — the skip is the economy.
+      for (const tier of SIGHT_TIERS) {
+        if (kept.length >= POI_KEEP_PER_CATEGORY) break
+        sightTiersUsed++
+        const pois = await placesNear(centre, tier, POI_RADIUS_M.Sight, POI_FETCH_LIMIT)
+        fetched += pois.length
+        keepFrom(kept, pois)
+      }
+    } else {
+      const pois = await placesNear(centre, POI_CATEGORIES[cat], POI_RADIUS_M[cat], POI_FETCH_LIMIT)
+      fetched = pois.length
+      keepFrom(kept, pois)
+    }
+    poisFetched[cat] = fetched
     categories[cat] = kept
   }
 
@@ -682,6 +721,9 @@ async function generateGuidePoi(
     source: 'poi',
     centreSource,
     poisFetched,
+    // 1-3: how many Sight tiers were actually queried. A persistent 3 means Tier 1 is coming
+    // back thin for that neighbourhood. Counts only, never names.
+    sightTiersUsed,
     perCategory,
     deduped,
     total: placeCount,
