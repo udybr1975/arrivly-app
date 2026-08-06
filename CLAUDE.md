@@ -1232,15 +1232,81 @@ AbortController.
   and `cron-refresh-events` runs `mapPool` at **concurrency 2** with a ~3K-token extraction prompt
   each, so a multi-apartment cron run can still hit the org TPM ceiling even after the dedupe.
   Fold into the existing cron-batching debt.
-- **OPEN, and the sharpest one — AN EMPTY EXTRACTION BOTH SUCCEEDS AND DESTROYS PRIOR GOOD DATA.**
-  If Tavily returns results but none are datable events, the extractor correctly emits
-  `categories: []` — a VALID payload, so it **is** cached. The public path cannot overwrite (it
-  upserts only on a cache miss), but `refresh-events` and `cron-refresh-events` can — and
-  `cron-refresh-events`'s own header promises *"guests keep last-good events, never an empty
-  panel"*, which that path would break. With no cache TTL on the public read, an apartment can pin
-  to "No major events found" indefinitely. **Fix when picked up: skip the upsert when
-  `eventsExtracted === 0` and a row already exists — the same shape as the Step 4
-  description-guard.** NOT done here: both fixes live in the callers, which this task scoped out.
+- **~~AN EMPTY EXTRACTION BOTH SUCCEEDS AND DESTROYS PRIOR GOOD DATA~~ — CLOSED by B3.1
+  (Aug 6 2026).** `categories: []` is a VALID payload, so the `if (!payload)` checks never caught
+  it, and both `refresh-events` and `cron-refresh-events` would write it over a good cached week —
+  breaking `cron-refresh-events`'s OWN header promise that "guests keep last-good events, never an
+  empty panel". With no cache TTL on the public read, an apartment could then sit empty
+  indefinitely.
+  **THE DECISION, and it is a judgement call worth remembering: an empty extraction is
+  AMBIGUOUS** — "the pipeline found nothing" and "this city genuinely has no events this week" are
+  indistinguishable from inside the code. **We KEEP THE OLD EVENTS in both cases.** Stale events
+  self-correct on the next run; an erased panel does not. **ACCEPTED COST: a genuinely quiet week
+  keeps showing the previous week's events until something new is found.**
+  Both call sites count `categories[].events.length` defensively (never throws), skip the upsert
+  when that is 0 AND a row exists, and still upsert on an empty FIRST fill — the same shape as the
+  Step 4 description-guard. **The existence probe FAILS CLOSED** (`.maybeSingle()` reports query
+  failure as `data:null`, indistinguishable from "no row", so an errored probe means "assume a
+  row"). **The guard is PROVIDER-AGNOSTIC on purpose** — an empty payload from the kept Gemini
+  branch would destroy data identically, so it is NOT gated on `resolveProvider`.
+  **`api/city-events.ts` is DELIBERATELY EXEMPT and must stay so:** its upsert is reachable only
+  on a cache MISS, so it can create an empty row but never destroy a good one; adding the guard
+  there would block legitimate first-fills. A comment at the call site says this. The asymmetry is
+  also self-correcting in the right direction — an empty row created there stays replaceable,
+  because the other two callers skip only when the NEW payload is empty.
+  **The guard is deliberately BROADER than the bug, and that turns out to be load-bearing:** it
+  counts `categories[].events.length`, so it also catches `categories: [{name, events: []}]`. The
+  Tavily branch filters empty categories out, but **the KEPT GEMINI BRANCH DOES NOT** — so the
+  narrower "eventsExtracted === 0" check originally proposed would have missed the Gemini shape
+  entirely.
+  **Why a persistent probe error cannot permanently block a first fill here** (unlike the Step 4
+  question, which needed argument): the probe is only reached when the payload is ALREADY empty, so
+  the blocked write is a worthless empty row; any later non-empty generation bypasses the guard
+  entirely; and `city-events.ts` has no probe at all, so the public lazy-fill still creates first
+  rows regardless of probe health.
+  **The counter bump is NOT skipped** — a run that generates and then declines to write really did
+  spend its Tavily and Groq calls, so it still costs its unit.
+- **NEW, OPEN, and higher priority than it first looked — the cron's wholesale-failure alarm now
+  fires on an ALL-SKIP run.** `refreshed` still means "a row was actually written", so
+  `refreshed === 0` is satisfied by a run where every apartment was deliberately preserved, and the
+  alert says *"All N event refreshes failed today"* when nothing failed. Three facts the
+  security-auditor established that make this worth doing soon rather than eventually:
+  **(a) B3.1 INTRODUCED it** — an empty extraction used to be written and counted as `refreshed`,
+  so this alarm could not previously lie this way.
+  **(b) It is NOT rare.** The condition needs EVERY candidate to skip, and `candidates` is
+  frequently **1** at current fleet size — so a single empty extraction on a single booked
+  apartment fires a high-priority alert asserting total failure. Likely on the Tavily path.
+  **(c) It degrades a control that IS security-relevant** — this alert is the quota-exhaustion /
+  provider-outage signal, and Tavily's 1000-credit fleet-wide MONTHLY pool makes outage detection
+  matter more, not less. The harm is alarm fatigue on the one detector that would catch it.
+  **The condition that matches the intent is `refreshed === 0 && skipped === 0`**, optionally with
+  `(skipped N)` in the message so the body is self-sufficient. NOT changed in B3.1: that is an
+  alarm-semantics change and the task was scoped to the data-loss fix. Mitigations meanwhile: it
+  fails LOUD not silent, names no host and carries no ACTION line (so it cannot misdirect
+  remediation the way the `fa8fa32` class did), and `skipped` is in the JSON summary.
+- **NEW, OPEN — the skip silently removed an ACCIDENTAL throttle.** An empty write used to advance
+  `generated_at`, which armed the 20h freshness gate and suppressed retries. A skip does not, so
+  the gate stays disarmed — good for recoverability, but combined with the misleading error toast
+  above it actively INVITES a retry that costs a `city-events-host` unit plus 3 Tavily credits.
+  Bounded by the existing 3/h brake (≤9 credits/host/hour), and the one-line toast fix also closes
+  it. **General shape worth remembering: removing a write can remove a rate limit nobody intended
+  to be one.**
+- **NEW, OPEN — `countEvents` is DUPLICATED verbatim in both callers, and it is a SAFETY
+  PREDICATE.** That is the category where drift costs most: if the cron's copy ever becomes more
+  permissive, **the data loss returns with no test and no alarm**. Enforced today only by a
+  "keep the two in step" comment. The stated rationale (it belongs to the callers, not the
+  generator) is right but does not argue against a shared CALLER-side helper — `_lib/` already
+  holds non-generator helpers (`pool.ts`, `cron.ts`, `scrub.ts`). Ten identical lines, so not
+  urgent.
+- **NEW, OPEN — the host UI shows a red ERROR toast for the new `no_events` outcome.**
+  `PropertySetup.refreshEvents` toasts success on `refreshed`, "already up to date" on
+  `reason === 'fresh'`, and **falls through to "Could not refresh events. Please try again." for
+  everything else** — so a deliberate keep-stale reads as a failure, and the suggested retry would
+  cost another counter unit and 3 more Tavily credits for the same outcome. **The inline status
+  line is FINE** (it renders `Up to date · refreshed {timeAgo}` from the returned existing
+  `generated_at`). One-line fix, deliberately not made because UI was out of B3.1's scope:
+  add `else if (data.reason === 'no_events') toast('No new events found — keeping the current
+  list', 'info')`.
 - **OPEN — TAVILY'S FREE ALLOWANCE IS A FLEET-WIDE MONTHLY POOL (1000 credits), and NO brake
   bounds it.** Every existing counter is per-host-per-UTC-hour, which cannot bound a monthly
   fleet pool. One pipeline run = **3 credits**. Ceilings: public 7/h x 3 = 21 credits/host/hour;

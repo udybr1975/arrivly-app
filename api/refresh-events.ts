@@ -30,6 +30,22 @@ function rateLimited(key: string, now: number): boolean {
   return entry.count > RL_MAX
 }
 
+// Count extracted events defensively — a non-array `categories`, a non-array `events` or a
+// missing field all count as 0, and this must never throw on a malformed payload.
+// NOTE: an identical twin lives in cron-refresh-events.ts. Deliberately duplicated rather than
+// shared, because _lib/city-events.ts is the generator and this guard belongs to the CALLERS.
+// Keep the two in step.
+function countEvents(payload: unknown): number {
+  const cats = (payload as { categories?: unknown } | null)?.categories
+  if (!Array.isArray(cats)) return 0
+  let n = 0
+  for (const c of cats) {
+    const evs = (c as { events?: unknown } | null)?.events
+    if (Array.isArray(evs)) n += evs.length
+  }
+  return n
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
@@ -122,6 +138,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { payload } = await generateCityEvents({ id: apt.id, city: apt.city, country: apt.country })
   if (!payload) return res.status(200).json({ refreshed: false, reason: 'generation_failed' })
+
+  // ── B3.1: never overwrite good events with an EMPTY extraction ───────────────────────────
+  // `categories: []` is a VALID payload, so the `if (!payload)` check above does not catch it —
+  // and writing it destroys a good cached week.
+  //
+  // An empty extraction is AMBIGUOUS: "the pipeline found nothing" and "this city genuinely has
+  // no events this week" are indistinguishable from inside the code. DECISION: keep the OLD
+  // events in BOTH cases. Stale events self-correct on the next run; an erased panel does not,
+  // and the public read has no cache TTL so it could sit empty indefinitely. ACCEPTED COST: a
+  // genuinely quiet week keeps showing the previous week's events until something new is found.
+  //
+  // PROVIDER-AGNOSTIC on purpose — an empty payload from the kept Gemini branch would destroy
+  // data identically, so this must NOT be gated on resolveProvider.
+  //
+  // The counter bump above is deliberately NOT skipped: this run really did spend its Tavily and
+  // Groq calls, so it must still cost its unit.
+  if (countEvents(payload) === 0) {
+    const { data: existing, error: probeErr } = await supabase
+      .from('city_events_cache')
+      .select('generated_at')
+      .eq('apartment_id', apartment_id)
+      .maybeSingle()
+    // FAIL CLOSED — the Step 4 lesson repeated: `.maybeSingle()` reports query FAILURE as
+    // `data: null`, indistinguishable from "no row", so discarding the error would perform
+    // exactly the overwrite this guard exists to prevent. An errored probe means "assume a row".
+    if (probeErr || existing) {
+      console.warn('[refresh-events] empty extraction, keeping existing events', {
+        aptId: apartment_id,
+        reason: probeErr ? 'probe_failed' : 'row_exists',
+      })
+      return res.status(200).json({
+        refreshed: false,
+        reason: 'no_events',
+        // The EXISTING row's timestamp, so the host UI reports the true last-refresh time
+        // instead of implying a fresh write. Absent when the probe itself failed.
+        ...(existing?.generated_at ? { generated_at: existing.generated_at } : {}),
+      })
+    }
+    // No row: an empty FIRST fill is the honest result and must not be blocked — same rule as
+    // the Step 4 guard, which permits a first generation.
+  }
 
   const generated_at = new Date().toISOString()
   const { error: upErr } = await supabase

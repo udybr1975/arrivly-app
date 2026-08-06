@@ -123,7 +123,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { payload } = await generateCityEvents({ id: apt.id, city: apt.city, country: apt.country })
   if (!payload) return res.status(200).json({ error: true })
 
-  // Cache only a real result — never persist an empty/failed generation.
+  // Cache only a real result — never persist a failed generation.
+  //
+  // DELIBERATELY EXEMPT from the B3.1 empty-extraction guard that refresh-events.ts and
+  // cron-refresh-events.ts carry — do NOT "fix" this asymmetry. This upsert is reachable ONLY on
+  // a cache MISS (the hot path returned at the cached read above), so it can CREATE an empty row
+  // but can never DESTROY a good one. Adding the guard here would block legitimate first-fills,
+  // which is the one case the other two call sites explicitly allow.
   const { error: upErr } = await supabase
     .from('city_events_cache')
     .upsert(

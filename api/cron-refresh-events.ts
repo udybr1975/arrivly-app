@@ -25,6 +25,22 @@ function utcDay(offsetDays: number): string {
   return d.toISOString().slice(0, 10)
 }
 
+// Count extracted events defensively — a non-array `categories`, a non-array `events` or a
+// missing field all count as 0, and this must never throw on a malformed payload.
+// NOTE: an identical twin lives in refresh-events.ts. Deliberately duplicated rather than
+// shared, because _lib/city-events.ts is the generator and this guard belongs to the CALLERS.
+// Keep the two in step.
+function countEvents(payload: unknown): number {
+  const cats = (payload as { categories?: unknown } | null)?.categories
+  if (!Array.isArray(cats)) return 0
+  let n = 0
+  for (const c of cats) {
+    const evs = (c as { events?: unknown } | null)?.events
+    if (Array.isArray(evs)) n += evs.length
+  }
+  return n
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
   if (!isCronAuthorized(req)) return res.status(401).json({ error: 'Unauthorized' })
@@ -70,12 +86,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // 150s maxDuration (vercel.json). Each task returns { ok } and performs its own stale-safe upsert;
   // counts are aggregated in a single pass after the pool, so totals + the
   // wholesale-failure ntfy condition are identical to the sequential version.
-  const outcomes = await mapPool(candidates, 2, async (apt): Promise<{ ok: boolean }> => {
+  const outcomes = await mapPool(candidates, 2, async (apt): Promise<{ ok: boolean; skipped?: boolean }> => {
     const { payload } = await generateCityEvents({ id: apt.id, city: apt.city, country: apt.country })
     if (!payload) {
       // Generation failed/quota — leave the existing row intact (stale but safe).
       return { ok: false }
     }
+
+    // ── B3.1: never overwrite good events with an EMPTY extraction ─────────────────────────
+    // `categories: []` is a VALID payload, so the `!payload` check above does not catch it. This
+    // is the path that broke THIS FILE'S OWN header promise that "guests keep last-good events,
+    // never an empty panel".
+    //
+    // An empty extraction is AMBIGUOUS — "found nothing" vs "genuinely a quiet week" cannot be
+    // told apart here. DECISION: keep the OLD events in both cases; stale self-corrects on the
+    // next run, an erased panel does not. ACCEPTED COST: a quiet week keeps showing last week's
+    // events until something new is found. PROVIDER-AGNOSTIC — an empty Gemini payload would
+    // destroy data identically.
+    if (countEvents(payload) === 0) {
+      const { data: existing, error: probeErr } = await supabase
+        .from('city_events_cache')
+        .select('apartment_id')
+        .eq('apartment_id', apt.id)
+        .maybeSingle()
+      // FAIL CLOSED: `.maybeSingle()` reports query FAILURE as `data: null`, indistinguishable
+      // from "no row", so an errored probe is treated as "a row exists" and the write is skipped.
+      if (probeErr || existing) {
+        console.warn('[cron-refresh-events] empty extraction, keeping existing events', {
+          aptId: apt.id,
+          reason: probeErr ? 'probe_failed' : 'row_exists',
+        })
+        return { ok: false, skipped: true }
+      }
+      // No row: an empty FIRST fill is honest and must not be blocked.
+    }
+
     const { error: upErr } = await supabase
       .from('city_events_cache')
       .upsert(
@@ -89,14 +134,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return { ok: true }
   })
 
+  // `refreshed` deliberately still means "a row was ACTUALLY WRITTEN", so the ntfy condition
+  // below keeps exactly its previous meaning. Skips are counted separately: a skip is neither a
+  // success nor a failure — the generation worked, we chose not to persist an empty result.
   let refreshed = 0
   let failed = 0
+  let skipped = 0
   for (const o of outcomes) {
-    if (o.ok) refreshed++
+    if (o.skipped) skipped++
+    else if (o.ok) refreshed++
     else failed++
   }
 
   // Signal only a wholesale failure (likely quota/outage) — never throw.
+  // KNOWN AND DELIBERATELY LEFT AS-IS (B3.1): a run that is ENTIRELY SKIPS now satisfies
+  // `refreshed === 0` and WILL fire this alarm, whose text then says "All N event refreshes
+  // failed today" — which is inaccurate, since nothing failed and every existing panel was
+  // deliberately preserved. Plausible in a genuinely quiet week across few apartments. The
+  // condition that matches the intent is `refreshed === 0 && skipped === 0`; it was NOT changed
+  // here because that is an alarm-semantics change and this task is scoped to the data-loss fix.
+  // See the commit body. Until then, read this alert together with the `skipped` count below.
   if (candidates.length > 0 && refreshed === 0) {
     await sendNtfy({
       title: 'Bemgu city-events refresh',
@@ -105,5 +162,5 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
   }
 
-  return res.status(200).json({ ok: true, candidates: candidates.length, refreshed, failed })
+  return res.status(200).json({ ok: true, candidates: candidates.length, refreshed, failed, skipped })
 }
