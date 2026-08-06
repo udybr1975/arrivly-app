@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { GoogleGenAI } from '@google/genai'
 import { withRetry } from './_lib/retry.js'
 import { scrubErr } from './_lib/scrub.js'
+import { aiGenerate, resolveProvider } from './_lib/ai-provider.js'
 
 const MODEL = 'gemini-2.5-flash'
 
@@ -35,33 +36,52 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const trimmed = rawRules.trim()
   if (trimmed.length > 5000) return res.status(400).json({ error: 'rules too long' })
 
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) return res.status(500).json({ error: 'AI not configured' })
+  // PILOT: provider decides WHICH model answers. Auth, validation, the 5000-char input cap and
+  // the response shape are untouched. The GEMINI_API_KEY guard moved inside the gemini branch
+  // so the groq path still works once the GEMINI_* vars are deleted (pilot Step 8).
+  const provider = resolveProvider('rewrite')
 
   try {
-    const ai = new GoogleGenAI({ apiKey })
+    let text = ''
+    if (provider === 'groq') {
+      // Budget parity with the gemini branch below: 2 retries (3 attempts) x 10s.
+      text = await aiGenerate('rewrite', {
+        system: SYSTEM_PROMPT,
+        prompt: trimmed,
+        maxTokens: 1500,
+        retries: 2,
+        timeoutMs: 10000,
+      })
+    } else {
+      const apiKey = process.env.GEMINI_API_KEY
+      if (!apiKey) return res.status(500).json({ error: 'AI not configured' })
+      const ai = new GoogleGenAI({ apiKey })
 
-    const generate = async () => {
-      const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), 10000)
-      try {
-        return await ai.models.generateContent({
-          model: MODEL,
-          contents: trimmed,
-          config: {
-            systemInstruction: SYSTEM_PROMPT,
-            thinkingConfig: { thinkingBudget: 0 } as any,
-            maxOutputTokens: 1500,
-            abortSignal: controller.signal,
-          },
-        })
-      } finally {
-        clearTimeout(timer)
+      const generate = async () => {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 10000)
+        try {
+          return await ai.models.generateContent({
+            model: MODEL,
+            contents: trimmed,
+            config: {
+              systemInstruction: SYSTEM_PROMPT,
+              thinkingConfig: { thinkingBudget: 0 } as any,
+              maxOutputTokens: 1500,
+              abortSignal: controller.signal,
+            },
+          })
+        } finally {
+          clearTimeout(timer)
+        }
       }
+
+      const response = await withRetry(generate, { retries: 2, baseDelayMs: 600 })
+      text = response.text ?? ''
     }
 
-    const response = await withRetry(generate, { retries: 2, baseDelayMs: 600 })
-    const result = response.text?.trim() || trimmed
+    // Unchanged fallback: an empty generation returns the host's own input, never an error.
+    const result = text.trim() || trimmed
     return res.status(200).json({ result })
   } catch (e) {
     const msg = scrubErr(e)

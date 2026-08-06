@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { GoogleGenAI } from '@google/genai'
 import { scrubErr } from './_lib/scrub.js'
+import { aiGenerate, isAiConfigError, resolveProvider } from './_lib/ai-provider.js'
 import { GUIDE_MODULES } from '../src/guide/content.js'
 
 // "Ask Arrivly" — a host-authenticated, corpus-grounded help assistant. Answers ONLY
@@ -72,20 +73,57 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(429).json({ error: 'rate_limited' })
   }
 
+  // PILOT: provider decides WHICH model answers. The 20/min per-instance rate limit above,
+  // the auth gate, the corpus-only system instruction and every response shape are untouched.
+  const provider = resolveProvider('guide_assistant')
+
+  const userMessage = message.slice(0, MAX_MESSAGE)
+  // Filter valid roles first, then cap — so valid turns are never evicted by invalid entries.
+  // Kept provider-neutral (role + text) and shaped per provider below; the filter → cap →
+  // drop-leading-non-user sequence is unchanged, only the final shaping differs.
+  const turns = (Array.isArray(history) ? history : [])
+    .filter((h: any) => h && (h.role === 'user' || h.role === 'assistant') && typeof h.text === 'string')
+    .slice(-MAX_HISTORY)
+    .map((h: any) => ({ role: h.role as 'user' | 'assistant', text: String(h.text).slice(0, MAX_MESSAGE) }))
+  while (turns.length && turns[0].role !== 'user') turns.shift() // must start with a user turn
+
+  if (provider === 'groq') {
+    // aiGenerate carries its own withRetry (transient-only), so there is no outer retry loop
+    // here; the failure shape below is identical to the gemini path's exhausted-retries exit.
+    try {
+      // Budget parity with the gemini loop below: MAX_RETRIES=2 attempts x 20s -> retries 1.
+      const raw = await aiGenerate('guide_assistant', {
+        system: SYSTEM_INSTRUCTION,
+        messages: turns.map(t => ({ role: t.role, content: t.text })),
+        prompt: userMessage,
+        maxTokens: 1024,
+        retries: 1,
+        timeoutMs: 20000,
+      })
+      const reply = raw.replace(/\*\*/g, '').trim()
+      if (reply) return res.status(200).json({ reply })
+    } catch (e) {
+      // A missing key is a CONFIG fault, not a model failure — same split, and the same two
+      // HTTP bodies, as the gemini path's `assistant_unavailable` vs `assistant_failed`.
+      if (isAiConfigError(e)) {
+        console.error('[guide-assistant] no Groq key set')
+        return res.status(500).json({ error: 'assistant_unavailable' })
+      }
+      console.warn(`[guide-assistant] groq attempt failed — ${scrubErr(e, 120)}`)
+    }
+    return res.status(500).json({ error: 'assistant_failed' })
+  }
+
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     console.error('[guide-assistant] no Gemini key set')
     return res.status(500).json({ error: 'assistant_unavailable' })
   }
 
-  const userMessage = message.slice(0, MAX_MESSAGE)
-  // Filter valid roles first, then cap — so valid turns are never evicted by invalid entries.
-  const mapped = (Array.isArray(history) ? history : [])
-    .filter((h: any) => h && (h.role === 'user' || h.role === 'assistant') && typeof h.text === 'string')
-    .slice(-MAX_HISTORY)
-    .map((h: any) => ({ role: h.role === 'assistant' ? 'model' : 'user', parts: [{ text: String(h.text).slice(0, MAX_MESSAGE) }] }))
-  while (mapped.length && mapped[0].role !== 'user') mapped.shift() // contents must start with a user turn
-  const contents = [...mapped, { role: 'user', parts: [{ text: userMessage }] }]
+  const contents = [
+    ...turns.map(t => ({ role: t.role === 'assistant' ? 'model' : 'user', parts: [{ text: t.text }] })),
+    { role: 'user', parts: [{ text: userMessage }] },
+  ]
 
   const ai = new GoogleGenAI({ apiKey })
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {

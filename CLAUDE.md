@@ -1075,7 +1075,8 @@ HEAD == Vercel READY verified after.
   1d-or-1c green before ANY code.**
 - **Step 2 — quality benchmark** on Sweet home (guide side-by-side + ~20 guest questions), **Udy
   judges. GATE.**
-- **Step 3** — `ai-provider.ts` + migrate greeting / rewrite-rules / bulk-import / guide-assistant.
+- **Step 3 — SHIPPED (Aug 6 2026).** `ai-provider.ts` + greeting / rewrite-rules / bulk-import /
+  guide-assistant migrated to Groq. Details in "PILOT STEP 3 — SHIPPED" below.
 - **Step 4** — guide on POI data. **Step 5** — events on Tavily. **Step 6** — guest-chat router +
   host-picks.
 - **Step 7** — alarm-text sweep + **SELF-ATTACK DRILL** (burst chat past 40, hammer
@@ -1095,6 +1096,101 @@ ceiling rule**, then flip the env var.
 **SIDE EFFECT OF THE NO-CARD INTERIM — stated plainly.** Per the Aug 4 terms finding, the Gemini
 free tier is **not** the compliant EEA basis. That is **accepted as a pre-launch BRIDGE state,
 and this plan removes it entirely.**
+
+### PILOT STEP 3 — SHIPPED (Aug 6 2026): provider abstraction + the four cheap surfaces on Groq
+
+**FOUR SURFACES NOW DEFAULT TO GROQ:** `daily-greeting` (via `_lib/greeting.ts`),
+`rewrite-rules`, `bulk-import`, `guide-assistant`. New `api/_lib/ai-provider.ts` exports
+`resolveProvider(surface)` + `aiGenerate(surface, opts)`; plain `fetch` to Groq's OpenAI-compatible
+`/openai/v1/chat/completions`, no new npm dependency.
+
+- **ENV CONTRACT:** `AI_PROVIDER_<SURFACE>` → `AI_PROVIDER_DEFAULT` → `'groq'`. Surface vars:
+  `AI_PROVIDER_GREETING`, `_REWRITE`, `_BULK_IMPORT`, `_GUIDE_ASSISTANT`, `_CHAT`, `_EVENTS`,
+  `_GUIDE`, `_HOST_PICKS` (full enum declared now; only the first four are wired). `GROQ_MODEL`
+  overrides the default `llama-3.3-70b-versatile`. **Rollback is an env-var flip + redeploy, not
+  a code change** — set `AI_PROVIDER_<SURFACE>=gemini`.
+- **KEYS in Vercel Production, all flagged Sensitive:** `GROQ_API_KEY`, `TAVILY_API_KEY`,
+  `GEOAPIFY_API_KEY`. **Vendor-side naming convention: the key is called `bemgu-production` at
+  each vendor**; the Vercel variable name carries the vendor, so an incident responder can map
+  var → vendor console without guessing.
+- **THE GEMINI CODE PATHS ARE KEPT**, unchanged, behind the provider branch at each call site.
+  `ai-provider.ts`'s `gemini` case deliberately THROWS (`'gemini branch handled at call site'`) —
+  Gemini is never reimplemented there.
+- **`scrubErr` now also redacts `gsk_…`** alongside `AIza…` and `key=…`, so a Groq key can no
+  more reach a log than a Google one. Redaction runs before the truncate.
+- **GROQ FREE TIER LIMITS ARE ORG-LEVEL: 30 RPM / 6K TPM** — not per key and not per surface, so
+  all migrated surfaces share one pool. This is a capacity ceiling, NOT a spend ceiling (free
+  tier has no bill), and it is deliberately far below the in-app brakes, which remain the control.
+- **BRAKES UNTOUCHED, and provably so:** every counter bump, cooldown, cache read/write, rate
+  limit, fail-open/fail-closed choice and ntfy call sits OUTSIDE the provider branch.
+  `daily-greeting`'s 50/h victim-keyed fail-closed brake and its `(booking, date, day_part)`
+  cache were not edited at all — the greeting migration happens one level down in
+  `_lib/greeting.ts::generateDailySuggestion`, which is where the model call actually lives.
+  `cron-spend-audit` needs no change (endpoint keys unmoved).
+- **A PROVIDER SWAP SILENTLY RE-SIZES EVERY BRAKE THROUGH ITS RETRY COUNT — both gates caught
+  this, and it is the durable lesson of Step 3.** A brake counts REQUESTS; what a request costs
+  is the provider's attempt budget. The first draft used a uniform `retries: 2` + 30s for all
+  four surfaces, which silently turned `bulk-import`'s SINGLE 10s shot into 3 attempts / ~92s
+  (on an endpoint with no rate limiter at all) and moved `daily-greeting`'s 50/h ceiling from
+  ~100 model calls to ~150. **`AiGenerateOpts` now carries per-surface `retries` + `timeoutMs`,
+  and every call site passes the SAME budget its Gemini path used:** greeting 1 retry x 12s,
+  rewrite 2 x 10s, bulk-import **0** x 10s, guide-assistant 1 x 20s. So one counter unit costs
+  the same number of model calls on both paths, and the recorded 2x ceiling rule still holds.
+  **Check this on every remaining migration — passing no budget is the bug.**
+- **`generateGreetingBlurb` (same file) STAYS ON GEMINI** — it is invoked from `generate-guide`,
+  so it migrates with the guide in Step 4, not here.
+- **THE ONE UNAVOIDABLE PROVIDER DIFFERENCE — `bulk-import`.** Groq's `json_object` mode emits a
+  top-level OBJECT, but that prompt asks for a bare ARRAY, so the array can arrive wrapped
+  (`{"categories":[…]}`) and the existing `Array.isArray` check would 502 on every import. The
+  parse now unwraps a single array-valued property before that check. **A bare array — what
+  Gemini returns in the normal case — never enters the unwrap, so the Gemini path is unaffected
+  in practice**, and anything still not an array falls through to the unchanged 502. It is NOT a
+  strict no-op though: a wrapped object from EITHER provider used to 502 and is now accepted —
+  an intended widening, still gated by the per-item category/content validation. Prompts were
+  NOT edited.
+- **THE `GEMINI_API_KEY` EARLY-GUARD TRAP, worth remembering for Steps 4-6:** all four files
+  returned early if `GEMINI_API_KEY` was unset. Left at the top, that guard would have nulled or
+  500'd every request on the Groq path the moment **Step 8 deletes the `GEMINI_*` vars** — a
+  fault that would appear only after a later, unrelated step. Each guard moved INSIDE its gemini
+  branch. **Check this on every remaining migration.**
+- **`docs/providers/` is committed** — Groq/Tavily/Geoapify contracts, DPAs and dated console
+  screenshots. **`docs/providers/README.md` is the findings manifest**; read it before relying on
+  any provider-terms claim.
+- **STALE ALARM TEXT — RESIDUAL, fold into the Step 7 sweep (both gates flagged it).** The
+  per-hour `daily-greeting` alarm was corrected, but three other places still point an incident
+  responder at Google for a surface that now spends Groq: `cron-spend-audit.ts`'s
+  `KEY_HINT['daily-greeting']`, the "watch daily-greeting (GEMINI_API_KEY)" lines in
+  `create-booking.ts` + `sync-ical.ts`, and the stale comment at the top of `daily-greeting.ts`'s
+  brake block. Costs a wasted action rather than money (Groq is no-card), so it was NOT fixed
+  here to avoid a third gate cycle — **but Step 7's alarm-text sweep must catch it.** General
+  rule, same class as `fa8fa32`: **an alarm's remediation text migrates with its surface.**
+- **KNOWN, NOT FIXED (both gates, non-blocking):** a missing `GROQ_API_KEY` returns
+  `502 'rewrite failed'` / `502` on rewrite-rules + bulk-import where their Gemini branches
+  returned `500 'AI not configured'` (observability only — `guide-assistant` maps it correctly
+  via `isAiConfigError`). And `resolveProvider` runs twice per request (call site + inside
+  `aiGenerate`) — pure function, harmless, but an unrecognised-value warn double-logs.
+- **TAVILY HAS NO SELF-SERVE DPA** (confirmed in its Trust Center, 2026-08-06), and its
+  subprocessor list includes **Groq, Cohere and OpenAI, all US**. **HARD BUILD RULE for Steps 5-6:
+  no guest text and no personal data may ever enter a Tavily query.** The compliance position
+  rests on that rule, not on a signed document.
+- **GROQ ZDR IS UNVERIFIED — OPEN, and it gates the guest-notice wording.** `docs/providers/README.md`
+  asserted "Inference APIs ZDR = Enabled", but its own screenshot shows **ZDR Disabled** under
+  the breadcrumb **"Personal / Default Project"**, not the **Bemgu** org the production key
+  belongs to. The README now carries the contradiction and an ACTION rather than the claim.
+  **If ZDR is off, Groq retains inputs + outputs for 30 days** — the same disclosure shape as
+  the Gemini grounding 30-day finding (legal Gap 5). Verify inside the Bemgu org and re-capture
+  a dated screenshot before any legal document relies on it.
+- **NEW DATA EGRESS TO GROQ — record for Art. 30 / the subprocessor list**, ranked by what each
+  prompt can actually carry: (1) **`bulk-import`** — up to 8000 chars of arbitrary host-pasted
+  property info; the prompt tells the model to SKIP WiFi/check-in content, **but the input
+  containing those door codes is still transmitted**; (2) **`rewrite-rules`** — up to 5000 chars
+  of host-written house rules, commonly carrying a host name and phone number;
+  (3) **`guide-assistant`** — the host's own questions plus 8 turns of history;
+  (4) **`daily-greeting` — the cleanest, and worth stating precisely**: day-part, temp/condition,
+  neighbourhood + city, up to 5 place names, stay-day index and up to 6 of this booking's own
+  prior suggestions — **no guest name, no booking token, no street address, no apartment UUID,
+  no host id.** The only guest-controlled free text reaching Groq anywhere is `condition`
+  (<=100 chars, already validated).
 
 ## SPEND-ABUSE HARDENING — COMPLETE (Aug 5 2026) — CANONICAL SUMMARY
 

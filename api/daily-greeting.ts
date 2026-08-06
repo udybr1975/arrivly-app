@@ -137,8 +137,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
               message:
                 `Feature: Daily guest greeting (/api/daily-greeting)\n` +
                 `Host ${greetingHostId} generated ${greetCount} greetings this hour (limit ${DAILY_GREETING_HOURLY_LIMIT}).\n` +
-                `gemini-2.5-flash on shared GEMINI_API_KEY. The host may be a TARGET, not the culprit.\n` +
-                `DISABLE if needed: GEMINI_API_KEY = project gen-lang-client-0819525902 (also powers host-picks/rewrite/bulk-import).\n` +
+                `Provider: AI_PROVIDER_GREETING (default GROQ). Host may be a TARGET, not the culprit.\n` +
+                `DISABLE: rotate the ACTIVE provider's key - GROQ_API_KEY, or GEMINI_API_KEY if flipped.\n` +
                 `ACTION: INVESTIGATE, do not auto-block. Key = apartment host: culprit or VICTIM (leaked token). Revoke token or block per findings.`,
               priority: 'high',
             })

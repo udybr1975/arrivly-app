@@ -2,6 +2,7 @@ import { GoogleGenAI } from '@google/genai'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { withRetry } from './retry.js'
 import { scrubErr } from './scrub.js'
+import { aiGenerate, resolveProvider } from './ai-provider.js'
 import type { AptInput } from './guide.js'
 
 export type { AptInput }
@@ -110,11 +111,12 @@ export interface DailySuggestionArgs {
 export async function generateDailySuggestion(
   args: DailySuggestionArgs
 ): Promise<{ suggestion: string | null }> {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) {
-    console.error('[greeting] GEMINI_API_KEY not configured')
-    return { suggestion: null }
-  }
+  // PILOT: provider decides WHICH model answers. The 50/h victim-keyed fail-closed brake and
+  // the per-booking/date/day-part cache both live in api/daily-greeting.ts and are untouched —
+  // one counter bump is still exactly one call here, whichever provider runs.
+  // The GEMINI_API_KEY guard moved INSIDE the gemini branch on purpose: once the pilot deletes
+  // the GEMINI_* vars (Step 8), a top-level guard would null every suggestion on the groq path.
+  const provider = resolveProvider('greeting')
 
   const { dayPart, temp, condition, neighborhood, city, places, stayDay, recent } = args
 
@@ -184,30 +186,45 @@ export async function generateDailySuggestion(
     `First-person-host warmth. No greeting, no salutation, no signature, ` +
     `no markdown, no emojis. Write in English. One sentence only.`
 
-  const ai = new GoogleGenAI({ apiKey })
-
-  const generate = async () => {
-    const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 12000)
-    try {
-      return await ai.models.generateContent({
-        model: MODEL,
-        contents: prompt,
-        config: {
-          thinkingConfig: { thinkingBudget: 0 },
-          maxOutputTokens: 128,
-          abortSignal: controller.signal,
-        },
-      })
-    } finally {
-      clearTimeout(timer)
-    }
-  }
-
   let text = ''
   try {
-    const response = await withRetry(generate, { retries: 1, baseDelayMs: 600 })
-    text = response.text?.trim() ?? ''
+    if (provider === 'groq') {
+      // Budget parity with the gemini branch below: 1 retry (2 attempts) x 12s.
+      text = (await aiGenerate('greeting', {
+        prompt,
+        maxTokens: 128,
+        retries: 1,
+        timeoutMs: 12000,
+      })).trim()
+    } else {
+      const apiKey = process.env.GEMINI_API_KEY
+      if (!apiKey) {
+        console.error('[greeting] GEMINI_API_KEY not configured')
+        return { suggestion: null }
+      }
+      const ai = new GoogleGenAI({ apiKey })
+
+      const generate = async () => {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), 12000)
+        try {
+          return await ai.models.generateContent({
+            model: MODEL,
+            contents: prompt,
+            config: {
+              thinkingConfig: { thinkingBudget: 0 },
+              maxOutputTokens: 128,
+              abortSignal: controller.signal,
+            },
+          })
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+
+      const response = await withRetry(generate, { retries: 1, baseDelayMs: 600 })
+      text = response.text?.trim() ?? ''
+    }
   } catch (e) {
     console.error('[greeting] suggestion threw', { aptId: args.apartmentId, msg: scrubErr(e) })
     return { suggestion: null }

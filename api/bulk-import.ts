@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { GoogleGenAI } from '@google/genai'
 import { scrubErr } from './_lib/scrub.js'
+import { aiGenerate, resolveProvider } from './_lib/ai-provider.js'
 
 const MODEL = 'gemini-2.5-flash'
 
@@ -49,30 +50,49 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .maybeSingle()
   if (!apt) return res.status(403).json({ error: 'forbidden' })
 
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) return res.status(500).json({ error: 'AI not configured' })
+  // PILOT: provider decides WHICH model answers. Auth, ownership check, the 8000-char cap, the
+  // parse/validation, the delete+insert and every response shape are untouched. The
+  // GEMINI_API_KEY guard moved inside the gemini branch so the groq path survives Step 8.
+  const provider = resolveProvider('bulk_import')
 
   let timer: ReturnType<typeof setTimeout> | undefined
   try {
-    const ai = new GoogleGenAI({ apiKey })
+    let raw = ''
+    if (provider === 'groq') {
+      // Budget parity with the gemini branch below, which is a SINGLE-SHOT 10s Promise.race
+      // with no retry: retries 0. This endpoint has no rate limiter at all, so allowing 3
+      // attempts here would have tripled its per-request model calls.
+      raw = await aiGenerate('bulk_import', {
+        system: SYSTEM_PROMPT,
+        prompt: content.trim(),
+        json: true,
+        maxTokens: 2048,
+        retries: 0,
+        timeoutMs: 10000,
+      })
+    } else {
+      const apiKey = process.env.GEMINI_API_KEY
+      if (!apiKey) return res.status(500).json({ error: 'AI not configured' })
+      const ai = new GoogleGenAI({ apiKey })
 
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => reject(new Error('timeout')), 10000)
-    })
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('timeout')), 10000)
+      })
 
-    const generatePromise = ai.models.generateContent({
-      model: MODEL,
-      contents: content.trim(),
-      config: {
-        systemInstruction: SYSTEM_PROMPT,
-        responseMimeType: 'application/json',
-        thinkingConfig: { thinkingBudget: 0 } as any,
-        maxOutputTokens: 2048,
-      },
-    })
+      const generatePromise = ai.models.generateContent({
+        model: MODEL,
+        contents: content.trim(),
+        config: {
+          systemInstruction: SYSTEM_PROMPT,
+          responseMimeType: 'application/json',
+          thinkingConfig: { thinkingBudget: 0 } as any,
+          maxOutputTokens: 2048,
+        },
+      })
 
-    const response = await Promise.race([generatePromise, timeoutPromise])
-    const raw = response.text ?? ''
+      const response = await Promise.race([generatePromise, timeoutPromise])
+      raw = response.text ?? ''
+    }
 
     let parsed: unknown
     try {
@@ -81,6 +101,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     } catch {
       console.error('[bulk-import] JSON parse failed — raw:', raw.slice(0, 200))
       return res.status(502).json({ error: 'parse_failed' })
+    }
+
+    // PROVIDER DIFFERENCE, handled here rather than by editing the prompt: Groq's json_object
+    // mode emits a top-level OBJECT, so the array this prompt asks for can arrive wrapped
+    // (e.g. {"categories":[…]}). Unwrap a single array-valued property before the check below.
+    // A bare array — what Gemini returns in the normal case — never enters this branch, so the
+    // Gemini path is unaffected in practice. It is NOT a strict no-op though: a wrapped object
+    // from either provider used to 502 and is now accepted. That widening is intended, and the
+    // per-item validation below still gates every category name and content string.
+    // Anything still not an array falls through to the unchanged 502.
+    if (!Array.isArray(parsed) && parsed && typeof parsed === 'object') {
+      const arrays = Object.values(parsed as Record<string, unknown>).filter(Array.isArray)
+      if (arrays.length === 1) parsed = arrays[0]
     }
 
     if (!Array.isArray(parsed)) {
