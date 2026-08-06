@@ -146,18 +146,33 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     else failed++
   }
 
-  // Signal only a wholesale failure (likely quota/outage) — never throw.
-  // KNOWN AND DELIBERATELY LEFT AS-IS (B3.1): a run that is ENTIRELY SKIPS now satisfies
-  // `refreshed === 0` and WILL fire this alarm, whose text then says "All N event refreshes
-  // failed today" — which is inaccurate, since nothing failed and every existing panel was
-  // deliberately preserved. Plausible in a genuinely quiet week across few apartments. The
-  // condition that matches the intent is `refreshed === 0 && skipped === 0`; it was NOT changed
-  // here because that is an alarm-semantics change and this task is scoped to the data-loss fix.
-  // See the commit body. Until then, read this alert together with the `skipped` count below.
-  if (candidates.length > 0 && refreshed === 0) {
+  // Signal only a GENUINE wholesale failure (likely quota/outage) — never throw.
+  //
+  // `skipped === 0` is part of the condition, not decoration (B3.2). B3.1 introduced a false
+  // assertion here: an empty extraction used to be WRITTEN and counted as `refreshed`, so before
+  // it this alarm could not lie this way. Afterwards a run where every apartment was deliberately
+  // PRESERVED also satisfies `refreshed === 0`, and the message then claimed total failure when
+  // nothing failed. That was not a rare edge either — the condition needs every candidate to
+  // skip, and `candidates` is frequently 1 at current fleet size, so ONE empty extraction on ONE
+  // booked apartment fired a high-priority total-failure alert. The cost is alarm fatigue on the
+  // one signal that would reveal Tavily quota exhaustion, which matters given the 1000-credit
+  // FLEET-WIDE MONTHLY pool.
+  //
+  // An ALL-SKIP run deliberately gets NO ntfy: it is a normal quiet week, and a routine
+  // notification would train the operator to ignore this channel. It is visible in the JSON
+  // summary and the per-apartment warn logs instead.
+  //
+  // The message carries NO ACTION line, deliberately — see the fa8fa32 rule. An alarm that names
+  // no remediation cannot misdirect one.
+  //
+  // NOTE the `skipped` in the body is NECESSARILY 0 here, since the condition gates on it. It is
+  // stated rather than varying: it makes the alert self-describing for anyone holding the older
+  // mental model in which this alarm could also mean "deliberately preserved". Do not read it as
+  // a live signal — the skip count lives in the JSON summary.
+  if (candidates.length > 0 && refreshed === 0 && skipped === 0) {
     await sendNtfy({
       title: 'Bemgu city-events refresh',
-      message: `All ${candidates.length} event refreshes failed today.`,
+      message: `All ${candidates.length} event refreshes failed today (skipped ${skipped}).`,
       priority: 'high',
     })
   }

@@ -700,6 +700,13 @@ export default function PropertySetup() {
       setEventsStatus(data)
       if (data.refreshed) toast('Events refreshed', 'success')
       else if (data.reason === 'fresh') toast('Events are already up to date', 'info')
+      // 'no_events' is a DELIBERATE keep-stale, not a failure: the extraction came back empty and
+      // the server chose to preserve the existing list rather than erase it. It used to fall
+      // through to the red error below, which invited a retry that costs another
+      // city-events-host unit (only 3/hour) and 3 more Tavily credits from a fleet-wide monthly
+      // pool — for the identical outcome. The catch-all below still covers 'generation_failed'
+      // and 'busy', which ARE genuine failures.
+      else if (data.reason === 'no_events') toast('No new events found — keeping the current list', 'info')
       else toast('Could not refresh events. Please try again.', 'error')
     } catch {
       toast('Could not refresh events. Please try again.', 'error')

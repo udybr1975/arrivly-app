@@ -1266,31 +1266,59 @@ AbortController.
   rows regardless of probe health.
   **The counter bump is NOT skipped** — a run that generates and then declines to write really did
   spend its Tavily and Groq calls, so it still costs its unit.
-- **NEW, OPEN, and higher priority than it first looked — the cron's wholesale-failure alarm now
-  fires on an ALL-SKIP run.** `refreshed` still means "a row was actually written", so
-  `refreshed === 0` is satisfied by a run where every apartment was deliberately preserved, and the
-  alert says *"All N event refreshes failed today"* when nothing failed. Three facts the
-  security-auditor established that make this worth doing soon rather than eventually:
-  **(a) B3.1 INTRODUCED it** — an empty extraction used to be written and counted as `refreshed`,
-  so this alarm could not previously lie this way.
-  **(b) It is NOT rare.** The condition needs EVERY candidate to skip, and `candidates` is
-  frequently **1** at current fleet size — so a single empty extraction on a single booked
-  apartment fires a high-priority alert asserting total failure. Likely on the Tavily path.
-  **(c) It degrades a control that IS security-relevant** — this alert is the quota-exhaustion /
+- **~~The cron's wholesale-failure alarm fires on an ALL-SKIP run~~ — CLOSED by B3.2
+  (Aug 6 2026).** The condition is now verbatim:
+  `if (candidates.length > 0 && refreshed === 0 && skipped === 0)` — nothing written AND nothing
+  deliberately preserved, i.e. genuine wholesale failure. Why it mattered more than it first
+  looked: **(a) B3.1 INTRODUCED it** — an empty extraction used to be written and counted as
+  `refreshed`, so the alarm could not previously lie this way; **(b) it was NOT rare**, since the
+  condition needs every candidate to skip and `candidates` is frequently **1** at current fleet
+  size, so ONE empty extraction on ONE booked apartment fired a high-priority total-failure alert;
+  **(c) it degraded a security-relevant control** — this alert is the quota-exhaustion /
   provider-outage signal, and Tavily's 1000-credit fleet-wide MONTHLY pool makes outage detection
-  matter more, not less. The harm is alarm fatigue on the one detector that would catch it.
-  **The condition that matches the intent is `refreshed === 0 && skipped === 0`**, optionally with
-  `(skipped N)` in the message so the body is self-sufficient. NOT changed in B3.1: that is an
-  alarm-semantics change and the task was scoped to the data-loss fix. Mitigations meanwhile: it
-  fails LOUD not silent, names no host and carries no ACTION line (so it cannot misdirect
-  remediation the way the `fa8fa32` class did), and `skipped` is in the JSON summary.
-- **NEW, OPEN — the skip silently removed an ACCIDENTAL throttle.** An empty write used to advance
-  `generated_at`, which armed the 20h freshness gate and suppressed retries. A skip does not, so
-  the gate stays disarmed — good for recoverability, but combined with the misleading error toast
-  above it actively INVITES a retry that costs a `city-events-host` unit plus 3 Tavily credits.
-  Bounded by the existing 3/h brake (≤9 credits/host/hour), and the one-line toast fix also closes
-  it. **General shape worth remembering: removing a write can remove a rate limit nobody intended
-  to be one.**
+  matter more, not less, so the real harm was alarm fatigue on the one detector that would catch
+  it. **An ALL-SKIP run deliberately gets NO ntfy** — a normal quiet week, and a routine
+  notification would train the operator to ignore this channel; it is visible in the JSON summary
+  and the per-apartment warn logs instead. The message still carries **NO ACTION line** (fa8fa32:
+  an alarm naming no remediation cannot misdirect one). **The `skipped` count in the body is
+  necessarily 0** under this condition — it is stated to make the alert self-describing for anyone
+  holding the older mental model, NOT as a live signal.
+- **~~The host UI shows a red ERROR toast for `no_events`~~ — CLOSED by B3.2.** One branch added,
+  the existing ones untouched: `else if (data.reason === 'no_events') toast('No new events found —
+  keeping the current list', 'info')`. The catch-all `else` still covers `generation_failed` and
+  `busy`, which ARE genuine failures. The inline status line was already correct and was NOT
+  rewritten.
+- **The ACCIDENTAL-THROTTLE item is MITIGATED, NOT CLOSED — the underlying mechanic stands.** An
+  empty write used to advance `generated_at`, which armed the 20h freshness gate and suppressed
+  retries; a skip does not, so the gate stays disarmed. B3.2's toast removes the *invitation* to
+  retry, so the practical cost is gone, but the mechanism is unchanged and any future path that
+  skips a write inherits it. Still bounded by the 3/h brake (≤9 Tavily credits/host/hour).
+  **General shape worth remembering: removing a write can remove a rate limit nobody intended to
+  be one.**
+- **NEW, OPEN (B3.2) — `probe_failed` skips are the ONE case where the new gate suppresses
+  something real.** The B3.1 guard classifies a DB probe ERROR as `skipped`, identically to a
+  healthy `row_exists` preservation. So a run where EVERY candidate produced an empty extraction
+  **and** the Supabase probe errored is now fully silent — an infra fault, not a quiet week.
+  Narrow (it needs both conditions together, and the top-level `apartments`/`bookings` queries
+  would usually have 500'd first), and NOT fixed in B3.2 because the fix means changing the
+  guard's return classification, which B3.2 was scoped to leave untouched. **Fix when picked up:
+  count `probeErr` as `failed` rather than `skipped`, or give it a third counter.**
+  **WHY THE REST OF THE SUPPRESSION IS SAFE — the load-bearing proof, verified independently by
+  both gates: EVERY Tavily/Groq/Gemini fault lands as `failed`, never as `skipped`.** `searchWeb`
+  never throws and returns `[]` on any quota/HTTP/network error → `payload: null` → failed; Groq
+  429/timeout/parse/shape failures → `payload: null` → failed; a Gemini throw or non-array
+  `categories` → `payload: null` → failed. A `skipped` therefore requires search + extraction +
+  parse to have ALL SUCCEEDED and returned zero events — positive evidence AGAINST the quota/
+  outage the alarm exists to detect. Fleet-wide credit exhaustion is homogeneous, so it produces
+  `skipped === 0` and still fires. **Generalisable rule: before suppressing a detector on a new
+  state, prove which failure modes actually produce that state.**
+- **KNOWN COSMETIC DISAGREEMENT, left as-is (B3.2):** when the existence PROBE itself failed,
+  B3.1 deliberately omits `generated_at`, so the toast says "keeping the current list" while the
+  status line falls to "Could not refresh — please try again". **Both statements are true** — the
+  write was skipped (so the list IS kept) and nothing was refreshed — but the tone disagrees.
+  Only reachable on a DB probe error. The clean resolution, if it ever matters, is a distinct
+  server reason (e.g. `no_events_unverified`) so the UI can say "kept, but could not confirm";
+  that is an API + UI change and was out of B3.2's scope.
 - **NEW, OPEN — `countEvents` is DUPLICATED verbatim in both callers, and it is a SAFETY
   PREDICATE.** That is the category where drift costs most: if the cron's copy ever becomes more
   permissive, **the data loss returns with no test and no alarm**. Enforced today only by a
