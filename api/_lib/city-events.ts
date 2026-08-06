@@ -59,7 +59,12 @@ function eventWindow(apt: { city: string | null; country: string | null }) {
   const monthYear =
     m1 === m2 && y1 === y2 ? `${m1} ${y1}` : y1 === y2 ? `${m1} ${m2} ${y1}` : `${m1} ${y1} ${m2} ${y2}`
 
-  return { today, untilStr, monthYear, place: country ? `${city}, ${country}` : city }
+  // Day-granular UTC bounds for the B3.4 server-side window check. Same UTC basis as `fmt`, so
+  // the dates the prompt states and the dates the parser enforces cannot drift.
+  const startMs = Date.UTC(y1, now.getUTCMonth(), now.getUTCDate())
+  const endMs = Date.UTC(y2, until.getUTCMonth(), until.getUTCDate()) + 86_399_999
+
+  return { today, untilStr, monthYear, startMs, endMs, place: country ? `${city}, ${country}` : city }
 }
 
 // Bounds applied to EXTRACTED events. The model is steered by arbitrary third-party web text,
@@ -71,6 +76,216 @@ const MAX_EVENTS = 15
 const MAX_SNIPPETS = 14
 const capStr = (v: unknown, n: number): string => (typeof v === 'string' ? v.trim().slice(0, n) : '')
 const SAFE_SCHEME = /^https?:\/\//i
+
+// ---------------------------------------------------------------------------------------------
+// B3.4 SERVER-SIDE VALIDATORS. Both exist because a PROMPT INSTRUCTION IS NOT AN INVARIANT — the
+// same lesson the url provenance allowlist taught in B3.3, applied to aboutness and to dates.
+// ---------------------------------------------------------------------------------------------
+
+/** lowercase, strip accents, drop punctuation → space-separated tokens. */
+const normWords = (s: string): string[] =>
+  s
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '') // strip combining marks (ASCII-only source, no literal diacritics)
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+
+// Tokens that appear in virtually every aggregator/listing path and therefore prove NOTHING about
+// which event a url is for. The city and country are added per-call for the same reason: a
+// city-listing page like /finland/helsinki contains the city name by construction, so matching on
+// it would keep exactly the generic urls this check exists to reject.
+const GENERIC_URL_TOKENS = new Set([
+  'event', 'events', 'tapahtumat', 'festival', 'festivals', 'concert', 'concerts', 'gig', 'gigs',
+  'live', 'music', 'ticket', 'tickets', 'liput', 'calendar', 'whats', 'what', 'index', 'home',
+  'show', 'shows', 'tour', 'tours', 'city', 'guide', 'news', 'program', 'programme',
+])
+// A path made only of these is a homepage or a bare locale, never an event.
+const LOCALE_SEGMENT = /^[a-z]{2}([-_][a-z]{2})?$/i
+
+/**
+ * Does this url plausibly identify THIS event, rather than a site or a city listing?
+ *
+ * WHY THIS IS NOT REDUNDANT WITH THE PROVENANCE ALLOWLIST — the B3.4 durable rule:
+ * provenance proves ORIGIN ("this url came from the corpus"), never ABOUTNESS ("this url is about
+ * this event"). Both are needed. The B3.3 smoke run had all 5 urls pass provenance legitimately
+ * and all 5 point at the wrong place — "Hellsinki Metal Festival" linked to
+ * jambase.com/festival/flow-festival-2026, a DIFFERENT festival, and three others to
+ * livenation.fi/en. Under an event's name, an aggregator link spends the HOST'S brand trust to
+ * send a guest somewhere wrong, which is worse than no link at all: `EventsPage.eventHref` falls
+ * back to a search for title + venue + city, which for those five would have landed CORRECTLY.
+ * So BLANK BEATS PLAUSIBLE-BUT-WRONG, and this check is deliberately conservative — when in
+ * doubt it blanks.
+ */
+export function urlIsEventSpecific(url: string, title: string, place: string): boolean {
+  let parsed: URL
+  try {
+    parsed = new URL(url)
+  } catch {
+    return false // unparseable → blank (the caller has already scheme-checked it)
+  }
+
+  const segments = parsed.pathname.split('/').filter(Boolean)
+  // Reject a homepage, and reject a path that is nothing but a locale ("/en", "/fi", "/en-gb") —
+  // the observed livenation.fi/en case.
+  if (segments.length === 0) return false
+  if (segments.every((seg) => LOCALE_SEGMENT.test(seg))) return false
+
+  // Match against HOSTNAME + path + query. All three carry aboutness evidence, and searching more
+  // surface can only ever KEEP a url a narrower check would have blanked — it cannot manufacture a
+  // false keep unless the token is genuinely present, which IS the evidence we want.
+  //
+  // THE HOSTNAME IS NOT OPTIONAL: an official event site puts the name in the DOMAIN, not the path
+  // — `hellsinkimetalfestival.fi/en/tickets` is the real Hellsinki Metal Festival page and a
+  // path-only check blanked it (caught by the test suite, not by reading the code). Note this is
+  // exactly why the shallow-path guard above runs FIRST and is load-bearing: without it,
+  // `livenation.fi/en` would now match a title token like "Live Nation" via the hostname.
+  //
+  // It does NOT make an attacker-registered lookalike domain safe — but such a url must still be
+  // in the provenance allowlist, i.e. Tavily must actually have returned it for a city query. That
+  // ceiling is pre-existing and recorded; aboutness cannot and does not try to fix it.
+  //
+  // KNOWN OVER-KEEP EDGE: because the hostname counts, any page on a site whose BRAND appears in
+  // the title is kept (`livenation.fi/events` under a title containing "Nation"). Bounded by the
+  // shallow-path guard for the landing-page case, and `venue` is deliberately NOT passed in — were
+  // it, every venue's own site would match every event held there, which is precisely the
+  // site-level link this check exists to reject.
+  const raw = parsed.hostname + parsed.pathname + parsed.search
+  // decodeURIComponent THROWS URIError on a lone `%`, and the WHATWG URL parser does NOT encode
+  // one — so `https://x.fi/100%off` reaches here verbatim. This module's never-throws contract is
+  // load-bearing: three of the four callers have no try/catch, so an escaping throw would turn the
+  // fail-closed soft shapes into a 500 on the PUBLIC guest endpoint and burn EventsPage's 3 retries
+  // (3 counter units, 12 Tavily credits) on a deterministic failure. Falling back to the raw string
+  // only loses percent-encoded non-ASCII, which biases toward blank — the safe direction.
+  let decoded: string
+  try {
+    decoded = decodeURIComponent(raw)
+  } catch {
+    decoded = raw
+  }
+  // Joined WITH A SEPARATOR, not concatenated: gluing tokens together would let a title token match
+  // across two unrelated path segments ("/art/ekstra" matching "artek"). Every legitimate case still
+  // matches, because a slug or domain is ONE token after normalisation ("peteparkkonen" contains
+  // "parkkonen"; "hellsinkimetalfestival" contains "hellsinki").
+  const haystack = normWords(decoded).join(' ')
+
+  // Meaningful title tokens: >= 4 chars (short ones substring-match far too easily), minus the
+  // generic listing vocabulary, minus the city/country, minus PURELY NUMERIC tokens.
+  //
+  // THE YEAR EXCLUSION IS NOT COSMETIC — without it this check reopens the exact regression it
+  // exists to prevent: "Hellsinki Metal Festival 2026" yields the token "2026", which appears in
+  // `jambase.com/festival/flow-festival-2026`, so THE WRONG FESTIVAL would be linked again. Titles
+  // carrying a year are common (festivals, pride, seasons) and aggregator slugs carrying a year are
+  // near-universal, so the pairing is routine, not contrived. A year proves nothing about aboutness
+  // — the same rationale as GENERIC_URL_TOKENS.
+  const placeTokens = new Set(normWords(place))
+  const titleTokens = normWords(title).filter(
+    (t) =>
+      t.length >= 4 &&
+      !/^\d+$/.test(t) &&
+      !GENERIC_URL_TOKENS.has(t) &&
+      !placeTokens.has(t),
+  )
+
+  // NOTHING MATCHABLE → BLANK, deliberately, and this is the same reasoning as the Step 4
+  // `matchable` gate: a very short title ("The Ark") or a NON-LATIN-SCRIPT title normalises to no
+  // usable ASCII token, so a keep here would mean "unchecked", not "verified". Blanking is the
+  // honest outcome, and the search fallback still serves the guest.
+  if (titleTokens.length === 0) return false
+
+  return titleTokens.some((t) => haystack.includes(t))
+}
+
+const MONTHS: Record<string, number> = {
+  january: 0, jan: 0, february: 1, feb: 1, march: 2, mar: 2, april: 3, apr: 3, may: 4,
+  june: 5, jun: 5, july: 6, jul: 6, august: 7, aug: 7, september: 8, sep: 8, sept: 8,
+  october: 9, oct: 9, november: 10, nov: 10, december: 11, dec: 11,
+}
+
+/**
+ * Is this event's date string inside the window?
+ *   true  = parsed and inside (or a range that INTERSECTS the window)
+ *   false = parsed and entirely outside → drop
+ *   null  = could not parse with confidence → KEEP (never drop what we cannot judge)
+ *
+ * DELIBERATELY NARROW: it handles only the shapes the prompt itself asks for and that we actually
+ * observe — "8 August", "7-8 August", "August 8", an ISO date, and same-month ranges of those. It
+ * is NOT a locale/multi-language date parser; that is the separate piece of work already recorded
+ * in CLAUDE.md, and every unhandled shape falls through to `null` (keep), so a non-English date
+ * string degrades to exactly today's prompt-only behaviour rather than silently emptying a city.
+ *
+ * READ THE RETURN VALUES AS A SAFETY DIRECTION, not three equal outcomes: `false` is the only one
+ * that removes a guest-visible event, so every ambiguity above resolves to `null`.
+ *
+ * WHY SERVER-SIDE AT ALL: prompt wording was tried TWICE — the original "do NOT include past
+ * events" and B3.3's inverted-burden explicit-window rule — and still returned "The Ark,
+ * 5 August" against a window starting 6 August. Two failures is enough evidence that wording is
+ * not the mechanism.
+ */
+export function eventDateInWindow(dateStr: string, startMs: number, endMs: number): boolean | null {
+  const s = dateStr.toLowerCase()
+  const intersects = (aMin: number, aMax: number) => aMin <= endMs && aMax >= startMs
+
+  // ISO-like first — unambiguous, so it needs no year inference.
+  const iso = [...s.matchAll(/(\d{4})-(\d{1,2})-(\d{1,2})/g)]
+  if (iso.length > 0) {
+    const stamps = iso
+      .map((m) => Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])))
+      .filter((n) => Number.isFinite(n))
+    if (stamps.length === 0) return null
+    return intersects(Math.min(...stamps), Math.max(...stamps) + 86_399_999)
+  }
+
+  // A month NAME is required — without one there is nothing to anchor a day number to.
+  //
+  // COLLECT ALL MONTHS, NEVER "FIRST MATCH WINS". Taking the first match in dictionary order was a
+  // SYSTEMATIC WRONG-DROP, the one thing this function must never do: MONTHS is chronological, and
+  // ranges are written earlier-to-later, so the month picked was reliably the EARLIER one and the
+  // day numbers were then clamped into it. "26 July - 9 August" became 9-26 JULY and was dropped
+  // during a 6-13 August window, though the event is live for the whole stay. It hit multi-day
+  // exhibitions, markets and long festivals hardest — exactly the `culture` content the diversity
+  // fix in this same change exists to surface.
+  //
+  // TWO OR MORE DISTINCT MONTHS => null (KEEP). A cross-month range is genuinely beyond this
+  // deliberately-narrow parser, so it is unjudgeable rather than out-of-window. This also disarms
+  // the `may` collision for free: "8 August (may sell out)" matches both `may` and `august`, so it
+  // is kept rather than resolved to May and dropped.
+  const monthsFound = new Set<number>()
+  for (const [name, idx] of Object.entries(MONTHS)) {
+    if (new RegExp(`\\b${name}\\b`).test(s)) monthsFound.add(idx)
+  }
+  if (monthsFound.size !== 1) return null
+  const month = [...monthsFound][0]
+
+  // The month name must sit NEXT TO a digit run. Without this, prose that merely contains a month
+  // word ("may sell out on the 8th") resolves to a month and can be dropped on a date it never
+  // stated. Ordinal suffixes and "de"/"of" connectors are tolerated.
+  const monthNames = Object.keys(MONTHS).filter((n) => MONTHS[n] === month)
+  const adjacent = monthNames.some((n) =>
+    new RegExp(`(\\d\\s*(?:st|nd|rd|th)?\\s*(?:de\\s+|of\\s+)?\\b${n}\\b|\\b${n}\\b[\\s,.]*\\d)`).test(s),
+  )
+  if (!adjacent) return null
+
+  // Day numbers: 1-2 digit runs only, so a 4-digit year is excluded. Collected across the WHOLE
+  // string (not just next to the month) so a range keeps both ends — "12-15 August" must intersect
+  // a window ending on the 13th. A stray time ("19:00") widens the range, which can only make the
+  // check KEEP more — never wrongly drop.
+  const days = [...s.matchAll(/\b(\d{1,2})\b/g)]
+    .map((m) => Number(m[1]))
+    .filter((n) => n >= 1 && n <= 31)
+  if (days.length === 0) return null
+
+  const dMin = Math.min(...days)
+  const dMax = Math.max(...days)
+
+  // YEAR INFERENCE: the model is asked for a day/month, not a year. Try both years the window
+  // touches (identical unless the window crosses New Year) and keep the event if EITHER placement
+  // intersects — ambiguity must never cause a drop.
+  const years = [...new Set([new Date(startMs).getUTCFullYear(), new Date(endMs).getUTCFullYear()])]
+  return years.some((y) =>
+    intersects(Date.UTC(y, month, dMin), Date.UTC(y, month, dMax) + 86_399_999),
+  )
+}
 
 /**
  * Generate the next-7-days city events for an apartment.
@@ -192,7 +407,7 @@ async function generateCityEventsGemini(
 async function generateCityEventsTavily(
   apt: { id: string; city: string | null; country: string | null }
 ): Promise<{ payload: CityEventsPayload | null }> {
-  const { today, untilStr, monthYear, place } = eventWindow(apt)
+  const { today, untilStr, monthYear, startMs, endMs, place } = eventWindow(apt)
   const weekLabel = `${today} – ${untilStr}`
 
   // 1. FOUR sequential searches through the module rate gate. Never fan out.
@@ -205,11 +420,15 @@ async function generateCityEventsTavily(
   // tapahtumat.hel.fi) fits no other city, and Bemgu is multi-city by design. Query PHRASING
   // generalises across cities; a hardcoded domain allowlist does not, and would silently make
   // every non-allowlisted city worse.
-  const queries = [
-    `${place} events calendar ${monthYear}`,
-    `what's on in ${place} ${monthYear}`,
-    `${place} concerts gigs tickets ${monthYear}`,
-    `${place} museum exhibitions markets festivals ${monthYear}`,
+  //
+  // THEME TAGS (B3.4) are SERVER-DERIVED from which query returned a snippet — never from snippet
+  // content, which is untrusted. They exist so the extractor can see the corpus's own diversity;
+  // see the diversity instruction in the prompt.
+  const queries: Array<{ q: string; theme: string }> = [
+    { q: `${place} events calendar ${monthYear}`, theme: 'calendar' },
+    { q: `what's on in ${place} ${monthYear}`, theme: 'whats-on' },
+    { q: `${place} concerts gigs tickets ${monthYear}`, theme: 'music' },
+    { q: `${place} museum exhibitions markets festivals ${monthYear}`, theme: 'culture' },
   ]
   // Run all searches first, then SELECT. Both steps matter and for different reasons.
   //
@@ -222,7 +441,7 @@ async function generateCityEventsTavily(
   // field), so omitting the search filter does not widen what reaches the guest.
   const perQuery: WebResult[][] = []
   const tavilyResults: number[] = []
-  for (const q of queries) {
+  for (const { q } of queries) {
     const results = await searchWeb(q, {
       maxResults: 8,
       topic: 'general',
@@ -240,13 +459,19 @@ async function generateCityEventsTavily(
   // would 429 this extraction AND starve guest-chat / guide / daily-greeting across every tenant.
   //
   // TOKEN ARITHMETIC (B3.3, CORRECTED — both review gates caught the first version sizing this
-  // off MAX_SNIPPETS x MAX_CONTENT_LEN and omitting title + url). A snippet costs the SUM of all
-  // three ingest caps plus ~40 chars of JSON scaffolding, so per snippet:
-  //   worst case  140 title + 300 url + 900 content + 40 = ~1380 chars
-  //   typical     ~60 title + ~80 url + ~600 content + 40 = ~780 chars
+  // off MAX_SNIPPETS x MAX_CONTENT_LEN and omitting title + url; RE-DERIVED for the B3.4 theme
+  // tag). A snippet costs the SUM of EVERY capped field plus JSON scaffolding, so per snippet:
+  //   worst case  140 title + 300 url + 900 content + 40 scaffolding + 20 theme = ~1400 chars
+  //   typical     ~60 title + ~80 url + ~600 content + 40 + 20 = ~800 chars
   // Against the 6K TPM ORG-WIDE Groq ceiling, which counts INPUT PLUS OUTPUT:
-  //   TYPICAL  14 x 780 = ~11k chars ~= 2.7k in + ~700 prompt + ~1.2k real output ~= 4.6k — fine.
-  //   ALL-CAPS 14 x 1380 = ~19k chars ~= 5.2k in + ~700 + 2048 out ~= 8k — OVER the ceiling.
+  //   TYPICAL  14 x 800 = ~11.2k chars ~= 2.8k in + ~750 prompt + ~1.2k real output ~= 4.75k.
+  //   ALL-CAPS 14 x 1400 = ~19.6k chars ~= 5.3k in + ~750 + 2048 out ~= 8.1k — OVER the ceiling.
+  // The theme tag costs ~280 chars (~70 tokens) across the whole corpus — inside the rounding of
+  // the figures above, so nothing was taken out of another field to pay for it. VERIFIED against
+  // the real B3.3 smoke run: corpusChars 11921 for 14 snippets, i.e. ~850/snippet actual, so the
+  // typical estimate is honest rather than optimistic. `corpusChars` keeps measuring it.
+  // TYPICAL IS FINE IN ISOLATION ONLY: 6K TPM is org-wide PER MINUTE, so one coincident
+  // guest-chat turn can still breach it (see CLAUDE.md).
   // STATE IT HONESTLY: an all-fields-at-cap run can self-429. That was ALSO true before B3.3
   // (~7.5k on the old 12 x 500 corpus with maxTokens 3072) — it is a pre-existing bound, and the
   // title/url trims plus maxTokens 3072 → 2048 were sized to recover roughly what the denser
@@ -270,24 +495,27 @@ async function generateCityEventsTavily(
   // is why the remainder is distributed one slot at a time instead of using a ceil(), which
   // over-allocates (ceil(14/4)=4, 4x4=16 > 14) and lets pass 1 alone re-acquire the tail bias
   // this fair-share pass exists to remove.
-  const snippets: WebResult[] = []
+  // `theme` is OUR field, set from the query index — a snippet can never influence its own tag.
+  const snippets: Array<WebResult & { theme: string }> = []
   const seenUrls = new Set<string>()
   const base = Math.floor(MAX_SNIPPETS / queries.length)
   const extra = MAX_SNIPPETS % queries.length // first `extra` queries get one slot more
-  const take = (list: WebResult[], limit: number): void => {
+  const take = (list: WebResult[], limit: number, theme: string): void => {
     let taken = 0
     for (const r of list) {
       if (snippets.length >= MAX_SNIPPETS || taken >= limit) break
       if (seenUrls.has(r.url)) continue
       seenUrls.add(r.url)
-      snippets.push(r)
+      // Explicit field list, not a spread: it guarantees `theme` is ours and that no unexpected
+      // key from a future WebResult shape can reach the prompt.
+      snippets.push({ theme, title: r.title, url: r.url, content: r.content })
       taken++
     }
   }
   // pass 1: fair share each (quotas sum to exactly MAX_SNIPPETS)
-  perQuery.forEach((list, i) => take(list, base + (i < extra ? 1 : 0)))
+  perQuery.forEach((list, i) => take(list, base + (i < extra ? 1 : 0), queries[i].theme))
   // pass 2: backfill any slots left unused by a thin query
-  for (const list of perQuery) take(list, MAX_SNIPPETS)
+  perQuery.forEach((list, i) => take(list, MAX_SNIPPETS, queries[i].theme))
 
   if (snippets.length === 0) {
     // No corpus — calling the extractor would spend a Groq unit to extract from nothing.
@@ -304,8 +532,11 @@ async function generateCityEventsTavily(
     // window despite the older "drop anything outside that window" wording. The window is now
     // stated as explicit start and end dates, and the burden is inverted — an event that cannot be
     // PLACED inside the window is dropped, rather than kept unless it can be proven outside.
-    // PROMPT-ONLY by design: server-side date parsing would need a real parser across locales and
-    // languages, which is a separate piece of work.
+    // NO LONGER PROMPT-ONLY (B3.4): this wording is now the FIRST of two layers — `eventDateInWindow`
+    // enforces the same window in code at parse time, because this instruction leaked twice. The
+    // wording still earns its place (it stops most out-of-window events being generated at all, which
+    // is cheaper than dropping them), but it is no longer the guarantee. A full locale/multi-language
+    // date parser remains the separate recorded piece of work.
     `THE WINDOW IS ${today} to ${untilStr} INCLUSIVE. Keep an event ONLY if you can place its date ` +
     `inside that window. If the date cannot be placed inside the window, DROP the event even if the ` +
     `snippet is otherwise good. A weekday name alone (e.g. "Saturday") is acceptable ONLY when the ` +
@@ -323,7 +554,21 @@ async function generateCityEventsTavily(
     `url (copy it VERBATIM from the "url" field of the snippet the event was taken from; if the ` +
     `event was assembled from more than one snippet, use the url of the snippet that names the ` +
     `event; NEVER construct, shorten or guess a url; use an empty string only if genuinely none applies). ` +
+    // B3.4: the SERVER now rejects site-level urls, so this only tells the model what will be
+    // thrown away. An empty string is genuinely the better answer here — the guest page falls back
+    // to a search — so it is stated as a preference rather than a prohibition.
+    `PREFER AN EMPTY url over a generic one: if the only url available is a site homepage, a ` +
+    `language landing page or a city-wide listing rather than a page about THIS event, return "". ` +
     `If you cannot find any real events, return {"week":"${weekLabel}","categories":[]}.\n` +
+    // DIVERSITY (B3.4). NOT more "aim for up to 15" wording — that already existed and still
+    // returned 5 all-concert events while the culture query's 8 results survived into nothing.
+    // Instead the corpus's own spread is made VISIBLE: each snippet carries a server-assigned
+    // `theme` naming the search that found it, and the model is told to spend attention across
+    // themes rather than on whichever is most abundant.
+    `Each snippet has a "theme" field we assigned from the search that found it ` +
+    `(calendar, whats-on, music, culture). Draw events from EVERY theme present in the snippets, ` +
+    `not only the most abundant one. A list of only concerts is a FAILURE if the snippets also ` +
+    `contain museum, exhibition, market or festival events — cover those too.\n` +
     // DATA FENCE. This is the least-trusted input in the stack: arbitrary third-party WEB text,
     // not OSM place names. JSON.stringify blocks structural injection; this fences it
     // semantically. Same pattern as the B2 guide prose leg.
@@ -373,9 +618,17 @@ async function generateCityEventsTavily(
   const allowedUrls = new Set(snippets.map((s) => s.url))
 
   let eventsExtracted = 0
-  // Counts events that KEPT a url after the provenance check, so the next smoke run can tell
-  // "the model emitted no url" from "the allowlist blanked it" — two very different fixes.
+  // URL DIAGNOSTIC (B3.4). `urlsKept` alone collapsed causes that need DIFFERENT fixes, and each
+  // bucket must be separately observable or the next smoke run cannot tell them apart:
+  //   emitted nothing        → all three counters low/zero (a prompt problem)
+  //   fabricated / not in corpus → urlsRejectedProvenance > 0 (the model inventing a url)
+  //   real but site-level    → urlsRejectedNonSpecific > 0 (the aggregator problem)
+  // The provenance bucket is NOT redundant: without it a fabricated url and a missing url looked
+  // identical, which is what made the B3.3 "every url empty" run ambiguous in the first place.
   let urlsKept = 0
+  let urlsRejectedProvenance = 0
+  let urlsRejectedNonSpecific = 0
+  let eventsDroppedOutOfWindow = 0
   const categories: CityEventCategory[] = []
   for (const rawCat of obj.categories as unknown[]) {
     if (eventsExtracted >= MAX_EVENTS) break
@@ -388,15 +641,31 @@ async function generateCityEventsTavily(
       if (!ev || typeof ev !== 'object') continue
       const title = capStr(ev['title'], 160)
       if (!title) continue
+      const date = capStr(ev['date'], 60)
+
+      // WINDOW ENFORCED SERVER-SIDE (B3.4). `null` = unparseable = KEEP, so an unhandled date
+      // shape degrades to the prompt-only behaviour rather than emptying a city. Checked BEFORE
+      // the url work so a dropped event costs nothing.
+      if (eventDateInWindow(date, startMs, endMs) === false) {
+        eventsDroppedOutOfWindow++
+        continue
+      }
+
       const url = capStr(ev['url'], 500)
       // Same sanitiser rule as the Gemini path, PLUS the provenance check above: a url must be
       // http(s) AND have actually come from the search corpus.
-      const safeUrl = SAFE_SCHEME.test(url) && allowedUrls.has(url) ? url : ''
+      const provenanceOk = SAFE_SCHEME.test(url) && allowedUrls.has(url)
+      // THEN, and only then, aboutness — provenance proves origin, not that the url is about THIS
+      // event. Order matters: this must NEVER substitute for the allowlist, only narrow it.
+      const safeUrl = provenanceOk && urlIsEventSpecific(url, title, place) ? url : ''
       if (safeUrl) urlsKept++
+      else if (provenanceOk) urlsRejectedNonSpecific++
+      else if (url) urlsRejectedProvenance++ // a url WAS emitted but is not in the corpus
+
       events.push({
         title,
         venue: capStr(ev['venue'], 160),
-        date: capStr(ev['date'], 60),
+        date,
         desc: capStr(ev['desc'], 300),
         price: capStr(ev['price'], 24),
         url: safeUrl,
@@ -418,6 +687,9 @@ async function generateCityEventsTavily(
     corpusChars: JSON.stringify(snippets).length,
     eventsExtracted,
     urlsKept,
+    urlsRejectedProvenance,
+    urlsRejectedNonSpecific,
+    eventsDroppedOutOfWindow,
   })
 
   return { payload: { week: capStr(obj.week, 120) || weekLabel, categories } }

@@ -1364,6 +1364,146 @@ AbortController.
   "AIza / key=" — now also `gsk_` / `tvly-`). Cosmetic; the alarm text is already provider-aware.
   Fold into the Step 7 sweep alongside the other stale-alarm residuals.
 
+#### B3.4 (Aug 6 2026) — the wrong-url blocker, theme diversity, and the date window enforced in code
+
+**SMOKE EVIDENCE ON `8e62b83` (Helsinki) — B3.3's retrieval fix WORKED.** All four searches
+returned 8 results each, `snippets` 14, **`corpusChars` 11921** (~850/snippet, so the B3.3 typical
+estimate was honest), and the events are the real headline ones: **Hellsinki Metal Festival at
+Nordis 7-8 Aug, Haloo Helsinki! and Pete Parkkonen at Allas Live, bbno$ at House of Culture.** The
+cafe game nights are gone. **DO NOT RE-TUNE RETRIEVAL.** Three residual defects, fixed here.
+
+- **THE DURABLE RULE, and the reason this was a correctness blocker rather than polish: PROVENANCE
+  PROVES ORIGIN, NEVER ABOUTNESS.** All 5 urls arrived (`urlsKept: 5`) and **all 5 passed the
+  provenance allowlist entirely correctly** — they genuinely came from the corpus — yet every one
+  pointed at the SOURCE PAGE rather than the EVENT: "Hellsinki Metal Festival" →
+  `jambase.com/festival/flow-festival-2026` (**a DIFFERENT festival**), three events →
+  `livenation.fi/en` (a language landing page), one → `concerts50.com/finland/helsinki` (a city
+  listing). **Under an event's name, an aggregator link spends the HOST'S brand trust to send a
+  guest somewhere wrong — worse than no link**, because `EventsPage.eventHref` (verified at
+  `src/components/guest/EventsPage.tsx:17-22`) falls back to a search for title + venue + city,
+  which for all five would have landed CORRECTLY. **So BLANK BEATS PLAUSIBLE-BUT-WRONG.**
+  The allowlist was NOT at fault and is NOT weakened: a new `urlIsEventSpecific` check runs
+  **AFTER** it, never instead of it. Rejects an empty or locale-only path (`/en`, `/fi_FI`), then
+  requires a meaningful token from the event's own TITLE to appear in the url — matching on
+  **hostname + path + query**, with tokens under 4 chars, the generic listing vocabulary
+  (`event`/`festival`/`tickets`/`liput`/…) and **the city and country** all excluded, because a
+  city-listing url contains the city name by construction. **Nothing matchable → BLANK, not
+  unchecked** — a very short title ("The Ark") or a non-Latin-script title, the same reasoning as
+  the Step 4 `matchable` gate.
+- **THE HOSTNAME IS LOAD-BEARING, and a hand-copied test is not a test.** A path-only version
+  blanked `hellsinkimetalfestival.fi/en/tickets` — **the real festival's own site**, because an
+  official event site puts the name in the DOMAIN. Found by the test suite, not by reading the
+  code. **And the first attempt to validate this used a TRANSCRIPTION of the logic into a scratch
+  file, which manufactured a phantom failure (a template literal turned `\b` into a backspace
+  character, so every month name silently failed to match) while HIDING the real hostname bug.**
+  Test the real module. **Consequence: the shallow-path guard must run BEFORE the token match** —
+  with the hostname in the haystack, `livenation.fi/en` would otherwise match a title token like
+  "Live Nation" and keep a landing page.
+- **NEW REGRESSION SUITE — `npm run test:city-events`** (`api/_lib/city-events.test.mjs`, **17
+  tests**, same `_ts-resolve.mjs` hook as `test:affiliate-links`). Both validators are exported
+  solely for this. **These are SAFETY PREDICATES — one decides what link goes out under a host's brand, the
+  other what reaches a guest — and both exist because prompt wording already failed at the job, so
+  a silent loosening is the worst available failure. KEEP THESE GREEN FOREVER**, exactly like the
+  affiliate-link assertions.
+- **THREE-WAY URL DIAGNOSTIC.** `urlsKept` alone collapsed causes needing different fixes, and each
+  bucket has to be separately observable or a smoke run cannot tell them apart:
+  **`urlsKept`** / **`urlsRejectedProvenance`** (a url WAS emitted but is not an allowed corpus url —
+  so it also absorbs a bad-scheme url; read it as "not an allowed url") / **`urlsRejectedNonSpecific`**
+  (real corpus url, but site-level). Plus **`eventsDroppedOutOfWindow`**. All counts-only.
+  The provenance bucket is **not** redundant: without it a fabricated url and a missing url had
+  identical signatures, which is exactly what made B3.3's "every url empty" run ambiguous.
+- **DIVERSITY — one theme was winning the whole list.** All five events were concerts; the
+  museums/exhibitions/markets query returned 8 results that survived into **nothing**, so Tove
+  Jansson's birthday at HAM, Kiasma's free-admission day and the vintage market — all real that
+  week — were missing. **The corpus HAD the material; extraction was collapsing onto the most
+  abundant theme.** The prompt already said "aim for up to 15" and produced 5, **so more wording
+  was NOT the fix.** Instead each snippet now carries a **server-assigned `theme`** (`calendar` /
+  `whats-on` / `music` / `culture`) derived from **which query returned it — never from snippet
+  content, which is untrusted** — and the model is told to draw from every theme present. Making
+  the corpus's own structure VISIBLE beats asking harder.
+- **THE DATE RULE NEEDED CODE, NOT WORDING — prompt wording failed TWICE.** The original "do NOT
+  include past events" and B3.3's inverted-burden explicit-window rule both leaked; `8e62b83` still
+  returned **"The Ark, 5 August" against a window starting 6 August.** Two failures is sufficient
+  evidence that wording is not the mechanism. `eventDateInWindow` now enforces it server-side, and
+  its **safety direction is the whole design: `null` (unparseable) KEEPS the event.** It handles
+  only the shapes the prompt asks for and we observe — "8 August", "7-8 August", "August 8", ISO,
+  and ranges — a range is kept if **ANY** day intersects, ambiguity over the year tries **both**
+  years the window touches, and a stray time only ever widens the range (so it can only keep, never
+  wrongly drop). **Deliberately NOT a locale/multi-language date parser** — that remains the
+  separate recorded piece of work, and every unhandled shape (`8 elokuuta`, `Saturday`, `all week`)
+  degrades to exactly today's prompt-only behaviour rather than silently emptying a city.
+- **TOKEN ARITHMETIC RE-DERIVED for the tag** (the B3.3 rule: re-derive from EVERY capped field).
+  Per snippet worst 140 + 300 + 900 + 40 + **20 theme** = ~1400; typical ~800. **TYPICAL 14 x 800
+  ≈ 11.2k chars ≈ 2.8k in + ~750 prompt + ~1.2k output ≈ 4.75k; ALL-CAPS ≈ 8.1k — still OVER**, as
+  recorded in B3.3. The tag costs ~280 chars (~70 tokens) fleet-wide, inside the rounding, **so
+  nothing was taken out of another field to pay for it.** Corroborated by the real `corpusChars`
+  11921.
+- **UNCHANGED, by design:** every brake, counter, cooldown, rate limiter, freshness gate, alarm
+  text, auth and ownership check; the B3.1 empty-extraction guard; the B3.2 alarm condition and
+  toast; all three callers; the ENTIRE Gemini branch; `SAFE_SCHEME`; the provenance allowlist (still
+  derived AFTER selection); drop-never-truncate; the data fence; every ingest/extraction cap; the
+  queries, quota split, `MAX_SNIPPETS`, `MAX_CONTENT_LEN` and `timeRange`. **One counter unit still
+  buys one full pipeline run — 4 searches + 1 extraction, so the credit arithmetic is unchanged.**
+- **NOTE THE INTERACTION WITH B3.1:** if the date check drops every event the payload is empty, and
+  the B3.1 guard then **preserves the previously cached week** rather than erasing the panel — the
+  correct outcome, and unchanged.
+- **FOUR REAL DEFECTS THE GATES CAUGHT IN THE FIRST DRAFT — every one of them in NEW code, and
+  three of the four in the SAFE direction's blind spot. Worth reading as a set: when you add a
+  predicate, probe it for the OPPOSITE of its stated safety direction.**
+  **(a) `decodeURIComponent` THROWS on a lone `%`, and the WHATWG URL parser does not encode one** —
+  so `https://x.fi/100%off` reached it verbatim. The `try` covered only `new URL`, so a `URIError`
+  would escape `urlIsEventSpecific` → the un-try'd parse loop → `generateCityEvents`, **breaking the
+  never-throws contract that three of the four callers depend on** (only `demo-create` wraps it).
+  Result: a **500 on the PUBLIC guest endpoint** instead of the fail-closed soft shapes, plus
+  `EventsPage`'s 3 retries burning 3 counter units and 12 Tavily credits on a deterministic failure.
+  **DURABLE: `new URL()` and `decodeURIComponent()` are two separate throw sites; guarding one is
+  not guarding the other.**
+  **(b) A 4-DIGIT YEAR IN THE TITLE REOPENED THE EXACT REGRESSION THE CHECK EXISTS TO PREVENT.**
+  `"2026"` is 4 chars, not generic vocabulary and not a place token, so `"Hellsinki Metal Festival
+  2026"` matched `flow-festival-2026` and **re-linked the wrong festival**. Titles carrying a year
+  and aggregator slugs carrying a year are both near-universal, so the pairing is routine. Purely
+  numeric tokens are now excluded — a year proves nothing about aboutness, same rationale as
+  `GENERIC_URL_TOKENS`.
+  **(c) A CROSS-MONTH RANGE WAS SYSTEMATICALLY DROPPED — the one thing the date check must never
+  do.** First-match-wins over a **chronological** month dict, with day numbers then clamped into
+  that month, meant ranges (conventionally written earlier→later) reliably resolved to the EARLIER
+  month: **"26 July - 9 August" became 9-26 JULY and was dropped during a 6-13 August window,
+  though the event runs through the entire stay.** It hit long exhibitions, markets and festivals
+  hardest — **precisely the `culture` content the diversity fix in this same change exists to
+  surface.** Now: collect ALL months, and **≥2 distinct months → `null` (KEEP)**, since a
+  cross-month range is genuinely beyond this narrow parser.
+  **(d) `\bmay\b` sits before august in the dict, so prose could become a date.** "8 August (may
+  sell out)" resolved to MAY. Fixed for free by (c) — two distinct months → keep — plus a new
+  requirement that the month name be **adjacent to a digit run**, so "may sell out on the 8th" is
+  unjudged rather than dropped.
+  Also tightened: the haystack is joined **with a separator** so a token cannot match across two
+  unrelated path segments (`/art/ekstra` no longer matches "artek"), and a
+  **`urlsRejectedProvenance`** counter was added because the claimed three-way diagnostic was
+  actually two-way — a fabricated url and a missing url produced identical signatures, which is
+  what made B3.3's "every url empty" run ambiguous in the first place.
+  **The test suite grew to 17 and every one of these is pinned.**
+- **KNOWN OVER-KEEP EDGE, accepted and documented at the call site:** because the hostname counts as
+  evidence, any page on a site whose BRAND appears in the title is kept (`livenation.fi/events`
+  under a title containing "Nation"). Bounded by the shallow-path guard for the landing-page case,
+  and **`venue` is deliberately NOT passed to the predicate** — were it, every venue's own site
+  would match every event held there, which is the site-level link this check exists to reject.
+- **KNOW THIS BEFORE USING A ROLLBACK AS INCIDENT RESPONSE: both new validators guard the TAVILY
+  branch only.** Setting `AI_PROVIDER_EVENTS=gemini` silently disables **both** the server-side
+  window check and the aggregator-url check — the Gemini branch keeps `SAFE_SCHEME` alone, with no
+  provenance allowlist and no aboutness check. That is intentional and consistent with "the kept path
+  is not edited", but it means the rollback trades the wrong-url and out-of-window protections away.
+  **A predicate added inside one provider branch does not protect the other.**
+- **THE REUSABLE PROOF SHAPE, worth keeping for any future edit to the date path:** `false` is the
+  ONLY outcome that removes a guest-visible event, and it is now reachable only when exactly one
+  month is present AND it is digit-adjacent AND a day parsed. So every gate added in B3.4 can only
+  turn `false` into `null` — never the reverse — which is what makes "cannot wrongly drop" checkable
+  in one read rather than by enumerating inputs. Preserve that property, and the doc comment stating
+  it, in any later change.
+- **OPEN, cosmetic, fold into the Step 7 comment sweep:** `PropertySetup.tsx:706` still says a retry
+  costs "3 more Tavily credits" — B3.3 raised a run to **4** searches. Also `eventDateInWindow`
+  builds ~24 `RegExp` objects per call (plus up to 3 for adjacency); negligible at <=15 events, but
+  hoisting them to module scope is free if it ever goes hot.
+
 #### B3.3 (Aug 6 2026) — RETRIEVAL quality fixed: the corpus was the problem, not the extractor
 
 **THE SMOKE EVIDENCE (Helsinki apartment, 2026-08-06).** The pipeline worked MECHANICALLY —
