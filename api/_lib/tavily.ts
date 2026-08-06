@@ -23,14 +23,26 @@ const DEFAULT_MAX_RESULTS = 8
 
 // Cap at ingest — the B2.1 pattern. This is arbitrary third-party WEB text, the least trusted
 // input in the stack, and it flows into a model prompt and (via extraction) onto the guest page.
-const MAX_TITLE_LEN = 200
-const MAX_URL_LEN = 500
-// 500, not 1200: Groq's free tier is 6K TPM ORG-WIDE and shared by every AI surface, so an
+// A SNIPPET'S TOKEN COST IS THE SUM OF ALL THREE CAPS PLUS JSON SCAFFOLDING — never content
+// alone. Both B3.3 review gates caught a budget here that had been sized off
+// MAX_SNIPPETS x MAX_CONTENT_LEN and silently omitted title and url; the corrected arithmetic
+// lives at the dedupe site in city-events.ts. Worst case per snippet is
+// title + url + content + ~40 chars of keys/quotes/commas.
+const MAX_TITLE_LEN = 140 // 140 (B3.3, was 200): titles are short; the tail was pure budget.
+// 300 (B3.3, was 500). Urls tokenize far worse than prose (~3 chars/token vs ~4), so the tail of
+// this cap was the most expensive unused budget in the corpus. Enforced by DROPPING an over-long
+// result, never truncating it — see the ingest loop.
+const MAX_URL_LEN = 300
+// 900 (B3.3, was 500). Groq's free tier is 6K TPM ORG-WIDE and shared by every AI surface, so an
 // oversized extraction prompt does not merely fail itself — it can 429 guest-chat, the guide and
-// daily-greeting across every tenant. At 1200 a full 24-result corpus was ~11-12k tokens, i.e.
-// about 2x the whole org ceiling in ONE call. Tavily `basic` snippets are a few hundred chars
-// anyway, so this trims padding rather than signal.
-const MAX_CONTENT_LEN = 500
+// daily-greeting across every tenant. At 1200 with no dedupe a full 24-result corpus was ~11-12k
+// tokens, about 2x the whole org ceiling in ONE call. But 500 was too tight in the other
+// direction: a city events CALENDAR page lists twenty events in the space a single-venue page
+// uses for one, so the cap was discarding exactly the signal the extractor needs. The raise is
+// PAID FOR — extraction maxTokens 3072 → 2048, plus the title and url trims above, which together
+// recover roughly what the raise costs. Input and output share ONE ceiling, so more input must
+// come OUT of the rest of the budget, never on top of it.
+const MAX_CONTENT_LEN = 900
 
 let gateChain: Promise<void> = Promise.resolve()
 let lastStart = 0
@@ -71,9 +83,14 @@ export async function searchWeb(
     maxResults?: number
     topic?: 'general' | 'news'
     timeoutMs?: number
-    // Defaults to 'week' (what the events pipeline wants). Pass null to OMIT the parameter —
-    // Step 6's chat router asks "nearby X" / open-web questions that are not week-scoped, and a
-    // silently week-filtered answer there would look like a data gap rather than a filter.
+    // WHAT time_range ACTUALLY FILTERS: the PAGE's publication / last-indexed date, NOT the date
+    // of anything described on the page. It is a recency filter on documents, not on events.
+    // Defaults to 'week' for callers that genuinely want freshly-published documents. Pass null
+    // to OMIT the parameter — the events pipeline does exactly that (B3.3), because a city events
+    // calendar (MyHelsinki, a tapahtumat portal, a venue what's-on page) is a LONG-LIVED page
+    // that may have been published months ago while listing next week's programme, so 'week'
+    // excluded the highest-signal sources and biased the corpus toward freshly-published noise.
+    // Step 6's chat router likewise asks "nearby X" / open-web questions that are not week-scoped.
     timeRange?: 'day' | 'week' | 'month' | 'year' | null
   } = {},
 ): Promise<WebResult[]> {
@@ -128,10 +145,17 @@ export async function searchWeb(
     const out: WebResult[] = []
     for (const r of results) {
       const title = typeof r?.title === 'string' ? r.title.trim().slice(0, MAX_TITLE_LEN) : ''
-      const url = typeof r?.url === 'string' ? r.url.trim().slice(0, MAX_URL_LEN) : ''
+      const url = typeof r?.url === 'string' ? r.url.trim() : ''
       // Drop anything without a usable title or a http(s) url — a snippet we cannot attribute
       // is not worth feeding to the extractor.
-      if (!title || !SAFE_SCHEME.test(url)) continue
+      //
+      // THE URL IS DROPPED WHEN OVER-LONG, NEVER TRUNCATED (B3.3). It is an IDENTITY key, not
+      // display text: city-events.ts builds its provenance allowlist from these exact strings and
+      // the winner is rendered as a clickable link on the guest page. A truncated url passes the
+      // allowlist (it is literally what the model was shown) and ships a BROKEN link. That was
+      // latent since Step 5 only because every url came back empty; the B3.3 prompt fix is
+      // precisely what makes it reachable, so it is closed here rather than left as a warning.
+      if (!title || url.length > MAX_URL_LEN || !SAFE_SCHEME.test(url)) continue
       out.push({
         title,
         url,

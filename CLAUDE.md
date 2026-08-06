@@ -1154,13 +1154,16 @@ AbortController.
 - **THREE sequential searches** (events / concerts-gigs-live-music / exhibitions-markets-
   festivals), `max_results` 8 each, `topic: 'general'`, `time_range: 'week'`. **If all three
   return zero results the pipeline returns `{payload:null}` WITHOUT calling Groq** — no unit is
-  spent extracting from an empty corpus.
+  spent extracting from an empty corpus. **SUPERSEDED BY B3.3 (below): now FOUR
+  calendar-shaped queries with `time_range` OMITTED. The zero-results early return is unchanged.**
 - **`search_depth` STAYS `'basic'` — deliberate, not an oversight.** `'advanced'` costs **2
   credits per call** against the **1000/month** free allowance, and the extractor reads snippets
   rather than full pages, so the depth buys nothing here.
 - **BUDGET PARITY IS A TOTAL, NOT A PER-LEG COPY.** The Gemini path spent 2 x 28s ~= 57s. The
   new path: 3 searches x 8s (**no retry**) + 2 extraction attempts x 20s + ~0.6s backoff
-  ~= **65s**, inside the 150 s `maxDuration`. Every value passed EXPLICITLY.
+  ~= **65s**, inside the 150 s `maxDuration`. Every value passed EXPLICITLY. **B3.3: 4 searches
+  → ~73s, still inside 150 s. Per-leg budgets unchanged (searches 8000 ms no retry; extraction
+  retries 1 / 20000 ms).**
 - **CONTRACT PRESERVED EXACTLY:** `generateCityEvents` still never throws, still returns
   `{payload:null}` on ANY failure, and **a null payload is still never cached by any of the three
   callers** — so a bad run leaves the cache intact. The `CityEventsPayload` shape is unchanged,
@@ -1169,8 +1172,11 @@ AbortController.
   arbitrary third-party web text, not OSM place names. Snippets are passed via `JSON.stringify`
   (blocks structural injection) inside an explicitly delimited `SNIPPETS:` block, with an
   instruction to treat everything in it as DATA and never as instructions — the same shape as the
-  B2 guide prose leg. Caps at ingest: title 200, url 500, **content 500**; and at extraction:
-  title 160, venue 160, date 60, desc 300, price 24, url 500, **max 15 events**.
+  B2 guide prose leg. **CURRENT caps at ingest (B3.3 values — the Step 5 originals were title 200,
+  url 500, content 500): title 140, url 300 (enforced by REJECTION, never truncation), content
+  900.** At extraction: title 160, venue 160, date 60, desc 300, price 24, url 500, **max 15
+  events** (extraction caps UNCHANGED by B3.3; the url one is now dead headroom above the 300
+  ingest cap — see B3.3).
 - **URL PROVENANCE IS ENFORCED, NOT MERELY REQUESTED.** The prompt asks for a url taken from the
   snippets — but a prompt instruction is not an invariant. A url must now be `^https?://` **AND
   literally present in the fetched corpus**, else it is blanked. Without that, a page ranking for
@@ -1188,16 +1194,17 @@ AbortController.
   to normally inside it. This is the "a key split is not an upstream split" lesson at fleet scale.
   **Not eliminated, and state it precisely: Groq meters input PLUS output, so worst-case ~4k in +
   `maxTokens: 3072` out ≈ 7k against a 6K ceiling — a single worst-case run can still self-429.**
-  Trimming `maxTokens` (15 events x ~6 short fields needs ~2k) is the cheap next lever, but it
-  trades an occasional retried 429 for truncated JSON → null payload → no cache, so it was NOT
-  taken here.
+  ~~Trimming `maxTokens` (15 events x ~6 short fields needs ~2k) is the cheap next lever~~
+  **TAKEN BY B3.3 — `maxTokens` 3072 → 2048, and that is what PAYS for the denser input. See the
+  revised arithmetic in B3.3 below; the numbers in this bullet are superseded.**
 - **SELECTION IS PER-QUERY-QUOTA THEN BACKFILL, not greedy.** Capping the corpus in producer order
   would have let queries 1-2 fill all 12 slots so the third theme (exhibitions/markets/festivals)
   **never reached the extractor** — while still spending its credit. **DURABLE RULE: a corpus cap
   applied in producer order silently becomes a producer FILTER.**
-  **TRAP FOR WHOEVER ADDS A FOURTH QUERY:** `quota = ceil(MAX_SNIPPETS / queries.length)` tiles
-  the cap EXACTLY only at 3 queries (4+4+4 = 12). At 5 it is `ceil(12/5)*5 = 15 > 12`, so pass 1
-  alone re-acquires the tail bias this fix removed. Re-derive the quota if the query list changes.
+  ~~TRAP FOR WHOEVER ADDS A FOURTH QUERY~~ **CLOSED by B3.3 — the `ceil()` quota is gone,
+  replaced by an even split that distributes the remainder. GENERAL RULE THAT REPLACES THE TRAP:
+  a fair-share quota must sum to EXACTLY the cap for ANY producer count, or pass 1 alone
+  re-acquires the tail bias the fair-share pass exists to remove.**
   Also note `allowedUrls` MUST stay derived AFTER selection — that ordering is what makes the
   allowlist exactly what the model was shown.
 - **KEY LOCATION CHANGES WHAT IS SAFE TO LOG.** Tavily's key is in an `Authorization` HEADER, not
@@ -1228,10 +1235,16 @@ AbortController.
   position rather than a document.
 - **STALE COMMENTS CORRECTED (no behaviour change):** `_lib/city-events.ts` and
   `cron-refresh-events.ts` both claimed a **60 s** maxDuration; `vercel.json` says **150**.
-- **OPEN ITEM — a CAPACITY question, not a spend one.** **Groq's free tier is 6K TPM ORG-WIDE**,
-  and `cron-refresh-events` runs `mapPool` at **concurrency 2** with a ~3K-token extraction prompt
-  each, so a multi-apartment cron run can still hit the org TPM ceiling even after the dedupe.
-  Fold into the existing cron-batching debt.
+- **OPEN ITEM, ESCALATED BY B3.3 — a CAPACITY question, not a spend one, and no longer
+  borderline.** **Groq's free tier is 6K TPM ORG-WIDE**, and `cron-refresh-events` runs `mapPool`
+  at **concurrency 2**. ~~with a ~3K-token extraction prompt each~~ **B3.3 makes each extraction
+  ~4.6k typical (see the corrected arithmetic below), so TWO CONCURRENT EXTRACTIONS NOW EXCEED THE
+  ORG CEILING DETERMINISTICALLY** — a multi-candidate cron run is *expected* to 429, and while it
+  runs it starves `guest-chat`, the guide and `daily-greeting` **across every tenant**.
+  **The fix is `concurrency: 1` for this cron** (the events cron is daily and booking-filtered, so
+  serialising costs almost nothing). **NOT applied in B3.3 because `cron-refresh-events.ts` was
+  explicitly out of scope for that task** — it is now the top item of the cron-batching debt, ahead
+  of the credit-pool item below.
 - **~~AN EMPTY EXTRACTION BOTH SUCCEEDS AND DESTROYS PRIOR GOOD DATA~~ — CLOSED by B3.1
   (Aug 6 2026).** `categories: []` is a VALID payload, so the `if (!payload)` checks never caught
   it, and both `refresh-events` and `cron-refresh-events` would write it over a good cached week —
@@ -1337,10 +1350,11 @@ AbortController.
   list', 'info')`.
 - **OPEN — TAVILY'S FREE ALLOWANCE IS A FLEET-WIDE MONTHLY POOL (1000 credits), and NO brake
   bounds it.** Every existing counter is per-host-per-UTC-hour, which cannot bound a monthly
-  fleet pool. One pipeline run = **3 credits**. Ceilings: public 7/h x 3 = 21 credits/host/hour;
-  host refresh 3/h x 3 = 9; `demo-create` unbraked at 3/demo; and the unbraked
-  `cron-refresh-events` is the dominant consumer — **~11 candidate apartments would consume the
-  entire monthly allowance on the cron alone.** This is a genuinely NEW spend dimension the Step 3
+  fleet pool. **REVISED BY B3.3 — one pipeline run = 4 credits (was 3). Ceilings: public 7/h x 4 =
+  28 credits/host/hour; host refresh 3/h x 4 = 12; `demo-create` unbraked at 4/demo; and the
+  unbraked `cron-refresh-events` is the dominant consumer — ~8 candidate apartments (was ~11) would
+  consume the entire monthly allowance on the cron alone**, so B3.3 made this item MORE pressing,
+  not less. This is a genuinely NEW spend dimension the Step 3
   budget-parity rule (time/attempts) does not cover. Exhaustion degrades rather than bills (PAYG
   is prohibited by policy), and recovery is **monthly**, not daily as Gemini's quota was. Belongs
   in the Step 7 self-attack drill.
@@ -1349,6 +1363,131 @@ AbortController.
   `api/refresh-events.ts` and `_lib/city-events.ts` (its header still says keys are scrubbed
   "AIza / key=" — now also `gsk_` / `tvly-`). Cosmetic; the alarm text is already provider-aware.
   Fold into the Step 7 sweep alongside the other stale-alarm residuals.
+
+#### B3.3 (Aug 6 2026) — RETRIEVAL quality fixed: the corpus was the problem, not the extractor
+
+**THE SMOKE EVIDENCE (Helsinki apartment, 2026-08-06).** The pipeline worked MECHANICALLY —
+row written, one counter unit, no alarm — and returned **FOUR events where the Gemini path
+returned FIFTEEN**: two game nights at one small cafe, a vintage market, and a cabaret **dated
+3 August, THREE DAYS OUTSIDE the 6–13 August window**. **Every single `url` came back EMPTY.**
+Meanwhile a human asking a search-grounded chatbot the same question got Hellsinki Metal Festival
+at the Ice Hall, HJK vs Motherwell at the Olympic Stadium, Tove Jansson's birthday at HAM and
+Kiasma's free-admission day, citing MyHelsinki.fi, tapahtumat.hel.fi, Time Out Helsinki and venue
+sites. **So the model was never the problem — we handed the extractor a weak corpus.** B3.3 fixes
+the CORPUS; the extractor logic, the parse, every cap and the provenance allowlist are unchanged.
+
+- **PRIMARY CAUSE — `time_range: 'week'` FILTERS BY PUBLICATION DATE, NOT EVENT DATE. This is the
+  general trap worth remembering: a recency filter on a search API filters when the PAGE last
+  changed, never when the EVENT happens.** A city events calendar (MyHelsinki, a municipal
+  `tapahtumat` portal, a venue's what's-on page) is a **LONG-LIVED page** that may have been
+  published or last-indexed months ago while listing next week's programme — so the default
+  excluded **exactly the highest-signal sources** and biased the corpus toward freshly-published
+  low-signal pages, which is precisely the failure observed (a cafe's new post beats a city
+  calendar). **The events caller now passes `timeRange: null` so the parameter is OMITTED.
+  `searchWeb`'s own default is DELIBERATELY LEFT AT `'week'`** — Step 6's chat router may still
+  want document recency — so this is a CALL-SITE change, with the publication-vs-event-date
+  reasoning written at BOTH places so it cannot be "tidied" back.
+  **Nothing widened for the guest:** the 7-day window is still enforced twice downstream (the
+  extraction prompt's explicit start/end dates, and the per-event `date` field).
+- **QUERY LIKE SOMEONE LOOKING FOR A CALENDAR.** `"this week"` is meaningless to a search index;
+  the **literal month and year** are what calendar pages actually contain. Four queries now:
+  `{place} events calendar {monthYear}` · `what's on in {place} {monthYear}` ·
+  `{place} concerts gigs tickets {monthYear}` ·
+  `{place} museum exhibitions markets festivals {monthYear}`.
+  `monthYear` is derived from the window and **names BOTH months when the 7-day window straddles a
+  month boundary** ("August September 2026"), and both years when it crosses New Year
+  ("December 2026 January 2027") — otherwise half the window is unsearchable.
+  **`include_domains` DELIBERATELY REJECTED:** the domain list that fits Helsinki fits no other
+  city, and Bemgu is multi-city by design. **Query PHRASING generalises across cities; a hardcoded
+  domain allowlist does not, and would silently make every non-allowlisted city worse.**
+- **REVISED CREDIT ARITHMETIC — 4 queries = 4 Tavily credits per run** against the **1000/month
+  FLEET-WIDE** pool: public 7/h x 4 = **28 credits/host/hour**; host refresh 3/h x 4 = **12**;
+  `cron-refresh-events` **4 per candidate apartment**. The fleet-pool item above is updated and is
+  now MORE pressing, not less.
+- **THE FOUR-QUERY QUOTA TRAP WAS ALREADY RECORDED AND WENT LIVE.** `ceil(MAX_SNIPPETS /
+  queries.length)` tiles the cap exactly only at 3 queries; at 4 against a 14 cap it is
+  `ceil(14/4) = 4`, and `4x4 = 16 > 14`, so pass 1 alone would re-acquire the tail bias and starve
+  query 4 **while still spending its credit**. Replaced by an even split that distributes the
+  remainder — `base = floor(cap/n)`, and the **first `cap % n` queries get one extra slot**.
+  **NEW INVARIANT: the quotas sum to EXACTLY `MAX_SNIPPETS` for ANY query count.** Two-pass
+  structure (fair share, then backfill) unchanged; `allowedUrls` still derived AFTER selection.
+- **DENSER CORPUS, PAID FOR OUT OF THE REST OF THE BUDGET.** `MAX_CONTENT_LEN` 500 → **900** (a
+  calendar page carries twenty events in the space a single-venue page uses for one, so 500 was
+  discarding exactly the signal we need), `MAX_SNIPPETS` 12 → **14**, `maxTokens` 3072 → **2048**,
+  and — added after review — `MAX_TITLE_LEN` 200 → **140** and `MAX_URL_LEN` 500 → **300**.
+- **THE TOKEN-BUDGET TRAP, CAUGHT BY BOTH GATES AND WORTH REMEMBERING: a corpus budget sized off
+  `MAX_SNIPPETS x MAX_CONTENT_LEN` IS WRONG — a snippet costs the SUM OF EVERY CAPPED FIELD plus
+  JSON scaffolding.** The first B3.3 draft claimed "14 x 900 ≈ 3.2k input ≈ 5.5k total, under 6K"
+  by silently omitting `title` and `url`. **CORRECTED ARITHMETIC** (per snippet: 140 title + 300
+  url + 900 content + ~40 scaffolding = ~1380 worst case, ~780 typical), against the **6K TPM
+  ORG-WIDE** ceiling that counts **input PLUS output**:
+  **TYPICAL 14 x 780 ≈ 11k chars ≈ 2.7k in + ~700 prompt + ~1.2k real output ≈ 4.6k — fine IN
+  ISOLATION ONLY. 6K TPM is org-wide PER MINUTE, so ~1.4k headroom means ONE coincident
+  `guest-chat` turn (~0.7-1.6k) can breach it** — the bucket is shared by all eight surfaces
+  across every tenant, and nothing coordinates them.
+  **ALL-FIELDS-AT-CAP 14 x 1380 ≈ 19k chars ≈ 5.2k in + 700 + 2048 out ≈ 8k — OVER.**
+  **STATED HONESTLY: an all-caps run can self-429.** That was **also true before B3.3** (~7.5k on
+  the old 12 x 500 corpus at `maxTokens` 3072), so it is a **pre-existing bound, not one B3.3
+  introduces** — the title/url trims plus the `maxTokens` cut were sized to recover roughly what
+  the denser content costs. A 429 is transient in `retry.ts`, so the cost is a retried unit, and
+  on failure the callers keep the previous cached week (B3.1). **Also note the OUTPUT figure:
+  2048 covers a typical 15-event payload (~1.2k) but NOT 15 events with every field at its cap
+  (~4k) — so `maxTokens` was never a worst-case-safe number at 3072 either.**
+  **`corpusChars` (a counts-only `JSON.stringify(snippets).length`) was added to the diagnostic
+  log so this is MEASURED on the next smoke run rather than asserted** — it is also the only way
+  to tell whether `basic` snippets actually reach 900 chars, i.e. whether the raise bought anything.
+- **KNOWN, NOT SOLVED, AND UNBOUNDED BY ANY CHARACTER CAP: a NON-LATIN-SCRIPT city breaches the
+  ceiling well before these caps bite** (CJK tokenizes near 1 token/char, so 900 chars ≈ 900
+  tokens and 14 snippets ≈ 13k). Pre-existing and doubled by the content raise. **The fix is a
+  token-aware corpus budget, not a different character number** — a real piece of work, and the
+  same class of blind spot as the Step 4 non-Latin `matchable` gate.
+- **TRUNCATED URLS WERE A LATENT BROKEN-LINK BUG, CLOSED HERE.** `MAX_URL_LEN` truncated at ingest,
+  and the truncated string then entered `allowedUrls` — so it PASSED provenance (it is literally
+  what the model was shown) and rendered as a clickable broken link. **Latent since Step 5 only
+  because every url came back empty, and the B3.3 prompt fix is exactly what makes it reachable**,
+  so an over-long url is now **DROPPED, never truncated**. **DURABLE RULE: a url is an IDENTITY
+  key, not display text — cap it by rejection, never by slicing.**
+- **URL PROVENANCE — the failure was UPSTREAM of the allowlist, which was working correctly and
+  was NOT weakened.** The prompt said "use a url taken from the snippets" without saying WHICH, so
+  the model emitted nothing. It now requires the url be **copied VERBATIM from the `url` field of
+  the snippet the event came from** (the url of the snippet naming the event, when assembled from
+  several), never constructed/shortened/guessed, empty only if genuinely none applies.
+  **New diagnostic `urlsKept`** (count of extracted events retaining a url) joins the counts-only
+  log, so the next smoke run can distinguish **"the model didn't emit"** from **"the allowlist
+  blanked it"** — two entirely different fixes.
+- **DATE RULE TIGHTENED, PROMPT-ONLY.** The window is now stated as explicit start and end dates
+  and the burden is INVERTED: an event whose date cannot be **placed inside** the window is dropped
+  even if the snippet is otherwise good, and a bare weekday name is acceptable only when the
+  snippet makes the actual date unambiguous. **No server-side date parsing** — that needs a real
+  parser across locales and languages and is a separate piece of work.
+- **RECORDED NEXT LEVERS if quality is still short, in cost order:** `include_raw_content`
+  (**would blow the TPM ceiling outright** — do not enable on the free tier),
+  `search_depth: 'advanced'` (**doubles the credit cost against a MONTHLY fleet pool**), and a
+  **paid Groq tier** — which the wallet policy permits **only with a hard spend limit set BEFORE
+  the first call**. The first two are only sensible PAIRED with the third.
+- **UNTOUCHED, by design:** every brake, counter, cooldown, rate limiter, freshness gate, alarm
+  text, auth and ownership check; the B3.1 empty-extraction guard; the B3.2 alarm condition and
+  toast; `api/city-events.ts`, `api/refresh-events.ts`, `api/cron-refresh-events.ts`; and the
+  ENTIRE Gemini branch. **One counter unit still buys one full pipeline run — now 4 searches +
+  1 extraction.**
+- **OPEN (both gates, non-blocking) — A SIZE-DRIVEN 429 MAKES THE RETRY DETERMINISTICALLY FUTILE.**
+  `retries: 1` re-sends the SAME oversized prompt, so on an all-caps (or non-Latin) run the retry
+  cannot succeed on size grounds and **doubles the pressure on the shared org bucket during exactly
+  the minute other tenants' surfaces are being starved.** This is now cheap to fix properly because
+  `corpusChars` measures it: a pre-flight trim (drop the largest snippet until the estimate fits),
+  or skip the retry above a corpus threshold. **The same token-aware budget answers the CJK case** —
+  both want an estimate-before-send, not another character cap. **GENERAL RULE: a retry only helps
+  for TRANSIENT failures; retrying a request that is too large by construction is pure amplification.**
+- **OPEN, cosmetic/defensive:** align the extraction-side url cap to `MAX_URL_LEN` (300) instead of
+  500. It is safe today only by a LENGTH PROOF — `capStr` shortens only above 500, so a truncated
+  value is exactly 500 and can never equal a ≤300 corpus url — and that proof silently breaks if
+  someone later raises the ingest cap without re-deriving it. Sharing the constant makes the
+  invariant self-evident.
+- **OPEN, observability:** `searchWeb` emits no count of results dropped by its title / scheme /
+  url-length filters, so a thin corpus shows only as an unexplained gap between `tavilyResults` and
+  `snippets`. The new over-long-url rejection also discards that result's `content` (correct — the
+  dedupe keys on `r.url`, so blank urls would collide), which makes it an INVISIBLE contributor if a
+  real city ever looks thin.
 
 ### PILOT STEP 4 — SHIPPED (Aug 6 2026): guide on Geoapify POI data + Groq prose
 
