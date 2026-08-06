@@ -22,7 +22,12 @@ export type AiSurface =
   | 'guide'
   | 'host_picks'
 
-export type AiProvider = 'groq' | 'gemini'
+// 'poi' is the guide's Geoapify-POI-data pipeline (pilot Step 4). It is meaningful ONLY on the
+// 'guide' surface; anywhere else it is treated as a typo — see resolveProvider.
+// NOTE for operators: on the guide surface 'groq' ALSO yields the POI pipeline, because the
+// guide's only non-POI implementation is the Gemini one. The sole value that turns POI off is
+// 'gemini' — setting AI_PROVIDER_GUIDE=groq will not disable the Geoapify leg.
+export type AiProvider = 'groq' | 'gemini' | 'poi'
 
 // Per-surface override env var. Full enum is declared now so later pilot steps only have to
 // wire their call site, not touch this map.
@@ -47,6 +52,9 @@ export function resolveProvider(surface: AiSurface): AiProvider {
     .trim()
     .toLowerCase()
   if (raw === 'gemini') return 'gemini'
+  // Guide only. On any other surface 'poi' falls through to the unrecognised-value warn below
+  // and lands on groq, so a mis-set AI_PROVIDER_CHAT=poi cannot silently change chat behaviour.
+  if (raw === 'poi' && surface === 'guide') return 'poi'
   if (raw !== 'groq') {
     // scrubbed + hard-truncated: this echoes an env VALUE, so a mis-pasted key must not land
     // in the logs on every request.
@@ -87,6 +95,8 @@ export async function aiGenerate(surface: AiSurface, opts: AiGenerateOpts): Prom
     // resolveProvider() and runs its own Gemini code. This guards a mis-wired future site.
     throw new Error('gemini branch handled at call site')
   }
+  // 'groq' and 'poi' both land here: the POI pipeline still uses Groq for its PROSE leg, and
+  // its data legs (Geoapify) are the caller's job, not this abstraction's.
   return groqGenerate(opts)
 }
 

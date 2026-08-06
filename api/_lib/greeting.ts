@@ -17,11 +17,11 @@ export async function generateGreetingBlurb(
   db: SupabaseClient,
   apt: AptInput
 ): Promise<{ ok: boolean }> {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) {
-    console.error('[greeting] GEMINI_API_KEY not configured')
-    return { ok: false }
-  }
+  // Branches on the GUIDE surface deliberately, not a blurb-specific one: the blurb is generated
+  // as part of a guide run, so one env var flips guide + blurb together and they can never end
+  // up split across providers. The GEMINI_API_KEY guard moved inside the gemini branch below —
+  // at the top it would break the Groq path once pilot Step 8 deletes the GEMINI_* vars.
+  const provider = resolveProvider('guide')
 
   const locationParts = [
     apt.street_number && apt.street
@@ -43,31 +43,46 @@ export async function generateGreetingBlurb(
     `No weather, no signature, no lists, no markdown, no emojis — just the descriptive paragraph. ` +
     `Write in English.`
 
-  const ai = new GoogleGenAI({ apiKey })
-
-  const generate = async () => {
-    const controller = new AbortController()
-    // 12s per attempt × 2 attempts (1 retry) + 600ms delay ≈ 24.6s worst case
-    const timer = setTimeout(() => controller.abort(), 12000)
-    try {
-      return await ai.models.generateContent({
-        model: MODEL,
-        contents: prompt,
-        config: {
-          thinkingConfig: { thinkingBudget: 0 },
-          maxOutputTokens: 256,
-          abortSignal: controller.signal,
-        },
-      })
-    } finally {
-      clearTimeout(timer)
-    }
-  }
-
   let text = ''
   try {
-    const response = await withRetry(generate, { retries: 1, baseDelayMs: 600 })
-    text = response.text?.trim() ?? ''
+    if (provider !== 'gemini') {
+      // Budget parity with the gemini branch below: 1 retry (2 attempts) x 12s.
+      text = (await aiGenerate('guide', {
+        prompt,
+        maxTokens: 256,
+        retries: 1,
+        timeoutMs: 12000,
+      })).trim()
+    } else {
+      const apiKey = process.env.GEMINI_API_KEY
+      if (!apiKey) {
+        console.error('[greeting] GEMINI_API_KEY not configured')
+        return { ok: false }
+      }
+      const ai = new GoogleGenAI({ apiKey })
+
+      const generate = async () => {
+        const controller = new AbortController()
+        // 12s per attempt × 2 attempts (1 retry) + 600ms delay ≈ 24.6s worst case
+        const timer = setTimeout(() => controller.abort(), 12000)
+        try {
+          return await ai.models.generateContent({
+            model: MODEL,
+            contents: prompt,
+            config: {
+              thinkingConfig: { thinkingBudget: 0 },
+              maxOutputTokens: 256,
+              abortSignal: controller.signal,
+            },
+          })
+        } finally {
+          clearTimeout(timer)
+        }
+      }
+
+      const response = await withRetry(generate, { retries: 1, baseDelayMs: 600 })
+      text = response.text?.trim() ?? ''
+    }
   } catch (e) {
     console.error('[greeting] blurb threw', { aptId: apt.id, msg: scrubErr(e) })
     return { ok: false }

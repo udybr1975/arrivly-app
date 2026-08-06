@@ -4,6 +4,7 @@ import { generateGuideForApartment } from './_lib/guide.js'
 import { generateGreetingBlurb } from './_lib/greeting.js'
 import { scrubErr } from './_lib/scrub.js'
 import { sendNtfy } from './_lib/ntfy.js'
+import { resolveProvider } from './_lib/ai-provider.js'
 
 const supabase = createClient(
   process.env.VITE_SUPABASE_URL!,
@@ -51,6 +52,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Fires ONE ntfy at exactly the threshold, so a flood pings once, not repeatedly.
   // The project IDs below are PUBLIC identifiers (safe to send) — never a key value — so
   // the alert points straight at the Google project to disable.
+  // fa8fa32 RULE: an alarm's remediation text migrates with its surface. The DISABLE lines are
+  // therefore rebuilt from resolveProvider('guide') at SEND time, so an operator paged at 3am is
+  // never told to disable a Google project for a guide that now spends Groq + Geoapify.
   const GUIDE_ALERT_THRESHOLD = 10
   try {
     const { data: hourCount, error: counterErr } = await supabase.rpc('bump_api_counter', {
@@ -60,14 +64,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (counterErr) {
       console.warn('[generate-guide] counter bump failed (non-fatal)', scrubErr(counterErr, 120))
     } else if (typeof hourCount === 'number' && hourCount === GUIDE_ALERT_THRESHOLD) {
+      const disableLines =
+        resolveProvider('guide') === 'gemini'
+          ? `DISABLE (Google Console > APIs & Services > Credentials):\n` +
+            `- Primary: GEMINI_API_KEY_GUIDES = project gen-lang-client-0816353550 (billed; grounded guide spend)\n` +
+            `- Secondary: GEMINI_API_KEY = project gen-lang-client-0819525902 (blurb)\n`
+          : `REVOKE + ROTATE (vendor consoles, key name bemgu-production):\n` +
+            `GROQ_API_KEY (console.groq.com) and GEOAPIFY_API_KEY (myprojects.geoapify.com).\n`
       await sendNtfy({
         title: 'Bemgu spend alert: Guide refresh',
         message:
           `Feature: Guide refresh (/api/generate-guide)\n` +
           `Host ${userId} called it ${hourCount}x this hour (threshold ${GUIDE_ALERT_THRESHOLD}).\n` +
-          `DISABLE (Google Console > APIs & Services > Credentials):\n` +
-          `- Primary: GEMINI_API_KEY_GUIDES = project gen-lang-client-0816353550 (billed; grounded guide spend)\n` +
-          `- Secondary: GEMINI_API_KEY = project gen-lang-client-0819525902 (blurb)\n` +
+          disableLines +
           `Or block this host in Supabase. Vercel logs: /api/generate-guide`,
         priority: 'high',
       })
