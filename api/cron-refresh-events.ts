@@ -67,7 +67,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Parallelise with a deliberately LOW limit (2): each iteration is a Gemini call
   // against the events key's free-tier daily cap, so keep concurrency small to avoid
   // concentrating quota bursts while still fitting a multi-apartment run inside the
-  // 60s maxDuration. Each task returns { ok } and performs its own stale-safe upsert;
+  // 150s maxDuration (vercel.json). Each task returns { ok } and performs its own stale-safe upsert;
   // counts are aggregated in a single pass after the pool, so totals + the
   // wholesale-failure ntfy condition are identical to the sequential version.
   const outcomes = await mapPool(candidates, 2, async (apt): Promise<{ ok: boolean }> => {

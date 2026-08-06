@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { generateCityEvents } from './_lib/city-events.js'
 import { sendNtfy } from './_lib/ntfy.js'
+import { resolveProvider } from './_lib/ai-provider.js'
 
 // Host manual "Refresh events" — Bearer-auth, ownership-gated, freshness-gated.
 // A row newer than 20h is considered fresh and short-circuits WITHOUT a Gemini call
@@ -87,14 +88,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('[refresh-events] bump_api_counter returned non-numeric - brake inactive', typeof evCount)
     } else if (evCount > CITY_EVENTS_HOST_LIMIT) {
       if (evCount === CITY_EVENTS_HOST_LIMIT + 1) {
+        // fa8fa32 RULE: remediation text migrates with its surface. The closing ACTION line here
+        // says "block this host" and is CORRECT — this counter is CALLER-keyed (the ownership
+        // check at the top of this handler precedes the bump), unlike the public lazy-fill's
+        // victim-keyed one. Do not converge the two.
+        const eventsLines =
+          resolveProvider('events') === 'gemini'
+            ? `GROUNDED gemini-2.5-flash on GEMINI_API_KEY_EVENTS.\n` +
+              `DISABLE if needed: GEMINI_API_KEY_EVENTS = project gen-lang-client-0131909896 (city events only).\n`
+            : `Tavily search + Groq extraction.\n` +
+              // This alarm has the budget to say the blunt part out loud: TAVILY_API_KEY is
+              // events-only, but GROQ_API_KEY is shared by ALL AI surfaces, so revoking it is far
+              // wider than the old events-only Google project it replaced. And check quota first
+              // - an exhausted monthly credit pool is the likeliest cause here.
+              `REVOKE + ROTATE IF NEEDED - CHECK VENDOR QUOTA FIRST: TAVILY_API_KEY (app.tavily.com, events only), or GROQ_API_KEY (console.groq.com) which stops ALL AI surfaces.\n`
         try {
           await sendNtfy({
             title: 'Bemgu spend alert: city-events (host refresh)',
             message:
               `Feature: City events - host refresh (/api/refresh-events)\n` +
               `Host ${apt.host_id} hit ${evCount} refresh generations this hour (limit ${CITY_EVENTS_HOST_LIMIT}).\n` +
-              `GROUNDED gemini-2.5-flash on GEMINI_API_KEY_EVENTS.\n` +
-              `DISABLE if needed: GEMINI_API_KEY_EVENTS = project gen-lang-client-0131909896 (city events only).\n` +
+              eventsLines +
               `ACTION: block this host in Supabase. Vercel logs: /api/refresh-events`,
             priority: 'high',
           })

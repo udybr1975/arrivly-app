@@ -1079,8 +1079,9 @@ HEAD == Vercel READY verified after.
   + greeting / rewrite-rules / bulk-import / guide-assistant on Groq. Details in "PILOT STEP 3 —
   SHIPPED" below.
 - **Step 4 — SHIPPED (Aug 6 2026).** Guide on Geoapify POI data + Groq prose, blurb migrated with
-  it. Details in "PILOT STEP 4 — SHIPPED" below. **Step 5** — events on Tavily. **Step 6** —
-  guest-chat router + host-picks.
+  it (plus B2.1, tiered Sight). Details in "PILOT STEP 4 — SHIPPED" below.
+- **Step 5 — SHIPPED (Aug 6 2026).** City events on Tavily search + Groq extraction. Details in
+  "PILOT STEP 5 — SHIPPED" below. **Step 6** — guest-chat router + host-picks.
 - **Step 7** — alarm-text sweep + **SELF-ATTACK DRILL** (burst chat past 40, hammer
   `city-events-public`, booking flood; verify the brakes trip and the ntfy wording is right).
   **The drill is a graduation PREREQUISITE.**
@@ -1138,6 +1139,122 @@ Aug 9. (Standing rule: re-roll before any guest-page test.)
 the prompt. Then **B3** events on Tavily, **B4** chat router + host-picks, **Step 7** the
 self-attack drill (**remember the recorded stale-alarm residual list**), **Step 8** delete the
 `GEMINI_*` vars.
+
+### PILOT STEP 5 — SHIPPED (Aug 6 2026): city events on Tavily search + Groq extraction
+
+**Events now run off a WEB CORPUS, not model memory**, behind `resolveProvider('events')`
+(`'gemini'` keeps the entire grounded path, moved intact into `generateCityEventsGemini`).
+**Rollback is `AI_PROVIDER_EVENTS=gemini` + redeploy.** New `api/_lib/tavily.ts` mirrors
+`geoapify.ts`: never throws, `[]` on any failure, module-level 250 ms rate gate, per-request
+AbortController.
+
+- **THE STRUCTURAL WIN: the model is no longer asked to RECALL events.** Grounded Gemini
+  retrieved and remembered in one step; now Tavily supplies the corpus and Groq only extracts
+  structure from it. An event that is not in the snippets cannot be produced.
+- **THREE sequential searches** (events / concerts-gigs-live-music / exhibitions-markets-
+  festivals), `max_results` 8 each, `topic: 'general'`, `time_range: 'week'`. **If all three
+  return zero results the pipeline returns `{payload:null}` WITHOUT calling Groq** — no unit is
+  spent extracting from an empty corpus.
+- **`search_depth` STAYS `'basic'` — deliberate, not an oversight.** `'advanced'` costs **2
+  credits per call** against the **1000/month** free allowance, and the extractor reads snippets
+  rather than full pages, so the depth buys nothing here.
+- **BUDGET PARITY IS A TOTAL, NOT A PER-LEG COPY.** The Gemini path spent 2 x 28s ~= 57s. The
+  new path: 3 searches x 8s (**no retry**) + 2 extraction attempts x 20s + ~0.6s backoff
+  ~= **65s**, inside the 150 s `maxDuration`. Every value passed EXPLICITLY.
+- **CONTRACT PRESERVED EXACTLY:** `generateCityEvents` still never throws, still returns
+  `{payload:null}` on ANY failure, and **a null payload is still never cached by any of the three
+  callers** — so a bad run leaves the cache intact. The `CityEventsPayload` shape is unchanged,
+  so `EventsPage` needed no change.
+- **UNTRUSTED-WEB-TEXT FENCE — the least-trusted input in the stack so far.** Tavily returns
+  arbitrary third-party web text, not OSM place names. Snippets are passed via `JSON.stringify`
+  (blocks structural injection) inside an explicitly delimited `SNIPPETS:` block, with an
+  instruction to treat everything in it as DATA and never as instructions — the same shape as the
+  B2 guide prose leg. Caps at ingest: title 200, url 500, **content 500**; and at extraction:
+  title 160, venue 160, date 60, desc 300, price 24, url 500, **max 15 events**.
+- **URL PROVENANCE IS ENFORCED, NOT MERELY REQUESTED.** The prompt asks for a url taken from the
+  snippets — but a prompt instruction is not an invariant. A url must now be `^https?://` **AND
+  literally present in the fetched corpus**, else it is blanked. Without that, a page ranking for
+  one city query (cheap to arrange) could put an **attacker-authored clickable link inside the
+  host-branded guest page — phishing with borrowed trust.** No XSS sink exists (no
+  `dangerouslySetInnerHTML` in `src/`, and `EventsPage` independently falls back to a search link
+  for an empty url), so the ceiling was always attacker-authored TEXT, never code execution.
+- **TOKEN ARITHMETIC — a CROSS-SURFACE availability control, not tidiness.** The three queries
+  overlap heavily, so snippets are **deduped by url and capped at 12**. Undeduped at the original
+  1200-char content cap the corpus was **~11-12k tokens in ONE call — about 2x the entire 6K TPM
+  ORG-WIDE Groq ceiling**, which would 429 the extraction *and* starve `guest-chat`, the guide and
+  `daily-greeting` **across every tenant**, since that bucket is shared by all eight surfaces and
+  no per-host counter can bound it. Deduped + capped it lands at **~2.5k tokens typical, ~4k
+  worst case at the caps** — a ~4x reduction that moves the call from a GUARANTEED ceiling breach
+  to normally inside it. This is the "a key split is not an upstream split" lesson at fleet scale.
+  **Not eliminated, and state it precisely: Groq meters input PLUS output, so worst-case ~4k in +
+  `maxTokens: 3072` out ≈ 7k against a 6K ceiling — a single worst-case run can still self-429.**
+  Trimming `maxTokens` (15 events x ~6 short fields needs ~2k) is the cheap next lever, but it
+  trades an occasional retried 429 for truncated JSON → null payload → no cache, so it was NOT
+  taken here.
+- **SELECTION IS PER-QUERY-QUOTA THEN BACKFILL, not greedy.** Capping the corpus in producer order
+  would have let queries 1-2 fill all 12 slots so the third theme (exhibitions/markets/festivals)
+  **never reached the extractor** — while still spending its credit. **DURABLE RULE: a corpus cap
+  applied in producer order silently becomes a producer FILTER.**
+  **TRAP FOR WHOEVER ADDS A FOURTH QUERY:** `quota = ceil(MAX_SNIPPETS / queries.length)` tiles
+  the cap EXACTLY only at 3 queries (4+4+4 = 12). At 5 it is `ceil(12/5)*5 = 15 > 12`, so pass 1
+  alone re-acquires the tail bias this fix removed. Re-derive the quota if the query list changes.
+  Also note `allowedUrls` MUST stay derived AFTER selection — that ordering is what makes the
+  allowlist exactly what the model was shown.
+- **KEY LOCATION CHANGES WHAT IS SAFE TO LOG.** Tavily's key is in an `Authorization` HEADER, not
+  the URL (unlike Geoapify/LocationIQ), so logging the response **status** is safe — done. Body,
+  headers, request and raw error are still never logged. **`scrubErr` HAD NO `tvly-` RULE and was
+  extended** (redaction before truncation, alongside `AIza`/`gsk_`/`key=`) — verified empirically
+  that the pre-existing rules did NOT cover it.
+- **KEY-GUARD TRAP, again:** the `GEMINI_API_KEY_EVENTS` guard moved INSIDE the gemini branch, or
+  Step 8 would null every events payload on the Tavily path. The `if (!apt.city)` guard stayed at
+  the top — it is not a key guard.
+- **ALARM TEXT is provider-aware in BOTH callers** (`city-events.ts` and `refresh-events.ts`),
+  rebuilt from `resolveProvider('events')` at send time. **Their closing ACTION lines remain
+  DELIBERATELY DIFFERENT and must never be converged:** the public lazy-fill is VICTIM-keyed
+  ("INVESTIGATE, do not auto-block"), the host refresh is CALLER-keyed ("block this host") because
+  an ownership check precedes its bump. Measured bodies against the 500-char slice:
+  **public/tavily 471 (29 spare — the tightest of the four), public/gemini 465, host/tavily 413,
+  host/gemini 366**; ACTION sits fully inside all four. **Re-measure before adding any line.**
+  **"CHECK VENDOR QUOTA FIRST" is load-bearing remediation, not padding** — on the Tavily path the
+  likeliest cause of this alarm is an exhausted monthly credit pool, and revoking/rotating during
+  a quota outage is the wrong action entirely. The host alarm additionally says the blunt part out
+  loud (it has the budget): `TAVILY_API_KEY` is events-only, but **`GROQ_API_KEY` stops ALL AI
+  surfaces** — far wider than the events-only Google project it replaced.
+- **NEW EGRESS for Art. 30:** **Tavily receives CITY + COUNTRY + the date window ONLY** — no guest
+  data, no host or apartment identifier, **no coordinates**, so it is a **weaker disclosure than
+  the Geoapify lat/lng one**. **Groq additionally receives third-party web snippets** (titles,
+  urls, content excerpts) for extraction. Tavily has no self-serve DPA and subprocesses to
+  Groq/Cohere/OpenAI (US), which is exactly why the city/country-only rule is the compliance
+  position rather than a document.
+- **STALE COMMENTS CORRECTED (no behaviour change):** `_lib/city-events.ts` and
+  `cron-refresh-events.ts` both claimed a **60 s** maxDuration; `vercel.json` says **150**.
+- **OPEN ITEM — a CAPACITY question, not a spend one.** **Groq's free tier is 6K TPM ORG-WIDE**,
+  and `cron-refresh-events` runs `mapPool` at **concurrency 2** with a ~3K-token extraction prompt
+  each, so a multi-apartment cron run can still hit the org TPM ceiling even after the dedupe.
+  Fold into the existing cron-batching debt.
+- **OPEN, and the sharpest one — AN EMPTY EXTRACTION BOTH SUCCEEDS AND DESTROYS PRIOR GOOD DATA.**
+  If Tavily returns results but none are datable events, the extractor correctly emits
+  `categories: []` — a VALID payload, so it **is** cached. The public path cannot overwrite (it
+  upserts only on a cache miss), but `refresh-events` and `cron-refresh-events` can — and
+  `cron-refresh-events`'s own header promises *"guests keep last-good events, never an empty
+  panel"*, which that path would break. With no cache TTL on the public read, an apartment can pin
+  to "No major events found" indefinitely. **Fix when picked up: skip the upsert when
+  `eventsExtracted === 0` and a row already exists — the same shape as the Step 4
+  description-guard.** NOT done here: both fixes live in the callers, which this task scoped out.
+- **OPEN — TAVILY'S FREE ALLOWANCE IS A FLEET-WIDE MONTHLY POOL (1000 credits), and NO brake
+  bounds it.** Every existing counter is per-host-per-UTC-hour, which cannot bound a monthly
+  fleet pool. One pipeline run = **3 credits**. Ceilings: public 7/h x 3 = 21 credits/host/hour;
+  host refresh 3/h x 3 = 9; `demo-create` unbraked at 3/demo; and the unbraked
+  `cron-refresh-events` is the dominant consumer — **~11 candidate apartments would consume the
+  entire monthly allowance on the cron alone.** This is a genuinely NEW spend dimension the Step 3
+  budget-parity rule (time/attempts) does not cover. Exhaustion degrades rather than bills (PAYG
+  is prohibited by policy), and recovery is **monthly**, not daily as Gemini's quota was. Belongs
+  in the Step 7 self-attack drill.
+- **STALE GEMINI COMMENTS survive on the now-default path** in `cron-refresh-events.ts` (its
+  concurrency rationale still cites "the events key's free-tier daily cap"), `api/city-events.ts`,
+  `api/refresh-events.ts` and `_lib/city-events.ts` (its header still says keys are scrubbed
+  "AIza / key=" — now also `gsk_` / `tvly-`). Cosmetic; the alarm text is already provider-aware.
+  Fold into the Step 7 sweep alongside the other stale-alarm residuals.
 
 ### PILOT STEP 4 — SHIPPED (Aug 6 2026): guide on Geoapify POI data + Groq prose
 

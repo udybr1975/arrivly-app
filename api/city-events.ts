@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { generateCityEvents } from './_lib/city-events.js'
 import { sendNtfy } from './_lib/ntfy.js'
+import { resolveProvider } from './_lib/ai-provider.js'
 
 // PUBLIC guest read path. Cache-first: ~all guests hit a DB read only. The ONLY way
 // to trigger a Gemini call is to be the first caller for an uncached apartment
@@ -86,14 +87,28 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       console.error('[city-events] bump_api_counter returned non-numeric - brake inactive', typeof evCount)
     } else if (evCount > CITY_EVENTS_PUBLIC_LIMIT) {
       if (evCount === CITY_EVENTS_PUBLIC_LIMIT + 1) {
+        // fa8fa32 RULE: remediation text migrates with its surface. Rebuilt from
+        // resolveProvider('events') at SEND time so an operator is never pointed at a Google
+        // project for events that now spend Tavily + Groq. The closing ACTION line is
+        // deliberately DIFFERENT from refresh-events.ts's: this key is the VICTIM host on a
+        // public surface, so it must not say "block this host". Do not converge them.
+        const eventsLines =
+          resolveProvider('events') === 'gemini'
+            ? `GROUNDED gemini-2.5-flash on GEMINI_API_KEY_EVENTS. Reachable with only an apartment UUID (public).\n` +
+              `DISABLE if needed: GEMINI_API_KEY_EVENTS = project gen-lang-client-0131909896 (city events only).\n`
+            : `Tavily search + Groq extraction. Reachable with only an apartment UUID (public).\n` +
+              // CHECK QUOTA FIRST is load-bearing, not padding: on the Tavily path the LIKELIEST
+              // cause of this alarm is a exhausted monthly credit pool (a null payload is never
+              // cached, so guests re-enter the paid path and the count climbs). Revoking and
+              // rotating during a quota outage is the wrong action entirely.
+              `REVOKE + ROTATE IF NEEDED - CHECK VENDOR QUOTA FIRST: GROQ_API_KEY (console.groq.com) and TAVILY_API_KEY (app.tavily.com).\n`
         try {
           await sendNtfy({
             title: 'Bemgu spend alert: city-events (public)',
             message:
               `Feature: City events - public lazy-fill (/api/city-events)\n` +
               `Host ${apt.host_id} hit ${evCount} public events generations this hour (limit ${CITY_EVENTS_PUBLIC_LIMIT}).\n` +
-              `GROUNDED gemini-2.5-flash on GEMINI_API_KEY_EVENTS. Reachable with only an apartment UUID (public).\n` +
-              `DISABLE if needed: GEMINI_API_KEY_EVENTS = project gen-lang-client-0131909896 (city events only).\n` +
+              eventsLines +
               `ACTION: INVESTIGATE, do not auto-block. Key = apartment host = the VICTIM here, not the caller. Check source IPs.`,
             priority: 'high',
           })
