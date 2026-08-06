@@ -19,9 +19,19 @@ context automatically every session, which is exactly what splitting this file a
 > - **Test-fixture rule reaffirmed:** Sweet home booking `ARR-EVT777` dates must be re-refreshed (`check_in = current_date-1`, `check_out = current_date+3`) before any guest-page test.
 >
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD (code) — `6fd015c`.** This session (Aug 4 2026, session 2):
-> `3c56c95` (shared `scrubErr` helper) → `6fd015c` (atomic per-host `generate-guide` cooldown).
-> Both live and SHA-verified against Vercel production. See "SESSION Aug 4 2026 (2)".
+> **Current HEAD (code) — `fc5c97e`.** This session (Aug 6 2026) shipped **eight** commits, all
+> live and SHA-verified against Vercel production (`fc5c97e` = deploy
+> `dpl_HdjyX4DZkSPeaJht4rXJqpVnYsvc`, READY):
+> `6baafe8` (Step 4 — guide on Geoapify POI + Groq prose, blurb migrated) → `085ff2f` (B2.1 —
+> tiered Sight, significance before proximity) → `5f15005` (Step 5 — city events on Tavily + Groq)
+> → `862973b` (B3.1 — never overwrite good events with an empty extraction) → `be1b1a9` (B3.2 —
+> cron wholesale-failure condition + `no_events` toast) → `8e62b83` (B3.3 — retrieval quality) →
+> `863e6e1` (B3.4 — aggregator-url rejection, theme diversity, server-side date window) →
+> `fc5c97e` (B3.5 — prompt rebalanced for recall; **LAST events round**).
+> **⚠ B3.5 IS NOT SMOKE-TESTED — that is the FIRST action of the next session.** See
+> "SESSION CLOSE Aug 6 2026".
+> PRIOR: `3c56c95` (shared `scrubErr` helper) → `6fd015c` (atomic per-host `generate-guide`
+> cooldown), Aug 4 session 2; then `b90a648` (Step 3 — four surfaces on Groq).
 > PRIOR HISTORY: `d282fe8` (guide dedupe + empty-category retry) closed the Jul 29 session 2
 > chain `fbf58aa` (fra1 pin + ntfy scrub) → `1af1012` (grounded guide + English descriptions)
 > → `a940158` (distance rules + Coffee + per-generation logging) → `d282fe8`.
@@ -238,7 +248,7 @@ Each high-volume / public surface has its OWN no-card AI Studio key (separate fr
 ---
 
 ## Known notes / minor debt
-- Cron sequential loops in `cron-sync-ical` AND `cron-refresh-events` share the "batch at scale / maxDuration" debt — fine at current apartment counts; batch before many booked apartments. (Phase G cron-batching item.)
+- Cron sequential loops in `cron-sync-ical` AND `cron-refresh-events` share the "batch at scale / maxDuration" debt — fine at current apartment counts; batch before many booked apartments. (Phase G cron-batching item.) **⚠ NO LONGER "fine at current counts" FOR `cron-refresh-events` (Aug 6 2026): at B3.3+ prompt sizes its `mapPool` concurrency of 2 EXCEEDS the 6K TPM Groq org ceiling deterministically, so a multi-candidate run is expected to 429 AND starves guest-chat / guide / daily-greeting across every tenant while it runs. Fix is `concurrency: 1`, and it is the top of this debt — see "SESSION CLOSE Aug 6 2026" open item 1.**
 - `city-events` lazy-fill: the FIRST guest to view an uncached apartment waits ~the generation time (one-off); the cron pre-warms apartments with current/upcoming bookings so most are already warm.
 - **`cron-refresh-events` schedule vs Gemini quota-day — CLOSED (`dbfc034`, Jul 28 2026).** Both Gemini crons rescheduled off the tail of the free-tier quota day: `cron-refresh-events` `0 4 * * *` → **`0 9 * * *`**; `cron-refresh-guides` `0 3 1 * *` → **`0 10 1 * *`** (verified via source that it calls Gemini through `generateGuideForApartment` → `api/_lib/guide.ts`). Key isolation confirmed at the same time: events reads `GEMINI_API_KEY_EVENTS || GEMINI_API_KEY`, guides reads `GEMINI_API_KEY_GUIDES || GEMINI_API_KEY` — each a separate AI Studio project with its own daily quota, so neither reschedule is neutralised by key-sharing. **HONEST FRAMING:** the Jun 25 incident was already mitigated a month earlier by the dedicated events key (`acd16f4`); this reschedule is defence-in-depth for events, and the FIRST timing protection for guides. code-reviewer PASS (0 must-fix); vercel.json only, 2 changed lines, both schedule strings. Original entry follows for history: The events cron runs `0 4 * * *` (04:00 UTC ≈ 21:00 Pacific) — the TAIL of Gemini's free-tier quota-day (free-tier daily limits reset ~midnight Pacific ≈ 07:00–08:00 UTC). On 2026-06-25 this run 429'd every candidate apartment and fired the ntfy "all event refreshes failed" alert because city-events was still on the SHARED `GEMINI_API_KEY`, whose daily quota was exhausted. Mitigated by the dedicated `GEMINI_API_KEY_EVENTS` (`acd16f4`) giving the events surface its own daily quota. **Not yet done (Udy deferred):** reschedule `cron-refresh-events` from `0 4 * * *` → `0 9 * * *` in `vercel.json` so the run lands just AFTER the Pacific reset — the dedicated key lowers recurrence risk, the reschedule mostly removes it. NOTE: the cron itself behaved correctly that day (returned 200, left cache rows intact / stale-safe; the alert only fires when `refreshed === 0`). VERIFICATION PENDING: the next 04:00 UTC run is the passive test — no ntfy alert = the dedicated key worked.
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
@@ -599,9 +609,11 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 
 ### OPEN ITEMS — PRIORITY CHANGES (Aug 4 2026)
 
-- **NEXT ACTION — PILOT STEP 1 CHECKS (no code):** Groq terms/DPA; Tavily DPA + post-Nebius
-  ownership; LocationIQ plan POI endpoint + quota; Geoapify quotas + commercial use. GATE before
-  any code. See "ZERO-GOOGLE AI PILOT — APPROVED PLAN", which is canonical for this workstream.
+- **~~NEXT ACTION — PILOT STEP 1 CHECKS (no code)~~ — DONE (Aug 6 2026). Steps 1-5 of the pilot are
+  all COMPLETE and live.** NEXT ACTION is now: **(1) SMOKE-TEST B3.5 — it shipped unverified;
+  (2) `cron-refresh-events` concurrency 2 → 1, the most urgent open item in the repo;
+  (3) Step 6 (guest-chat router + host-picks).** See "SESSION CLOSE Aug 6 2026" for the full
+  ordering and "ZERO-GOOGLE AI PILOT — APPROVED PLAN", still canonical for this workstream.
 - **~~NEW, TOP OF PRE-LIVE — enable billing on ALL FIVE Gemini projects~~ — SUPERSEDED Aug 5 2026
   by the ZERO-GOOGLE AI PILOT.** The Bemgu billing account is now CLOSED with zero linked
   projects; **there is no billing flip**. The two grounds recorded below still explain WHY Google
@@ -1020,6 +1032,147 @@ remain valid and are why the in-code brakes, not a spend cap, are the primary co
 `demo-create` cooldown was NOT built (secondary surface: Turnstile + one-demo gated). Fail-closed
 reconsideration remains a recorded non-blocking option.
 
+## SESSION CLOSE — Aug 6 2026: pilot Steps 4 and 5 shipped, city-cache scoped, B3.5 UNSMOKED
+
+**HEAD `fc5c97e`, verified against Vercel: latest READY production deploy is
+`dpl_HdjyX4DZkSPeaJht4rXJqpVnYsvc` = `fc5c97e98423b7ff…`. All EIGHT of today's commits are READY in
+production.** Every one passed code-reviewer + security-auditor before push.
+
+### ⚠ FIRST ACTION OF THE NEXT SESSION — SMOKE-TEST B3.5. IT SHIPPED UNVERIFIED.
+
+Events are smoke-verified **through B3.4 only**. B3.5 changed the extraction prompt's recall balance
+and **has never been run.** Its own recorded acceptance criteria are what that run must answer, and
+they exist because **the one axis with no code guard (fabrication) is also the one axis with no
+metric** — so a higher event count is NOT by itself evidence the round worked:
+- **Blank-url share** = `eventsExtracted − urlsKept − urlsRejectedProvenance − urlsRejectedNonSpecific`.
+  An invented title cannot match a corpus url slug, so **padding shows up there**. 12 events with 9
+  blank urls is padding, not recall.
+- **Hand-check three titles against the web**, exactly as B3.4's run was checked.
+- **`themeCounts`** decides whether the diversity problem is SELECTION or EXTRACTION. Culture at 0-1
+  means SELECTION, and **no further prompt round can fix that** (B3.5 was the last events round).
+- **`datesUnparseable`** read ALONGSIDE `eventsDroppedOutOfWindow`, never alone.
+- **`rawLen` ~6-8k in a parse-failure log means TRUNCATION**, not malformed JSON — see B3.5's lever
+  order (drop the target to 10-12 before raising `maxTokens`).
+
+### WHAT SHIPPED, in order
+`6baafe8` Step 4 (guide on Geoapify POI + Groq prose, blurb migrated) → `085ff2f` B2.1 (tiered
+Sight — significance before proximity) → `5f15005` Step 5 (city events on Tavily + Groq) →
+`862973b` B3.1 (never overwrite good events with an empty extraction) → `be1b1a9` B3.2 (cron
+wholesale-failure condition + `no_events` toast) → `8e62b83` B3.3 (retrieval quality) → `863e6e1`
+B3.4 (aggregator-url rejection, theme diversity, server-side date window) → `fc5c97e` B3.5 (prompt
+rebalanced for recall — **LAST events round**).
+
+### SMOKE RESULTS — measured facts
+- **GUIDE (Step 4 + B2.1) — SMOKE-VERIFIED.** **30 places, 30 with coordinates, 30 described, all
+  within 0.45 km.** B2.1 confirmed its own fix: Sight went from **five statues within 220 m** to
+  **Temppeliaukion kirkko, Luonnontieteellinen museo, Punkmuseo, Helsingin synagoga**, while the
+  **five untiered categories returned IDENTICAL names in IDENTICAL order** — the regression guard
+  held, which is what makes the Sight change attributable rather than coincidental. Cooldown claimed
+  6s before the write; no alarm fired.
+- **EVENTS — SMOKE-VERIFIED THROUGH B3.4 ONLY.** B3.3 run: 4 events, real headline events, **but
+  every url pointed at an aggregator page and one at the WRONG festival** — which is what B3.4 then
+  fixed. B3.4 run: **3 events, ALL CORRECT** (Hellsinki Metal Festival / Haloo Helsinki! / Jethro
+  Tull, all in-window, one carrying a real price), **`urlsRejectedNonSpecific` 3**,
+  `urlsRejectedProvenance` 0, `eventsDroppedOutOfWindow` 0, `corpusChars` 13638.
+- **B3.5 — NOT TESTED.** See above.
+
+### DECISIONS TAKEN TODAY — do not relitigate
+- **NO ROLLBACK TO GEMINI ON EVENTS, UNDER ANY CIRCUMSTANCES** (Udy, explicit). Operational
+  consequence recorded by B3.4: `AI_PROVIDER_EVENTS=gemini` would **silently disable BOTH** the
+  server-side date window and the aggregator-url check, since both live only on the Tavily path.
+  **Rollback is no longer a free incident-response lever** — reconciled at the Step 5 header.
+- **VENDORS STAY UNPAID until graduation. The card question is DEFERRED, NOT RESOLVED.**
+- **xAI (Grok) PRICED AND DEFERRED** — see the pilot's LLM PROVIDER ORDER for the numbers. **It is a
+  DIFFERENT COMPANY from Groq despite the name; never conflate them.**
+- **THE FREE STACK DOES NOT REACH 50 HOSTS** — measured; reconciled into the pilot's DECISION and
+  GRADUATION blocks. Real runway ~10-20 hosts, and **Groq's own Developer tier also requires a card**,
+  so the "paid Groq with a hard cap" lever does not preserve the no-card state.
+- **VENDOR RISK ON GROQ** recorded (NVIDIA took its founder, president and ~90% of engineering in
+  Dec 2025) — a second real provider behind `ai-provider.ts` is worth having eventually.
+
+### SCOPED AND AGREED, NOT YET BUILT — the CITY-LEVEL EVENTS CACHE
+**WHY:** events are a property of the **CITY** but cached per **APARTMENT**, so N apartments in one
+city generate N identical searches and N identical bills. Live data: **9 visible apartments across 7
+cities, THREE in Helsinki** — only a 1.3x saving today, **but the test data is artificial and real
+hosts will cluster in few cities, so size it off the CEILING, not today's ratio.** It also improves
+**DATA quality** (one city fetched well beats N thin fetches) and **makes every vendor cheaper,
+including the free one** — which is why it is the only relief lever that needs no card.
+
+**KEYING DECISION, with the reasoning, because three plausible options were rejected:**
+- **NOT the host's typed city** — free text. The live data already held `"Helsinki"`, `"HELSINKI"`
+  and `"Finland "` with a trailing space; **those were CLEANED via MCP this session.**
+- **NOT geographic clustering**, though it was considered: a radius rule is **ORDER-DEPENDENT** —
+  whoever refreshes first plants the cluster centre — and **non-determinism is a bad property in a
+  cache.**
+- **NOT LocationIQ's `place_id`** — a Nominatim internal, **not stable across data refreshes.**
+- **INSTEAD: reverse-geocode the apartment's coordinates ONCE at address save**, and key on
+  **country_code + the OSM-normalised city name** (e.g. `"fi:helsinki"`).
+
+**VERIFIED:** LocationIQ reverse geocoding is on the **FREE tier (5,000/day)**, same key, same `eu1`
+endpoint `geo.ts` already uses. **TWO PARAMETERS ARE ESSENTIAL:** `normalizecity=1` (without it OSM
+returns town/village for smaller places and `address.city` comes back **EMPTY**, so a host in a small
+town gets a **null key**) and `accept-language=en` (so Helsinki/Helsingfors resolve consistently).
+
+**LICENSING QUESTION FOR THE PRE-LIVE LEGAL LIST — flagged, NOT resolved:** LocationIQ's free terms
+say response data may be stored indefinitely but **request/response PAIRS cached only 48 hours**. We
+would store a **DERIVED field permanently**, which reads as allowed — **confirm before launch rather
+than assume.**
+
+**SHAPE — two commits, smoked separately:**
+1. `canonical_city` / `canonical_country` / `canonical_country_code` / `canonical_city_key` /
+   `canonical_resolved_at` columns, **all nullable, the host's typed city/country UNTOUCHED for
+   display**; `reverseGeocode()` in `_lib/geo.ts` reusing the existing **550 ms gate**, silent, never
+   throws; resolve on address save **when coordinates change**; **failure leaves nulls and never
+   blocks a save**; backfill the 9 apartments via MCP.
+2. The city-keyed cache table, three callers switching with a **per-apartment fallback when the key
+   is null**, and the cron iterating **booked CITIES**.
+
+**COUNTERS STAY HOST-KEYED** — whoever triggers a run pays for it. **Changing the counter key would
+be a SECURITY change, and those go badly when bundled with a feature.**
+
+**ACCEPTED BEHAVIOUR CHANGE:** one host's Refresh benefits every host in that city, so a second host
+may be told "already up to date". Correct and cheaper, **but the copy must not read as failure —
+same class as the B3.2 toast.**
+
+**UNSOLVED AND ACCEPTED:** metro areas — Espoo/Vantaa resolve as distinct from Helsinki though they
+share an events market. Merging needs a **curated list, rejected as multi-city-hostile.** Accept the
+split until real host data shows it mattering.
+
+### OPEN ITEMS — in priority order, and the first is genuinely the most urgent
+1. **`cron-refresh-events` at concurrency 2 now EXCEEDS the 6K TPM org ceiling DETERMINISTICALLY at
+   B3.3+ sizes.** A multi-candidate run is **EXPECTED to 429**, and while it runs it **starves
+   guest-chat, the guide and daily-greeting across EVERY tenant.** Fix is **`concurrency: 1`** — one
+   word, top of the cron-batching debt. This is the most urgent item in the repo.
+2. **Guide prose reads templated** ("X is a museum that guests can visit to learn about…") —
+   prompt-only, batch with the Step 7 sweep.
+3. **Per-tier Sight logging:** a silent Geoapify timeout on Tier 1 is **indistinguishable from a
+   genuinely thin Tier 1** and would promote statues back into Sight.
+4. **Everything B3.3/B3.4/B3.5 already recorded** and still open: Tavily's fleet-wide monthly pool
+   (now the fleet-size constraint, item above), the non-Latin-script token ceiling, the duplicated
+   `countEvents` predicate, the `probe_failed` skip suppressing a real signal, the three
+   code-comment inaccuracies, and the stale Gemini-era alarm text for the Step 7 sweep.
+
+### DURABLE LESSONS FROM TODAY — the reason this record is worth writing
+- **A RECENCY FILTER ON A SEARCH API FILTERS WHEN THE PAGE CHANGED, NEVER WHEN THE EVENT HAPPENS.**
+  This single default was the primary cause of the weak events corpus.
+- **A PROVIDER'S DEFAULT ORDERING IS A DESIGN DECISION YOU INHERIT SILENTLY.** Geoapify's
+  nearest-first is right for "closest pharmacy" and wrong for "best sight".
+- **PROVENANCE PROVES ORIGIN, NEVER ABOUTNESS.** A url can pass every origin check and still be the
+  wrong url; under an event's name an aggregator link spends the **HOST'S** brand trust to mislead a
+  guest. **Blank beats plausible-but-wrong.**
+- **A URL IS AN IDENTITY KEY, NOT DISPLAY TEXT — cap it by REJECTION, never by slicing.**
+- **A CORPUS CAP APPLIED IN PRODUCER ORDER SILENTLY BECOMES A PRODUCER FILTER.**
+- **A CORPUS BUDGET SIZED OFF ONE FIELD IS WRONG** — a snippet costs the SUM of every capped field
+  plus scaffolding.
+- **A PROMPT CLAUSE THAT DUPLICATES A CODE GUARANTEE COSTS RECALL AND BUYS NOTHING:** when a rule
+  moves into code, **RELAX** the wording rather than leaving it standing.
+- **A PROMPT-ONLY CHANGE CAN WEAKEN A GUARANTEE WITHOUT TOUCHING A GUARD**, by shifting which BRANCH
+  input lands on. **"No guard moved" and "the guarantee is unchanged in practice" are different
+  claims.**
+- **TEST THE REAL MODULE.** A hand-copied transcription manufactured a phantom failure while
+  **HIDING** a real bug.
+- **WHEN REMOVING DUPLICATED CLAUSES, SWEEP THE FIELD SPEC TOO**, not just the rules prose.
+
 ## ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026) — CANONICAL, supersedes the pre-billing checklist
 
 **STATUS.** Approved by Udy, Aug 5 2026. The Bemgu Google Cloud billing account
@@ -1033,11 +1186,32 @@ one at a time (below). Anna's Stays billing is a separate account and is untouch
 
 **DECISION.** Run production with **ZERO Google AI keys and no postpaid meter until 50 hosts** —
 the graduation milestone, a number Udy set on Aug 5.
+> **⚠ RECONCILED Aug 6 2026 — THE FREE STACK DOES NOT REACH 50 HOSTS, whichever vendor.** Measured:
+> **Tavily free = 1,000 credits/month FLEET-WIDE** = ~250 runs at 4 credits/run = **~8 booked
+> apartments refreshed daily**; **Groq free = 1,000 req/day and 6K TPM ORG-WIDE** across all eight
+> surfaces. **Real free runway is ~10-20 hosts, not 50.** And the escape hatch below is narrower
+> than it reads: **Groq's own Developer tier REQUIRES A CARD**, so "paid Groq with a hard spend
+> limit" does **not** preserve the no-card state either. **The card question is therefore DEFERRED,
+> NOT RESOLVED** (Udy, Aug 6) — vendors stay unpaid until graduation, and the 50-host milestone will
+> need revisiting against these numbers before it is reached, not at it.
 - **WALLET POLICY:** every AI / search / POI provider must be **no-card free tier or prepaid**.
   Providers that require an **uncapped card on file are BANNED** (Brave-class).
 - **LLM PROVIDER ORDER:** Groq if its EEA/commercial terms + DPA pass **the same Aug 4 standard
   applied to Google**; else Mistral; or Groq paid **with a hard spend limit set BEFORE the first
-  call**.
+  call** — **but note the card requirement above: that third option is not a no-card option.**
+- **VENDOR RISK ON GROQ — recorded, not acted on (Aug 6 2026):** NVIDIA acquired Groq's **founder,
+  president and ~90% of engineering in Dec 2025**, and standalone GroqCloud's long-term trajectory
+  is described as uncertain. `ai-provider.ts` makes switching an env flip, which is exactly why that
+  abstraction was built — **but a SECOND provider actually implemented behind that interface is
+  worth having eventually**, since today the interface has one real branch plus a dormant Gemini one.
+- **xAI (Grok) — PRICED AND DEFERRED (Aug 6 2026). NOTE IT IS A DIFFERENT COMPANY FROM Groq despite
+  the near-identical name** — do not conflate them in any future note. Grok 4 Fast **$0.20/$0.50
+  per 1M tokens** plus **$5-10 per 1,000 web searches** (**sources DISAGREE on the tool rate —
+  VERIFY IN CONSOLE before relying on it**). Events-only estimate: **~$0.025-0.045/run**;
+  **~$0.75-1.35/month today**, **~$34-61/month at 50 hosts** per-apartment, or **~$15-27 with
+  city-level caching** (see the city-cache design below — it changes the vendor maths for every
+  vendor, including the free one). **Blocked on the card requirement, and its EEA terms/DPA are
+  UNCHECKED.**
 
 **HARD CONSTRAINT — unchanged from the spend-hardening work.** Every brake, counter key, limit,
 fail-open/fail-closed choice, the rolling + Sybil audit, retention/prune, and the
@@ -1070,9 +1244,9 @@ per surface.
 **WORK PLAN.** Every code step: single-block prompt, code-reviewer + security-auditor blocking,
 HEAD == Vercel READY verified after.
 - **Step 0** — this docs commit.
-- **Step 1 — checks, NO code:** Groq terms/DPA; Tavily DPA + post-Nebius ownership; LocationIQ
-  plan POI endpoint + quota; Geoapify quotas + commercial use. **GATE: 1a-or-fallback and
-  1d-or-1c green before ANY code.**
+- **Step 1 — DONE.** Checks, no code: Groq terms/DPA (ZDR confirmed); Tavily DPA (**none
+  self-serve** — hence the no-personal-data-in-queries rule); LocationIQ; Geoapify. Findings live in
+  `docs/providers/README.md`, the manifest to read before relying on any provider-terms claim.
 - **Step 2 — CLOSED, APPROVED BY UDY (Aug 6 2026).** Quality benchmark on Sweet home. Evidence
   and the three binding design rules it produced are in "PILOT STEP 2 — BENCHMARK CLOSED" below.
 - **Step 3 — SHIPPED + SMOKE-VERIFIED + LOG-VERIFIED (Aug 6 2026, `b90a648`).** `ai-provider.ts`
@@ -1080,8 +1254,12 @@ HEAD == Vercel READY verified after.
   SHIPPED" below.
 - **Step 4 — SHIPPED (Aug 6 2026).** Guide on Geoapify POI data + Groq prose, blurb migrated with
   it (plus B2.1, tiered Sight). Details in "PILOT STEP 4 — SHIPPED" below.
-- **Step 5 — SHIPPED (Aug 6 2026).** City events on Tavily search + Groq extraction. Details in
-  "PILOT STEP 5 — SHIPPED" below. **Step 6** — guest-chat router + host-picks.
+- **Step 5 — SHIPPED (Aug 6 2026), then FIVE correctness/quality rounds B3.1-B3.5.** City events on
+  Tavily search + Groq extraction. Details in "PILOT STEP 5 — SHIPPED" below plus the B3.1-B3.5
+  subsections. **SMOKE-VERIFIED THROUGH B3.4 ONLY — B3.5 shipped UNVERIFIED and testing it is the
+  first action of the next session.**
+- **Step 6 — NEXT (after the B3.5 smoke and the cron concurrency fix)** — guest-chat router +
+  host-picks. Acceptance test = the 20-question benchmark set recorded under "PILOT STEP 2".
 - **Step 7** — alarm-text sweep + **SELF-ATTACK DRILL** (burst chat past 40, hammer
   `city-events-public`, booking flood; verify the brakes trip and the ntfy wording is right).
   **The drill is a graduation PREREQUISITE.**
@@ -1092,9 +1270,17 @@ HEAD == Vercel READY verified after.
 
 **GRADUATION.** At 50 hosts + Step 7 drill passed + alarms observed on real traffic + dashboard
 live: per surface, **guest-chat first, events second**; **guide only if the POI version
-underperforms** (it may never return); the cheap four likely never return. Each return =
-reopen the closed Bemgu billing account, set a fresh **enforcement** spend cap sized by the **2x
-ceiling rule**, then flip the env var.
+underperforms** (it may never return — and after B2/B2.1 it looks unlikely to); the cheap four
+likely never return. Each return = reopen the closed Bemgu billing account, set a fresh
+**enforcement** spend cap sized by the **2x ceiling rule**, then flip the env var.
+> **⚠ THE 50-HOST TRIGGER IS NOT REACHABLE ON THE FREE STACK (measured Aug 6 2026 — see the
+> RECONCILED note under DECISION above).** Tavily's fleet-wide monthly pool caps the fleet at
+> **~8 booked apartments refreshed daily**, so the binding constraint arrives at roughly **10-20
+> hosts**, well before 50. **Consequence: a vendor decision is forced EARLIER than graduation, and
+> the "reopen Google billing" path is only one of the options** — the others are a paid Groq/xAI tier
+> (both card-gated) or the **city-level events cache**, which cuts the per-run cost for every vendor
+> including the free one and is the only lever that needs no card. **Do not treat 50 hosts as the
+> next decision point; treat the Tavily pool as it.**
 
 **SIDE EFFECT OF THE NO-CARD INTERIM — stated plainly.** Per the Aug 4 terms finding, the Gemini
 free tier is **not** the compliant EEA basis. That is **accepted as a pre-launch BRIDGE state,
@@ -1134,17 +1320,23 @@ route, concerts tonight, weather tomorrow, tram status).
 **TEST FIXTURE:** `ARR-EVT777` dates refreshed Aug 6 2026 via MCP — check_in Aug 5, check_out
 Aug 9. (Standing rule: re-roll before any guest-page test.)
 
-**NEXT ACTION — B2 / Step 4: the guide on Geoapify POI data + Groq prose.** Chat-Claude reads
-`generate-guide.ts` + the geo/guide libs + `cron-refresh-guides.ts` **from HEAD** before writing
-the prompt. Then **B3** events on Tavily, **B4** chat router + host-picks, **Step 7** the
-self-attack drill (**remember the recorded stale-alarm residual list**), **Step 8** delete the
-`GEMINI_*` vars.
+**~~NEXT ACTION — B2 / Step 4~~ — DONE Aug 6 2026** (`6baafe8` + `085ff2f`), and **B3 events on
+Tavily is DONE too** (`5f15005` through `fc5c97e`, five rounds). **REMAINING in this plan: B4 /
+Step 6** the chat router + host-picks — the 20-question benchmark above is its acceptance test —
+then **Step 7** the self-attack drill (**remember the recorded stale-alarm residual list**) and
+**Step 8** delete the `GEMINI_*` vars. See "SESSION CLOSE Aug 6 2026" for what must happen before
+Step 6 starts.
 
 ### PILOT STEP 5 — SHIPPED (Aug 6 2026): city events on Tavily search + Groq extraction
 
 **Events now run off a WEB CORPUS, not model memory**, behind `resolveProvider('events')`
 (`'gemini'` keeps the entire grounded path, moved intact into `generateCityEventsGemini`).
-**Rollback is `AI_PROVIDER_EVENTS=gemini` + redeploy.** New `api/_lib/tavily.ts` mirrors
+~~Rollback is `AI_PROVIDER_EVENTS=gemini` + redeploy.~~ **DECISION Aug 6 2026 (Udy, explicit): NO
+ROLLBACK TO GEMINI ON EVENTS, UNDER ANY CIRCUMSTANCES.** The `gemini` branch stays in the code as
+history and as the abstraction's second arm, **not** as an operational lever. Two reasons it would
+be the wrong move anyway: it is contractually non-compliant for EEA users on the free tier (Aug 4
+finding), and — per B3.4 — **it would silently disable BOTH new validators**, since the window check
+and the aggregator-url check live only on the Tavily path. New `api/_lib/tavily.ts` mirrors
 `geoapify.ts`: never throws, `[]` on any failure, module-level 250 ms rate gate, per-request
 AbortController.
 
@@ -1242,9 +1434,11 @@ AbortController.
   ORG CEILING DETERMINISTICALLY** — a multi-candidate cron run is *expected* to 429, and while it
   runs it starves `guest-chat`, the guide and `daily-greeting` **across every tenant**.
   **The fix is `concurrency: 1` for this cron** (the events cron is daily and booking-filtered, so
-  serialising costs almost nothing). **NOT applied in B3.3 because `cron-refresh-events.ts` was
-  explicitly out of scope for that task** — it is now the top item of the cron-batching debt, ahead
-  of the credit-pool item below.
+  serialising costs almost nothing). **NOT applied in B3.3-B3.5 because `cron-refresh-events.ts` was
+  explicitly out of scope for every one of those tasks** — and B3.5's larger output raises the per-run
+  token cost again, so each round made it worse without touching it. **THIS IS NOW THE SINGLE MOST
+  URGENT OPEN ITEM IN THE REPO** (session close, Aug 6 2026): one word, and it is a cross-tenant
+  availability fault, not merely cron debt.
 - **~~AN EMPTY EXTRACTION BOTH SUCCEEDS AND DESTROYS PRIOR GOOD DATA~~ — CLOSED by B3.1
   (Aug 6 2026).** `categories: []` is a VALID payload, so the `if (!payload)` checks never caught
   it, and both `refresh-events` and `cron-refresh-events` would write it over a good cached week —
@@ -1354,7 +1548,11 @@ AbortController.
   28 credits/host/hour; host refresh 3/h x 4 = 12; `demo-create` unbraked at 4/demo; and the
   unbraked `cron-refresh-events` is the dominant consumer — ~8 candidate apartments (was ~11) would
   consume the entire monthly allowance on the cron alone**, so B3.3 made this item MORE pressing,
-  not less. This is a genuinely NEW spend dimension the Step 3
+  not less. **ESCALATED Aug 6 2026: this is now the BINDING CONSTRAINT ON FLEET SIZE, not just a
+  spend item — ~8 booked apartments refreshed daily exhausts the month, which puts the free runway at
+  roughly 10-20 hosts and makes a vendor decision arrive BEFORE the 50-host graduation milestone.
+  The CITY-LEVEL EVENTS CACHE (scoped below) is the only lever that relieves it without a card.**
+  This is a genuinely NEW spend dimension the Step 3
   budget-parity rule (time/attempts) does not cover. Exhaustion degrades rather than bills (PAYG
   is prohibited by policy), and recovery is **monthly**, not daily as Gemini's quota was. Belongs
   in the Step 7 self-attack drill.
