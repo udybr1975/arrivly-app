@@ -19,7 +19,11 @@ context automatically every session, which is exactly what splitting this file a
 > - **Test-fixture rule reaffirmed:** Sweet home booking `ARR-EVT777` dates must be re-refreshed (`check_in = current_date-1`, `check_out = current_date+3`) before any guest-page test.
 >
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD (code) — `fc5c97e`.** This session (Aug 6 2026) shipped **eight** commits, all
+> **Current HEAD (code) — `d254df9`** (Aug 7 2026), live and SHA-verified against Vercel
+> production (`d254df9` = deploy `dpl_5Gy5f7PKNj8mJiyUtwJ5z74PpjRq`, READY):
+> `d254df9` (cron-refresh-events correct at concurrency 1 — TPM starvation + silent
+> truncation). See "SESSION Aug 7 2026".
+> PRIOR — the Aug 6 2026 session shipped **eight** commits, all
 > live and SHA-verified against Vercel production (`fc5c97e` = deploy
 > `dpl_HdjyX4DZkSPeaJht4rXJqpVnYsvc`, READY):
 > `6baafe8` (Step 4 — guide on Geoapify POI + Groq prose, blurb migrated) → `085ff2f` (B2.1 —
@@ -28,8 +32,10 @@ context automatically every session, which is exactly what splitting this file a
 > cron wholesale-failure condition + `no_events` toast) → `8e62b83` (B3.3 — retrieval quality) →
 > `863e6e1` (B3.4 — aggregator-url rejection, theme diversity, server-side date window) →
 > `fc5c97e` (B3.5 — prompt rebalanced for recall; **LAST events round**).
-> **⚠ B3.5 IS NOT SMOKE-TESTED — that is the FIRST action of the next session.** See
-> "SESSION CLOSE Aug 6 2026".
+> **B3.5 IS NOW SMOKE-VERIFIED AND PASSED (Aug 7 2026)** — from the real 09:00 UTC cron run,
+> not a manual trigger. Fabrication clean, diversity resolved, recall 3 → 6. One unanticipated
+> finding: the OPTIONAL FIELDS COLLAPSED (desc, price, venue). **B3.5 still stands as the last
+> events round — do NOT open B3.6.** See "SESSION Aug 7 2026".
 > PRIOR: `3c56c95` (shared `scrubErr` helper) → `6fd015c` (atomic per-host `generate-guide`
 > cooldown), Aug 4 session 2; then `b90a648` (Step 3 — four surfaces on Groq).
 > PRIOR HISTORY: `d282fe8` (guide dedupe + empty-category retry) closed the Jul 29 session 2
@@ -111,9 +117,23 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 ## Database (Supabase)
 > Column-by-column table listings moved to docs/schema.md — "Database (Supabase)".
 > Moved to docs/schema.md — "DB functions".
-### Critical DB facts
+### DB TRAPS
+Only the things that cause real bugs. Full column listings + reference detail are in
+docs/schema.md.
 - `apartments.accent_color` — NOT brand_color (common mistake, causes silent save failure)
-> Reference-only DB facts moved to docs/schema.md — "Critical DB facts (reference detail)". Bug-causing traps stay here.
+- **Supabase MCP `execute_sql` returns ONLY the LAST statement's result.** Send one statement per
+  call when you need to see each result — a multi-statement batch silently discards every earlier
+  result set, so a verification query batched ahead of anything else reports nothing and reads as
+  a pass.
+- **New tables/functions do NOT default to safe.** Supabase auto-grants EXECUTE to anon +
+  authenticated on every new public function, and anon/authenticated hold blanket
+  TRUNCATE/TRIGGER/REFERENCES on every new table (**and TRUNCATE BYPASSES RLS**). `REVOKE ... FROM
+  PUBLIC` — revoking from anon/authenticated is a **silent no-op** when the grant came via PUBLIC
+  (ACL `=X/owner`). Always confirm against the LIVE ACL (`pg_proc.proacl` / `relacl` /
+  `has_function_privilege`), never that the statement ran without error.
+- **RLS-on / ZERO-policies = service-role only** (a host cannot read them, so never write UI that
+  SELECTs one): `admin_audit`, `apartment_qr_secrets`, `app_settings`, `city_events_cache`,
+  `daily_greetings`, `experiences_cache`, `api_call_counters`.
 - `guide_recommendations` — always query with `.maybeSingle()` never `.single()`
 - **`push_subscriptions.apartment_id` is NULL for host account-level subscriptions.**
   Always call `sendPushToHost(db, hostId, payload)` WITHOUT the optional `apartmentId`
@@ -122,6 +142,8 @@ Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host s
 - **`hosts` server-only columns** — `hosts` has 14 client-updatable profile columns only; `tier`, `is_exempt`, `price_override_cents`, `discount_percent`, `discount_until`, `property_cap_override`, `subscription_status`, `billing_notice`, `pending_tier`, `cancel_at_period_end`, `current_period_end`, `last_billing_notice_sig` are server-only for WRITE (column-level UPDATE revoked from authenticated+anon; verified via `role_column_grants` in Task 2 for `pending_tier` and `cancel_at_period_end`; `last_billing_notice_sig` UPDATE confirmed granted to `service_role` + `postgres` only, NOT authenticated/anon — F-05 verified safe S24). `billing_notice`, `pending_tier`, `cancel_at_period_end`, and `current_period_end` ARE SELECT-readable by authenticated (needed for BillingPanel). Never write server-only columns from the client — only via admin endpoints, `change-plan.ts`, `cancel-subscription.ts`, or the stripe-webhook (service-role).
 - **`city_events_cache` is service-role-only (RLS ON, ZERO policies)** — hosts CANNOT read it, including its `generated_at` timestamp. The property editor's "Guide & events" tab therefore derives events freshness from the **`/api/refresh-events` JSON response** (`refreshed` / `reason` / `generated_at`), NEVER a direct cache SELECT. (The city-guide row, by contrast, reads `guide_recommendations.generated_at` directly — that table IS host-readable.)
 - **`apartments.accent_color` is NULLABLE (S27 2a, Migration A):** the old NOT NULL + default were dropped. NULL = inherit `hosts.accent_color` (account default); non-null = per-property override. The "Look" tab writes a validated hex on override and `NULL` on "reset to brand default", scoped `.eq('id', aptId).eq('host_id', hostId)`. Backfill state after Migration A: 7 inheriting (NULL) / 4 explicit overrides / 11 total.
+
+> Reference-only DB facts moved to docs/schema.md — "Critical DB facts (reference detail)". Bug-causing traps stay above.
 
 ### Image system
 - **Bucket** `apartment-images` — public read; 3 owner-scoped write RLS policies (insert/update/delete), condition `(storage.foldername(name))[1] = auth.uid()`.
@@ -574,10 +596,11 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 ### OPEN ITEMS — PRIORITY CHANGES (Aug 4 2026)
 
 - **~~NEXT ACTION — PILOT STEP 1 CHECKS (no code)~~ — DONE (Aug 6 2026). Steps 1-5 of the pilot are
-  all COMPLETE and live.** NEXT ACTION is now: **(1) SMOKE-TEST B3.5 — it shipped unverified;
-  (2) `cron-refresh-events` concurrency 2 → 1, the most urgent open item in the repo;
-  (3) Step 6 (guest-chat router + host-picks).** See "SESSION CLOSE Aug 6 2026" for the full
-  ordering and "ZERO-GOOGLE AI PILOT — APPROVED PLAN", still canonical for this workstream.
+  all COMPLETE and live.** ~~NEXT ACTION: (1) SMOKE-TEST B3.5; (2) `cron-refresh-events`
+  concurrency 2 → 1.~~ **BOTH DONE Aug 7 2026** — B3.5 smoke PASSED, and the cron fix shipped
+  as `d254df9`. **NEXT ACTION is now Step 6 (guest-chat router + host-picks)**, whose acceptance
+  test is the 20-question benchmark under "PILOT STEP 2". See "SESSION Aug 7 2026" and
+  "ZERO-GOOGLE AI PILOT — APPROVED PLAN", still canonical for this workstream.
 - **~~NEW, TOP OF PRE-LIVE — enable billing on ALL FIVE Gemini projects~~ — SUPERSEDED Aug 5 2026
   by the ZERO-GOOGLE AI PILOT.** The Bemgu billing account is now CLOSED with zero linked
   projects; **there is no billing flip**. The two grounds recorded below still explain WHY Google
@@ -599,8 +622,26 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   shared `scrubErr` helper (`3c56c95`) plus the clean 279-commit history scan.
 - **RETENTION CRONS move onto the CRITICAL PATH** — they must ship **before any legal document
   is published** (see the SEQUENCING TRAP in the legal workstream).
-- **14 Dependabot alerts (7 high, 7 moderate) do NOT reconcile** with the older note claiming
-  **3 dev-only vulns** (`docs/history.md`, S24 residual). **Triage before the pentest gate.**
+- **DEPENDENCY VULNS — MEASURED Aug 7 2026, replacing both stale claims.** The old "14 Dependabot
+  alerts (7 high, 7 moderate)" and the older "3 dev-only vulns" (`docs/history.md`, S24 residual)
+  are both superseded. `npm audit` on `d254df9` reports **7 total: 5 high, 2 moderate, 0 critical.**
+  (The `d254df9` push banner said 15 — GitHub counts one alert per advisory per manifest path,
+  `npm audit` dedupes to one entry per package, so the two numbers measure different things and
+  neither is wrong. Do not treat the gap as drift again.)
+  **DOES ANY REACH PRODUCTION RUNTIME? YES — two distinct defects, three of the seven entries:**
+  **`react-router` (HIGH) + `react-router-dom` (MODERATE)** — the same defect counted twice, via a
+  PROD dependency that ships in the browser bundle; and **`protobufjs` (MODERATE)** via
+  `@google/genai`, which is still installed and imported even though the Gemini branches are
+  dormant under the pilot. **The other four are build/dev-only and never ship:** `postcss` +
+  `vite` (build), `js-yaml` + `brace-expansion` (both only via `eslint`/`typescript-eslint`).
+  **NUANCE, NOT A DISMISSAL — needs triage, not assumption:** three of react-router's five
+  advisories are scoped to **RSC / SSR** modes (RSC CSRF bypass, RSCErrorHandler XSS, SSR
+  hydration `deserializeErrors`), and Bemgu is a **client-only SPA with no SSR and no RSC**, so
+  they appear unreachable here. The two worth actually triaging are the **open redirect via
+  backslash in `<Link>`/`useNavigate`** (GHSA-wrjc-x8rr-h8h6) and the route-matching DoS, which in
+  an SPA is self-inflicted only. `fixAvailable: true` for every one — but **`npm audit fix` was
+  NOT run**, because that touches the lockfile and this was a docs-only commit. **Triage before
+  the pentest gate.**
 - **~~Re-test grounding on Gemini 3 once billing is live~~ — SUPERSEDED by the ZERO-GOOGLE AI
   PILOT.** Billing is closed, so there is nothing to re-test. The pilot **dissolves the 16 Oct
   `gemini-2.5-flash` shutdown pressure by a different route**: grounded surfaces move to
@@ -612,9 +653,28 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   invocation**. **Batching + staggering is the strongest candidate for the next piece of guide
   work.** Staggering needs **no new column** — the rule is "refresh guides older than N days",
   because `generated_at` already staggers naturally. Also skip expired hosts, and log outcomes.
-A `demo-create` cooldown was NOT built (secondary surface: Turnstile + one-demo gated). Fail-closed
-reconsideration remains a recorded non-blocking option.
-- **OPEN — spend hardening**
+- A `demo-create` cooldown was NOT built (secondary surface: Turnstile + one-demo gated).
+  Fail-closed reconsideration remains a recorded non-blocking option.
+- **OPEN 1 — LRU ROTATION CAN STALL (`cron-refresh-events`, from `d254df9`).** `generated_at`
+  advances **only on a successful WRITE**, so **neither a B3.1 skip nor a failure advances it** —
+  and an apartment that consistently fails or extracts nothing **pins the head of the queue and
+  spends 4 Tavily credits every day** while pushing the tail back. Ordering alone cannot fix it:
+  it needs a persisted **"last ATTEMPTED"** timestamp = a schema change = chat-side.
+  **FOLDED INTO the city-level events cache work**, which rebuilds this table and cron anyway —
+  **do not build it separately.**
+- **OPEN 2 — `cron-sync-ical` has the SAME FAILURE SHAPE just fixed in `d254df9`.**
+  `MAX_ICAL_URLS` 20 x the 10s `safeFetchIcal` timeout = **up to 200s against `maxDuration` 150**,
+  and unlike the events cron **this one is INTERACTIVE** — a host clicks Sync, gets a **504**,
+  with the counter unit already spent. **`d254df9` is now the pattern to copy** (start-deadline +
+  a deferred bucket + an alarm condition scoped to what was attempted). **Queued after the city
+  cache.**
+- **OPEN 3 — `cron-refresh-guides.ts` is sequential with NO deadline guard** and iterates **ALL
+  visible apartments**, so it carries the same silent-truncation exposure: killed mid-flight, no
+  summary, no alarm. Separate item from the two above.
+- **OPEN — spend hardening.** Hoisted verbatim out of "SPEND-ABUSE ALARM + CALL COUNTER" when it
+  moved to docs/history.md. **The (a)/(b)/(c)/(ii) labels are the ones from their SOURCE lists
+  there, not a sequence** — they were kept so each item can be traced back; do not read them as
+  ordered or complete.
   (b) COMPLIANCE: ntfy spend alerts now MAY include a host account UUID (pseudonymous).
       NTFY_URL confirmed a PRIVATE topic. Update the Art. 30 ntfy row from "no personal
       data" to "may include a host account UUID" (fbf58aa's blanket claim is now narrower).
@@ -793,17 +853,112 @@ deliberately rather than by accident.
 
 > Moved to docs/history.md — "SESSION Aug 4 2026 — Gemini terms verified at source; the 30 Jul session recorded".
 > Moved to docs/history.md — "SESSION Aug 4 2026 (2) — pre-billing security: scrubErr + atomic per-host guide cooldown SHIPPED".
-## SESSION CLOSE — Aug 6 2026: pilot Steps 4 and 5 shipped, city-cache scoped, B3.5 UNSMOKED
+## SESSION Aug 7 2026 — B3.5 smoke PASSED, cron concurrency fixed, CLAUDE.md split
+
+**HEAD `d254df9`, verified live: deploy `dpl_5Gy5f7PKNj8mJiyUtwJ5z74PpjRq` READY.** One code
+commit, then a docs-only split of this file.
+
+### B3.5 — SMOKE-VERIFIED AND PASSED (from the real 09:00 UTC cron run, not a manual trigger)
+
+Sweet home, Helsinki. Measured, from the cron's own diagnostic line:
+`tavilyResults [8,8,7,8]`, `snippets` 14, `corpusChars` 11195,
+`themeCounts` calendar 4 / whats-on 4 / music 3 / culture 3,
+`eventsExtracted` 6, `urlsKept` 0, `urlsRejectedProvenance` 0, `urlsRejectedNonSpecific` 5,
+`eventsDroppedOutOfWindow` 0, `datesUnparseable` 3.
+
+Judged against B3.5's OWN recorded acceptance criteria — which is the point, because those
+criteria were written before the run and specifically to stop a higher event count being mistaken
+for success:
+- **FABRICATION: CLEAN.** Blank-url share = 6 − 0 − 0 − 5 = **1 of 6**; the recorded padding
+  signature did not appear. **`urlsRejectedProvenance` 0 is the stronger reading — the model
+  invented NO urls at all**, it only reached for site-level ones the aggregator guard then caught.
+  Hand-checked **3 of 3 correct** against the live web: Pete Parkkonen / Allas Live / 8.8.2026
+  exact; México A Cappella / Temppeliaukio Church / 13 Aug 19:00 exact (Mexican Embassy, free
+  admission); bbno$ / Kulttuuritalo corroborated by the independent B3.3 run.
+- **DIVERSITY: RESOLVED — and it was EXTRACTION, not SELECTION.** `themeCounts` culture is **3**,
+  not 0-1, so the recorded "if culture is 0-1 it is SELECTION and no prompt text can fix it"
+  branch **did not apply**. Output spans concert / family / market / arts festival against B3.4's
+  three straight concerts. **This is exactly why `themeCounts` was added: it decided between two
+  causes needing opposite fixes, instead of another guess.**
+- **RECALL: 3 → 6.** Below the stated floor of 8, direction correct.
+- **NEW, NOT ANTICIPATED BY THE CRITERIA — THE OPTIONAL FIELDS COLLAPSED.** `desc` came back as
+  **7-19-character labels** ("Concert", "Music event") against a "one short sentence, max ~100
+  characters" spec; **all six prices empty INCLUDING México A Cappella, which is explicitly
+  free**; **2 of 6 venues empty**. Mechanism: B3.5 added a hard count target and floor while
+  capping `desc`, so the model met the count by minimising per-event cost — **it bought recall
+  with field quality.** NOT fabrication, NOT a guard failure. **Blank venue is the one that
+  matters**, because `EventsPage.eventHref` falls back to a title+venue+city search when the url
+  is blank, so a blank-url blank-venue event has the weakest fallback of all.
+  **DECISION (Udy): do NOT open B3.6. B3.5 stands as the last events round.** Fold ONE
+  field-quality clause into the Step 7 prompt/alarm-text sweep — text-only, no new round, no extra
+  Tavily spend.
+- **ALSO: `datesUnparseable` 3 includes both Finnish `d.m.yyyy` dates**, so the recorded
+  non-English date gap now **demonstrably carries real, correct traffic** through the `null` =
+  KEEP branch. Working as designed — **but state it precisely: the window guard is INERT for
+  Finnish-format dates**, so those events are kept unverified rather than checked.
+- **MARGINAL, worth knowing:** "Helsinki Festival, 14-31 August" intersects the window only on its
+  final day. Correct per the code (a range is kept if ANY day intersects), just barely.
+
+### `d254df9` — cron-refresh-events correct at concurrency 1
+
+`mapPool` ran at concurrency 2. Each iteration is four Tavily searches plus a Groq extraction
+(~3.5-5.5k tokens) against Groq's **6K TPM ORG-WIDE** ceiling shared by every AI surface, so two
+apartments in flight breached it deterministically — the cron 429ing itself **and starving
+guest-chat, the guide and daily-greeting across every tenant** while it ran.
+
+**Concurrency 1 alone would have been incomplete, which is why four changes shipped together.**
+Serialising a pool whose items cost ~75s worst case under a 150s `maxDuration` means run 3+ is
+killed mid-flight — **silently: no JSON summary and no wholesale-failure ntfy**, losing the only
+fleet-level signal for Tavily's 1000-credit monthly pool (this cron deliberately does not
+`bump_api_counter`, so `cron-spend-audit` is structurally blind to it). So: a **65s
+START_DEADLINE_MS** that defers instead of starting work that cannot finish (a deferral spends no
+Tavily credit and no Groq tokens, and the apartment keeps its last-good row and stays reachable
+via lazy-fill); **least-recently-refreshed ordering** so the deadline cannot starve a fixed tail;
+and `deferred` folded into the alarm condition.
+
+**THE DURABLE LESSON — BOTH REVIEW GATES INDEPENDENTLY CAUGHT A DEFECT IN THE PROMPT'S OWN SPEC,
+not in the code.** The instruction was to gate the alarm on `deferred === 0`. That is **wrong in
+the dangerous direction**: a skip is **ORTHOGONAL** to failure (B3.2's whole argument — every
+provider fault lands as `failed`, never as `skipped`, so a skip is positive evidence AGAINST an
+outage), but a deferral is **CORRELATED** with it, because a hanging provider burns the deadline
+on apartment 1 and defers the rest. Gating on `deferred === 0` would therefore have silenced
+**exactly the slow outage the alarm exists to catch**, while still firing on fast ones. Shipped
+instead: scope the claim to what was tried —
+`attempted = candidates.length - deferred`, alarm when `failed === attempted`.
+**GENERAL RULE: SUPPRESSING AN ALARM ON A BUCKET CORRELATED WITH THE FAULT IS NOT THE SAME AS
+SUPPRESSING IT ON AN ORTHOGONAL ONE.** Before suppressing a detector on a new state, prove which
+failure modes actually produce that state.
+
+Also applied from review: `startedAt` moved to handler entry (it sat after three DB round-trips,
+over-committing the reserve against `sendNtfy`'s own 5s timeout), and a `mapPool` array hole now
+counts as a failure rather than throwing past the alarm and 500ing the run. Both gates ran
+**three times** — every post-review edit re-ran both, including the comment-only pass — finishing
+0 must-fix each.
+
+### CLAUDE.md split (docs-only, `b9c34d4`)
+
+290,660 → **140,644 chars (−51.6%)**, into `docs/history.md`, new `docs/pilot-history.md` and new
+`docs/schema.md`. Verbatim moves, live open items hoisted out first, one-line pointers left
+behind, **no `@import`** (an imported file loads every session, which is what the split exists to
+prevent). Gate was a char-level conservation check that reconciled **EXACTLY** to 290,660.
+**It caught a real error**: the first attempt reconciled at **+5,154** because hoisted blocks were
+being copied rather than moved, so they appeared both in CLAUDE.md and inside the sections that
+then moved to history. **A surplus means duplication; a shortfall means silent loss — check for
+both.**
+
+## SESSION CLOSE — Aug 6 2026: pilot Steps 4 and 5 shipped, city-cache scoped, B3.5 shipped (SMOKED Aug 7 — PASSED)
 
 **HEAD `fc5c97e`, verified against Vercel: latest READY production deploy is
 `dpl_HdjyX4DZkSPeaJht4rXJqpVnYsvc` = `fc5c97e98423b7ff…`. All EIGHT of today's commits are READY in
 production.** Every one passed code-reviewer + security-auditor before push.
 
-### ⚠ FIRST ACTION OF THE NEXT SESSION — SMOKE-TEST B3.5. IT SHIPPED UNVERIFIED.
+### ~~FIRST ACTION OF THE NEXT SESSION — SMOKE-TEST B3.5~~ — DONE Aug 7 2026, PASSED
 
-Events are smoke-verified **through B3.4 only**. B3.5 changed the extraction prompt's recall balance
-and **has never been run.** Its own recorded acceptance criteria are what that run must answer, and
-they exist because **the one axis with no code guard (fabrication) is also the one axis with no
+**B3.5 was smoke-verified on Aug 7 2026 from the real 09:00 UTC cron run and PASSED. Results and
+verdict are in "SESSION Aug 7 2026"; do not re-run it.** The acceptance criteria below are kept
+because they are what that run was judged against — and because the reasoning generalises to any
+future extraction round. They
+exist because **the one axis with no code guard (fabrication) is also the one axis with no
 metric** — so a higher event count is NOT by itself evidence the round worked:
 - **Blank-url share** = `eventsExtracted − urlsKept − urlsRejectedProvenance − urlsRejectedNonSpecific`.
   An invented title cannot match a corpus url slug, so **padding shows up there**. 12 events with 9
@@ -830,12 +985,14 @@ rebalanced for recall — **LAST events round**).
   **five untiered categories returned IDENTICAL names in IDENTICAL order** — the regression guard
   held, which is what makes the Sight change attributable rather than coincidental. Cooldown claimed
   6s before the write; no alarm fired.
-- **EVENTS — SMOKE-VERIFIED THROUGH B3.4 ONLY.** B3.3 run: 4 events, real headline events, **but
+- **EVENTS — SMOKE-VERIFIED THROUGH B3.4 as of this session; B3.5 was verified the NEXT day
+  (Aug 7) and PASSED — see "SESSION Aug 7 2026".** B3.3 run: 4 events, real headline events, **but
   every url pointed at an aggregator page and one at the WRONG festival** — which is what B3.4 then
   fixed. B3.4 run: **3 events, ALL CORRECT** (Hellsinki Metal Festival / Haloo Helsinki! / Jethro
   Tull, all in-window, one carrying a real price), **`urlsRejectedNonSpecific` 3**,
   `urlsRejectedProvenance` 0, `eventsDroppedOutOfWindow` 0, `corpusChars` 13638.
-- **B3.5 — NOT TESTED.** See above.
+- **B3.5 — TESTED Aug 7 2026, PASSED.** 6 events, fabrication clean, diversity resolved. Full
+  measurements and verdict in "SESSION Aug 7 2026".
 
 ### DECISIONS TAKEN TODAY — do not relitigate
 - **NO ROLLBACK TO GEMINI ON EVENTS, UNDER ANY CIRCUMSTANCES** (Udy, explicit). Operational
@@ -1017,9 +1174,10 @@ HEAD == Vercel READY verified after.
   it (plus B2.1, tiered Sight). Details in "PILOT STEP 4 — SHIPPED" below.
 - **Step 5 — SHIPPED (Aug 6 2026), then FIVE correctness/quality rounds B3.1-B3.5.** City events on
   Tavily search + Groq extraction. Details in "PILOT STEP 5 — SHIPPED" below plus the B3.1-B3.5
-  subsections. **SMOKE-VERIFIED THROUGH B3.4 ONLY — B3.5 shipped UNVERIFIED and testing it is the
-  first action of the next session.**
-- **Step 6 — NEXT (after the B3.5 smoke and the cron concurrency fix)** — guest-chat router +
+  subsections (moved to docs/pilot-history.md). **FULLY SMOKE-VERIFIED: B3.4 on Aug 6, B3.5 on
+  Aug 7 (PASSED). Step 5 is closed — B3.5 stands as the last events round.**
+- **Step 6 — NEXT, and now unblocked** (the B3.5 smoke and the cron concurrency fix are both
+  done, `d254df9`) — guest-chat router +
   host-picks. Acceptance test = the 20-question benchmark set recorded under "PILOT STEP 2".
 - **Step 7** — alarm-text sweep + **SELF-ATTACK DRILL** (burst chat past 40, hammer
   `city-events-public`, booking flood; verify the brakes trip and the ntfy wording is right).
