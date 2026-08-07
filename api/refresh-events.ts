@@ -1,6 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-import { generateCityEvents } from './_lib/city-events.js'
+import {
+  generateCityEvents,
+  eventsCacheRef,
+  readEventsCacheMeta,
+  writeEventsCache,
+} from './_lib/city-events.js'
 import { sendNtfy } from './_lib/ntfy.js'
 import { resolveProvider } from './_lib/ai-provider.js'
 
@@ -67,20 +72,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: apt, error: aptErr } = await supabase
     .from('apartments')
-    .select('id, host_id, city, country')
+    .select('id, host_id, city, country, canonical_city_key, canonical_city, canonical_country')
     .eq('id', apartment_id)
     .maybeSingle()
   if (aptErr || !apt) return res.status(404).json({ error: 'Apartment not found' })
   if (apt.host_id !== userId) return res.status(403).json({ error: 'Forbidden' })
 
+  // WHICH row this apartment reads/writes — from the DB, never from the request.
+  const cacheRef = eventsCacheRef(apt)
+
   // Freshness gate — cheap, runs before the rate limiter so fresh clicks don't burn the bucket.
-  const { data: cached } = await supabase
-    .from('city_events_cache')
-    .select('generated_at')
-    .eq('apartment_id', apartment_id)
-    .maybeSingle()
-  if (cached?.generated_at && Date.now() - new Date(cached.generated_at).getTime() < FRESH_MS) {
-    return res.status(200).json({ refreshed: false, reason: 'fresh', generated_at: cached.generated_at })
+  // FRESH_MS is unchanged.
+  //
+  // THE ACCEPTED BEHAVIOUR CHANGE: on a city-keyed apartment this timestamp belongs to the CITY,
+  // so another host in the same city may already have warmed it. A host can therefore click
+  // Refresh, have never clicked it before, and be told the events are current. That is correct
+  // and cheaper — but it is NOT a refusal, so it gets its own reason (`fresh_city`) and its own
+  // host-facing copy. Same class as the B3.2 toast: never let a deliberate, cheaper outcome read
+  // as a failure.
+  const meta = await readEventsCacheMeta(supabase, cacheRef)
+  if (meta.generatedAt && Date.now() - new Date(meta.generatedAt).getTime() < FRESH_MS) {
+    return res.status(200).json({
+      refreshed: false,
+      reason: cacheRef.cityKey ? 'fresh_city' : 'fresh',
+      generated_at: meta.generatedAt,
+    })
   }
 
   // Abuse backstop on the Gemini path.
@@ -136,7 +152,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const { payload } = await generateCityEvents({ id: apt.id, city: apt.city, country: apt.country })
+  // Generate from ref.place, NOT apt.city — on the shared city row that is the server-derived
+  // canonical city. Routing on a server value while generating from the host's TYPED value would
+  // let a host write any city's events into the row their neighbours' guests read.
+  const { payload } = await generateCityEvents({
+    id: apt.id,
+    city: cacheRef.place.city,
+    country: cacheRef.place.country,
+  })
   if (!payload) return res.status(200).json({ refreshed: false, reason: 'generation_failed' })
 
   // ── B3.1: never overwrite good events with an EMPTY extraction ───────────────────────────
@@ -155,25 +178,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // The counter bump above is deliberately NOT skipped: this run really did spend its Tavily and
   // Groq calls, so it must still cost its unit.
   if (countEvents(payload) === 0) {
-    const { data: existing, error: probeErr } = await supabase
-      .from('city_events_cache')
-      .select('generated_at')
-      .eq('apartment_id', apartment_id)
-      .maybeSingle()
+    // Probes whichever row the key selects — the guard is unchanged, only its target moved.
+    const probe = await readEventsCacheMeta(supabase, cacheRef)
     // FAIL CLOSED — the Step 4 lesson repeated: `.maybeSingle()` reports query FAILURE as
     // `data: null`, indistinguishable from "no row", so discarding the error would perform
     // exactly the overwrite this guard exists to prevent. An errored probe means "assume a row".
-    if (probeErr || existing) {
+    if (probe.error || probe.exists) {
       console.warn('[refresh-events] empty extraction, keeping existing events', {
         aptId: apartment_id,
-        reason: probeErr ? 'probe_failed' : 'row_exists',
+        reason: probe.error ? 'probe_failed' : 'row_exists',
       })
       return res.status(200).json({
         refreshed: false,
         reason: 'no_events',
         // The EXISTING row's timestamp, so the host UI reports the true last-refresh time
         // instead of implying a fresh write. Absent when the probe itself failed.
-        ...(existing?.generated_at ? { generated_at: existing.generated_at } : {}),
+        ...(probe.generatedAt ? { generated_at: probe.generatedAt } : {}),
       })
     }
     // No row: an empty FIRST fill is the honest result and must not be blocked — same rule as
@@ -181,11 +201,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const generated_at = new Date().toISOString()
-  const { error: upErr } = await supabase
-    .from('city_events_cache')
-    .upsert({ apartment_id, payload, generated_at }, { onConflict: 'apartment_id' })
+  const { error: upErr } = await writeEventsCache(supabase, cacheRef, payload, generated_at)
   if (upErr) {
-    console.error('[refresh-events] upsert failed —', upErr.message?.slice(0, 120))
+    console.error('[refresh-events] upsert failed —', upErr)
     return res.status(200).json({ refreshed: false, reason: 'generation_failed' })
   }
 

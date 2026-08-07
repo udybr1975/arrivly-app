@@ -154,7 +154,7 @@ export interface CanonicalCity {
 // DELIBERATELY does NOT strip accents or punctuation: "san sebastián" must stay stable, and
 // stripping is lossy — two genuinely different cities can collapse onto one key, which in the
 // city-level cache means one city silently reading another's events.
-function normaliseCityForKey(city: string): string {
+export function normaliseCityForKey(city: string): string {
   return city.trim().replace(/\s+/g, ' ').toLowerCase()
 }
 

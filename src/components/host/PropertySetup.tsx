@@ -737,6 +737,11 @@ export default function PropertySetup() {
       setEventsStatus(data)
       if (data.refreshed) toast('Events refreshed', 'success')
       else if (data.reason === 'fresh') toast('Events are already up to date', 'info')
+      // 'fresh_city' is the same "already current" outcome, but the events are now cached per
+      // CITY, so another property in this city may have warmed them — a host can click Refresh
+      // for the first time and still get this. It is NOT a refusal, so the copy states that the
+      // list IS current rather than that the refresh was declined (same class as 'no_events').
+      else if (data.reason === 'fresh_city') toast('Events for this city are already up to date', 'info')
       // 'no_events' is a DELIBERATE keep-stale, not a failure: the extraction came back empty and
       // the server chose to preserve the existing list rather than erase it. It used to fall
       // through to the red error below, which invited a retry that costs another

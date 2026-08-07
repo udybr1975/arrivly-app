@@ -1,7 +1,14 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { isCronAuthorized } from './_lib/cron.js'
-import { generateCityEvents } from './_lib/city-events.js'
+import {
+  generateCityEvents,
+  eventsCacheRef,
+  readEventsCacheMeta,
+  writeEventsCache,
+  stampEventsAttempt,
+  type EventsCacheRef,
+} from './_lib/city-events.js'
 import { sendNtfy } from './_lib/ntfy.js'
 import { mapPool } from './_lib/pool.js'
 
@@ -24,7 +31,30 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-interface AptRow { id: string; city: string | null; country: string | null }
+interface AptRow {
+  id: string
+  city: string | null
+  country: string | null
+  canonical_city_key: string | null
+  canonical_city: string | null
+  canonical_country: string | null
+}
+
+// One unit of work. A city-keyed unit stands for EVERY booked apartment sharing that key, which
+// is the whole saving: N apartments in one city used to cost N generations and N bills.
+//
+// `apt` is an ARBITRARY member (first returned by Postgres), and that is only safe because the
+// generator is fed `ref.place` — the SERVER-DERIVED canonical city — rather than that member's
+// host-typed `apt.city`. Every member of a key shares the same canonical city by construction,
+// so which member represents the group cannot change what is searched or what is written. Feed
+// the typed field here and the representative choice would silently decide the shared row's
+// content, non-deterministically across runs.
+interface WorkUnit {
+  ref: EventsCacheRef
+  apt: AptRow
+  /** Sort key: least-recently-touched first. See the ordering note at the call site. */
+  order: number
+}
 
 // Latest elapsed time at which a NEW apartment may still be STARTED. Past it the mapper defers
 // without calling the generator, so the run always reaches its own summary + ntfy instead of
@@ -109,13 +139,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Only visible apartments with a city qualify for a daily AI refresh.
   const { data: apts, error: aErr } = await supabase
     .from('apartments')
-    .select('id, city, country')
+    .select('id, city, country, canonical_city_key, canonical_city, canonical_country')
     .in('id', aptIds)
     .eq('is_visible', true)
     .not('city', 'is', null)
   if (aErr) return res.status(500).json({ error: 'Query failed' })
 
-  const candidates = (apts ?? []) as AptRow[]
+  const aptRows = (apts ?? []) as AptRow[]
+
+  // GROUP INTO UNITS OF WORK — the real saving in this commit.
+  //   keyed apartments   -> ONE unit per DISTINCT canonical_city_key (first member represents it)
+  //   unkeyed apartments -> one unit each, per-apartment exactly as before
+  // Branching is on canonical_city_key ONLY, via the shared helper: canonical_resolved_at can be
+  // set while the key is NULL (a city that resolved with no valid country code), so branching on
+  // resolved_at would be a bug. Five of nine live apartments are unkeyed today.
+  const cityUnits = new Map<string, WorkUnit>()
+  const aptUnits: WorkUnit[] = []
+  for (const apt of aptRows) {
+    const ref = eventsCacheRef(apt)
+    if (ref.cityKey) {
+      if (!cityUnits.has(ref.cityKey)) cityUnits.set(ref.cityKey, { ref, apt, order: 0 })
+    } else {
+      aptUnits.push({ ref, apt, order: 0 })
+    }
+  }
 
   // LEAST-RECENTLY-REFRESHED FIRST. This is what stops the start-deadline below from creating a
   // permanently starved TAIL: with a stable order (whatever Postgres returns) the same apartments
@@ -128,36 +175,79 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // DEFENSIVE BY DESIGN: this is an optimisation, never a precondition. A failed or partial lookup
   // leaves the original order untouched and must never block the run.
   //
-  // KNOWN RESIDUAL — rotation is driven by `generated_at`, which only a successful WRITE advances.
-  // NEITHER a B3.1 skip (empty extraction, existing row preserved) NOR a failure advances it, so an
-  // apartment that consistently extracts nothing — or consistently fails, which is the likelier
-  // mode during a provider outage — keeps its old timestamp, permanently holds the head of the
-  // queue and spends 4 Tavily credits every day while pushing the tail back. Ordering alone cannot
-  // fix this: it needs a persisted "last ATTEMPTED" timestamp, i.e. a schema change, deliberately
-  // not made here. Until then the tail is rotated, not guaranteed.
-  if (candidates.length > 1) {
-    const { data: cacheRows, error: cacheErr } = await supabase
-      .from('city_events_cache')
-      .select('apartment_id, generated_at')
-      .in('apartment_id', candidates.map((a) => a.id))
-    if (cacheErr) {
-      console.warn(
-        '[cron-refresh-events] cache-age lookup failed, keeping default order —',
-        cacheErr.message?.slice(0, 120)
-      )
-    } else {
-      const refreshedAt = new Map<string, number>()
-      for (const r of (cacheRows ?? []) as Array<{ apartment_id: string | null; generated_at: string | null }>) {
-        if (!r.apartment_id) continue
-        const t = r.generated_at ? Date.parse(r.generated_at) : NaN
-        // An unparseable timestamp is treated as "never refreshed" — the same direction as a
-        // missing row, so a bad value can only cost priority, never starve.
-        if (Number.isFinite(t)) refreshedAt.set(r.apartment_id, t)
+  // THE TWO GROUPS ARE ORDERED ON DIFFERENT COLUMNS, deliberately, then merged on one scale:
+  //   city units      -> city_events_by_city.last_attempted_at
+  //   apartment units -> city_events_cache.generated_at  (unchanged from before this commit)
+  //
+  // WHY last_attempted_at, and why generated_at COULD NOT WORK — this is the OPEN-1 fix recorded
+  // in d254df9's commit message. `generated_at` advances only on a successful WRITE: neither a
+  // B3.1 skip (empty extraction, existing row preserved) nor a failure advances it. So a city
+  // that consistently fails — the likeliest mode during a provider outage — or consistently
+  // extracts nothing kept its old timestamp, permanently held the head of the queue, and spent
+  // 4 Tavily credits every single day while pushing the tail back. The fix is a column that
+  // every ATTEMPT stamps, which is why stampEventsAttempt runs on success, skip AND failure.
+  //
+  // The per-apartment fallback has no last_attempted_at column anywhere, so it keeps today's
+  // generated_at ordering and therefore keeps today's residual. That is not a regression: it is
+  // exactly the pre-commit-2 behaviour, and the fallback shrinks as apartments gain keys.
+  //
+  // MERGED ON ONE SCALE rather than one group before the other: putting either group first would
+  // starve the other under START_DEADLINE_MS. The two columns mean different things (attempted vs
+  // written) but both answer "how long since we last did work for this unit", which is exactly
+  // what the deadline needs to rotate fairly.
+  const units: WorkUnit[] = [...cityUnits.values(), ...aptUnits]
+  if (units.length > 1) {
+    const cityKeys = [...cityUnits.keys()]
+    const aptIdsForOrder = aptUnits.map((u) => u.apt.id)
+
+    // DEFENSIVE BY DESIGN, unchanged in spirit: ordering is an optimisation, never a
+    // precondition. A failed or partial lookup leaves that group's order untouched and must never
+    // block the run. Sentinel 0 (epoch) means "never touched" and sorts first — a real timestamp
+    // is always > 0, and two never-touched units subtract to 0 rather than NaN.
+    if (cityKeys.length > 0) {
+      const { data: cityRows, error: cityErr } = await supabase
+        .from('city_events_by_city')
+        .select('city_key, last_attempted_at')
+        .in('city_key', cityKeys)
+      if (cityErr) {
+        console.warn(
+          '[cron-refresh-events] city cache-age lookup failed, keeping default order —',
+          cityErr.message?.slice(0, 120)
+        )
+      } else {
+        for (const r of (cityRows ?? []) as Array<{ city_key: string | null; last_attempted_at: string | null }>) {
+          if (!r.city_key) continue
+          const t = r.last_attempted_at ? Date.parse(r.last_attempted_at) : NaN
+          const unit = cityUnits.get(r.city_key)
+          if (unit && Number.isFinite(t)) unit.order = t
+        }
       }
-      // Sentinel 0 (epoch), NOT -Infinity: a real timestamp is always > 0, so 0 sorts first as
-      // intended, and two never-refreshed rows subtract to 0 rather than to NaN.
-      candidates.sort((a, b) => (refreshedAt.get(a.id) ?? 0) - (refreshedAt.get(b.id) ?? 0))
     }
+
+    if (aptIdsForOrder.length > 0) {
+      const { data: cacheRows, error: cacheErr } = await supabase
+        .from('city_events_cache')
+        .select('apartment_id, generated_at')
+        .in('apartment_id', aptIdsForOrder)
+      if (cacheErr) {
+        console.warn(
+          '[cron-refresh-events] cache-age lookup failed, keeping default order —',
+          cacheErr.message?.slice(0, 120)
+        )
+      } else {
+        const refreshedAt = new Map<string, number>()
+        for (const r of (cacheRows ?? []) as Array<{ apartment_id: string | null; generated_at: string | null }>) {
+          if (!r.apartment_id) continue
+          const t = r.generated_at ? Date.parse(r.generated_at) : NaN
+          // An unparseable timestamp is treated as "never refreshed" — the same direction as a
+          // missing row, so a bad value can only cost priority, never starve.
+          if (Number.isFinite(t)) refreshedAt.set(r.apartment_id, t)
+        }
+        for (const u of aptUnits) u.order = refreshedAt.get(u.apt.id) ?? 0
+      }
+    }
+
+    units.sort((a, b) => a.order - b.order)
   }
 
   // CONCURRENCY 1, and this is a correctness limit rather than a politeness one. Each iteration is
@@ -174,16 +264,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   //
   // Each task returns { ok } and performs its own stale-safe upsert; counts are aggregated in a
   // single pass after the pool.
-  const outcomes = await mapPool(candidates, 1, async (apt): Promise<{ ok: boolean; skipped?: boolean; deferred?: boolean }> => {
-    // START-DEADLINE GUARD — checked BEFORE the generator, so a deferred apartment spends no
+  const outcomes = await mapPool(units, 1, async (unit): Promise<{ ok: boolean; skipped?: boolean; deferred?: boolean }> => {
+    const { ref, apt } = unit
+    // START-DEADLINE GUARD — checked BEFORE the generator, so a deferred unit spends no
     // Tavily credit and no Groq tokens. It is NOT a failure: it keeps its last-good cache row and
     // remains available via lazy-fill-on-demand, so no guest sees an empty panel.
+    //
+    // Deliberately BEFORE the attempt stamp too: a deferred unit was never attempted, so stamping
+    // it would push it down the queue for work it did not do — the exact starvation this ordering
+    // exists to prevent.
     if (Date.now() - startedAt > START_DEADLINE_MS) {
-      console.warn('[cron-refresh-events] deferred, run deadline reached', { aptId: apt.id })
+      console.warn('[cron-refresh-events] deferred, run deadline reached', {
+        aptId: apt.id,
+        cityKey: ref.cityKey,
+      })
       return { ok: false, deferred: true }
     }
 
-    const { payload } = await generateCityEvents({ id: apt.id, city: apt.city, country: apt.country })
+    // Stamp BEFORE generating, so a run that is killed mid-generation still counts as an attempt
+    // and cannot pin the head of the queue. No-op for the per-apartment fallback (no column).
+    await stampEventsAttempt(supabase, ref)
+
+    // ref.place, NOT apt.city — see the WorkUnit note: the representative member must not be able
+    // to decide what a shared row contains.
+    const { payload } = await generateCityEvents({
+      id: apt.id,
+      city: ref.place.city,
+      country: ref.place.country,
+    })
     if (!payload) {
       // Generation failed/quota — leave the existing row intact (stale but safe).
       return { ok: false }
@@ -200,31 +308,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // events until something new is found. PROVIDER-AGNOSTIC — an empty Gemini payload would
     // destroy data identically.
     if (countEvents(payload) === 0) {
-      const { data: existing, error: probeErr } = await supabase
-        .from('city_events_cache')
-        .select('apartment_id')
-        .eq('apartment_id', apt.id)
-        .maybeSingle()
+      // Probes whichever row the key selects — the guard is unchanged, only its target moved.
+      const probe = await readEventsCacheMeta(supabase, ref)
       // FAIL CLOSED: `.maybeSingle()` reports query FAILURE as `data: null`, indistinguishable
       // from "no row", so an errored probe is treated as "a row exists" and the write is skipped.
-      if (probeErr || existing) {
+      if (probe.error || probe.exists) {
         console.warn('[cron-refresh-events] empty extraction, keeping existing events', {
           aptId: apt.id,
-          reason: probeErr ? 'probe_failed' : 'row_exists',
+          cityKey: ref.cityKey,
+          reason: probe.error ? 'probe_failed' : 'row_exists',
         })
         return { ok: false, skipped: true }
       }
       // No row: an empty FIRST fill is honest and must not be blocked.
     }
 
-    const { error: upErr } = await supabase
-      .from('city_events_cache')
-      .upsert(
-        { apartment_id: apt.id, payload, generated_at: new Date().toISOString() },
-        { onConflict: 'apartment_id' }
-      )
+    const { error: upErr } = await writeEventsCache(supabase, ref, payload, new Date().toISOString())
     if (upErr) {
-      console.error('[cron-refresh-events] upsert failed —', upErr.message?.slice(0, 120))
+      console.error('[cron-refresh-events] upsert failed —', upErr)
       return { ok: false }
     }
     return { ok: true }
@@ -291,7 +392,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // slice. `skipped` is NECESSARILY 0 here since the condition gates on it; it is stated so the
   // alert is self-describing to anyone holding the older mental model in which this alarm could
   // also mean "deliberately preserved". Do not read it as a live signal.
-  const attempted = candidates.length - deferred
+  const attempted = units.length - deferred
   if (attempted > 0 && refreshed === 0 && skipped === 0 && failed === attempted) {
     await sendNtfy({
       title: 'Bemgu city-events refresh',
@@ -300,5 +401,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
   }
 
-  return res.status(200).json({ ok: true, candidates: candidates.length, refreshed, failed, skipped, deferred })
+  // `candidates` keeps its meaning of "units of work attempted this run" so the existing field is
+  // not silently redefined against a different denominator; the two new fields show the grouping
+  // that produced it (cityUnits + aptUnits === candidates).
+  return res.status(200).json({
+    ok: true,
+    candidates: units.length,
+    cityUnits: cityUnits.size,
+    aptUnits: aptUnits.length,
+    bookedApartments: aptRows.length,
+    refreshed,
+    failed,
+    skipped,
+    deferred,
+  })
 }

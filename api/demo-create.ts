@@ -394,6 +394,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
 
       try {
+        // FOURTH WRITER, deliberately still per-apartment and NOT routed through
+        // _lib/city-events.ts's eventsCacheRef helper (which the three real callers use).
+        // Correct today only because a demo apartment is created with no canonical_city_key, so
+        // the helper would pick this same row anyway. ⚠ IF DEMO APARTMENTS EVER GAIN A KEY —
+        // including via api/backfill-canonical-city.ts, which selects on is_visible and does not
+        // exclude demos — this seeded row stops being the one the guest page reads, and the seed
+        // silently does nothing. Route it through the helper at that point.
         const { payload } = await generateCityEvents({ id: apartmentId, city, country: null })
         if (payload) {
           await admin.from('city_events_cache').upsert(

@@ -1,6 +1,11 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-import { generateCityEvents } from './_lib/city-events.js'
+import {
+  generateCityEvents,
+  eventsCacheRef,
+  readEventsCache,
+  writeEventsCache,
+} from './_lib/city-events.js'
 import { sendNtfy } from './_lib/ntfy.js'
 import { resolveProvider } from './_lib/ai-provider.js'
 
@@ -48,20 +53,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Authoritative apartment from DB — never trust a client-supplied city.
   const { data: apt, error: aptErr } = await supabase
     .from('apartments')
-    .select('id, host_id, city, country, is_visible')
+    .select('id, host_id, city, country, is_visible, canonical_city_key, canonical_city, canonical_country')
     .eq('id', apartmentId)
     .maybeSingle()
   if (aptErr || !apt || apt.is_visible === false || !apt.city) {
     return res.status(200).json({ error: true })
   }
 
-  // Hot path: serve the cache row directly, no Gemini.
-  const { data: cached } = await supabase
-    .from('city_events_cache')
-    .select('payload')
-    .eq('apartment_id', apartmentId)
-    .maybeSingle()
-  if (cached?.payload) return res.status(200).json(cached.payload)
+  // WHICH row this apartment reads. The key comes from the DB row above — a caller supplies only
+  // an apartment id and can never influence which city's events it reads.
+  const cacheRef = eventsCacheRef(apt)
+
+  // Hot path: serve the cache row directly, no generation.
+  //
+  // CACHE-KEY CHANGE IS DELIBERATELY A MISS, NOT A MIGRATION. An apartment that just gained a
+  // canonical_city_key reads the city row for the first time and misses, even though its old
+  // per-apartment row still holds good events. Do NOT "fix" this with a backfill or a copy: with
+  // 2+ apartments per city a copy would have to elect one apartment's payload as the city's
+  // truth, and that choice is arbitrary. The miss self-heals on the next cron run or lazy-fill.
+  const { payload: cachedPayload } = await readEventsCache(supabase, cacheRef)
+  if (cachedPayload) return res.status(200).json(cachedPayload)
 
   // Lazy first-fill: rate-limit (this is the only Gemini-touching guest path).
   if (rateLimited(`${apartmentId}:${clientIp(req)}`, Date.now())) {
@@ -120,7 +131,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const { payload } = await generateCityEvents({ id: apt.id, city: apt.city, country: apt.country })
+  // Generate from ref.place, NOT apt.city: on the shared city row that is the server-derived
+  // canonical city, so the content written can never disagree with the key it is written under.
+  // The per-apartment fallback still uses the host's typed city (its row is not shared).
+  const { payload } = await generateCityEvents({
+    id: apt.id,
+    city: cacheRef.place.city,
+    country: cacheRef.place.country,
+  })
   if (!payload) return res.status(200).json({ error: true })
 
   // Cache only a real result — never persist a failed generation.
@@ -129,14 +147,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // cron-refresh-events.ts carry — do NOT "fix" this asymmetry. This upsert is reachable ONLY on
   // a cache MISS (the hot path returned at the cached read above), so it can CREATE an empty row
   // but can never DESTROY a good one. Adding the guard here would block legitimate first-fills,
-  // which is the one case the other two call sites explicitly allow.
-  const { error: upErr } = await supabase
-    .from('city_events_cache')
-    .upsert(
-      { apartment_id: apartmentId, payload, generated_at: new Date().toISOString() },
-      { onConflict: 'apartment_id' }
-    )
-  if (upErr) console.error('[city-events] cache upsert failed —', upErr.message?.slice(0, 120))
+  // which is the one case the other two call sites explicitly allow. THAT REASONING HOLDS
+  // UNCHANGED CITY-KEYED: a miss means no row exists for that key either.
+  //
+  // KNOWN CONSEQUENCE of sharing the row, stated so it is not rediscovered as a bug: an empty
+  // first-fill written here is now visible to EVERY apartment in that city until something
+  // non-empty replaces it. It self-heals — the cron and the host refresh both overwrite an empty
+  // row with a non-empty extraction (their B3.1 guard only blocks writing an empty OVER an
+  // existing row) — but it is a wider blast radius than the per-apartment row had.
+  const { error: cacheWriteErr } = await writeEventsCache(
+    supabase,
+    cacheRef,
+    payload,
+    new Date().toISOString()
+  )
+  if (cacheWriteErr) console.error('[city-events] cache upsert failed —', cacheWriteErr)
 
   return res.status(200).json(payload)
 }
