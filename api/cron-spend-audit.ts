@@ -13,10 +13,12 @@ const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABA
 //
 // HONEST SCOPE - do NOT record the paced-attacker blind spot as closed. Thresholds are ~3x the
 // hourly limit = ~50% of the 6h ceiling, so this NARROWS the silent band from 100% to ~49.6%,
-// a 2x reduction, not a closure. Two structural gaps remain: there is no CROSS-HOST aggregate
-// (and on the guest surfaces the counter key is the VICTIM host's id, so an attacker holding
-// tokens across N hosts runs at N x 49.6% invisibly to both layers), and no cross-endpoint view
-// (a host at 49% on all seven endpoints at once is invisible).
+// a 2x reduction, not a closure. The CROSS-HOST aggregate gap this block used to list is CLOSED -
+// it is implemented below (GLOBAL_HOST_EQUIVALENT + globalByEndpoint), so the Sybil residual is a
+// FIXED CONSTANT rather than growing in N. Note the guest surfaces still key on the VICTIM host's
+// id, which is why the alerts say investigate before blocking. ONE structural gap remains: no
+// cross-endpoint view (a host at 49% on EVERY tracked endpoint at once is invisible - phrased
+// without a number on purpose, since that count goes stale the moment an endpoint is registered).
 //
 // Thresholds mirror the per-endpoint hourly limits in the api/ files - if you change an hourly
 // limit, revisit the matching value here. EXCEPTION: generate-guide has no hourly limit (a 6h
@@ -32,6 +34,13 @@ const ROLLING_LIMITS: Record<string, number> = {
   'generate-guide': 30,
   'city-events-public': 21,
   'city-events-host': 9,
+  // 3x the 20/hour cap in api/resolve-canonical-city.ts. REGISTERED DELIBERATELY, and it is not
+  // optional bookkeeping: that brake exists to protect LocationIQ's 5,000/day pool, which is
+  // FLEET-WIDE, and a per-host hourly cap provably cannot bound a fleet pool (the Tavily lesson).
+  // Unlisted endpoints are ignored by BOTH detectors below, so without this line ~11 accounts
+  // pacing at 20/h would cross the daily pool while every one of them stayed under limit+1 and
+  // nothing alarmed. This is also the only counter here whose vendor is NOT an AI provider.
+  'resolve-canonical-city': 60,
 }
 const KEY_HINT: Record<string, string> = {
   'guest-chat': 'GEMINI_API_KEY_CHAT = gen-lang-client-0221179352',
@@ -41,6 +50,10 @@ const KEY_HINT: Record<string, string> = {
   'generate-guide': 'GEMINI_API_KEY_GUIDES = gen-lang-client-0816353550',
   'create-booking': 'amplifier (mints guest passes) - watch guest-chat + daily-greeting spend',
   'sync-ical': 'amplifier (mints guest passes) - watch guest-chat + daily-greeting spend',
+  // Names the blast radius, not just the key: revoking this breaks address lookup EVERYWHERE
+  // (address save, guide places, host picks), not only the resolve endpoint. 74 chars - measured
+  // to survive the 500-char slice as the LAST line of both messages (per-host 451, global 472).
+  'resolve-canonical-city': 'LOCATIONIQ_API_KEY - shared with forward geocoding (address, guide, picks)',
 }
 
 // Cross-host aggregate (Sybil detection). Every per-host check below (and every brake) keys on
@@ -142,7 +155,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   //
   // The .lt() filter is LOAD-BEARING FOR ENFORCEMENT, not just housekeeping: without it this
   // becomes a full table wipe that resets every host's CURRENT-hour counter and silently
-  // disables all six cross-instance brakes on every run.
+  // disables EVERY COUNTER-GATED brake on every run. Precisely, because the distinction matters
+  // when judging blast radius: generate-guide is the one bump site whose counter gates NOTHING
+  // (its real cross-instance gate is the atomic 6h hosts.guide_claimed_at claim), so a wipe
+  // blinds its loop ALARM but leaves its brake standing. Stated without a count on purpose - the
+  // number moves every time an endpoint is registered.
   // SCOPE OF THE GUARD BELOW, precisely: it validates only the CUTOFF VALUE, so it catches an
   // inverted sign or a too-recent cutoff. It CANNOT detect a dropped .lt() filter - nothing
   // here can. Do not read it as protecting the filter itself.
@@ -214,7 +231,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // GLOBAL fan-out runs BEFORE the per-host one: order a fan-out by severity and boundedness,
   // not by computation order. This is the higher-signal finding and is structurally bounded to
-  // 7 messages, while the per-host loop can hold up to 22 x 5s of ntfy timeouts ahead of it and
+  // ONE MESSAGE PER TRACKED ENDPOINT (a count, deliberately not written as a literal, since it
+  // moves with ROLLING_LIMITS), while the per-host loop can hold up to 22 x 5s of timeouts and
   // would otherwise be able to exhaust maxDuration before the cross-host alert ever sent.
   for (const { endpoint, total, hosts, threshold } of globalOver) {
     try {
