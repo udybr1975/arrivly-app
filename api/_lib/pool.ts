@@ -3,7 +3,9 @@
  *
  * Caps in-flight work so total wall-clock ≈ ceil(N / limit) × slowest-item instead
  * of the sum of every item run end-to-end — this is what keeps a many-apartment cron
- * run inside the 60s function maxDuration rather than being killed mid-loop.
+ * run inside the function maxDuration (150s — see vercel.json) rather than being killed
+ * mid-loop. NOTE a `limit` of 1 gives no such compression, so a caller that serialises
+ * must bound the run itself (cron-refresh-events uses a start-deadline guard).
  *
  * Results are returned in INPUT ORDER (index-preserving), not completion order.
  *
