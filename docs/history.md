@@ -1363,3 +1363,195 @@ Madrid (1.3) and Berlin (2.4) were never affected and were left un-refreshed.
 **Shape to recognise:** "Penthouse in the sky" has 25 places with **NO coordinates at all**
 (stale Jun 22 data, hidden apartment, expired host) — that is old data, not this bug.
 
+## SESSION CLOSE — Aug 6 2026: pilot Steps 4 and 5 shipped, city-cache scoped, B3.5 shipped (SMOKED Aug 7 — PASSED)
+
+**HEAD `fc5c97e`, verified against Vercel: latest READY production deploy is
+`dpl_HdjyX4DZkSPeaJht4rXJqpVnYsvc` = `fc5c97e98423b7ff…`. All EIGHT of today's commits are READY in
+production.** Every one passed code-reviewer + security-auditor before push.
+
+### ~~FIRST ACTION OF THE NEXT SESSION — SMOKE-TEST B3.5~~ — DONE Aug 7 2026, PASSED
+
+**B3.5 was smoke-verified on Aug 7 2026 from the real 09:00 UTC cron run and PASSED. Results and
+verdict are in "SESSION Aug 7 2026"; do not re-run it.** The acceptance criteria below are kept
+because they are what that run was judged against — and because the reasoning generalises to any
+future extraction round. They
+exist because **the one axis with no code guard (fabrication) is also the one axis with no
+metric** — so a higher event count is NOT by itself evidence the round worked:
+- **Blank-url share** = `eventsExtracted − urlsKept − urlsRejectedProvenance − urlsRejectedNonSpecific`.
+  An invented title cannot match a corpus url slug, so **padding shows up there**. 12 events with 9
+  blank urls is padding, not recall.
+- **Hand-check three titles against the web**, exactly as B3.4's run was checked.
+- **`themeCounts`** decides whether the diversity problem is SELECTION or EXTRACTION. Culture at 0-1
+  means SELECTION, and **no further prompt round can fix that** (B3.5 was the last events round).
+- **`datesUnparseable`** read ALONGSIDE `eventsDroppedOutOfWindow`, never alone.
+- **`rawLen` ~6-8k in a parse-failure log means TRUNCATION**, not malformed JSON — see B3.5's lever
+  order (drop the target to 10-12 before raising `maxTokens`).
+
+### WHAT SHIPPED, in order
+`6baafe8` Step 4 (guide on Geoapify POI + Groq prose, blurb migrated) → `085ff2f` B2.1 (tiered
+Sight — significance before proximity) → `5f15005` Step 5 (city events on Tavily + Groq) →
+`862973b` B3.1 (never overwrite good events with an empty extraction) → `be1b1a9` B3.2 (cron
+wholesale-failure condition + `no_events` toast) → `8e62b83` B3.3 (retrieval quality) → `863e6e1`
+B3.4 (aggregator-url rejection, theme diversity, server-side date window) → `fc5c97e` B3.5 (prompt
+rebalanced for recall — **LAST events round**).
+
+### SMOKE RESULTS — measured facts
+- **GUIDE (Step 4 + B2.1) — SMOKE-VERIFIED.** **30 places, 30 with coordinates, 30 described, all
+  within 0.45 km.** B2.1 confirmed its own fix: Sight went from **five statues within 220 m** to
+  **Temppeliaukion kirkko, Luonnontieteellinen museo, Punkmuseo, Helsingin synagoga**, while the
+  **five untiered categories returned IDENTICAL names in IDENTICAL order** — the regression guard
+  held, which is what makes the Sight change attributable rather than coincidental. Cooldown claimed
+  6s before the write; no alarm fired.
+- **EVENTS — SMOKE-VERIFIED THROUGH B3.4 as of this session; B3.5 was verified the NEXT day
+  (Aug 7) and PASSED — see "SESSION Aug 7 2026".** B3.3 run: 4 events, real headline events, **but
+  every url pointed at an aggregator page and one at the WRONG festival** — which is what B3.4 then
+  fixed. B3.4 run: **3 events, ALL CORRECT** (Hellsinki Metal Festival / Haloo Helsinki! / Jethro
+  Tull, all in-window, one carrying a real price), **`urlsRejectedNonSpecific` 3**,
+  `urlsRejectedProvenance` 0, `eventsDroppedOutOfWindow` 0, `corpusChars` 13638.
+- **B3.5 — TESTED Aug 7 2026, PASSED.** 6 events, fabrication clean, diversity resolved. Full
+  measurements and verdict in "SESSION Aug 7 2026".
+
+### DECISIONS TAKEN TODAY — do not relitigate
+- **NO ROLLBACK TO GEMINI ON EVENTS, UNDER ANY CIRCUMSTANCES** (Udy, explicit). Operational
+  consequence recorded by B3.4: `AI_PROVIDER_EVENTS=gemini` would **silently disable BOTH** the
+  server-side date window and the aggregator-url check, since both live only on the Tavily path.
+  **Rollback is no longer a free incident-response lever** — reconciled at the Step 5 header.
+- **VENDORS STAY UNPAID until graduation. The card question is DEFERRED, NOT RESOLVED.**
+- **xAI (Grok) PRICED AND DEFERRED** — see the pilot's LLM PROVIDER ORDER for the numbers. **It is a
+  DIFFERENT COMPANY from Groq despite the name; never conflate them.**
+- **THE FREE STACK DOES NOT REACH 50 HOSTS** — measured; reconciled into the pilot's DECISION and
+  GRADUATION blocks. Real runway ~10-20 hosts, and **Groq's own Developer tier also requires a card**,
+  so the "paid Groq with a hard cap" lever does not preserve the no-card state.
+- **VENDOR RISK ON GROQ** recorded (NVIDIA took its founder, president and ~90% of engineering in
+  Dec 2025) — a second real provider behind `ai-provider.ts` is worth having eventually.
+
+### SCOPED AND AGREED, NOT YET BUILT — the CITY-LEVEL EVENTS CACHE
+**WHY:** events are a property of the **CITY** but cached per **APARTMENT**, so N apartments in one
+city generate N identical searches and N identical bills. Live data: **9 visible apartments across 7
+cities, THREE in Helsinki** — only a 1.3x saving today, **but the test data is artificial and real
+hosts will cluster in few cities, so size it off the CEILING, not today's ratio.** It also improves
+**DATA quality** (one city fetched well beats N thin fetches) and **makes every vendor cheaper,
+including the free one** — which is why it is the only relief lever that needs no card.
+
+**KEYING DECISION, with the reasoning, because three plausible options were rejected:**
+- **NOT the host's typed city** — free text. The live data already held `"Helsinki"`, `"HELSINKI"`
+  and `"Finland "` with a trailing space; **those were CLEANED via MCP this session.**
+- **NOT geographic clustering**, though it was considered: a radius rule is **ORDER-DEPENDENT** —
+  whoever refreshes first plants the cluster centre — and **non-determinism is a bad property in a
+  cache.**
+- **NOT LocationIQ's `place_id`** — a Nominatim internal, **not stable across data refreshes.**
+- **INSTEAD: reverse-geocode the apartment's coordinates ONCE at address save**, and key on
+  **country_code + the OSM-normalised city name** (e.g. `"fi:helsinki"`).
+
+**VERIFIED:** LocationIQ reverse geocoding is on the **FREE tier (5,000/day)**, same key, same `eu1`
+endpoint `geo.ts` already uses. **TWO PARAMETERS ARE ESSENTIAL:** `normalizecity=1` (without it OSM
+returns town/village for smaller places and `address.city` comes back **EMPTY**, so a host in a small
+town gets a **null key**) and `accept-language=en` (so Helsinki/Helsingfors resolve consistently).
+
+**LICENSING QUESTION FOR THE PRE-LIVE LEGAL LIST — flagged, NOT resolved:** LocationIQ's free terms
+say response data may be stored indefinitely but **request/response PAIRS cached only 48 hours**. We
+would store a **DERIVED field permanently**, which reads as allowed — **confirm before launch rather
+than assume.**
+
+**SHAPE — two commits, smoked separately:**
+1. `canonical_city` / `canonical_country` / `canonical_country_code` / `canonical_city_key` /
+   `canonical_resolved_at` columns, **all nullable, the host's typed city/country UNTOUCHED for
+   display**; `reverseGeocode()` in `_lib/geo.ts` reusing the existing **550 ms gate**, silent, never
+   throws; resolve on address save **when coordinates change**; **failure leaves nulls and never
+   blocks a save**; backfill the 9 apartments via MCP.
+2. The city-keyed cache table, three callers switching with a **per-apartment fallback when the key
+   is null**, and the cron iterating **booked CITIES**.
+
+**COUNTERS STAY HOST-KEYED** — whoever triggers a run pays for it. **Changing the counter key would
+be a SECURITY change, and those go badly when bundled with a feature.**
+
+**ACCEPTED BEHAVIOUR CHANGE:** one host's Refresh benefits every host in that city, so a second host
+may be told "already up to date". Correct and cheaper, **but the copy must not read as failure —
+same class as the B3.2 toast.**
+
+**UNSOLVED AND ACCEPTED:** metro areas — Espoo/Vantaa resolve as distinct from Helsinki though they
+share an events market. Merging needs a **curated list, rejected as multi-city-hostile.** Accept the
+split until real host data shows it mattering.
+
+### OPEN ITEMS — in priority order, and the first is genuinely the most urgent
+1. **`cron-refresh-events` at concurrency 2 now EXCEEDS the 6K TPM org ceiling DETERMINISTICALLY at
+   B3.3+ sizes.** A multi-candidate run is **EXPECTED to 429**, and while it runs it **starves
+   guest-chat, the guide and daily-greeting across EVERY tenant.** Fix is **`concurrency: 1`** — one
+   word, top of the cron-batching debt. This is the most urgent item in the repo.
+2. **Guide prose reads templated** ("X is a museum that guests can visit to learn about…") —
+   prompt-only, batch with the Step 7 sweep.
+3. **Per-tier Sight logging:** a silent Geoapify timeout on Tier 1 is **indistinguishable from a
+   genuinely thin Tier 1** and would promote statues back into Sight.
+4. **Everything B3.3/B3.4/B3.5 already recorded** and still open: Tavily's fleet-wide monthly pool
+   (now the fleet-size constraint, item above), the non-Latin-script token ceiling, the duplicated
+   `countEvents` predicate, the `probe_failed` skip suppressing a real signal, the three
+   code-comment inaccuracies, and the stale Gemini-era alarm text for the Step 7 sweep.
+
+### DURABLE LESSONS FROM TODAY — the reason this record is worth writing
+- **A RECENCY FILTER ON A SEARCH API FILTERS WHEN THE PAGE CHANGED, NEVER WHEN THE EVENT HAPPENS.**
+  This single default was the primary cause of the weak events corpus.
+- **A PROVIDER'S DEFAULT ORDERING IS A DESIGN DECISION YOU INHERIT SILENTLY.** Geoapify's
+  nearest-first is right for "closest pharmacy" and wrong for "best sight".
+- **PROVENANCE PROVES ORIGIN, NEVER ABOUTNESS.** A url can pass every origin check and still be the
+  wrong url; under an event's name an aggregator link spends the **HOST'S** brand trust to mislead a
+  guest. **Blank beats plausible-but-wrong.**
+- **A URL IS AN IDENTITY KEY, NOT DISPLAY TEXT — cap it by REJECTION, never by slicing.**
+- **A CORPUS CAP APPLIED IN PRODUCER ORDER SILENTLY BECOMES A PRODUCER FILTER.**
+- **A CORPUS BUDGET SIZED OFF ONE FIELD IS WRONG** — a snippet costs the SUM of every capped field
+  plus scaffolding.
+- **A PROMPT CLAUSE THAT DUPLICATES A CODE GUARANTEE COSTS RECALL AND BUYS NOTHING:** when a rule
+  moves into code, **RELAX** the wording rather than leaving it standing.
+- **A PROMPT-ONLY CHANGE CAN WEAKEN A GUARANTEE WITHOUT TOUCHING A GUARD**, by shifting which BRANCH
+  input lands on. **"No guard moved" and "the guarantee is unchanged in practice" are different
+  claims.**
+- **TEST THE REAL MODULE.** A hand-copied transcription manufactured a phantom failure while
+  **HIDING** a real bug.
+- **WHEN REMOVING DUPLICATED CLAUSES, SWEEP THE FIELD SPEC TOO**, not just the rules prose.
+
+## SESSION Aug 7 2026 — B3.5 smoke PASSED, cron concurrency fixed, CLAUDE.md split
+
+**HEAD `d254df9`, verified live: deploy `dpl_5Gy5f7PKNj8mJiyUtwJ5z74PpjRq` READY.** One code
+commit, then a docs-only split of this file.
+
+### B3.5 — SMOKE-VERIFIED AND PASSED (from the real 09:00 UTC cron run, not a manual trigger)
+
+Sweet home, Helsinki. Measured, from the cron's own diagnostic line:
+`tavilyResults [8,8,7,8]`, `snippets` 14, `corpusChars` 11195,
+`themeCounts` calendar 4 / whats-on 4 / music 3 / culture 3,
+`eventsExtracted` 6, `urlsKept` 0, `urlsRejectedProvenance` 0, `urlsRejectedNonSpecific` 5,
+`eventsDroppedOutOfWindow` 0, `datesUnparseable` 3.
+
+### `d254df9` — cron-refresh-events correct at concurrency 1
+
+`mapPool` ran at concurrency 2. Each iteration is four Tavily searches plus a Groq extraction
+(~3.5-5.5k tokens) against Groq's **6K TPM ORG-WIDE** ceiling shared by every AI surface, so two
+apartments in flight breached it deterministically — the cron 429ing itself **and starving
+guest-chat, the guide and daily-greeting across every tenant** while it ran.
+
+**Concurrency 1 alone would have been incomplete, which is why four changes shipped together.**
+Serialising a pool whose items cost ~75s worst case under a 150s `maxDuration` means run 3+ is
+killed mid-flight — **silently: no JSON summary and no wholesale-failure ntfy**, losing the only
+fleet-level signal for Tavily's 1000-credit monthly pool (this cron deliberately does not
+`bump_api_counter`, so `cron-spend-audit` is structurally blind to it). So: a **65s
+START_DEADLINE_MS** that defers instead of starting work that cannot finish (a deferral spends no
+Tavily credit and no Groq tokens, and the apartment keeps its last-good row and stays reachable
+via lazy-fill); **least-recently-refreshed ordering** so the deadline cannot starve a fixed tail;
+and `deferred` folded into the alarm condition.
+
+Also applied from review: `startedAt` moved to handler entry (it sat after three DB round-trips,
+over-committing the reserve against `sendNtfy`'s own 5s timeout), and a `mapPool` array hole now
+counts as a failure rather than throwing past the alarm and 500ing the run. Both gates ran
+**three times** — every post-review edit re-ran both, including the comment-only pass — finishing
+0 must-fix each.
+
+### CLAUDE.md split (docs-only, `b9c34d4`)
+
+290,660 → **140,644 chars (−51.6%)**, into `docs/history.md`, new `docs/pilot-history.md` and new
+`docs/schema.md`. Verbatim moves, live open items hoisted out first, one-line pointers left
+behind, **no `@import`** (an imported file loads every session, which is what the split exists to
+prevent). Gate was a char-level conservation check that reconciled **EXACTLY** to 290,660.
+**It caught a real error**: the first attempt reconciled at **+5,154** because hoisted blocks were
+being copied rather than moved, so they appeared both in CLAUDE.md and inside the sections that
+then moved to history. **A surplus means duplication; a shortfall means silent loss — check for
+both.**
+
