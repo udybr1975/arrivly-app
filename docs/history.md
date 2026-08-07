@@ -613,3 +613,753 @@ This was a single line at the top of CLAUDE.md; it accumulated every session's c
 and was replaced with a short current-state block on Jul 29 2026.
 
 > **Current HEAD:** code HEAD `dbfc034` (cron quota-day reschedule) on docs `9493edf` (pre-marketing provider-terms to-do) on `363c7ce` (Stage 5 tease card — confirmed Tiqets euros in the tier 1–2 Earnings panel) on `540d57f` → `146173f` → `e1431a2` (Stage 5 ingest cron); this docs commit sits on top; live + verified on production, latest Vercel READY prod deploy matches. **PHASE I STAGE 5 IS COMPLETE (Jul 28 2026)** — ingest backend + verified first cron run + tease card all shipped. **NEXT = the two non-build sessions scoped Jul 28: (1) legal/compliance data inventory (see "PRE-LIVE LEGAL & COMPLIANCE WORKSTREAM" below), (2) pre-arrival guest reachability design session (see its scope note below).** Superseded Stage 5 checklist follows for history: (a) verify the 05:30 UTC `cron-refresh-earnings` first run via Vercel MCP logs (expect `ok:true`, `ordersFetched:0`); (b) a final visual `imageCredit`-caption check on a live Tiqets card (if not already eyeballed today); then (c) build the tier 1–2 Earnings tease card showing REAL Tiqets euros (mockup-first, deferred until the ingest is verified). **Tiqets provider thread is FULLY CLOSED (all three asks resolved Jul 27); the Stage 5 Tiqets ingest cron is SHIPPED (`e1431a2`) and the Tiqets guest-card image pipeline is VERIFIED LIVE (images + ratings + imageCredit).** The one remaining OPEN provider thread is Viator host-own-ID permission (sent Jul 24; follow-up ~Jul 30 if silent). **Phase I Stages 0 + 4A + 4B + the Stage 5 ingest backend are SHIPPED and verified live** — see "PHASE I — EXPERIENCE CONNECTORS" below. **Latest session (Jul 27 2026) — Tiqets thread fully closed (Reporting API self-serve via a fresh Essential-API token, `tq_campaign` confirmed in writing, images enabled); W1 attribution results in (Viator + Tiqets campaign attribution CONFIRMED end-to-end; GYG app-handoff drops the `cmp` tag); Stage 5 scoped "Option A" + `create_experience_orders` migration applied + `cron-refresh-earnings.ts` shipped (`e1431a2`); then Tiqets images VERIFIED LIVE + ratings mapping fixed (`146173f`) + `imageCredit` wired from `images[].credits` (`540d57f`).** **Prior session (Jul 26 2026) — W1 attribution seeded; W2/W3/W4 closed; W5 (landing 4-tier pricing grid + comps-comparison section) SHIPPED; Earnings per-card Connect CTA shipped; tier-ladder confirmed as-is; comps fact base verified.** Earlier that day — Phase I Stages 4A + 4B SHIPPED + verified live: guest-side experiences pipeline (`2fd4832` — blended Viator + Tiqets cards + GYG city link on Explore; `experiences_cache` + daily 05:00 UTC cron; click beacon → `experience_clicks`) and the host Earnings + Connect surfaces (`d5e3bda` — `/dashboard/earnings` + `/dashboard/earnings/connect` + link-builder rewrite). Link spec locked for all three providers with per-apartment campaign attribution; every code-changing commit passed code-reviewer (+ security-auditor where an api/ surface changed) before push. See the Phase I section below. **Prior session — Domain migration + rebrand FULLY COMPLETE AND SMOKE-TESTED (8/8 prod tests PASS), Jul 17 2026 — see the domain-migration block above.** **Prior session — Social sign-in (Google LIVE; Apple built + flag-gated) + Google-on-demo + first-time welcome; TESTED (Jul 8 2026).** Google social sign-in is BUILT, LIVE, and END-TO-END TESTED on prod (new-account + demo paths DB-verified); Apple is built but flag-hidden (`VITE_SOCIAL_APPLE` unset) until the Apple Developer account is accessible. Chained on docs `94ad5a5`: `73c228c` (social core — `SocialAuthButtons` on Login+Signup, `/auth/callback` `AuthCallback`, `/complete-profile` `CompleteProfile` brand bootstrap) → `5d39c6a` (dashboard warm first-time welcome for brand-new hosts, presentation-only) → `ad3d699` (Google-on-demo, identity-tied — `api/demo-claim.ts` NEW + `onBeforeRedirect` + demo-intent routing + `Demo.tsx` Google entry) → `65229d1` (demo step-1 reorder — location first, Google prominent, presentation-only). Each code-changing commit: code-reviewer PASS (0 must-fix) + security-auditor PASS on the auth/OAuth/service-role work (0 confirmed risk) + `npm run build` green. Flow type UNCHANGED (implicit/hash — ResetPassword depends on it). See "Social sign-in (Google LIVE; Apple built + flag-gated) — Jul 8 2026" below. **Prior session — Free 48-hour DEMO flow: BUILT + LIVE + END-TO-END TESTED (Jun 30 2026).** Turned the demo into a complete showcase (full guest page + editor populated on both paths), auto-derived country, added a daily purge cron, and routed conversion through the normal Stripe-checkout path. Chained on docs `00e6f61`: `2bc2d03` (showcase — full guest page + editor on Quick & Full) → `987cf76` (country auto-derive from the geocoder) → `989deb0` (daily `cron-demo-purge` + honest email copy) → `8f6bea9` (convert → Stripe Checkout for the chosen tier) → `42dbf2f` (disable Pro CTA on the wall + city-image `{city}` fallback). Each: code-reviewer PASS (0 must-fix) + security-auditor PASS (0 confirmed risk) + `npm run build` green. **Tests A–E all PASS end-to-end on live prod** — see "Free 48-hour demo flow (BUILT + LIVE + END-TO-END TESTED)" + "Demo testing — DONE (Jun 30 2026)" below. **Prior session — Free 48-hour DEMO flow is BUILT + now LIVE IN PRODUCTION.** `VITE_DEMO_ENABLED=true` is set in the Vercel **Production** scope and a `--force` prod redeploy (`dpl_J129NMW31iDG7mFRYwn1AgtMkRZi`, READY) baked the flag in; the landing **"See a live demo"** button now routes to `/demo`. Supabase **global CAPTCHA remains OFF** (login/signup/reset keep working) — bot protection on the demo path is our OWN server-side Turnstile verify (`api/_lib/turnstile.ts`), fail-closed before any fresh-create AI spend. Built across five reviewed stages, chained on docs `2b4804c`: `fe0aa63` (inert backend: precheck/create + disposable-domains) → `4136a06` (flag-gated entry UI + 2 backend guards) → `086f2ce` (Turnstile money-gate) → `4aa08a8` (demo dashboard chrome + KeepDemoModal convert) → `2ab2679` (48h expiry cron + UpgradeWall + PrivateRoute is_demo bypass). Each: code-reviewer PASS (0 must-fix) + security-auditor PASS (0 confirmed risk) + `npm run build` green. (Subsequently showcased, conversion re-routed to Stripe, and end-to-end TESTED this session.) **Prior session — Host Guide system (DONE):** new in-app host guidance built on ONE modular content source (`src/guide/content.ts`) — (a) a docked, non-modal "Guide & help" drawer (sidebar toggle; desktop right overlay, no scrim; mobile 40% bottom sheet w/ minimize-pill), (b) per-page first-visit hint strips persisted to `hosts.ui_state`, and (c) a host-auth corpus-grounded "Ask Arrivly" assistant (`api/guide-assistant.ts`). Chained on docs `112a6401`: `7463c85` (content module + Browse drawer) → `8719bae` (hint strips + Show-me-in-Guide + a11y nits) → `2b4804c` (Ask Arrivly endpoint + panel + mobile keyboard-grow); migration `add_hosts_ui_state_client_writable`. Each code-reviewer PASS (0 must-fix) + security-auditor PASS (ui_state write + endpoint) + `npm run build` green. See "Host Guide system (DONE) — Jun 29 2026" below. **Prior session — Home greeting freshness (S28, DONE):** the multi-day "same greeting every open" problem is fixed end-to-end across 5 parts — Stage 1 + Stage 2b DB migrations (per-booking `daily_greetings` + `daily_greetings_service_role_only_lockdown`), Stage 2 `abd5202` (per-booking suggestion: hard day-part allow/deny + sliding anti-repeat + stay-day nudge), Stage 3 `8771612` (UI: first-open-only blurb + a "Right now" card). See "S28 — Home greeting freshness (DONE)" + the updated "Greeting system" + `daily_greetings` schema below. **Prior session — guest-page redesign (Phase H, the last + biggest surface):** chained (on prior docs `89f270a`) `7acd244` (A — Home) → `d2d1eb0` (B — Explore + inert flag-gated Phase-I slots) → `bc445a1` (C — Settings/nav/non-active states) → `f7b547f` (D — children restyle) → `fd57079` (accent-tint Explore category pills; drop CATEGORY_COLORS). All client-only, each code-reviewer PASS (0 must-fix) + `npm run build` green; no security-auditor (presentation-only). See "Guest-page redesign — Phase H (DONE) — Jun 28 2026" below. **PHASE H GUEST SURFACE COMPLETE — the whole Phase H dashboard+guest redesign is now done.** **Prior session — Messages & Settings Phase H + iCal cancel-guard/token backfill:** chained (on prior docs `a9233da`) `bc6d46f8` (Messages Phase H redesign) → `938cf8af` (Settings Phase H + sidebar de-dupe), plus TWO MCP-applied DB changes (reconcile past-cancel guard migration + legacy-Airbnb token backfill). See "Messages — Phase H redesign (DONE)" + "Settings — Phase H redesign + sidebar de-dupe (DONE)" + the iCal section below. **Prior session — iCal guest-name preservation + Bookings redesign:** chained (on prior docs `985b871`) `695f114` (P1 reconcile sync + daily cron) → `85c3c6c` (P2 Airbnb CSV import endpoint) → `5ba1fec` (P3 Calendars tab) → `ae57886` (P4 Bookings Phase H redesign) → `be6301d` (P5 `?tab=` deep-link), plus 3 additive DB migrations. See "iCal guest-name preservation + Bookings redesign (DONE)" below. Prior this session chained `981bd5b` (S27 2a) → `fd32109` (S27 2b) → `41bd2d6` (Phase H pricing cards) → `9bed006` (admin host-finder) → **Phase H Overview/Home redesign + sidebar `4eb8004` → `98e6316` → `f90adac` → `2cd5fbc` → `f81b9a2`** (see "Phase H — Overview/Home + sidebar (DONE)" below). **S27 dashboard pass 2 COMPLETE** — colour model LIVE + property-editor redesign: **2a `981bd5b`** Migrations A + B applied, BrandingPanel rebuilt account-wide, guest colour resolver + preview coalesce per-property → account default; **2b `fd32109`** PropertySetup restyled into the S26 chrome with horizontal premium tabs + new "Guide & events" and "Look" tabs (all prior tab logic preserved); Dashboard card coalesces apt → host accent. **Phase H premium plan-card redesign `41bd2d6`** — new shared `PlanCard.tsx` (charcoal-inverted "Most popular" featured variant + cream default, Direction A); BillingPanel + ChoosePlan restyled to use it (presentation-only; all billing logic byte-faithful; Pro now shows its real price). **Admin host-finder `9bed006`** — accessible "Find a host" combobox in SuperAdmin (client-side over already-loaded hosts; pins one host → collapses to that single card; full a11y). NOTE: SuperAdmin is still on the OLD pre-Phase-H styling — a full admin chrome refresh is a separate future pass. See "S27 — pass 2 (DONE)" + "Phase H — pricing-card redesign (DONE)" + "Phase H — admin host-finder (DONE)" below. **Design system = DARK sidebar + CREAM workspace** (see "Design system — ground truth" below). Prior: ba113d2 (S26 — dashboard pass 1: Layout sidebar IA + Overview grid + QR grid; auth redesign `1e03d95` + `/reset-password`; branding icons `a8d6c64`). Prior: b658813 (S25 — landing redesign; Phase G CLOSED; pentest gate before the live flip after Phase F). Prior code HEAD: 81b3767 (S24, server-side create-booking + host-scoped guests RLS).
+## SECURITY — cross-tenant anon leak FOUND AND CLOSED (Jul 28 2026)
+
+**The most serious defect found in the project to date, and the S24 full security audit did
+not catch it.** Four RLS policies — `apartments_guest_read`, `apt_details_guest_read`,
+`host_picks_guest_read`, `guide_guest_read` — targeted **PUBLIC with NO apartment scoping**.
+The publishable key is bundled in the client, so anyone holding it could read **every host's
+rows**, not just the apartment they were looking at. **Proven live with count-only queries.**
+
+**What was exposed:**
+- **`apartments.ical_urls`** — the worst of it. That is a **bearer secret**: the URL alone
+  grants read access to a host's entire platform reservation calendar.
+- **All WiFi passwords** (they were `is_private = false` at the time).
+- **Every property's street address and coordinates.**
+
+**Migrations — ALREADY RUN by the operator via MCP. DO NOT RE-RUN:**
+`anon_column_scope_apartments`, `revoke_truncate_trigger_references_client_roles`,
+`backfill_wifi_rows_private`, `drop_unscoped_anon_guest_read_policies`.
+
+**Code — `27b881b`:** new `api/guest-bootstrap.ts` (service-role, **single-apartment**)
+replaced the four anon reads in `GuestPage.tsx`; WiFi reclassified `is_private = true` in
+both `PropertySetup` and `demo-create`. **Verified:** all four tables now 401 to anon, and
+verified guests still receive their WiFi.
+
+Both durable lessons from this are recorded in **Lessons / learnings** above (document the
+policy predicate not the app's query; and the blanket TRUNCATE/TRIGGER/REFERENCES grants).
+
+## SESSION Aug 4 2026 — Gemini terms verified at source; the 30 Jul session recorded
+
+**DOCS-ONLY. Code HEAD unchanged at `d282fe8`.**
+
+> **REMEDY SUPERSEDED Aug 5 2026 — the FINDINGS below are unchanged and still true.** Every
+> "enable billing on all five projects" instruction in this section is answered instead by the
+> **ZERO-GOOGLE AI PILOT** (canonical section above): the Bemgu billing account is CLOSED and the
+> surfaces migrate OFF Google. The terms analysis is exactly WHY that plan exists — read the
+> findings here, take the remedy from there.
+
+### GEMINI API TERMS — READ AT SOURCE, not from summaries
+Source: **https://ai.google.dev/gemini-api/terms** — *Gemini API Additional Terms of Service*,
+effective **23 March 2026**.
+
+1. **CONFIRMED — LAUNCH BLOCKER.** "Use Restrictions", verbatim: *"You may use only Paid
+   Services when making API Clients available to users in the European Economic Area,
+   Switzerland, or the United Kingdom."* Bemgu is a Finnish product serving EU hosts and EU
+   guests on **five no-card free-tier keys** (`GEMINI_API_KEY`, `_GUIDES`, `_CHAT`, `_EVENTS`,
+   `_PUBLIC`). **On the plain reading this is a breach TODAY.** Enabling billing on all five
+   projects is a **CONDITION OF LAWFUL USE, not a quota improvement.**
+2. **CORRECTED — the 30 Jul data-training concern does NOT apply to Bemgu.** That note claimed
+   free-tier guest chat sits under terms permitting Google to use it for product improvement,
+   and called it the worse of the two problems. **Google's terms say the opposite for EEA
+   developers.** End of the "Unpaid Services" section, verbatim: *"If you're in the European
+   Economic Area, Switzerland, or the United Kingdom, the terms under 'How Google uses Your
+   Data' in 'Paid Services' apply to all Services, including Google AI Studio and unpaid quota
+   in the Gemini API, even though they are offered free of charge."* Bemgu is established in
+   Finland, so the **paid data terms already govern**: Google does **not** use prompts or
+   responses to improve its products, and processes them under the **Data Processing Addendum
+   for Products Where Google is a Data Processor**.
+   **CONSEQUENCE:** the DPA's no-AI-training commitment and the guest notice's chat paragraph
+   **were never false and did not block publication.**
+   **LESSON TO RECORD:** the 30 Jul conclusion came from a **developer-forum thread plus
+   secondary sources and was explicitly flagged as unverified**; acting on it would have
+   written a **materially wrong statement INTO a privacy document**. **Read the binding text at
+   source before recording a compliance fact.**
+3. **NEW — grounding carries its OWN data terms on top of the tier terms.** "Grounding with
+   Google Search" → "Data Collection and How Google Uses Your Data": Google **stores prompts,
+   contextual information provided, and output for THIRTY DAYS** to create Grounded Results and
+   Search Suggestions, and that stored information **can be used for debugging and testing** of
+   the systems supporting grounding. Critically, that debugging/testing processing falls under
+   the **processor DPA only "when using Grounding with Google Search via paid quota of Gemini
+   API"**. Bemgu grounds **`guest-chat`, `_lib/guide`, `_lib/city-events`** → this is a
+   **SECOND, INDEPENDENT reason billing must be enabled**, and the **30-day storage must appear
+   in the guest privacy notice either way.**
+
+### THE 30 JUL 2026 SESSION — never recorded until now
+- **All three legal documents DRAFTED** — host privacy policy, guest privacy notice, DPA.
+  Status: **draft, unpublished, not in force**, pending lawyer review. **They are still outside
+  the repo** — see the ⚠ note in the legal workstream's step list.
+- **CONTROLLER STRUCTURE IS THREE-WAY, not two** — now corrected in the legal workstream
+  section. The load-bearing part: **Bemgu is CONTROLLER IN ITS OWN RIGHT for server logs and the
+  anti-abuse check on the pre-arrival chat**, because those are Bemgu's own security decisions,
+  not the host's instructions. **Claiming processor status for that slice would be wrong.**
+- **SEQUENCING TRAP — ON THE CRITICAL PATH** (recorded in full in the legal workstream): the
+  drafts promise 30-day erasure that **the code does not perform**. **Retention crons ship
+  BEFORE publication and BEFORE the lawyer review.**
+- **WEATHER (Gap 9) — a better answer than disclosure:** proxy wttr.in through Bemgu's own
+  server and the guest's IP never reaches the third party, **deleting a subprocessor and a
+  disclosure instead of documenting them.**
+- **TWO SMALL BUILD TASKS:** link the guest notice from every guest page and welcome page
+  (Gap 6 — currently linked from nowhere), and inject the host's brand name so a guest can see
+  who the controller is.
+
+### GUIDE GROUNDING — WORKSTREAM CLOSED (verified 30 Jul)
+Both test guides regenerated on `d282fe8`. **Casa Marco** (Barcelona/El Born): **11 places,
+Coffee 2**. **Villa in the sky** (Berlin/Prenzlauer Berg): **28 places, Coffee 4**. Coffee was
+**0 in both** before the empty-category retry — **so the retry works**; Berlin's total doubled
+from 14. Barcelona stays the weaker case at 11 but is **no longer empty**.
+**DECISION RECORDED: no further prompt tuning on this endpoint — if a category is thin, host
+picks are the product answer.** Guide-quality items are off the open list.
+
+### AIRBNB LINK DELIVERY — researched 29 Jul; changes a Phase-a assumption
+**Airbnb blocks external links PRE-BOOKING only.** Links are permitted **once a reservation is
+confirmed** — which is exactly when the welcome link is sent. Competitor **Touch Stay's
+documented workflow is pasting the guidebook link into Airbnb message templates**, so the
+channel works in practice.
+**TRAP TO RECORD:** a link added to a **SCHEDULED** message **appears non-functional in the
+editor but works once sent** — the most likely cause of a host reporting "Airbnb blocked my
+link".
+**FALLBACKS** if a confirmed-booking link is genuinely stripped: send an **IMAGE containing the
+QR code plus the URL in readable text** (Airbnb permits photo attachments in scheduled
+messages), or use Airbnb's own **check-in-instructions / house-manual** fields.
+**PERMANENT CONSTRAINT: OTAs often do not pass the guest's email to the host**, so Bemgu
+**cannot rely on email as a fallback channel.**
+**STILL UNVERIFIED:** the confirmed-booking link test has not been run; **Vrbo and Booking.com
+policies are entirely unresearched.**
+
+### NEW MUST-HAVE (Udy, 29 Jul) — a host guide on communicating with guests, per booking platform
+Belongs in the **existing Host Guide system** (docked drawer + hint strips + Ask Bemgu; content
+source `docs/arrivly-host-guide-content-v1.md`) as a **new section plus a hint strip on the
+Share panel** — **not new architecture**. Must cover, per channel: **Airbnb** (post-confirmation
+only, the scheduled-message trap, the image+QR fallback), **Vrbo**, **Booking.com**, direct
+bookings, WhatsApp, SMS, email; plus a **"my link was blocked" troubleshooting section**.
+**BLOCKED ON:** the Airbnb test result, and Vrbo/Booking.com research. **Do not write platform
+instructions that have not been verified.**
+
+### VIATOR REPLIED (~29 Jul) — NO APPROVAL GIVEN
+Their message confirms **Viator's affiliate relationship is with Bemgu**, and that **under the
+current setup payouts can only be issued to Bemgu, never to individual hosts** — which
+**validates the T1–T2 half of c-full as built**. It asks whether commissions are intended for
+Bemgu or the hosts, and **restates the tier-3 host-own-PID proposal WITHOUT approving or
+rejecting it**. The message is **ambiguous as to which passages are Viator's words and which are
+Bemgu's quoted back**.
+**A reply is drafted and UNSENT**, pending (a) Udy confirming which passages are whose, and
+(b) **verifying whether the noindex claim is actually true in the live code** before asserting
+it to a partner.
+**RECORD THE RISK:** tier 3 asks Viator to credit a **host's** affiliate account for traffic on
+**bemgu.app — a domain that host does not own**, which sits against **Viator's own-domain
+requirement**. This is the specific point needing **explicit written sign-off**, and it is a
+**TIER 3 LAUNCH DEPENDENCY, not general backlog.**
+
+## SESSION Aug 4 2026 (2) — pre-billing security: scrubErr + atomic per-host guide cooldown SHIPPED
+
+**Two commits, both pushed and SHA-verified against Vercel production. Code HEAD is now `6fd015c`.**
+Chain this session: `3c56c95` (shared scrubErr helper) → `6fd015c` (atomic per-host generate-guide
+cooldown). Both READY on Vercel, SHAs match GitHub.
+
+**GOAL:** close the pre-billing spend-abuse holes on `generate-guide` before Gemini billing is
+enabled (a billed key turns a looped call from a quota nuisance into unbounded spend; the repo is
+PUBLIC).
+
+**`3c56c95` — shared `scrubErr` helper.** New `api/_lib/scrub.ts` (redact `AIza…` + `key=` then
+truncate) centralises the redact-then-truncate logic that was hand-copied across ~15 call sites;
+1 new file + 14 importers, net −23 lines. **Closed Finding 1:** five AI-calling files
+(`_lib/host-picks`, `guest-chat`, `guide-assistant`, `bulk-import`, `welcome-chat`) previously
+scrubbed only `key=` and MISSED the `AIza` pattern. Stripe files deliberately NOT converted (they
+scrub `sk_`/`whsec_`, which scrubErr does not cover). code-reviewer + security-auditor both passed.
+
+**`6fd015c` — atomic per-host cooldown on `generate-guide` (6h server floor).** The real fix for
+the loop-the-endpoint hole. Took THREE security-auditor rounds, each catching a real, exploitable
+bypass — the gate did its job:
+- Round 1 (rejected): read `generated_at` then generate — lost to parallel bursts (TOCTOU), and
+  failed generations never wrote a row so the gate never armed.
+- Round 2 (rejected): claim on `guide_recommendations` — defeated because a host could **delete
+  their apartment (FK cascade destroys the claim row), recreate it, and burst the ungated
+  first-generation path**. The claim must not live on an apartment-linked, host-deletable row.
+- Round 3 (SHIPPED): claim on **`hosts.guide_claimed_at`** — a row a host cannot delete (without
+  destroying their own account) and cannot UPDATE (no table- or column-level UPDATE grant for
+  `authenticated`). Single atomic conditional UPDATE
+  (`.eq('id',userId).or('guide_claimed_at.is.null,guide_claimed_at.lt.<cutoff>')`) taken AFTER
+  auth+ownership and BEFORE generation. Under READ COMMITTED a concurrent burst serialises on the
+  host row lock → exactly one caller wins per 6h window. Claim is stamped BEFORE generation, so a
+  FAILED run also consumes the window (deliberate — a failed grounded gen costs the same money).
+  scrubErr re-applied to the blurb-failure log in the same file.
+
+**TWO MIGRATIONS applied this session via Supabase MCP — DO NOT RE-RUN:**
+- `guide_recommendations_lock_and_claim`: dropped the ALL/PUBLIC `guide_host_all` policy →
+  replaced with SELECT-only `guide_host_select` (apartment-scoped); REVOKEd INSERT/UPDATE/DELETE
+  on `guide_recommendations` from anon+authenticated (verified: `authenticated` now SELECT-only,
+  `anon` no grants). Also added a now-UNUSED `guide_recommendations.guide_claimed_at` column
+  (superseded by the hosts column below — harmless, left in place).
+- `hosts_guide_claim_column`: added `hosts.guide_claimed_at` (nullable timestamptz). VERIFIED
+  server-only: `hosts` has NO table-level UPDATE grant for `authenticated` and NO column-level
+  UPDATE grant on the new column, so a host cannot reset their own claim via PostgREST.
+
+**BEHAVIOUR — INTENDED AND ACCEPTED:** the cooldown is per-HOST, so a host with several properties
+gets **one guide refresh per 6h across ALL their properties**. A property created within 6h of any
+refresh gets no guide/greeting_blurb until refreshed manually. Documented at the call site with a
+warning that a per-apartment exemption would recreate the delete/recreate hole. REVISIT only if a
+real multi-property power-host complains — not before.
+
+**DECISION — fail OPEN on claim-infra error** (Udy): if the claim query itself errors, the request
+proceeds to generate. The auditor preferred fail-closed and classified fail-open as a non-blocking
+decision, not a risk. Rationale accepted: the claim is a trivial single-row update that essentially
+only errors if Supabase is down, in which case `generate-guide` cannot function anyway.
+
+**LIVE TESTS (production, Madrid apt `84c136f7-…`, host `udy.bar.yosef@sterlights.com`):**
+- **Cooldown PROVEN.** 6-call loop after deploy: call 1 → `200 {ok,placeCount:10}` (won the claim,
+  generated); calls 2–6 → **instant** `429 {"error":"cooldown","retry_after_s":~21560}` counting
+  down from 6h, NO `[guide] generated` log, NO Gemini call, €0. This is the in-code,
+  billing-independent protection that was the whole point.
+- **Earlier burst (25 parallel, pre-cooldown) hit Gemini's per-minute 429 rate-limit**, NOT the
+  spend cap — proven from Vercel logs (`429 "exceeded your current quota"` AFTER a full slow
+  generation attempt). Useful: the RPM limit blocks burst hammering instantly.
+
+**GOOGLE CLOUD BILLING — configured on ONE project (the test target):**
+- Created a new **"Bemgu" billing account** (Finland, EUR) and linked the guides project
+  **`gen-lang-client-0816353550`** ("Anna stays guide" — display name is misleading; trust the
+  project ID; this is `GEMINI_API_KEY_GUIDES`).
+- Set a **Spend Cap (enforcement, not alert-only)** scoped to that project + service **Gemini
+  API**, initially €1, **raised to €10** (no real hosts yet). Verified **"Spend cap status =
+  Configured"** — the exact column that read "Not applicable" during the June Anna's Stays €2000
+  leak.
+- **LESSON — the spend cap CANNOT be live-tested to the pause, because Google's cost data LAGS
+  hours** (Reports showed €0.00 after ~€0.80 of real spend). So a lagging spend cap is a SLOW
+  backstop; it cannot stop a fast leak on its own.
+- **The layered defence (what actually protects spend), fast → slow:** (1) the in-code
+  `generate-guide` cooldown — instant, €0, proven live; (2) Gemini per-minute 429 rate-limit —
+  instant, proven; (3) the €10 enforcement spend cap — real but lagging; (4) Google's un-removable
+  ~$250 tier-1 ceiling — the hard wall that makes a €2000 repeat structurally impossible. June had
+  NONE of these (only a €51 alert-only budget).
+- Per-API daily-quota override was ABANDONED (the Cloud Console quota UI would not surface the live
+  per-project generate-content quota; the €10 cap makes it moot).
+
+**~~STILL OPEN after this session: the other FOUR Gemini projects need billing + a spend cap
+each~~ — MOOT Aug 5 2026.** The Bemgu billing account is CLOSED with zero linked projects; the
+guides project's billing and €10 cap were removed with it, so nothing here needs a cap. See the
+**ZERO-GOOGLE AI PILOT** (canonical). The layered-defence and lagging-cost-data lessons above
+remain valid and are why the in-code brakes, not a spend cap, are the primary control.
+
+## SPEND-ABUSE ALARM + CALL COUNTER (Aug 5 2026 — commit 5423285 + migration
+api_call_counters_and_bump_fn, applied CHAT-SIDE via Supabase MCP)
+- Table `public.api_call_counters` (host_id uuid FK→hosts ON DELETE CASCADE, endpoint
+  text, window_start timestamptz, count int; PK (host_id,endpoint,window_start)). RLS ON,
+  ZERO policies (service-role only). ALL grants revoked from public/anon/authenticated
+  (incl. TRUNCATE/TRIGGER/REFERENCES) — a host cannot read, delete, or truncate their own
+  counter rows, so the alarm cannot be erased. Verified live: grants = postgres +
+  service_role only.
+- Function `public.bump_api_counter(p_host_id uuid, p_endpoint text) returns integer` —
+  SECURITY DEFINER, search_path pinned public,pg_temp, EXECUTE granted to service_role
+  ONLY. Atomic upsert: increments the (host, endpoint, current-UTC-hour) row and returns
+  the new count. This is the reusable cross-instance counter primitive for all spend
+  endpoints.
+- generate-guide.ts: after auth+ownership and BEFORE the cooldown claim, calls
+  bump_api_counter and fires ONE sendNtfy (priority high) when the hourly count === 10.
+  Placed before the cooldown so cooldown-blocked (429) attempts count too. Best-effort:
+  try/catch, never throws/blocks/alters the response. The ntfy message carries the feature
+  name, endpoint path, host UUID, and env-var NAME + PUBLIC Google project IDs to disable
+  (GEMINI_API_KEY_GUIDES=gen-lang-client-0816353550 primary; GEMINI_API_KEY=
+  gen-lang-client-0819525902 secondary, blurb) — never a key value.
+- OPEN / tracked:
+  (a) ~~RETENTION: api_call_counters has no cleanup yet~~ **DONE (Aug 5 2026)** — `cron-spend-audit`
+      prunes rows older than 48h on every run (every 3h). Closes the GDPR-minimisation gap.
+
+BOOKING AMPLIFIER — DECISION + PLAN (Aug 5 2026)
+- create-booking.ts is the "amplifier": it mints a fresh in-dates guest pass on every call,
+  with NO cap and HOST-CONTROLLED dates. Those passes are what unlock the paid guest AI
+  (guest-chat, daily-greeting), so uncapped booking creation = uncapped valid passes. The
+  endpoint itself calls NO paid API (no Gemini key) — it only writes rows. It feeds:
+  guest-chat (GEMINI_API_KEY_CHAT) and daily-greeting (GEMINI_API_KEY).
+- DECISION (Aug 5): the fix for this endpoint is a SECURITY BRAKE ONLY — a real
+  cross-instance rate limit via bump_api_counter (per host, per UTC hour, block over
+  30/hour, fail-open on infra error) plus one ntfy alarm at first breach. Double-booking
+  prevention is explicitly OUT OF SCOPE of this security fix (kept small + reviewable).
+- BACKLOG (product, separate task): double-booking prevention — reject a new MANUAL booking
+  whose dates overlap an existing confirmed booking for the same apartment. TWO CAVEATS that
+  make this fiddly: (1) must ALLOW same-day turnover (checkout day == next check-in day);
+  (2) must be source-aware so it does not collide with iCal-imported blocks (source != 'manual').
+  This is a data-integrity/product feature, NOT the security brake.
+- BACKLOG (security, belt-and-suspenders): active-bookings-per-apartment cap — bound the
+  number of concurrent in-dates confirmed bookings per apartment, to stop SLOW accumulation
+  of valid passes (the hourly rate limit only slows minting, it does not bound the standing
+  total). Lower priority than the per-endpoint AI brakes (guest-chat, daily-greeting) still
+  to come.
+- SHIPPED (Aug 5 2026): the brake is live in `create-booking.ts` — atomic `bump_api_counter`
+  (endpoint key `'create-booking'`) after auth+ownership and BEFORE the guest/booking inserts,
+  so a blocked attempt writes no rows; `429 {error:'rate_limited'}` over 30/hour; ONE ntfy at
+  exactly limit+1. code-reviewer PASS (0 must-fix), security-auditor PASS.
+- DECISION RECORDED — FAIL-OPEN ON COUNTER ERROR IS DELIBERATE AND ACCEPTED (Udy, Aug 5).
+  Unlike `generate-guide` — where the counter is only an alarm and the real gate is the atomic
+  `hosts.guide_claimed_at` claim — here THE COUNTER IS THE ONLY GATE, so a counter/infra error
+  removes the limit entirely. The security-auditor's objection, recorded in full so it is not
+  rediscovered as new: the error conditions CORRELATE WITH THE ATTACK, because a burst from one
+  host hammers a single hot counter row (one row per host/endpoint/UTC-hour) — exactly the shape
+  that produces lock-wait, statement-timeout and pool exhaustion. `p_host_id` is JWT-derived and
+  `p_endpoint` is a literal, so no client-controlled value reaches the RPC and the error path is
+  not directly attacker-triggerable. Accepted anyway because adding a booking is a low-frequency
+  human action and locking real hosts out of their own calendar is the worse failure. REVISIT
+  (flip to `503 unavailable`) if counter-bump errors are ever actually observed in the logs.
+- RESIDUAL BYPASS, CONFIRMED, NOT FIXED — `sync-ical.ts` is the OTHER token-minting path.
+  The rationed asset is `bookings.reference_number` (the guest pass), not "calls to
+  create-booking". `sync-ical` → `syncApartmentBookings` → `reconcile_ical_bookings` mints ONE
+  `ARR-` token PER VEVENT from a host-supplied feed URL, guarded only by a per-Lambda-instance
+  5/min `Map` limiter (best-effort, not a cross-instance cap) and NO `bump_api_counter`. So the
+  uncapped path dominates the capped one: create-booking = 1 token/request hard-capped at 30/h;
+  sync-ical = N tokens/request with N attacker-chosen. FIX WHEN PICKED UP: add
+  `bump_api_counter` with endpoint `'sync-ical'` after the ownership check, and/or cap
+  `p_events.length` before the RPC. `import-airbnb-csv.ts` was checked and CLEARED (it only
+  names existing bookings, never inserts one); `demo-create.ts` seeds exactly one behind
+  Turnstile.
+- SCOPE HONESTY — what 30/hour does NOT bound. `daily-greeting` caches on
+  `(booking_id, local_date, day_part)`, so EVERY new booking is a guaranteed cache miss (up to
+  4 fresh generations per token per day on `GEMINI_API_KEY`); at 30/h ≈ 720 tokens/day that is
+  up to ~2,880 generations/day/host. `guest-chat`'s limiter is keyed apartment+IP per-instance,
+  NOT per-token, so ONE token already permits substantial chat spend — the booking brake is not
+  the control there. The per-endpoint AI brakes (guest-chat, daily-greeting) are still the real
+  fix and are still to come. Also note `create-booking` has NO plan/subscription check, so the
+  global bound is 30/hour x number of accounts an attacker registers.
+
+ICAL AMPLIFIER — CLOSED (Aug 5 2026). The residual bypass above is fixed in `_lib/ical.ts` +
+`sync-ical.ts`. `MAX_ICAL_URLS = 20`, `MAX_ICAL_EVENTS = 100` per sync (the counter is GLOBAL to
+the sync, not per URL or per source), plus a cross-instance `bump_api_counter` cap of 5 syncs/
+host/UTC-hour (endpoint key `'sync-ical'`) on top of the retained per-instance 5/min limiter.
+Over the event cap the sync mints NOTHING — it returns before the reconcile loop, because a
+partial 100-pass batch would still be an amplifier. NEW WORST CASE: 5 x 100 = **500 passes/host/
+hour** (was unbounded). Re-syncing the same feed mints nothing (the RPC never writes
+`reference_number` ON CONFLICT), so sustaining that needs 100 NEW uids per sync.
+- LOAD-BEARING INVARIANT, do not refactor away: a dropped URL, a failed fetch and an over-cap
+  parse are all "we did not read this feed completely", and ALL THREE must converge on "do not
+  reconcile this source". The security-auditor caught a real regression here — URL truncation
+  sliced dropped links off BEFORE the fetch loop, so their source never entered
+  `incompleteSources`; a dropped link sharing a source with a kept one (two airbnb feeds, the
+  21st dropped) would have reconciled from a PARTIAL uid set and SOFT-CANCELLED live bookings
+  that existed only in the dropped feed. Fixed by marking dropped sources incomplete. NOTE the
+  RPC's `cardinality(uids)>0` guard does NOT cover this case — the uid array is non-empty (the
+  kept feed's uids), which is exactly why the guard would not have saved it.
+- STILL OPEN / tracked (none blocking):
+  (d) `cron-sync-ical.ts` (deliberately unmodified) has NO `bump_api_counter`, so it remains the
+      residual per-host-uncapped path (100 x #apartments/day; unbounded for `is_exempt`/Tier 4).
+      It also never fires the capped alert — cron-side cap trips are silent.
+  (e) FAIL-OPEN on `counterErr` retained per spec, matching the create-booking decision above.
+      Auditor's distinction, recorded: here each slipped call mints up to 100 passes rather than
+      1, so the same infra error costs 100x — and an interactive sync is not needed for a host to
+      function (the daily cron covers the scheduled path). Revisit to `503` before the other one.
+  (f) Third shrink path, benign today: the `startsWith('https://')` filter also drops URLs
+      without marking the source incomplete. Only bites if a previously-synced https link is
+      edited to http. Fold in if that filter is ever touched.
+  (g) UX: `PropertySetup.syncNow` toasts success even when a sync was capped or truncated, and
+      renders only `errors.length` as "N links couldn't be read"; the 429 shows raw. Same
+      user-visible gap already tracked for create-booking.
+
+DAILY-GREETING SPEND BRAKE — SHIPPED (Aug 5 2026). Per-host cross-instance cap of 50
+generations/host/UTC-hour via `bump_api_counter` (endpoint key `'daily-greeting'`), counted ONLY
+on the cache-MISS paid path and placed BEFORE Gemini. Guest-facing, so a breach returns
+`200 {suggestion:null}` (static copy) — NEVER a 4xx/5xx to the guest hero. ONE ntfy at limit+1.
+Counter keyed on the APARTMENT'S HOST (the caller is unauthenticated); a token for host X can
+only ever charge host X, and unverified/public callers return before the RPC, so the limit is
+not third-party-exhaustible across tenants.
+- **THE REAL FINDING — A CACHE KEY CAPS SPEND ONLY SEQUENTIALLY.** The cache row is written
+  AFTER the 2-13s Gemini call, so K CONCURRENT requests on ONE valid pass all miss the cache and
+  all spend. The "4 generations/day per booking" ceiling was therefore never a spend bound —
+  before this brake, a single legitimate in-dates pass was worth UNBOUNDED Gemini spend, capped
+  only by Gemini's own per-minute 429. This is why the counter matters far more than the
+  pass-minting arithmetic suggested. Recognise this shape anywhere a cache is treated as a cap.
+- **FAIL-CLOSED HERE, DELIBERATELY OPPOSITE TO THE SIBLING BRAKES — do not "fix" the
+  inconsistency.** `create-booking`/`sync-ical` fail OPEN because blocking costs a host real
+  work. Here the blocked behaviour IS the free fallback (the same static line the UI renders
+  anyway), so failing closed costs a cosmetic sentence while failing open would spend uncapped
+  Gemini during exactly the burst that breaks the counter. GENERAL RULE: fail-open is
+  indefensible when the failure fallback is free.
+- **A FAIL-CLOSED GATE IS ONLY COMPLETE WHEN EVERY QUERY FEEDING THE GATE'S CONDITION ALSO FAILS
+  CLOSED.** Closing the counter-error leg moved the hole one line up: the apartment select uses
+  `.maybeSingle()`, which reports query FAILURE as `data:null` — indistinguishable from "no row"
+  — so a failed read skipped the whole brake and generated unbraked+unalarmed, under the same DB
+  stress. Now an early return. `.maybeSingle()` is the specific trap.
+- Non-numeric RPC return logs loudly (`console.error`, brake inactive) and still generates —
+  reachable only via an operator-side change to the RPC's return shape, never by attacker input.
+- STILL OPEN / tracked:
+  (a) ~~`GuestPage.tsx` fires this endpoint TWICE per load~~ **FIXED (Aug 5 2026).** The effect
+      was keyed on `weather` with no guard, so it ran once on mount (`temp:null`) and again when
+      wttr.in resolved — and because the server writes its cache row only AFTER the 2-13s
+      generation, BOTH calls missed and BOTH spent. Now a `greetingFiredRef` latch + a 2.5s
+      weather grace window = exactly ONE request per active load. Effective legit headroom went
+      ~25 → ~50 fresh loads/host/hour, which removes the false-abuse-alert risk for a
+      multi-property host. **BUT NOTE WHAT IT DID NOT CHANGE: the worst-case ceiling is still
+      ~100 model calls/host/hour** — an attacker calls the endpoint directly and never runs this
+      effect, so a CLIENT fix moves throughput UNDER the ceiling, never the ceiling itself.
+      TWO DURABLE CONSEQUENCES: (i) the ref is a permanent latch set BEFORE the fetch, so a
+      transient network failure means NO suggestion for the life of that page (deliberate — the
+      old accidental retry was the double-spend); (ii) **a fire-once ref silently converts its
+      own dependency array into a no-op.** That is safe TODAY only because every path changing
+      `aptId`/`tokenParam` does a full `window.location.replace`. If GuestPage is ever refactored
+      to switch booking without remounting, this effect will neither refetch nor clear
+      `dailySuggestion` — re-audit then rather than trusting the deps list.
+  (b) The apartment select still discards its error string — the fail-closed log says THAT it
+      failed, not WHY. Observability only now that the branch is closed.
+  (c) ~~`guest-chat` remains UNCAPPED cross-instance~~ **CLOSED (`6f915b5`, Aug 5 2026)** — now
+      40/host/hour, fail-closed. Every grounded surface is capped; see the CANONICAL SUMMARY.
+  (d) Optional: page via `sendNtfy` on RPC shape drift instead of only logging.
+- **BUILD CAVEAT, GENERAL — `npm run build` DOES NOT TYPECHECK `api/`.** `tsconfig.app.json`
+  includes only `src`, `tsconfig.node.json` only `vite.config.ts`, and the root tsconfig is
+  `"files": []`; `api/` is compiled by Vercel at deploy time. A green build is therefore NOT
+  evidence that an api/ change typechecks — that is what the review gates read by hand, and it
+  is the same reason the `.js`-suffix ESM rule can only fail at Lambda startup.
+
+GUEST-CHAT SPEND BRAKE — SHIPPED (Aug 5 2026), the last of the five. 40 calls/host/UTC-hour via
+`bump_api_counter` (endpoint key `'guest-chat'`), placed AFTER the verify-gate 403 and the
+per-instance 15/min limiter, and BEFORE the Gemini key read / brand fetch / system-instruction
+build / generateContent. A blocked request costs 3 cheap queries and EUR 0. FAIL-CLOSED (429) on
+counter error; non-numeric return logs loudly and proceeds. ONE ntfy at limit+1.
+- **A COUNTER UNIT IS NOT A MODEL CALL — SIZE THE GOOGLE BUDGET OFF 80, NOT 40.** `MAX_RETRIES=2`
+  plus an empty-`reply` fall-through means 40 is a REQUEST cap and an 80-ATTEMPT spend ceiling.
+  Same correction for `daily-greeting`: 50 units = up to 100 attempts (`withRetry retries:1`).
+- **`abortSignal` IS NOT A SPEND CONTROL — THE MOST IMPORTANT CORRECTION IN THIS WORKSTREAM.**
+  The per-attempt `Promise.race` was replaced with a real AbortController (Aug 5 2026), which
+  tears down the in-flight HTTP request instead of merely abandoning it. It does NOT reduce the
+  ceiling. The SDK is explicit (`@google/genai` `genai.d.ts`, doc comment on
+  `GenerateContentConfig.abortSignal`): *"AbortSignal is a client-only operation. Using it to
+  cancel an operation will not cancel the request in the service. You will still be charged
+  usage for any applicable operations."* So abort is a COST REDUCER (expected value), never a
+  cap — **and the retry fires regardless, so the number of calls is unchanged.** ALWAYS quote a
+  brake as ATTEMPTS x retry factor, NEVER as billed generations. (The earlier note here claimed
+  an AbortSignal would make the ceiling literal — that was WRONG; it does not.)
+  **METHOD LESSON: this was caught by reading the vendor's installed `.d.ts`, not by reasoning
+  about what abort "should" do — the same read-the-binding-text-at-source rule that the 4 Aug
+  Gemini terms verification produced. Note the quote WRAPS ACROSS LINES in the `.d.ts`, so a
+  single-line grep returns no match and can look like a fabricated citation.**
+- ABORT-COVERAGE INVENTORY across every AI call site (Aug 5 2026):
+  **Real AbortController (correct):** `guest-chat`, `_lib/city-events`, `_lib/greeting` (x2),
+  `_lib/guide` (x2), `rewrite-rules`.
+  **Bare `Promise.race` INSIDE a retry — abandons a billed call AND issues a second:**
+  **`welcome-chat.ts` (PRIORITY 1 — the only one on an UNAUTHENTICATED surface, `/w/:code`;
+  mitigated only by being ungrounded flash-lite on `GEMINI_API_KEY_PUBLIC`)** and
+  `guide-assistant.ts` (host-auth = a named, blockable actor, so lower urgency).
+  **Single-shot `Promise.race` — wastes the call it already paid for but CANNOT amplify:**
+  `bulk-import.ts`, `_lib/host-picks.ts`. No AI call site lacks a timeout entirely.
+- NOTE `_lib/retry.ts` treats BOTH `AbortError` and the literal string `"timeout"` as transient,
+  so converting any site to AbortController does NOT stop the retry by itself — it only changes
+  what the abandoned attempt costs.
+- The `if (reply) return` empty-reply fall-through costs a second FULL call and **no abort
+  mechanism can ever reach it** (it is a successful, fully-billed, non-throwing response). It
+  belongs to any future work that tries to make one counter unit equal one model call.
+- `apt.host_id` needs NO null guard here (unlike `daily-greeting`): `api_call_counters` carries
+  `host_id` in its PK plus an FK to `hosts`, so a null key RAISES on the upsert → `chatCountErr`
+  → the fail-closed 429. It can never silently skip the brake. Do not "harmonise" it.
+- WHAT THE FIVE BRAKES ACTUALLY ACHIEVED: the token-derived chain is now bounded END TO END.
+  Both pass CONSUMERS are capped per host per hour **regardless of how many passes exist**, so
+  the standing-pass total no longer converts into AI spend — which DEMOTES the tracked
+  "active-bookings-per-apartment cap" from a security item to a product one.
+- **~~NEXT BRAKE~~ — `api/city-events.ts` lazy fill was the WEAKEST AI SURFACE IN THE SYSTEM,
+  weaker than guest-chat was before this change. CLOSED (`66cb385`, split `bcf9396`).** The
+  description below is retained because it is why it mattered: fully UNAUTHENTICATED (no captcha,
+  no verify gate), GROUNDED on `GEMINI_API_KEY_EVENTS`, guarded only by a per-instance 5/min
+  apt+IP Map — and it writes its cache row AFTER the model call, so the cache-race applies
+  (concurrent requests on one uncached apartment all miss and all spend). Any account that can
+  create/delete apartments manufactures fresh uncached rows at will.
+- ~~ALSO STILL UNCAPPED: `refresh-events`~~ **CLOSED (`66cb385`, split `bcf9396`)** — 3/host/hour
+  on `'city-events-host'`. STILL UNCAPPED cross-instance, all CHEAP + NON-GROUNDED + host-auth,
+  so none reopens the fast-spend risk (checklist item 2 polish): `rewrite-rules`,
+  `generate-host-picks`, `bulk-import` (NO limiter at all, one shared-key call per request);
+  `guide-assistant` (per-instance 20/min only); all crons (per-apartment fan-out, no per-host
+  counter — unbounded for `is_exempt`/Tier 4); `demo-create` (Turnstile + one-demo gated).
+- ALARM BLIND SPOT — **NARROWED, NOT CLOSED (`cron-spend-audit`, Aug 5 2026). Never record it as
+  closed.** The per-hour brakes are spend CAPS, not detectors: the alarm is a strict intra-hour
+  `=== limit+1` and the counter resets on the UTC hour, so an attacker pacing at the limit
+  sustained the full ceiling indefinitely with ZERO alerts. `api/cron-spend-audit.ts` (every 3h)
+  now sums `api_call_counters` per (host, endpoint) over a rolling 6h window and alerts at ~3x
+  the hourly limit. **Effect: the silent band drops from 100% of the ceiling to ~49.6% — a 2x
+  reduction.** Undetected sustained rates that remain: guest-chat ~19.8/hr (~476/day, grounded,
+  and remember a unit can be 2 model calls), daily-greeting ~24.8/hr on the SHARED key,
+  create-booking ~14.8 passes/hr.
+  (i) ~~NO CROSS-HOST AGGREGATE~~ **CLOSED (Aug 5 2026)** — see the Sybil check below.
+
+CROSS-HOST (SYBIL) AGGREGATE — SHIPPED (Aug 5 2026), closing the top item of three audits.
+`cron-spend-audit` now also sums EVERY host per endpoint and alarms at
+`GLOBAL_HOST_EQUIVALENT (5) x` the per-host rolling threshold. **The framing matters: the old
+residual was `N x 119` and grew WITHOUT LIMIT in N; the fleet residual is now a FIXED CONSTANT
+independent of N.** That is an unbounded leak becoming a bounded one — a genuine closure of the
+SCALING, with a fixed floor.
+- **BUDGETING INPUT (size the Google per-project spend caps against this, it is not a defect):**
+  an attacker with >=6 host keys per surface can still sustain ~599 guest-chat + ~749
+  daily-greeting + ~104 city-events-public units per 6h ~= **5,800 counter units/day**, and since
+  a unit can be 2 model calls, **up to ~11,600 model calls/day** — invisible to every layer. No
+  threshold tweak removes this; every detector has a threshold.
+- The real evadable RATE is lower than `threshold/6` because the window is 6-7 buckets, so a
+  constant-rate attacker must hold any 7-bucket sum under the line: ~85/hr guest-chat, ~107/hr
+  daily-greeting. The `0 */3 * * *` schedule gives full temporal coverage (every instant seen by
+  two runs) — no scheduling blind gap.
+- COVERS BOTH ATTACKER MODELS because the sum discards the host dimension: Sybil-ACCOUNTS (many
+  created accounts hitting the caller-keyed endpoints) and Sybil-VICTIMS (harvested apartment
+  UUIDs/tokens hitting the victim-keyed guest endpoints) land in the same total.
+- **`GLOBAL_HOST_EQUIVALENT = 5` IS A FLEET-SIZE-DEPENDENT KNOB — the first threshold here that
+  scales with fleet size rather than per-host behaviour.** The comment's mental model ("5 hosts
+  at the limit") does NOT match the arithmetic: it is a SUM, so 600 guest-chat calls is 6 calls
+  each from 100 hosts. First false positives land around **50-150 active hosts**, and the binding
+  constraints are the low-limit HOST-AUTH endpoints (`city-events-host` ~45 refresh clicks/6h
+  fleet-wide, `sync-ical` ~75 manual syncs). `city-events-public` and `daily-greeting` are far
+  safer than raw traffic suggests because both bump on **cache MISS only**. A per-run
+  **fleet-totals log** was added so calibration has a BASELINE — otherwise the first evidence the
+  knob is too low arrives as a FALSE POSITIVE, which trains a reactive raise, the wrong direction
+  for a detector. Revisit trigger: any endpoint over 50% of its global threshold on three
+  consecutive runs, or 50 paying hosts, whichever first.
+- **VICTIM-vs-CALLER — THE OPERATOR-SAFETY RULE. An alert's ACTION line is REMEDIATION ADVICE and
+  must be audited as such.** Both alerts previously said "block this host in Supabase". On
+  `guest-chat` / `daily-greeting` / `city-events-public` the counter key is the **VICTIM host**,
+  not the caller — following that instruction disables an innocent PAYING host while the attacker
+  moves on. Both now lead with "INVESTIGATE BEFORE BLOCKING" plus the endpoint-scoped caveat
+  (rotate QR secrets / revoke tokens instead). **Do NOT blanket-rewrite the others:**
+  `create-booking`, `sync-ical`, `generate-guide` are caller-keyed (`userId`), and
+  `city-events-host` passes `apt.host_id` but is caller-keyed because an ownership check precedes
+  it — for those four, blocking IS right.
+- FAN-OUT IS ORDERED BY SEVERITY AND BOUNDEDNESS, NOT COMPUTATION ORDER: the global finding is
+  higher-signal and structurally bounded to 7 messages, so it sends BEFORE the per-host loop,
+  which can hold 22 x 5s of ntfy timeouts. Compute-and-log every finding before ANY fan-out.
+- NTFY LENGTH BUDGETING: bodies are sliced at 500 chars, so an ACTION line placed last can be
+  SILENTLY TRUNCATED away. Measure the worst case as a JOINT max (longest endpoint paired with
+  ITS OWN `KEY_HINT` — the 72-char amplifier hint belongs to the SHORT endpoint names). Measured
+  ceilings: per-host ~443, global ~464. Re-count before adding any line.
+
+**~~FOLLOW-UP — misdirected remediation in the three PER-HOUR brake alarms~~ DONE (Aug 5 2026).**
+`guest-chat`, `daily-greeting` and `city-events` (public) are victim-keyed and all three said
+"block this host in Supabase"; `daily-greeting` additionally asserted "Likely mass self-minted
+guest passes", a FALSE CAUSAL STORY about a host whose guests were the target. All three now lead
+their ACTION with "INVESTIGATE, do not auto-block" plus why (the key may be a victim) and what to
+do instead. **The four caller-keyed alarms — `create-booking`, `sync-ical`, `generate-guide`,
+`refresh-events` — deliberately still say "block this host", which is CORRECT for them. Never
+blanket-rewrite them.** `refresh-events` must be classified by the ownership check that PRECEDES
+its bump, not by the variable name: it passes `apt.host_id` but is caller-keyed.
+- **NTFY 500-CHAR BUDGET — the spec'd replacements would have OVERFLOWED all three (~520 / ~585 /
+  ~528) and silently truncated the very ACTION line being fixed.** Tightened, and the trailing
+  `Logs: /api/...` clause dropped because line 1 of every message already carries the endpoint
+  path. Measured finals: **guest-chat 453, city-events 465, daily-greeting 473.** These are PROOFS
+  not samples — the alarm fires only at `count === LIMIT + 1` (a constant) and the only other
+  interpolation is a fixed 36-char UUID, so **worst case == typical case, no variable-length
+  fields**. `daily-greeting` at 27 chars spare is the TIGHTEST MESSAGE IN THE REPO: measure before
+  touching it.
+- RECOMMENDED, NOT DONE (all three text-only, so batch them — each edit re-runs both gates):
+  (a) **`city-events` now OVER-ASSERTS innocence** — "= the VICTIM here, not the caller". A
+      hostile host CAN be the caller: hitting their own apartment UUID unauthenticated gives them
+      **7 grounded generations/hour vs the 3/hour their authenticated `refresh-events` reserve
+      allows**, so the anonymous path is the CHEAPER one for them. This is the SYMMETRIC defect to
+      the one just fixed — **an alert can mislead by over-asserting innocence, not only by
+      accusing the victim.** Fix: "USUALLY the VICTIM, not the caller" (+4 chars, budget-safe).
+  (b) "Revoke token" is ACTIONABLE (an operator `UPDATE bookings SET status='cancelled'` kills the
+      token across guest-chat/daily-greeting/guest-state) **but INCOMPLETE: it does not close a
+      leaked QR key.** `guest-state` returns the current in-dates booking's `reference_number` to
+      anyone presenting the apartment's `qr_secret`, so revoking one token only holds until the
+      next booking. The GLOBAL alert already says "rotate QR secrets / revoke tokens"; the
+      per-endpoint ones say only "Revoke token". Adding it costs 18 of daily-greeting's 27 spare
+      chars, so trim its line 4 in the same edit.
+  (c) "Check source IPs" is UNVERIFIED, not wrong: `city-events` computes `clientIp(req)` for the
+      per-instance limiter and DISCARDS it, so nothing on the flood path emits an IP — the
+      instruction depends on Vercel exposing request IPs in the log view AND on log retention
+      outliving the alert. Self-supporting fix = log the tripping IP beside the alarm (value is
+      already in scope). That is a LOGIC change, so it needs its own pass.
+- `cron-spend-audit` DESIGN NOTES worth keeping: the scan is PAGINATED because an unbounded
+  PostgREST select silently truncates at max-rows with NO error — it would have UNDER-COUNTED
+  exactly the abusers it exists to catch while still reporting `ok:true`. **A detection control
+  that silently under-counts is worse than none: it manufactures confidence.** Pagination is
+  sound here only because the PK `(host_id, endpoint, window_start)` gives a total order and
+  `bump_api_counter` only writes the current-hour row (which sorts AFTER the cursor). Prune runs
+  BEFORE the alert fan-out so a long fan-out can never starve retention; fan-out is capped at 20
+  (worst offenders first) with an overflow summary; both a failed scan AND a truncated scan page
+  the operator, since an incomplete audit must not look like a clean one.
+  **The prune's `.lt()` filter is LOAD-BEARING FOR ENFORCEMENT:** without it the delete becomes a
+  full table wipe that resets every host's CURRENT-hour counter and silently disables all six
+  brakes on every run. The cutoff guard catches an inverted/too-recent VALUE only — it cannot
+  detect a dropped filter, and the comment says so.
+- TWO CORRECTIONS TO THE SHIPPED COMMENTS (cosmetic, not fixed, so the gate verdicts stand on
+  the reviewed bytes): (i) the block comment says a 429 renders the "lots of questions" copy —
+  that is the **500** branch of `ChatBot.tsx`; 429 renders "You're sending messages quickly".
+  Note the guest wording implies THE GUEST was fast, but a per-HOST hourly cap can trip for a
+  guest who sent one message. (ii) `GEMINI_API_KEY_CHAT = gen-lang-client-0221179352` in the
+  alert is **UNVERIFIED against Google Cloud** — it appears nowhere else in the repo. CONFIRM IT
+  AND ADD IT TO THE KEY MAP: if wrong, the operator disables the wrong key mid-incident.
+
+CITY-EVENTS SPEND BRAKE — SHIPPED (Aug 5 2026), closing the last uncapped grounded surface.
+Both `city-events.ts` (PUBLIC lazy-fill) and `refresh-events.ts` (host refresh) bump
+`bump_api_counter` before `generateCityEvents`. **SPLIT KEYS (final, shipped): public =
+`'city-events-public'` 7/hour, host = `'city-events-host'` 3/hour** — same 10-unit wallet, but
+the host reserve is unreachable from the public surface. Both FAIL CLOSED on a counter error
+using their own soft shape (`200 {error:true}` / `200 {refreshed:false,reason:'busy'}`), both use
+the 3-branch typeof convention, and each fires its own distinctly-titled ntfy at limit+1.
+- WHY IT WAS UNBOUNDED: a null/failed generation writes NO cache row, so the cache-miss branch
+  re-fires forever; `refresh-events`' 20h freshness gate has the identical never-arms defect
+  (read-then-generate, and the gate only arms once a row exists). Both closed by the counter.
+- ORDERING IS THE LOAD-BEARING PART: the brake sits AFTER the cache read, and `city-events` has
+  NO cache TTL — so once any generation succeeds, every later public call is a DB read forever.
+  The public path can only spend on apartments that are uncached AND whose generation keeps
+  failing. Warm guests cost 0 units; a host clicking Refresh on a fresh property costs 0.
+- REAL CEILING, RE-VERIFIED AFTER THE SPLIT (it moved budget, it did NOT add any): 7x2 + 3x2 =
+  **<=20 grounded calls/host/hour, <=480/day** — identical to the pre-split single key, because
+  `withRetry(retries:1)` in `_lib/city-events.ts` doubles every unit (realistic ~10/hr; the retry
+  only fires on transient errors). AND `EventsPage.tsx` retries 3x on `{error:true}` AND on a
+  429, so ONE failing guest view burns 3 of the 7 public units — ~2 page-opens exhaust the public
+  hour. Size expectations off 7/3, never off "7".
+- **W-1 — CLOSED by the split (shipped).** The shared key had been the first counter spanning an
+  unauthenticated and an authenticated surface: an anonymous stranger holding ONE apartment UUID
+  could, in ~11 cheap requests, make the HOST'S OWN "Refresh events" button fail for the rest of
+  the hour across ALL their properties, never authenticating. `bump_api_counter` keys on
+  `(host_id, endpoint, window_start)`, so the two keys are physically distinct rows and the host
+  reserve is now unreachable from `/api/city-events`. **GENERALISABLE RULE: never share one
+  counter key across a trust boundary — the untrusted side will spend the trusted side's
+  allowance.**
+- **A KEY SPLIT IS NOT AN UPSTREAM SPLIT (the honest limit of the fix).** Both surfaces plus the
+  uncapped cron still spend the SAME `GEMINI_API_KEY_EVENTS` project, so a public flood ACROSS
+  MANY HOSTS can still exhaust that project's per-minute limit or spend cap and degrade a host
+  refresh. The host reserve is guaranteed ALLOWANCE, not guaranteed CAPACITY.
+- Benign residual coupling: a successful anon lazy-fill writes `city_events_cache.generated_at`,
+  so the host's 20h freshness gate then short-circuits for 20h. The host gets exactly the content
+  their refresh would have produced, at zero cost to their reserve — not a denial of value.
+- **APARTMENT UUIDs ARE FREELY OBTAINABLE — treat "the attacker knows one" as GIVEN for every
+  public endpoint keyed on one.** Not enumerable (UUIDv4, 122 bits), but: every guest link
+  carries it in plain sight (`/guest?apt=UUID`, kept forever by any past guest/cleaner/QR
+  photographer, with no per-guest revocation), and **`api/welcome.ts` returns the raw
+  `apartment.id` in the body of the fully public `/w/:code` endpoint** — and welcome links are
+  DESIGNED to be broadcast over Airbnb/WhatsApp/email. This makes W-1 a real targeted attack,
+  though it rules out mass random abuse.
+- W-2 — CLOSED. Both files now use the 3-branch typeof convention (fail closed on RPC error; loud
+  `console.error` "brake inactive" and PROCEED on a non-numeric return; alarm then 429 over the
+  limit), matching `daily-greeting`/`guest-chat`. The 2-branch shorthand they replaced would have
+  SILENTLY DISABLED the brake with no log anywhere if the RPC's return shape ever changed.
+- **OPEN, RAISED BY BOTH GATES — THE 3/HOUR HOST RESERVE IS PROBABLY TOO TIGHT, AND ITS FAILURE
+  MODE IS AN ALARM NAMING AN INNOCENT PAYING CUSTOMER.** `PropertySetup` does NOT auto-retry, so
+  1 host click = 1 unit, and only STALE properties consume (the 20h gate is free). But a Tier-2/3
+  host doing a setup sweep across >=4 stale properties gets a 429 on the 4th click — surfaced as
+  the generic "Could not refresh events. Please try again.", advice that is FALSE for the next
+  hour — and that same legitimate 4th click is exactly limit+1, so it fires a HIGH-priority ntfy
+  titled "Bemgu spend alert" against a host who did nothing wrong. **Tier 3 sells "up to 12
+  properties", so this is reachable by a paying customer on day one.** Options: raise host to ~6
+  and drop public to 4 (keeps the 10 total), or keep 3/7 and make the 429 copy say "you've
+  refreshed several properties recently — try again in an hour". Not urgent only because there
+  are no real hosts yet. DECIDE BEFORE LAUNCH.
+- The public alarm is an ATTACKER-CONTROLLED PAGER: `/api/city-events` is unauthenticated, so
+  anyone with an apartment UUID can deliberately fire a high-priority operator notification with
+  8 requests (pacing or rotating IPs defeats the 5/min per-instance limiter). Bounded to 1 per
+  host per hour per key — so 2 per host-hour across both surfaces, no flood — but with N known
+  host UUIDs it is N alerts/hour, and the trigger is NOT trustworthy.
+- CACHE RACE: still structurally present (N concurrent cold callers all miss, all generate), but
+  it can no longer OVER-SPEND — each request bumps its own unit first, so N concurrent requests
+  consume N units. The race just compresses the hour's budget into seconds.
+- THIRD CALLER NOT BRAKED: `demo-create.ts` also calls `generateCityEvents` on the same key
+  (Turnstile + one-demo gated). The shared-budget comments read as if `'city-events'` covers the
+  whole key — it does not.
+- `cron-refresh-events` deliberately does NOT bump: it is cron-authorised, daily, booking-
+  filtered. Keep it that way — adding it would let a guest starve the cron.
+- INFO: `city-events.ts`'s `rlHits` Map has NO bounded-memory sweep (unlike `guest-chat`'s
+  `RL_MAX_KEYS`), on the endpoint with the least-trusted callers. `GEMINI_API_KEY_EVENTS =
+  gen-lang-client-0131909896` is likewise UNVERIFIED against Google Cloud — confirm with the
+  chat project ID and record both in the key map.
+
+## SESSION Jul 29 2026 (2) — compliance pins + the guide became grounded
+
+Four commits, all live and SHA-verified against Vercel production.
+
+**`fbf58aa` — compliance.** `vercel.json` gained `"regions": ["fra1"]`. Compute was unpinned and
+defaulting to **iad1 (US East)** while Supabase is eu-central-1 — a transatlantic round-trip on
+every DB call AND an international-transfer entry in the Art. 30 record. **VERIFIED LIVE:** a fetch
+of `bemgu.app/api/public-pricing` returned `x-vercel-id` ending `::fra1::` — the compute region
+itself, not just the config. Also removed the host name from **4 ntfy call sites**
+(`cancel-subscription` ×2, `change-plan` ×2), matching the generic "A host …" phrasing
+`stripe-webhook` already used. Host-facing **emails keep the name** — correct, they go to the host
+themself. **All 7 ntfy call sites in the repo are now free of personal data** (the other three send
+aggregate counts only). Closes legal Gaps 2 and 3.
+
+**`1af1012` — the guide became grounded.** `_lib/guide.ts` adopted the city-events pattern: dropped
+`responseMimeType` JSON, added `tools: [{ googleSearch: {} }]`. The two cannot coexist in Google's
+API — which is why the guide had been generated from training memory with no ability to verify
+anything. Descriptions switched to **ENGLISH, place names kept in local form**: a guest **reads**
+the description but **shows** the name — to a driver, or against the sign on the door. (Previously
+every guide was in the city's own language — Finnish, Spanish, German — on an English page.)
+Per-attempt timeout 20s → 40s, `maxDuration` 60 → 120, plus a first-brace/last-brace parse fallback
+since bare-JSON output is no longer guaranteed. `demo-create.ts` now reads lat/lng/country back and
+passes them through — it had still been calling the generator unbiased, leaving demo guides exposed
+to the regional-centroid bug `98017fe` fixed everywhere else.
+
+**`a940158`** — distance rules, Coffee category, per-generation logging.
+**`d282fe8`** — cross-category dedupe, empty-category retry, ceiling 120 → 150.
+Findings from both are in "GUIDE GENERATION — MEASURED BEHAVIOUR" below.
+
+## GUIDE GENERATION — MEASURED BEHAVIOUR (six live regenerations, Jul 29 2026)
+
+Barcelona/El Born + Berlin/Prenzlauer Berg. Findings, not the blow-by-blow.
+
+**GROUNDING WORKS, WITH A KNOWN BIAS.** Fabrication stopped — best evidence: an apartment at
+Kollwitzstrasse 76 returned four real restaurants at Kollwitzstrasse 47, 53, 58 and 64. **But
+grounding pulls toward FAMOUS, not NEAR** — search surfaces what is most written about, and the
+internet is saturated with the Fernsehturm and near-silent about the small park four streets away.
+Pre-fix runs returned the Fernsehturm (3.5km), Klunkerkranich (8km, Neukolln), Disfrutar (3km,
+Eixample) and Boqueria. **Any future prompt work on this endpoint must actively counter that pull.**
+Grounding also reduces invention but does **NOT** guarantee accuracy: a grounded run still returned
+Mercat de la Boqueria with postcode 08003 (correct 08001) and Mauerpark with a six-digit German
+postcode (133555; correct 13355).
+
+**AN UNFILLABLE CONSTRAINT GETS ABANDONED, NOT PARTIALLY MET.** A flat "15 minutes' walk" across all
+six categories is often impossible for Sight and Nightlife in a residential neighbourhood. Faced
+with no valid answer the model broke the rule **entirely** and reached for the city landmark rather
+than returning a short list. Splitting it — 15 min for daily needs (Restaurant/Bar/Coffee/Essential),
+30 min for destinations (Sight/Nightlife) — fixed it completely in both cities: every city-wide
+drift disappeared AND Sight gained entries while becoming more local. **General principle for prompt
+work: give the model a rule it can satisfy.**
+
+**THE MODEL STOPS VOLUNTARILY AT ~HALF ITS TOKEN BUDGET.** `finishReason` STOP with `rawLen` 3,076
+and 4,188 against `maxOutputTokens` 8192. **Truncation is PERMANENTLY ruled out for this endpoint**,
+`maxOutputTokens` is not binding, and no prompt instruction about quantity increases output —
+"aim for 4-5 per category" produced no change (totals stayed 13–16). **If more places are ever
+needed, the answer is more CALLS, not more prompt.** That is why `d282fe8`'s empty-category fix is a
+second focused call rather than more prompt text.
+
+**PROMPT INSTRUCTIONS CANNOT FORCE A CATEGORY TO FILL.** Coffee returned an empty array in both
+cities even after an explicit definition, being explicitly fenced off from Bar/Restaurant, and being
+told an empty list means the search was insufficient. Berlin then improved to 1, Barcelona stayed at
+0. Evidence suggests cafes get absorbed into Bar/Restaurant (a Berlin Bar entry was described as
+"a relaxed bar and cafe"). **Not truncation** — all six JSON keys were present and the categories
+positioned AFTER Coffee were populated.
+
+**n=1 CANNOT SEPARATE A PROMPT EFFECT FROM VARIANCE.** These generations are non-deterministic:
+Berlin's Restaurant count swung 5 → 2 between runs and could not be attributed to the change. Only
+findings that moved the same way across **both cities and multiple entries** (i.e. the distance
+result) were treated as trustworthy. **Future prompt evaluation on this endpoint needs at least two
+runs per city per condition.**
+
+**TIMING, CORRECTED — the intuitive version is wrong.** The `d282fe8` retry fires only when the main
+call is under 45s elapsed, so 45 + 25 = **70s sits BELOW the 80.6s the main path could already reach
+alone** — the retry **cannot** raise the function's worst case. The 120 → 150 raise closes a
+**different, pre-existing** overrun: `generate-guide.ts` chains `generateGreetingBlurb` (2×12s)
+**after** the guide upsert, giving ~123s against a 120s ceiling — the worst failure shape available,
+since it 504s a generation that already **succeeded AND saved**, sending the host to re-run completed
+work. **Do NOT record the raise as "making room for the retry".** Observed real-world main call:
+~13s Gemini + ~7s geocoding, single attempt, ~20s total — the worst cases here are theoretical.
+Vercel Pro accepted `maxDuration: 150` at build time.
+
+**GUIDE REFRESH IS GATED CLIENT-SIDE ONLY.** `GUIDE_FRESH_HOURS = 24` in `PropertySetup.tsx`: the
+button disables and relabels to "Up to date" for 24h after `generated_at`. For testing, clear the
+lock chat-side by back-dating `guide_recommendations.generated_at` via Supabase MCP — that moves
+only the timestamp and leaves guide content intact.
+
+## CITY GUIDE — geocoding fix SHIPPED (`98017fe`), plus a bigger unresolved issue
+
+**Measured across 7 guides / 208 places.** Casa Miraflores (Lima) had **17 of 30 places over
+20 km out, worst 150.8 km**; a fresh regeneration made it **16 of 30, worst 4,567 km**, with
+**12 places collapsed onto just 2 identical coordinates**.
+
+**ROOT CAUSE:** `geo.ts` queried LocationIQ with `limit=1` and no bounding, so where OSM
+coverage is thin it returned a **REGIONAL CENTROID instead of failing**, and `guide.ts`
+stored it. **The affected places were REAL and correctly addressed** (Huaca Pucllana, Parque
+Kennedy, Museo de Arte de Lima) — **the model was fine, the geocoder was not.**
+
+**FIX:** `geo.ts` takes an optional bias (**viewbox + `bounded=1` + `countrycodes`** —
+LocationIQ has **NO proximity parameter**, confirmed from their docs); `guide.ts` passes the
+apartment coordinates and rejects any fix beyond **`MAX_PLACE_KM = 25`** by leaving lat/lng
+unset — **the place STAYS, only the coordinate goes. Never drop places: that would delete the
+best content.** No country code is passed because `apartments.country` holds names ("Peru"),
+not ISO codes.
+
+**RESULT after refresh:** Lima worst **4,567 km → 6.9 km** (avg 1.6); Sweet home **57.3 km →
+5.8 km** (avg 1.2); Test Apartment 1 → **3.1 km** (avg 0.9). **ZERO Navigate buttons lost in
+any of them** — the bias fixed it at source and the 25 km net caught nothing. Barcelona (1.9),
+Madrid (1.3) and Berlin (2.4) were never affected and were left un-refreshed.
+
+**Shape to recognise:** "Penthouse in the sky" has 25 places with **NO coordinates at all**
+(stale Jun 22 data, hidden apartment, expired host) — that is old data, not this bug.
+
