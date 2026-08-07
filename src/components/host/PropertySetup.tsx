@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ChangeEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { Link, useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Lock } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
@@ -57,6 +57,10 @@ export default function PropertySetup() {
   const { toast } = useToast()
   const [tab, setTab] = useState<Tab>('basic')
   const [apartmentId, setApartmentId] = useState<string | null>(null)
+  // Last coordinates known to be STORED for this apartment. Used only to decide whether a save
+  // actually moved the pin, so canonical-city resolution runs once per real address change
+  // rather than on every save (that is what keeps us inside LocationIQ's 5,000/day free tier).
+  const savedCoordsRef = useRef<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
   const [hostId, setHostId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -158,6 +162,11 @@ export default function PropertySetup() {
       setPicks([])
       setRelocatingKey(null)
       setHeroImageUrl(null)
+      // Reset UNCONDITIONALLY, before the 'new' early-return below. Leaving the previous
+      // apartment's coordinates here would break the change-check for a second unit at the SAME
+      // address (same street+number geocodes to identical coordinates), so that apartment would
+      // never resolve a canonical city. Routine for a multi-property host.
+      savedCoordsRef.current = { lat: null, lng: null }
       // new-tab state reset on apartment switch
       setGuideGeneratedAt(null)
       setGuideMsg(null)
@@ -184,7 +193,7 @@ export default function PropertySetup() {
 
       const { data: apt } = await supabase
         .from('apartments')
-        .select('id, name, country, city, neighborhood, street, street_number, floor_note, max_guests, hero_image_url')
+        .select('id, name, country, city, neighborhood, street, street_number, floor_note, max_guests, hero_image_url, lat, lng')
         .eq('id', aptId)
         .eq('host_id', user.id)
         .maybeSingle()
@@ -192,6 +201,12 @@ export default function PropertySetup() {
       if (!apt) { navigate('/dashboard'); return }
 
       setApartmentId(apt.id)
+      // Remember the stored coordinates so a save can tell whether they actually CHANGED.
+      // A ref, not state: nothing renders from it and it must not trigger a re-render.
+      savedCoordsRef.current = {
+        lat: typeof apt.lat === 'number' ? apt.lat : null,
+        lng: typeof apt.lng === 'number' ? apt.lng : null,
+      }
       // Honour a ?tab= deep-link (e.g. Bookings → "Manage calendars"). For an existing
       // property every tab is unlocked, so no lock check is needed; the 'new' branch above
       // ignores the param by forcing 'basic'.
@@ -430,6 +445,28 @@ export default function PropertySetup() {
     // Refresh the cached by-city hero (shown only when no host upload). Fire-and-forget.
     if (savedId && basic.city.trim()) {
       api.post('/city-image', { apartmentId: savedId }).catch(() => {})
+    }
+
+    // Silent enrichment: resolve the coordinates into a canonical city identity for the
+    // (commit 2) city-level events cache. Fire-and-forget — never awaited, never toasts, never
+    // fails the save, never blocks navigation. A failure just leaves the columns NULL, which
+    // every commit-2 caller must already handle via its per-apartment fallback.
+    //
+    // ONLY when the coordinates actually CHANGED. Re-resolving on every save would spend a
+    // LocationIQ request per keystroke-save for no new information, and the daily free tier is
+    // the budget being protected. The client deliberately sends ONLY an apartment id — the key
+    // itself is derived server-side, because it becomes a spend vector in commit 2.
+    if (savedId && typeof fields.lat === 'number' && typeof fields.lng === 'number') {
+      const prev = savedCoordsRef.current
+      if (prev.lat !== fields.lat || prev.lng !== fields.lng) {
+        // The ref advances BEFORE the request, so a transient failure (500, dropped network) is
+        // NOT retried by re-saving the same address — deliberate, to keep this off the save's
+        // critical path. RECOVERY PATH IS /api/backfill-canonical-city, which picks up any row
+        // whose canonical_resolved_at is still NULL. The columns simply stay NULL until then,
+        // which every commit-2 caller must already handle via its per-apartment fallback.
+        savedCoordsRef.current = { lat: fields.lat, lng: fields.lng }
+        void api.post('/resolve-canonical-city', { apartmentId: savedId }).catch(() => {})
+      }
     }
 
     if (geoMissed) {
