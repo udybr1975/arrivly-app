@@ -46,7 +46,30 @@ async function fireSyncAbuseAlert(userId: string, reason: string): Promise<void>
   }
 }
 
+// Fetch budget for the iCal URL loop, as an ABSOLUTE deadline.
+//
+// WHY AT ALL: syncApartmentBookings fetches sequentially, MAX_ICAL_URLS (20) x
+// safeFetchIcal's 10s cap = up to 200s against maxDuration 150 (vercel.json). This
+// endpoint is INTERACTIVE, so the host waits and gets a 504 — with their bump_api_counter
+// unit already spent, since the counter is bumped before the work.
+//
+// THE ARITHMETIC (150s total). The deadline bounds when a fetch STARTS, not when it
+// finishes, so a fetch begun 1ms before it can still run safeFetchIcal's full 10s cap
+// (which is a TOTAL per-call deadline covering every redirect hop, so it cannot multiply).
+// That overrun is part of the budget, not on top of it:
+//   - in-flight fetch overrunning the deadline           => 10s
+//   - reconcile RPCs: detectSource yields at most 8 distinct sources, called sequentially,
+//     ~2s each worst case                                => 16s
+//   - sendPushToHost (subscription query + web-push sends) => 5s
+//   - JSON response + platform overhead                  =>  4s
+// 150 - 35 = 115s of fetch budget. START is captured at handler entry, so the auth
+// round-trip, the apartment query and the counter bump sit INSIDE the budget instead of
+// competing with the reserve (same reasoning as d254df9).
+const SYNC_FETCH_BUDGET_MS = 115_000
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  const startedAt = Date.now()
+
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const authHeader = req.headers.authorization
@@ -96,10 +119,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
   }
 
-  const { imported, skipped, errors, capped } = await syncApartmentBookings(supabase, {
-    id: apartment_id,
-    ical_urls: apt.ical_urls,
-  })
+  // Partial result + a plain-language error string beats a 504 with the counter spent.
+  const { imported, skipped, errors, capped } = await syncApartmentBookings(
+    supabase,
+    { id: apartment_id, ical_urls: apt.ical_urls },
+    { deadlineAt: startedAt + SYNC_FETCH_BUDGET_MS }
+  )
 
   if (capped) {
     await fireSyncAbuseAlert(userId, 'a single sync exceeded the per-sync calendar-event cap')

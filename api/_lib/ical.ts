@@ -75,11 +75,20 @@ type ReconcileEvent = {
  * cancel sees the WHOLE source family at once. A source with ANY failed fetch is skipped
  * entirely (no RPC call) so a feed that didn't load can never cancel its own live rows.
  * Error strings are provider-label only — never the URL (which can embed auth tokens).
+ *
+ * OPTIONAL TIME BUDGET (`opts.deadlineAt`, epoch ms). The URL loop is SEQUENTIAL and
+ * MAX_ICAL_URLS (20) x safeFetchIcal's 10s cap = up to 200s for ONE apartment, against a
+ * 150s maxDuration — so the cost lives here, in the loop, and so does the bound. Omit
+ * `deadlineAt` for the previous unbounded behaviour. It is an ABSOLUTE timestamp rather
+ * than a duration because the cron runs apartments CONCURRENTLY against ONE shared run
+ * budget, which a per-item duration cannot express.
  */
 export async function syncApartmentBookings(
   db: SupabaseClient,
-  apartment: { id: string; ical_urls: string | null }
+  apartment: { id: string; ical_urls: string | null },
+  opts: { deadlineAt?: number } = {}
 ): Promise<SyncResult> {
+  const { deadlineAt } = opts
   let imported = 0
   let skipped = 0
   const errors: string[] = []
@@ -110,7 +119,30 @@ export async function syncApartmentBookings(
   // in the dropped feed.
   for (const dropped of allUrls.slice(MAX_ICAL_URLS)) incompleteSources.add(detectSource(dropped))
 
-  for (const url of urls) {
+  // Set when the time budget expired mid-loop, so the host-facing error is pushed once
+  // rather than per unread URL.
+  let ranOutOfTime = false
+
+  for (let i = 0; i < urls.length; i++) {
+    const url = urls[i]
+
+    // Time budget expired. Every URL we have NOT fetched — this one and all the ones
+    // behind it — is an UNREAD FEED, behaviourally identical to a link dropped by
+    // MAX_ICAL_URLS above, so its source is marked incomplete for exactly the same
+    // reason: reconciling a source from a PARTIAL uid set would let the RPC's soft-cancel
+    // CANCEL LIVE BOOKINGS that existed only in the unread feed. That is guest-visible
+    // data loss and strictly worse than the timeout this budget exists to prevent.
+    //
+    // Note the contrast with the `capped` exit below, and keep it: `capped` RETURNS before
+    // reconciliation and mints nothing, so it never needed incompleteSources. This path
+    // falls THROUGH to reconciliation — sources fully fetched before the deadline still
+    // reconcile normally, because a deadline is a partial sync, not a failed one.
+    if (deadlineAt !== undefined && Date.now() >= deadlineAt) {
+      for (const unread of urls.slice(i)) incompleteSources.add(detectSource(unread))
+      ranOutOfTime = true
+      break
+    }
+
     const source = detectSource(url)
     sourcesSeen.add(source)
     if (!eventsBySource.has(source)) eventsBySource.set(source, [])
@@ -142,6 +174,11 @@ export async function syncApartmentBookings(
       errors.push(`${source}: couldn't be used (check it's a public https calendar link)`)
       incompleteSources.add(source)
     }
+  }
+
+  // Generic, host-safe, no URL and no host — same register as the fetch-failure string.
+  if (ranOutOfTime) {
+    errors.push("the sync ran out of time - not all calendars were read")
   }
 
   // Over the per-sync event cap => an abusive or malformed feed. Mint NOTHING and let the
