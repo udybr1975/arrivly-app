@@ -150,13 +150,148 @@ test('eventDateInWindow — a range is kept when ANY day intersects', () => {
   assert.equal(eventDateInWindow('4-7 August', START, END), true, 'straddles the start edge')
 })
 
-test('eventDateInWindow — a CROSS-MONTH range is kept, never clamped into one month', () => {
-  // REGRESSION, and the worst class available here: first-match-wins over a chronological month
+test('eventDateInWindow — a CROSS-MONTH range is now JUDGED, and still never clamped', () => {
+  // CHANGED (8 Aug 2026): these three asserted `null` because a cross-month range was unjudgeable.
+  // They are now judged. The GUEST OUTCOME of the first two is IDENTICAL — they intersect, so they
+  // were kept before and are kept now; only the reason changed from "cannot judge" to "verified
+  // inside". The third is a REAL behaviour change and the whole point of the exercise.
+  //
+  // THE ORIGINAL REGRESSION MUST STILL NEVER RETURN: first-match-wins over a chronological month
   // dict picked the EARLIER month and clamped the days into it, so an event running THROUGH the
-  // window was dropped. Systematic for long exhibitions/markets/festivals.
-  assert.equal(eventDateInWindow('26 July - 9 August', START, END), null, 'live through the stay')
-  assert.equal(eventDateInWindow('1 June - 31 August', START, END), null, 'summer exhibition')
-  assert.equal(eventDateInWindow('31 August - 2 September', START, END), null)
+  // window was dropped. Systematic for long exhibitions/markets/festivals. The first two lines are
+  // exactly that regression's fingerprint — if either ever flips to false, it is back.
+  assert.equal(eventDateInWindow('26 July - 9 August', START, END), true, 'live through the stay')
+  assert.equal(eventDateInWindow('1 June - 31 August', START, END), true, 'summer exhibition')
+  assert.equal(
+    eventDateInWindow('31 August - 2 September', START, END),
+    false,
+    'entirely AFTER the window — previously kept because it could not be judged',
+  )
+})
+
+test('eventDateInWindow — the two real leaks from the 8 Aug 2026 cron run', () => {
+  // Window 8-15 Aug 2026, fi:helsinki. Both reached the SHARED city row, so they were served to
+  // every Helsinki host's guests, not one apartment. That is what promoted this fix.
+  const s = Date.UTC(2026, 7, 8)
+  const e = Date.UTC(2026, 7, 15) + 86_399_999
+  assert.equal(
+    eventDateInWindow('18 August - 5 September 2026', s, e),
+    false,
+    'Helsinki Festival — starts TEN DAYS after the window ends',
+  )
+  // "Poets of the Fall" carried date "". The DROP for this one happens at the CALL SITE
+  // (eventsDroppedNoDate), NOT here: absent is not "outside the window", and conflating the two
+  // would destroy the eventsDroppedOutOfWindow diagnostic.
+  assert.equal(eventDateInWindow('', s, e), null, 'absent date stays UNJUDGED here by contract')
+})
+
+test('eventDateInWindow — the two survivors CLAUDE.md recorded', () => {
+  // Recorded window 7-14 Aug 2026. Both are ENGLISH CROSS-MONTH RANGES, not Finnish dates — the
+  // OPEN-1 note misdiagnosed them as needing a d.m.yyyy branch, which would have caught neither.
+  const s = Date.UTC(2026, 7, 7)
+  const e = Date.UTC(2026, 7, 14) + 86_399_999
+  assert.equal(eventDateInWindow('20 August - 1 November', s, e), false)
+  assert.equal(eventDateInWindow('28 August - 6 September', s, e), false)
+})
+
+test('eventDateInWindow — cross-month ranges that must still be KEPT', () => {
+  assert.equal(eventDateInWindow('30 July - 8 August', START, END), true, 'starts before, ends inside')
+  assert.equal(eventDateInWindow('1 July - 30 September', START, END), true, 'spans the window entirely')
+  // Ambiguity => null, never a guess.
+  assert.equal(
+    eventDateInWindow('July - 9 August', START, END),
+    null,
+    'one month has no adjacent day number',
+  )
+  assert.equal(
+    eventDateInWindow('July - August - September', START, END),
+    null,
+    'three distinct months stay unjudgeable',
+  )
+  // A leading DAY RANGE makes the start ambiguous, so the whole string resolves to null (KEEP)
+  // rather than being placed on the later day and possibly wrongly dropped.
+  assert.equal(
+    eventDateInWindow('10-12 August - 3 September', START, END),
+    null,
+    'a day range before the month is ambiguous — keep, do not place on the 12th',
+  )
+})
+
+test('eventDateInWindow — a cross-month range across New Year tries both years', () => {
+  const s = Date.UTC(2026, 11, 29) // 29 Dec 2026
+  const e = Date.UTC(2027, 0, 5) + 86_399_999 // 5 Jan 2027
+  assert.equal(
+    eventDateInWindow('28 December - 3 January', s, e),
+    true,
+    'December -> January is a rollover, not a backwards span',
+  )
+  assert.equal(eventDateInWindow('15 January - 20 January', s, e), false, 'single month, after the window')
+})
+
+test('eventDateInWindow — a rollover range is anchored in the year BEFORE the window too', () => {
+  // MUST-FIX from review, and a deterministic wrong-drop rather than an edge case: a rollover
+  // range has its two ends in different calendar years, so anchoring the start at a WINDOW year is
+  // wrong whenever the window sits on the later side of the boundary. Every 7-day window from ~1
+  // January onward is fully inside the new year, and Christmas markets, ice rinks and winter-light
+  // festivals are all written as a December -> January range.
+  const s = Date.UTC(2027, 0, 5) // 5 Jan 2027
+  const e = Date.UTC(2027, 0, 12) + 86_399_999 // 12 Jan 2027
+  assert.equal(
+    eventDateInWindow('26 December - 9 January', s, e),
+    true,
+    'runs 26 Dec 2026 - 9 Jan 2027 and covers the whole window',
+  )
+  // The same shape without a New Year: a long exhibition whose end month precedes its start month.
+  assert.equal(
+    eventDateInWindow('15 October - 30 September', START, END),
+    true,
+    'a year-long exhibition spanning the August window',
+  )
+  // Still dropped when it genuinely does not reach the window.
+  assert.equal(eventDateInWindow('26 December - 3 January', Date.UTC(2027, 1, 2), Date.UTC(2027, 1, 9) + 86_399_999), false)
+})
+
+test('eventDateInWindow — an INCOMPLETE dotted range is unjudgeable, never judged on its end', () => {
+  // MUST-FIX from review. The standard Finnish/European convention carries the year ONCE, on the
+  // end date. Requiring \d{4} on every date sees only the END, which places a month-long event on
+  // its final day — the clamping regression re-created on a new branch, hitting the same long
+  // exhibition/festival content.
+  assert.equal(eventDateInWindow('8.8.-15.8.2026', START, END), null, 'year only on the end date')
+  assert.equal(eventDateInWindow('1.8.-31.8.2026', START, END), null, 'live through the whole stay')
+  assert.equal(eventDateInWindow('26.7.-9.8.2026', START, END), null)
+  // A month NAME beats a dotted date: the dotted one is incidental (a purchase deadline), and
+  // judging on it would drop a real in-window event.
+  assert.equal(
+    eventDateInWindow('10 August, tickets from 1.7.2026', START, END),
+    true,
+    'judged on the month name, not the incidental dotted date',
+  )
+})
+
+test('eventDateInWindow — d.m.yyyy, with ambiguity resolved by WIDENING', () => {
+  assert.equal(eventDateInWindow('8.8.2026', START, END), true, 'inside')
+  assert.equal(eventDateInWindow('5.8.2026', START, END), false, 'before the window')
+  assert.equal(eventDateInWindow('20.8.2026', START, END), false, 'after the window')
+  assert.equal(eventDateInWindow('7.8.2026 - 15.8.2026', START, END), true, 'range intersects')
+  // Entirely after, and UNAMBIGUOUS: both days exceed 12, so only the d.m reading is valid and the
+  // union cannot widen beyond September.
+  assert.equal(eventDateInWindow('20.9.2026 - 25.9.2026', START, END), false, 'range entirely after')
+  // KNOWN AND ACCEPTED CONSEQUENCE of widening: when every part of a RANGE is ambiguous the union
+  // of both readings can span most of a year, so such a range is kept almost unconditionally.
+  // "1.9.2026 - 5.9.2026" reads as 1-5 September but ALSO as 9 January / 9 May, and that union
+  // covers an August window. Keeping a wrong event is the safe direction; the alternative is
+  // assuming European order, which would wrongly DROP a genuine m.d date.
+  assert.equal(
+    eventDateInWindow('1.9.2026 - 5.9.2026', START, END),
+    true,
+    'fully ambiguous range widens to a union that intersects — keep, do not guess the order',
+  )
+  // Both readings are valid (12 August or 8 December), so BOTH are tried and the span is their
+  // union — a union can only ever KEEP, which is the safe direction.
+  assert.equal(eventDateInWindow('12.8.2026', START, END), true, 'd.m reading intersects')
+  assert.equal(eventDateInWindow('8.12.2026', START, END), true, 'm.d reading intersects')
+  // Two-digit years are out of scope and fall through to the month-name logic, which finds none.
+  assert.equal(eventDateInWindow('8.8.26', START, END), null, '2-digit year is not judged')
 })
 
 test('eventDateInWindow — a month word in prose does not become a date', () => {
@@ -177,7 +312,12 @@ test('eventDateInWindow — ISO dates need no year inference', () => {
 test('eventDateInWindow — unjudgeable strings KEEP the event (null), never drop it', () => {
   // This is the load-bearing safety direction: an unhandled shape must degrade to the prompt-only
   // behaviour, not silently empty a city.
-  for (const d of ['', 'Saturday', 'August 2026', 'all week', 'Ongoing', '8 elokuuta', '8 augusti']) {
+  //
+  // CHANGED (8 Aug 2026): '' was REMOVED from this list only — not because its return value moved
+  // (eventDateInWindow('') is still null, asserted in the 8-Aug-leaks test above) but because an
+  // undated event is now dropped at the CALL SITE via eventsDroppedNoDate. Listing it here would
+  // read as "an undated event survives", which is no longer true of the pipeline.
+  for (const d of ['Saturday', 'August 2026', 'all week', 'Ongoing', '8 elokuuta', '8 augusti']) {
     assert.equal(eventDateInWindow(d, START, END), null, `"${d}" must be unjudged`)
   }
 })

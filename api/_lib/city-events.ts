@@ -508,6 +508,45 @@ export function eventDateInWindow(dateStr: string, startMs: number, endMs: numbe
     return intersects(Math.min(...stamps), Math.max(...stamps) + 86_399_999)
   }
 
+  // d.m.yyyy — the Finnish/European shape. AFTER the ISO branch (which needs dashes, so the two
+  // cannot collide) and BEFORE the month-name logic.
+  //
+  // AMBIGUITY IS RESOLVED BY WIDENING, NOT BY CHOOSING. When both readings are valid (8.8, or
+  // 5.6.2026 which is either 5 June or 6 May) BOTH are added and the span is their union. A union
+  // can only ever KEEP more, which is the safe direction; assuming European order because the
+  // corpus is European would be a guess that can wrongly drop.
+  //
+  // TWO-DIGIT YEARS ARE OUT OF SCOPE — `\d{4}` does not match "8.8.26", so it falls through to the
+  // month-name logic, finds no month, and returns null (keep). Deliberate: a 2-digit year is
+  // ambiguous about the century and this parser does not guess.
+  // A MONTH NAME BEATS A DOTTED DATE. Without this, "10 August, tickets from 1.7.2026" would be
+  // judged on the incidental purchase date (union Jan 7 - Jul 1 => dropped) instead of the real
+  // one. This is the only place in the function where MORE evidence could make the verdict worse,
+  // so the dotted branch yields to the month-name logic rather than pre-empting it.
+  const hasMonthName = Object.keys(MONTHS).some((n) => new RegExp(`\\b${n}\\b`).test(s))
+
+  // AN INCOMPLETE DOTTED RANGE IS UNJUDGEABLE. The standard Finnish/European convention carries
+  // the year ONCE, on the end date: "1.8.-31.8.2026", "26.7.-9.8.2026". Requiring \d{4} on every
+  // date sees only the END, which would place a month-long exhibition on its final day and drop
+  // an event that is live through the entire stay — the clamping regression, re-created on a new
+  // branch and hitting exactly the same long-festival content. A bare `d.m.` not followed by a
+  // 4-digit year means the range's start is invisible, so refuse to judge.
+  if (!hasMonthName && /\b\d{1,2}\.\d{1,2}\.(?!\d{4}\b)/.test(s)) return null
+
+  const dmy = hasMonthName ? [] : [...s.matchAll(/\b(\d{1,2})\.(\d{1,2})\.(\d{4})\b/g)]
+  if (dmy.length > 0) {
+    const stamps: number[] = []
+    for (const m of dmy) {
+      const a = Number(m[1])
+      const b = Number(m[2])
+      const y = Number(m[3])
+      if (b >= 1 && b <= 12 && a >= 1 && a <= 31) stamps.push(Date.UTC(y, b - 1, a)) // d.m
+      if (a >= 1 && a <= 12 && b >= 1 && b <= 31) stamps.push(Date.UTC(y, a - 1, b)) // m.d
+    }
+    if (stamps.length === 0) return null
+    return intersects(Math.min(...stamps), Math.max(...stamps) + 86_399_999)
+  }
+
   // A month NAME is required — without one there is nothing to anchor a day number to.
   //
   // COLLECT ALL MONTHS, NEVER "FIRST MATCH WINS". Taking the first match in dictionary order was a
@@ -518,14 +557,99 @@ export function eventDateInWindow(dateStr: string, startMs: number, endMs: numbe
   // exhibitions, markets and long festivals hardest — exactly the `culture` content the diversity
   // fix in this same change exists to surface.
   //
-  // TWO OR MORE DISTINCT MONTHS => null (KEEP). A cross-month range is genuinely beyond this
-  // deliberately-narrow parser, so it is unjudgeable rather than out-of-window. This also disarms
-  // the `may` collision for free: "8 August (may sell out)" matches both `may` and `august`, so it
-  // is kept rather than resolved to May and dropped.
+  // THREE OR MORE DISTINCT MONTHS => null (KEEP), unchanged. Exactly two is handled by the range
+  // branch below. This still disarms the `may` collision: "8 August (may sell out)" matches both
+  // `may` and `august`, but `may` has no adjacent day, so the range branch returns null.
   const monthsFound = new Set<number>()
   for (const [name, idx] of Object.entries(MONTHS)) {
     if (new RegExp(`\\b${name}\\b`).test(s)) monthsFound.add(idx)
   }
+
+  // ── CROSS-MONTH RANGE ("18 August - 5 September") ────────────────────────────────────────────
+  //
+  // These used to return null = KEEP, and that is what leaked onto the SHARED city row: the 8 Aug
+  // 2026 cron run put "Helsinki Festival, 18 August - 5 September 2026" in front of every Helsinki
+  // host's guests, an event starting TEN DAYS after the window ended. Sharing is what promoted
+  // this: one bad parse now reaches a whole city, not one apartment.
+  //
+  // JUDGED ONLY WHEN THE SHAPE IS UNAMBIGUOUS. Each month must have EXACTLY ONE day number
+  // adjacent to it; zero or several => null. Do not guess.
+  //
+  // THE DAY-RANGE CLAUSE IN `adjacentDays` IS A SAFETY DEVICE, NOT A FEATURE: for "10-12 August -
+  // 3 September" plain adjacency sees only 12, which would place the start on the 12th and could
+  // wrongly drop an event that really began on the 10th. Collecting BOTH ends of a day range makes
+  // the candidate set {10,12}, size 2, so the whole string resolves to null = KEEP. Widening the
+  // candidate set here makes the parser MORE cautious, never less.
+  if (monthsFound.size === 2) {
+    const namesFor = (idx: number) => Object.keys(MONTHS).filter((n) => MONTHS[n] === idx)
+
+    // Day numbers adjacent to a month name. Bounded quantifiers only, anchored on the month name,
+    // applied to a string already capped at 60 chars — no backtracking hazard.
+    //
+    // The `\b` around each digit run is what keeps a 4-digit YEAR out: in "5 September 2026" the
+    // after-pattern cannot capture "20" from "2026", because the following character is a digit so
+    // there is no word boundary. Without it every trailing year became a phantom second candidate
+    // and every dated range collapsed to null. The optional ordinal sits INSIDE the `\b` so "1st"
+    // still parses.
+    const adjacentDays = (idx: number): Set<number> => {
+      const out = new Set<number>()
+      for (const n of namesFor(idx)) {
+        const before = new RegExp(`\\b(\\d{1,2})(?:st|nd|rd|th)?\\b\\s*(?:de\\s+|of\\s+)?\\b${n}\\b`, 'g')
+        const after = new RegExp(`\\b${n}\\b[\\s,.]*\\b(\\d{1,2})(?:st|nd|rd|th)?\\b`, 'g')
+        const dayRange = new RegExp(
+          `\\b(\\d{1,2})\\s*[-–—]\\s*(\\d{1,2})(?:st|nd|rd|th)?\\b\\s*(?:de\\s+|of\\s+)?\\b${n}\\b`,
+          'g',
+        )
+        for (const m of s.matchAll(before)) out.add(Number(m[1]))
+        for (const m of s.matchAll(after)) out.add(Number(m[1]))
+        for (const m of s.matchAll(dayRange)) { out.add(Number(m[1])); out.add(Number(m[2])) }
+      }
+      for (const d of [...out]) if (!(d >= 1 && d <= 31)) out.delete(d)
+      return out
+    }
+
+    // Order by where each month APPEARS IN THE STRING, never by dictionary order — ordering by the
+    // chronological MONTHS dict is precisely the first-match-wins mistake described above.
+    const firstIndexOf = (idx: number) =>
+      Math.min(
+        ...namesFor(idx).map((n) => {
+          const m = new RegExp(`\\b${n}\\b`).exec(s)
+          return m ? m.index : Number.MAX_SAFE_INTEGER
+        }),
+      )
+    const [mA, mB] = [...monthsFound].sort((x, y) => firstIndexOf(x) - firstIndexOf(y))
+
+    const daysA = adjacentDays(mA)
+    const daysB = adjacentDays(mB)
+    if (daysA.size !== 1 || daysB.size !== 1) return null
+    const dA = [...daysA][0]
+    const dB = [...daysB][0]
+
+    // A SECOND month EARLIER in the calendar is a year rollover ("28 December - 3 January"), not a
+    // malformed string.
+    const rollover = mB < mA
+
+    // THE CANDIDATE START YEARS INCLUDE THE ONE BEFORE THE WINDOW, and that is not defensive
+    // padding — without it this branch drops a live event deterministically. A rollover range has
+    // its two ends in DIFFERENT calendar years, so anchoring the start at a window year is wrong
+    // whenever the window sits on the LATER side of the boundary: "26 December - 9 January"
+    // against a 5-12 Jan 2027 window would place the start at Dec 2027 and drop an event covering
+    // the whole window. The same shape hits a long exhibition written "15 October - 30 September".
+    // Trying an extra year can only ever add an intersecting placement, never remove one, so this
+    // widens in the safe direction.
+    const sy = new Date(startMs).getUTCFullYear()
+    const years = [...new Set([sy - 1, sy, new Date(endMs).getUTCFullYear()])]
+    return years.some((y) => {
+      const from = Date.UTC(y, mA, dA)
+      const to = Date.UTC(rollover ? y + 1 : y, mB, dB) + 86_399_999
+      // Belt-and-braces: unreachable as written (mA !== mB, so a non-rollover span always runs
+      // forward and a rollover one is pushed into the next year). Kept as a cheap invariant guard
+      // so a future edit to the ordering cannot silently produce a backwards span.
+      if (to < from) return false
+      return intersects(from, to)
+    })
+  }
+
   if (monthsFound.size !== 1) return null
   const month = [...monthsFound][0]
 
@@ -964,6 +1088,7 @@ async function generateCityEventsTavily(
   let urlsRejectedProvenance = 0
   let urlsRejectedNonSpecific = 0
   let eventsDroppedOutOfWindow = 0
+  let eventsDroppedNoDate = 0
   let datesUnparseable = 0
   const categories: CityEventCategory[] = []
   for (const rawCat of obj.categories as unknown[]) {
@@ -978,6 +1103,23 @@ async function generateCityEventsTavily(
       const title = capStr(ev['title'], 160)
       if (!title) continue
       const date = capStr(ev['date'], 60)
+
+      // NO DATE AT ALL => DROP, and deliberately HERE rather than inside eventDateInWindow.
+      //
+      // That function's contract is true = inside / false = OUTSIDE THE WINDOW / null = cannot
+      // judge. An empty string is not outside the window — it is ABSENT. Returning false for it
+      // would silently inflate `eventsDroppedOutOfWindow` with events that were never dated,
+      // destroying the one diagnostic that separates "the corpus is thin" from "the parser is
+      // blind". Same reasoning that keeps urlsRejectedProvenance and urlsRejectedNonSpecific
+      // apart. eventDateInWindow('') MUST keep returning null — the suite asserts it.
+      //
+      // The prompt ALREADY asks for this ("omit an event only when its snippet carries NO date
+      // information at all") and the 8 Aug run shipped "Poets of the Fall" with date "" anyway:
+      // A PROMPT INSTRUCTION IS NOT AN INVARIANT. No prompt text was changed here.
+      if (!date) {
+        eventsDroppedNoDate++
+        continue
+      }
 
       // WINDOW ENFORCED SERVER-SIDE (B3.4). `null` = unparseable = KEEP, so an unhandled date
       // shape degrades to the prompt-only behaviour rather than emptying a city. Checked BEFORE
@@ -1038,6 +1180,7 @@ async function generateCityEventsTavily(
     urlsRejectedProvenance,
     urlsRejectedNonSpecific,
     eventsDroppedOutOfWindow,
+    eventsDroppedNoDate,
     datesUnparseable,
     // FABRICATION PROXY — no new field needed, it is DERIVABLE: blank-url share =
     // eventsExtracted - urlsKept - urlsRejectedProvenance - urlsRejectedNonSpecific. An invented
