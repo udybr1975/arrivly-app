@@ -23,9 +23,12 @@ interface AptRow {
 // from the error text: ical.ts's "ran out of time" string is HOST-FACING copy that the
 // Step 7 alarm-text sweep is going to rewrite, and a detector that string-matches it would
 // break silently when that happens.
+// `stampFailed` rides along rather than being counted inside the mapper, because the mapper
+// runs 4-concurrent and this file deliberately keeps all aggregation in the single sequential
+// pass below. A deferred apartment never reaches the stamp, so its arm is always false.
 type Outcome =
-  | { apt: AptRow; deferred: true; result: null }
-  | { apt: AptRow; deferred: false; result: SyncResult }
+  | { apt: AptRow; deferred: true; result: null; stampFailed: false }
+  | { apt: AptRow; deferred: false; result: SyncResult; stampFailed: boolean }
 
 // Shared fetch budget for the whole run, as an ABSOLUTE deadline handed to EVERY
 // apartment — so the run is bounded no matter how the pool interleaves. A per-item
@@ -95,7 +98,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // alarm below depends on telling them apart.
     if (Date.now() >= deadlineAt) {
       console.warn('[cron-sync-ical] deferred, run deadline reached', { aptId: apt.id })
-      return { apt, deferred: true, result: null }
+      return { apt, deferred: true, result: null, stampFailed: false }
     }
 
     // STAMP THE ATTEMPT. Ordering is load-bearing in BOTH directions, same rule as d254df9:
@@ -124,6 +127,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return {
       apt,
       deferred: false,
+      stampFailed: Boolean(stampErr),
       result: await syncApartmentBookings(supabase, { id: apt.id, ical_urls: apt.ical_urls }, { deadlineAt }),
     }
   })
@@ -134,14 +138,61 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   // Single pass: outcome counts AND the existing byHost aggregation.
   //
-  // FAILURE IS KEYED ON A NON-EMPTY errors ARRAY — at least one feed this apartment TRIED
-  // could not be read — and NOT on imported === 0. This is where sync differs from the events
-  // cron, and getting it wrong would re-create a known defect: for events, refreshed === 0 is
-  // suspicious, but here ZERO NEW BOOKINGS IS THE NORMAL HEALTHY OUTCOME on most nights, so
-  // keying on imported would fire a total-failure alarm nearly every run.
+  // FAILURE IS KEYED ON result.failures — feeds that could not be READ — and on NOTHING else.
+  //
+  // NOT on imported === 0: for the events cron refreshed === 0 is suspicious, but here ZERO
+  // NEW BOOKINGS IS THE NORMAL HEALTHY OUTCOME on most nights, so keying on imported would
+  // fire a total-failure alarm nearly every run.
+  //
+  // NOT on errors.length either, which is what b2 did and what this commit fixes. `errors`
+  // mixes failures with NOTICES — the MAX_ICAL_URLS truncation notice fires before any fetch
+  // is attempted, so an apartment with >20 calendar links was classed failed on every run
+  // forever and could never increment `succeeded`; two such apartments alone could fire
+  // "All 2 attempted calendar syncs failed tonight" with nothing broken.
+  //
+  // SIDE EFFECT, and it is the correct answer rather than a compromise: an apartment admitted
+  // just before deadlineAt that reads part of its feeds and abandons the rest now counts as
+  // SUCCEEDED, which resolves b2's recorded third-outcome residual without inventing a third
+  // outcome. This detector asks exactly one question — "is everything broken?" — and a partial
+  // sync is positive evidence that it is not.
+  //
+  // KNOWN RESIDUAL, stated precisely because the sentence above would otherwise overclaim:
+  // `ok` means "NO FAILURE WAS RECORDED", NOT "work was done". At least two paths reach an
+  // empty success, and this list is not proven exhaustive:
+  //   (a) DEADLINE-ADJACENT. An apartment clears the deferral check at deadlineAt-1ms (the
+  //       stamp UPDATE then consumes the remainder, though any ~1ms suffices) and ical.ts
+  //       breaks at index 0 — notice-only, failures === 0, so ok++. The window is at most one
+  //       POOL-WIDTH: mapPool runs 4 workers off a shared cursor, so up to FOUR items can have
+  //       cleared the check at the instant the deadline passes. Not one.
+  //   (b) NO USABLE URL. ical_urls is non-empty but holds no https:// line, so the early
+  //       return yields failures === 0 AND AN EMPTY errors ARRAY. This one is COMPLETELY
+  //       SILENT — the "it is already loud through errors[]" mitigation does NOT cover it.
+  // Path (a) matters most: one such apartment makes `ok === 0` false and SILENCES the alarm,
+  // and it is CORRELATED with the slow outage the alarm exists to catch — the same shape
+  // d254df9 rejected for `deferred === 0`. (b) is orthogonal to an outage, so it does not
+  // weaken that argument.
+  //
+  // ACCEPTED, not fixed: a slow run is already loud through deferred/failed/errors[] in the
+  // JSON, and the alternative — counting a deadline-adjacent apartment as FAILED — is exactly
+  // the false positive this commit exists to remove. If it is ever tightened, the cheap form
+  // is a `read` count on SyncResult with ok requiring `failures === 0 && read > 0` — and the
+  // excluded apartment must go to a THIRD bucket, never to `failed`, with `attempted` adjusted
+  // to match, or it both resurrects that false positive and breaks two invariants this file
+  // relies on: `failed === attempted` in the alarm, and deferred + ok + failed ===
+  // apartments.length. DO NOT re-key on errors.length.
+  //
+  // Related and inherent, not a defect: a wholesale-failure alarm is single-success-
+  // suppressible by definition — one host with one healthy calendar holds ok >= 1 and mutes it
+  // fleet-wide. This alarm must never be the sole iCal health signal.
   let deferred = 0
   let failed = 0
   let ok = 0
+  // Surfaced because a persistently failing stamp is otherwise INVISIBLE — logged only. An
+  // apartment whose stamp never lands keeps its old ical_last_synced_at, so it silently pins
+  // the head of the queue every night and starves the tail: precisely the failure the ordering
+  // exists to prevent, with nothing revealing it. DELIBERATELY NOT in the alarm condition —
+  // this is a fairness fault, not an outage, and the alarm must keep meaning exactly one thing.
+  let stampFailures = 0
 
   for (const entry of synced) {
     // A hole — mapPool's safety net swallowed a thrown mapper and left the slot empty —
@@ -150,16 +201,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // is one more way to lose the signal this change exists to add.
     if (!entry) { failed++; continue }
     if (entry.deferred) { deferred++; continue }
+    if (entry.stampFailed) stampFailures++
 
     const { apt, result } = entry
     if (!result) { failed++; continue }
 
+    // The host-facing string list is UNCHANGED: every notice and every failure is still
+    // reported in errors[] exactly as before. Only the CLASSIFICATION moved off it.
     if (result.errors.length) {
-      failed++
       errors.push(...result.errors.map((e) => `${apt.name ?? apt.id}: ${e}`))
-    } else {
-      ok++
     }
+    if (result.failures > 0) failed++
+    else ok++
 
     if (result.imported > 0) {
       totalImported += result.imported
@@ -243,6 +296,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // and a count under the same name would be read as that flag.
     succeeded: ok,
     failed,
+    stampFailures,
     errors,
   })
 }

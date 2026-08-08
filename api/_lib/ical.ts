@@ -2,10 +2,28 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { randomInt } from 'node:crypto'
 import { safeFetchIcal } from './safe-fetch.js'
 
+/**
+ * `errors` and `failures` are NOT two views of the same thing — do not simplify one into
+ * the other.
+ *
+ * `errors` is everything worth telling the HOST: it mixes real failures with NOTICES that
+ * are not failures at all (the MAX_ICAL_URLS truncation notice, which fires before any
+ * fetch is even attempted, and the partial-sync notice when the time budget expires).
+ * It is host-facing copy, rendered by PropertySetup.tsx.
+ *
+ * `failures` counts ONLY feeds that could not be READ (or whose reconcile RPC errored) —
+ * the three genuine failure sites below, and nothing else. It exists because
+ * cron-sync-ical's wholesale-failure alarm must not count a notice as a failure: keying
+ * on `errors.length` classed an apartment with >20 calendar links as failed on every run
+ * forever, and two such apartments alone could fire "All 2 attempted calendar syncs
+ * failed tonight" when nothing had failed.
+ */
 export interface SyncResult {
   imported: number
   skipped: number
   errors: string[]
+  /** Feeds that could not be read, or whose reconcile RPC errored. Notices are NOT counted. */
+  failures: number
   capped?: boolean
 }
 
@@ -92,6 +110,8 @@ export async function syncApartmentBookings(
   let imported = 0
   let skipped = 0
   const errors: string[] = []
+  // Incremented at the THREE genuine failure sites only — never alongside a notice push.
+  let failures = 0
 
   const allUrls = (apartment.ical_urls ?? '')
     .split('\n')
@@ -99,9 +119,10 @@ export async function syncApartmentBookings(
     .filter((u) => u.startsWith('https://'))
   const urls = allUrls.slice(0, MAX_ICAL_URLS)
   if (allUrls.length > urls.length) {
+    // NOTICE, not a failure: nothing has been fetched yet, so nothing has failed.
     errors.push(`only the first ${MAX_ICAL_URLS} calendar links were synced`)
   }
-  if (urls.length === 0) return { imported, skipped, errors }
+  if (urls.length === 0) return { imported, skipped, errors, failures }
 
   let totalEvents = 0
   let capped = false
@@ -150,6 +171,7 @@ export async function syncApartmentBookings(
       const response = await safeFetchIcal(url)
       if (!response.ok) {
         errors.push(`${source}: HTTP ${response.status}`)
+        failures++ // FAILURE: the feed answered, but not with a calendar we can read.
         incompleteSources.add(source)
         continue
       }
@@ -172,11 +194,13 @@ export async function syncApartmentBookings(
       // transport error). Generic host-facing string only — no URL, no blocked-vs-network
       // distinction (no probing signal). Mark the source incomplete so we don't reconcile.
       errors.push(`${source}: couldn't be used (check it's a public https calendar link)`)
+      failures++ // FAILURE: the feed could not be read at all.
       incompleteSources.add(source)
     }
   }
 
   // Generic, host-safe, no URL and no host — same register as the fetch-failure string.
+  // NOTICE, not a failure: the feeds we DID read were read fine — this is a partial sync.
   if (ranOutOfTime) {
     errors.push("the sync ran out of time - not all calendars were read")
   }
@@ -184,7 +208,16 @@ export async function syncApartmentBookings(
   // Over the per-sync event cap => an abusive or malformed feed. Mint NOTHING and let the
   // caller alert: a partial 100-pass batch would still be an amplifier.
   if (capped) {
-    return { imported: 0, skipped: 0, errors: [...errors, 'too many calendar events - sync skipped'], capped: true }
+    // The appended string is a NOTICE too (the cap is our own safety limit, not a feed
+    // fault), so `failures` carries only whatever genuinely failed before the cap was hit.
+    // The caller alerts on `capped` in its own right, not through this count.
+    return {
+      imported: 0,
+      skipped: 0,
+      errors: [...errors, 'too many calendar events - sync skipped'],
+      failures,
+      capped: true,
+    }
   }
 
   // Reconcile each fully-fetched source exactly once. A source with any failed fetch is
@@ -200,6 +233,7 @@ export async function syncApartmentBookings(
     })
     if (error) {
       errors.push(`${source}: sync failed`)
+      failures++ // FAILURE: the feed was read, but reconciling it into bookings errored.
       continue
     }
     const res = (data ?? {}) as { imported?: number; updated?: number; cancelled?: number }
@@ -207,5 +241,5 @@ export async function syncApartmentBookings(
     skipped += res.updated ?? 0
   }
 
-  return { imported, skipped, errors }
+  return { imported, skipped, errors, failures }
 }
