@@ -88,6 +88,74 @@ const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile'
 const DEFAULT_TIMEOUT_MS = 30_000
 const DEFAULT_RETRIES = 2
 
+// ── Rate-limit / token observability ──────────────────────────────────────────────────────
+//
+// OBSERVABILITY ONLY. Nothing below feeds a decision: no brake, no throttle, no backoff keyed
+// on these values, no early return. This file decides WHICH model answers, never WHO may ask
+// or HOW OFTEN — every brake stays at its call site. Adding a limiter here would be a scope
+// violation, not an improvement.
+//
+// WHY IT EXISTS: Groq returns rate-limit state on EVERY response and nothing ever read it, so
+// CLAUDE.md carried "6K TPM org-wide" — which is the llama-3.1-8b-instant row, not ours. The
+// model actually used here (llama-3.3-70b-versatile) is 12K TPM / 1K RPD / 100K TPD. An
+// assumed ceiling survived because the real one was never observed. This closes that for good.
+//
+// Emitted once per HTTP ATTEMPT, so a retried call produces more than one line — deliberate,
+// since each attempt carries its own headers and the retried one is usually the interesting one.
+type UsageLog = Record<string, string | number>
+
+// Adds a field only when the header is present and non-empty, so absent limits log nothing
+// rather than null noise. Numeric values are coerced; anything else passes through verbatim so
+// an unexpected format stays visible instead of becoming NaN.
+function addHeader(out: UsageLog, key: string, res: Response, header: string): void {
+  const raw = res.headers.get(header)
+  if (raw == null || raw === '') return
+  const n = Number(raw)
+  out[key] = Number.isFinite(n) ? n : raw
+}
+
+// STRICT WHITELIST. Only the headers named here are ever read or logged — never the request
+// headers, and never anything derived from GROQ_API_KEY.
+function logGroqUsage(
+  surface: AiSurface,
+  model: string,
+  res: Response,
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null,
+): void {
+  try {
+    // `model` is an env VALUE (GROQ_MODEL) echoed on EVERY call, so it gets the same treatment
+    // resolveProvider gives AI_PROVIDER_* above: a mis-pasted key must not land in the logs on
+    // every request. scrubErr redacts gsk_/AIza/tvly- prefixes BEFORE truncating, so a key
+    // cannot survive as a fragment, and it leaves a real model name untouched.
+    //
+    // 64, not resolveProvider's 20: SIZE AN ENV-VALUE CAP FROM THE LONGEST PLAUSIBLE LEGITIMATE
+    // VALUE, NOT THE SHORTEST ONE IN FRONT OF YOU. That cap bounds a provider enum ('gemini',
+    // 6 chars); this one bounds a MODEL ID, and Groq's namespaced ids already run to 45
+    // (`meta-llama/llama-4-maverick-17b-128e-instruct`) — 40 would have clipped the very field
+    // this logging exists to observe.
+    const out: UsageLog = { surface, model: scrubErr(model, 64), status: res.status }
+    if (typeof usage?.prompt_tokens === 'number') out.promptTokens = usage.prompt_tokens
+    if (typeof usage?.completion_tokens === 'number') out.completionTokens = usage.completion_tokens
+    if (typeof usage?.total_tokens === 'number') out.totalTokens = usage.total_tokens
+    // NOTE: `x-ratelimit-limit-requests` is REQUESTS PER **DAY** (RPD), not per minute. Groq's
+    // naming is genuinely misleading here — do not read it as RPM.
+    addHeader(out, 'rpdLimit', res, 'x-ratelimit-limit-requests')
+    addHeader(out, 'rpdRemaining', res, 'x-ratelimit-remaining-requests')
+    // NOTE: `x-ratelimit-limit-tokens` is TOKENS PER **MINUTE** (TPM), not per day. The per-day
+    // token ceiling (TPD) is not returned as a header at all.
+    addHeader(out, 'tpmLimit', res, 'x-ratelimit-limit-tokens')
+    addHeader(out, 'tpmRemaining', res, 'x-ratelimit-remaining-tokens')
+    // Groq formats this as e.g. "7.66s"; passed through verbatim rather than parsed.
+    addHeader(out, 'tpmResetS', res, 'x-ratelimit-reset-tokens')
+    addHeader(out, 'retryAfter', res, 'retry-after') // present only on a 429
+    console.log('[ai-provider] groq usage', JSON.stringify(out))
+    // Same data at warn level so a 429 is visible without a log query.
+    if (res.status === 429) console.warn('[ai-provider] groq 429 rate limited', JSON.stringify(out))
+  } catch {
+    // Observability must NEVER fail a generation.
+  }
+}
+
 export async function aiGenerate(surface: AiSurface, opts: AiGenerateOpts): Promise<string> {
   const provider = resolveProvider(surface)
   if (provider === 'gemini') {
@@ -97,10 +165,12 @@ export async function aiGenerate(surface: AiSurface, opts: AiGenerateOpts): Prom
   }
   // 'groq' and 'poi' both land here: the POI pipeline still uses Groq for its PROSE leg, and
   // its data legs (Geoapify) are the caller's job, not this abstraction's.
-  return groqGenerate(opts)
+  // `surface` is threaded through for LOG ATTRIBUTION ONLY — it never selects a model, a key
+  // or a limit inside groqGenerate.
+  return groqGenerate(surface, opts)
 }
 
-async function groqGenerate(opts: AiGenerateOpts): Promise<string> {
+async function groqGenerate(surface: AiSurface, opts: AiGenerateOpts): Promise<string> {
   const apiKey = process.env.GROQ_API_KEY
   // Never interpolate the key into any message, log or thrown error. Thrown OUTSIDE the retry
   // closure, so a missing key fails immediately instead of burning attempts. `configError`
@@ -147,12 +217,21 @@ async function groqGenerate(opts: AiGenerateOpts): Promise<string> {
         // defeating the never-retry-4xx rule. `status` is the field isTransient reads first.
         const detail = scrubErr(await res.text().catch(() => ''), 200)
         console.warn(`[ai-provider] groq ${res.status} - ${detail}`)
+        // Logged on the NON-OK path too — the 429 is exactly where these headers matter, and
+        // there is no usage body to report. Purely additive: the error below is unchanged.
+        logGroqUsage(surface, model, res)
         const err = new Error(`groq_http_${res.status}`) as Error & { status?: number; detail?: string }
         err.status = res.status
         err.detail = detail
         throw err
       }
-      return (await res.json()) as { choices?: { message?: { content?: string } }[] }
+      const data = (await res.json()) as {
+        choices?: { message?: { content?: string } }[]
+        // OpenAI-compatible, and OPTIONAL — treated as absent rather than assumed present.
+        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+      }
+      logGroqUsage(surface, model, res, data.usage)
+      return data
     } finally {
       clearTimeout(timer)
     }
