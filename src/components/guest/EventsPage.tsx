@@ -82,7 +82,7 @@ export default function EventsPage({ apartmentId, city, accentColor, brandName, 
 
         <header className="mb-8">
           <p className="text-[10px] tracking-[0.2em] uppercase font-semibold mb-1.5" style={{ color: accentColor }}>What's on</p>
-          <h2 className="font-['Fraunces'] font-light text-2xl tracking-tight text-[#1c1c1a]">This week in {city}</h2>
+          <h2 className="font-['Fraunces'] font-light text-2xl tracking-tight text-[#1c1c1a]">What's on in {city}</h2>
         </header>
 
         {loading && (
@@ -97,7 +97,7 @@ export default function EventsPage({ apartmentId, city, accentColor, brandName, 
             <div className="w-14 h-14 rounded-full bg-[#fbfaf7] flex items-center justify-center text-2xl">🗓</div>
             <div>
               <p className="text-lg font-medium text-[#1c1c1a] mb-1">Back soon</p>
-              <p className="text-sm text-[#5b5853] leading-relaxed max-w-xs mx-auto">This week's events couldn't load right now. Try again in a little while.</p>
+              <p className="text-sm text-[#5b5853] leading-relaxed max-w-xs mx-auto">Events couldn't load right now. Try again in a little while.</p>
             </div>
             <button onClick={loadEvents} className="text-[10px] tracking-widest uppercase px-5 py-2.5 bg-transparent cursor-pointer" style={{ border: `1px solid ${accentColor}`, color: accentColor }}>Try again</button>
           </div>
@@ -107,11 +107,16 @@ export default function EventsPage({ apartmentId, city, accentColor, brandName, 
           <div className="space-y-8">
             <p className="text-xs text-[#9a958c] border-b border-[#e9e4d9] pb-4">{events.week}</p>
             {!hasEvents && (
-              <p className="text-sm text-[#5b5853] italic py-6 text-center">No major events found for this week — a good time to explore the neighbourhood picks.</p>
+              <p className="text-sm text-[#5b5853] italic py-6 text-center">No major events found right now — a good time to explore the neighbourhood picks.</p>
             )}
             {events.categories?.map((cat, i) => (
               cat.events && cat.events.length > 0 ? (
                 <section key={i}>
+                  {/* PINNED CONTRACT, not a label: 'This week' is the exact string the server
+                      seeds in the extraction prompt's JSON shape and uses as the category
+                      fallback (api/_lib/city-events.ts). Matching it suppresses a redundant
+                      heading above a single uncategorised list. Change either end and a stray
+                      header appears here. It is NOT a claim about the window, which is 30 days. */}
                   {cat.name && cat.name !== 'This week' && (
                     <h3 className="text-base font-medium text-[#1c1c1a] mb-4 flex items-center gap-3">{cat.name}<span className="h-px flex-1 bg-[#e9e4d9]" /></h3>
                   )}

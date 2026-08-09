@@ -337,3 +337,53 @@ test('eventDateInWindow — a window crossing New Year tries both years', () => 
   assert.equal(eventDateInWindow('20 January', s, e), false)
   assert.equal(eventDateInWindow('15 December', s, e), false)
 })
+
+// ── THE READ-TIME FILTER'S FAR BOUND (api/city-events.ts `dropPastEvents`) ────────────────────
+//
+// These pin a property of `eventDateInWindow` that is invisible at the 7/30-day windows every
+// other test in this file uses, and that ALREADY shipped as a defect once: the read filter was
+// first written with a 400-day far bound, which made it a NO-OP for the dominant date shape.
+//
+// THE MECHANISM, because it is not obvious from the call site: the month-name branches INFER the
+// year from the bounds they are handed (the single-month branch never reads a 4-digit year out of
+// the string at all) and keep on ANY intersecting placement. A span of 365+ days therefore
+// contains every (day, month) pair at least once and the predicate CAN NEVER RETURN false.
+//
+// DURABLE RULE: A DATE FILTER'S FAR BOUND IS PART OF ITS PARSER. Reusing a well-tested predicate
+// does not carry its test coverage to a new caller's parameters.
+const READ_START = Date.UTC(2026, 7, 9) // 9 Aug 2026, the measured run's date
+const READ_FAR_BOUND_DAYS = 45 // MUST match READ_FILTER_FAR_BOUND_DAYS in api/city-events.ts
+const READ_END = READ_START + READ_FAR_BOUND_DAYS * 86_400_000 + 86_399_999
+
+test('read filter far bound — a PAST bare month-name date is actually dropped', () => {
+  // The whole point of the filter. At a 400-day bound every one of these was KEPT via its
+  // following-year placement.
+  assert.equal(eventDateInWindow('5 August', READ_START, READ_END), false)
+  assert.equal(eventDateInWindow('August 5', READ_START, READ_END), false)
+  assert.equal(eventDateInWindow('1-3 August', READ_START, READ_END), false)
+  // A stated year changes nothing — it never enters the day list — so this must not be read as
+  // evidence the year was honoured.
+  assert.equal(eventDateInWindow('5 August 2026', READ_START, READ_END), false)
+})
+
+test('read filter far bound — a 365+ day span makes the predicate unable to say false', () => {
+  // Locks in WHY the bound must stay under a year. If this ever starts failing, the year
+  // inference changed and the derivation at READ_FILTER_FAR_BOUND_DAYS must be redone.
+  const farEnd = READ_START + 400 * 86_400_000 + 86_399_999
+  assert.notEqual(eventDateInWindow('5 August', READ_START, farEnd), false)
+  assert.notEqual(eventDateInWindow('20 June - 5 July', READ_START, farEnd), false)
+})
+
+test('read filter far bound — nothing still ahead is dropped, incl. long runs', () => {
+  // An event still ahead is at most 30 days out by construction (eventWindow), so 45 days of
+  // bound must keep all of these.
+  assert.equal(eventDateInWindow('9 August', READ_START, READ_END), true, 'today must be kept')
+  assert.equal(eventDateInWindow('8 September', READ_START, READ_END), true, 'window edge')
+  // Ranges test INTERSECTION, not containment: a long run that started before today but is live
+  // through the stay must survive.
+  assert.equal(eventDateInWindow('1 August - 30 November', READ_START, READ_END), true)
+  assert.equal(eventDateInWindow('2026-08-01', READ_START, READ_END), false, 'ISO past drops')
+  // The null contract is what keeps the filter safe, and it must survive the tighter bound.
+  assert.equal(eventDateInWindow('all week', READ_START, READ_END), null)
+  assert.equal(eventDateInWindow('', READ_START, READ_END), null)
+})

@@ -31,6 +31,13 @@ export interface CityEventCategory {
   events: CityEventItem[]
 }
 export interface CityEventsPayload {
+  /**
+   * DO NOT RENAME THIS FIELD. Its VALUE is now a 30-day label ("9 August 2026 – 8 September
+   * 2026"), which reads oddly next to the key name — that mismatch is ACCEPTED, not an oversight.
+   * The key is the persisted JSON shape: renaming it invalidates every cached row in
+   * `city_events_by_city` AND `city_events_cache` and breaks `EventsData` on the guest reader in
+   * the same deploy. Someone will eventually try to tidy this; it is an outage, not a tidy-up.
+   */
   week: string
   categories: CityEventCategory[]
 }
@@ -308,22 +315,44 @@ export async function stampEventsAttempt(db: SupabaseClient, ref: EventsCacheRef
 // Window helper for the Tavily path. NOTE the Gemini branch still derives its own window inline
 // (unchanged, deliberately — routing it through here would edit the kept path for no behavioural
 // gain), so this does NOT protect the two prompts from drifting on dates.
+//
+// THE TWO PATHS NOW DISAGREE ON WINDOW LENGTH, AND THAT IS DELIBERATE: the Tavily window is 30
+// DAYS, the Gemini branch stays at 7. Do NOT "converge" them. AI_PROVIDER_EVENTS=gemini is
+// forbidden for events (it silently disables BOTH server-side validators — the window check and
+// the aggregator-url check live only on the Tavily path), so that branch is dead weight kept for
+// shape, not an operational lever. Widening it would buy nothing and imply it is reachable.
 const monthName = (d: Date) =>
   d.toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' })
 
+/**
+ * THE SINGLE SOURCE OF THE TAVILY WINDOW. `startMs`/`endMs` (the server-side date check), the
+ * `monthYear` search terms and the dates the prompt states all derive from here, so the window
+ * cannot drift between what we search for, what we ask for, and what we enforce.
+ *
+ * 30 DAYS, WAS 7 (measured, not projected): the 9 Aug 2026 09:01 UTC run for fi:helsinki extracted
+ * ONE event for a whole week with `eventsDroppedOutOfWindow` 5 — 4 Tavily credits and ~5.5k Groq
+ * tokens spent to show a guest a single line, with recall falling 6 → 4 → 2 → 1 across recent runs.
+ * The parser was not the problem (`datesUnparseable` 0, `eventsDroppedNoDate` 0); the WINDOW was
+ * too narrow to be worth the spend. The same four searches and the same input tokens now keep
+ * those five events instead of dropping them. This is a QUALITY change first, a cost change second.
+ */
 function eventWindow(apt: { city: string | null; country: string | null }) {
   const now = new Date()
   const until = new Date(now)
-  until.setUTCDate(now.getUTCDate() + 7)
+  until.setUTCDate(now.getUTCDate() + 30)
   const today = fmt(now)
   const untilStr = fmt(until)
   const city = (apt.city ?? '').slice(0, 80)
   const country = (apt.country ?? '').slice(0, 80)
 
-  // Literal month + year for the search queries (B3.3). A 7-day window regularly STRADDLES a
-  // month boundary, so both months are named when they differ — otherwise half the window is
+  // Literal month + year for the search queries (B3.3). The window regularly STRADDLES a month
+  // boundary, so both months are named when they differ — otherwise half the window is
   // unsearchable. Years are collapsed when equal ("August September 2026") and both stated when
   // the window crosses New Year ("December 2026 January 2027").
+  //
+  // AT 30 DAYS THE TWO-MONTH NAMING IS NOW THE NORMAL CASE, not the occasional one — a 30-day
+  // window straddles a boundary on all but one start date per month. That is CORRECT, not a bug:
+  // the second month is exactly the half of the window a single-month query could not reach.
   const m1 = monthName(now)
   const m2 = monthName(until)
   const y1 = now.getUTCFullYear()
@@ -341,6 +370,11 @@ function eventWindow(apt: { city: string | null; country: string | null }) {
 
 // Bounds applied to EXTRACTED events. The model is steered by arbitrary third-party web text,
 // and the result renders on the guest page, so every field is capped at parse time.
+// NOTE THE DELIBERATE ASYMMETRY WITH THE PROMPT: the extraction prompt now asks for 20-30 events
+// (the 30-day window), while this server cap still admits 15. That is intentional and NOT a limit
+// this change touches — the cap is the guest-page bound, the prompt target is a recall lever, and
+// asking high against a firm cap is what stops the model settling at the floor. Reaching 15 here
+// is the SUCCESS condition, not truncation of a failure: measured recall before this change was 1.
 const MAX_EVENTS = 15
 // Corpus cap fed to the extractor — see the token arithmetic at the dedupe site. 14 (B3.3, was
 // 12): denser calendar snippets are worth more slots, and the extra input is paid for out of the
@@ -684,7 +718,8 @@ export function eventDateInWindow(dateStr: string, startMs: number, endMs: numbe
 }
 
 /**
- * Generate the next-7-days city events for an apartment.
+ * Generate the next-30-days city events for an apartment (Tavily path — the Gemini branch is
+ * still 7 days by design; see the divergence note at `eventWindow`).
  * Returns { payload } on success, { payload: null } on any failure (NEVER throws) — and a null
  * payload is never cached by any of the three callers, so a bad run leaves the cache intact.
  */
@@ -832,9 +867,10 @@ async function generateCityEventsTavily(
   // the PAGE's publication / last-indexed date — NOT the date of the events listed on it. A city
   // events calendar is a long-lived page that may have been published months ago while listing
   // next week's programme, so the default excluded exactly the highest-signal sources and biased
-  // the corpus toward freshly-published low-signal pages. The 7-day window is still enforced
-  // TWICE downstream (the extraction prompt's explicit start/end dates, and the per-event date
-  // field), so omitting the search filter does not widen what reaches the guest.
+  // the corpus toward freshly-published low-signal pages. The window (30 days — see `eventWindow`)
+  // is still enforced TWICE downstream (the extraction prompt's explicit start/end dates, and
+  // `eventDateInWindow` on the per-event date field), so omitting the search filter does not
+  // widen what reaches the guest.
   const perQuery: WebResult[][] = []
   const tavilyResults: number[] = []
   for (const { q } of queries) {
@@ -859,6 +895,16 @@ async function generateCityEventsTavily(
   // tag). A snippet costs the SUM of EVERY capped field plus JSON scaffolding, so per snippet:
   //   worst case  140 title + 300 url + 900 content + 40 scaffolding + 20 theme = ~1400 chars
   //   typical     ~60 title + ~80 url + ~600 content + 40 + 20 = ~800 chars
+  // ⚠ EVERY "6K TPM" FIGURE BELOW IS SIZED AGAINST THE WRONG MODEL'S ROW — CORRECTED at the
+  // `maxTokens` site further down, which is now the authority for this arithmetic. The real
+  // ceiling for `llama-3.3-70b-versatile` is 12,000 TPM (6K is the `llama-3.1-8b-instant` row),
+  // and Groq debits `promptTokens + maxTokens` — the RESERVATION, not the completion. The lines
+  // below are LEFT AS WRITTEN so the B3.3/B3.4/B3.5 reasoning stays traceable; read them as
+  // "against a ceiling half the real size", which makes every conclusion here CONSERVATIVE.
+  // Two specific conclusions below are FALSE at 12,000 TPM: the "ALL-CAPS ... OVER the ceiling"
+  // line, and "an all-fields-at-cap run can self-429" — at 3,500 reserved that case is ~9.4k of
+  // 12,000. Do not re-derive from these numbers; re-derive from the `maxTokens` block.
+  //
   // Against the 6K TPM ORG-WIDE Groq ceiling, which counts INPUT PLUS OUTPUT:
   //   TYPICAL  14 x 800 = ~11.2k chars ~= 2.8k in + ~585 prompt + ~1.2-2k real output ~= 4.6-5.4k.
   //   ALL-CAPS 14 x 1400 = ~19.6k chars ~= 5.3k in + ~585 + 2048 out ~= 7.9k — OVER the ceiling.
@@ -953,13 +999,13 @@ async function generateCityEventsTavily(
   // recall is still short after this, the remaining levers are `include_raw_content` and a paid tier
   // at graduation, NOT more prompt tuning.
   const prompt =
-    `Today is ${today}. Extract real, specific events happening in ${place} in the next 7 days ` +
+    `Today is ${today}. Extract real, specific events happening in ${place} in the next 30 days ` +
     `from the SNIPPETS below. ` +
     // THE TARGET, with a FLOOR. The line this replaces ("Accuracy matters more than quantity —
     // returning few events, or none, is CORRECT") was the single most suppressive clause in the
     // prompt: it explicitly AUTHORISED the thin result we kept getting. Both failure modes are now
     // named, because only stating one of them is what biased the model.
-    `AIM FOR 10-15 EVENTS; fewer than 8 only if the snippets genuinely contain fewer. BOTH ` +
+    `AIM FOR 20-30 EVENTS; fewer than 15 only if the snippets genuinely contain fewer. BOTH ` +
     `directions are failures: inventing an event, AND returning 3 events when the snippets ` +
     `support 12. ` +
     // THE ONE CLAUSE DELIBERATELY KEPT AT FULL STRENGTH, and the reason is structural: fabricating a
@@ -981,6 +1027,10 @@ async function generateCityEventsTavily(
     `date information at all. ` +
     `Skip exact duplicates and generic "things to do" filler. ` +
     `Return ONLY raw JSON — no markdown, no code fences — shaped exactly as: ` +
+    // BOTH LITERALS IN THIS SHAPE ARE PINNED CONTRACTS, not wording. `week` is the persisted JSON
+    // key (see CityEventsPayload — renaming it invalidates every cached row and the guest reader),
+    // and `This week` is the exact string EventsPage.tsx matches to SUPPRESS the category header.
+    // Neither is a claim about the window length, which is 30 days and stated separately below.
     `{"week":"${weekLabel}","categories":[{"name":"This week","events":[{"title":"","venue":"","date":"","desc":"","price":"","url":""}]}]}. ` +
     // `date (as stated in the snippet)` — was "day or date within the window", the ELEVENTH clause
     // duplicating what `eventDateInWindow` enforces, and it sat AFTER the softened paragraph so it
@@ -1040,10 +1090,35 @@ async function generateCityEventsTavily(
     raw = await aiGenerate('events', {
       prompt,
       json: true,
-      // 2048 (B3.3, was 3072): 15 events x 6 short capped fields needs ~1.5k, so this has
-      // headroom — and it is what pays for the denser input above, since Groq's 6K TPM ceiling
-      // counts INPUT PLUS OUTPUT.
-      maxTokens: 2048,
+      // 3500 (was 2048). TWO corrections are folded in here, and the first is why this value was
+      // ever constrained:
+      //
+      // 1. THE 6K TPM FIGURE THE OLD COMMENT CITED WAS THE WRONG MODEL'S ROW. Verified today
+      //    against the production key and a live response header:
+      //      llama-3.3-70b-versatile = 12,000 TPM, 1,000 RPD, 100,000 TPD (org-wide).
+      //    6K TPM is the llama-3.1-8b-instant row. Every "6K TPM ORG-WIDE" arithmetic comment in
+      //    this file was sized against a ceiling twice as tight as the real one.
+      //
+      // 2. GROQ DEBITS TPM AS promptTokens + maxTokens — THE RESERVATION, NEVER THE ACTUAL
+      //    COMPLETION. Measured: 5,031 prompt + 2,048 reserved = 7,079, and the response's
+      //    tpmRemaining was exactly 12,000 - 7,079. That run GENERATED 492 tokens and was BILLED
+      //    2,048. Consequence that must survive every future edit to this line: AN UNUSED OUTPUT
+      //    CAP IS PURE WASTE, and an oversized one throttles the whole org for nothing. Size it to
+      //    what the target output actually needs — never "round up for safety".
+      //
+      // ARITHMETIC: ~5,031 prompt + 3,500 reserved = ~8,531 of 12,000. Fits, with the remainder
+      // left for a coincident guest-chat turn on the shared org pool. An all-fields-at-cap corpus
+      // is ~5.9k + 3,500 = ~9.4k of 12,000 — still inside, unlike under the old 6K assumption.
+      //
+      // THIS ARITHMETIC IS INVALIDATED BY AN ENV FLIP: `GROQ_MODEL` (ai-provider.ts) overrides the
+      // model, and pointing it at `llama-3.1-8b-instant` restores a REAL 6K ceiling, at which
+      // ~8.5k does not fit. Re-derive before changing that variable.
+      //
+      // TRUNCATION DETECTION IS NOW MORE IMPORTANT, NOT LESS: at a 20-30 event target the output
+      // side is where this call gets tight. `[city-events] extraction parse failed` logs `rawLen`
+      // — ~6-8k chars means TRUNCATION, not malformed JSON, and truncation is worse than a 429
+      // because it is deterministic (see the note at the desc field spec above).
+      maxTokens: 3500,
       retries: 1,
       timeoutMs: 20000,
     })
@@ -1156,6 +1231,11 @@ async function generateCityEventsTavily(
       })
       eventsExtracted++
     }
+    // THE LITERAL 'This week' IS LOAD-BEARING UI COUPLING, not a label. `EventsPage.tsx`
+    // SUPPRESSES the category header when `cat.name === 'This week'` exactly, so a single
+    // uncategorised list renders without a redundant heading above it. Change this string — here
+    // or in the prompt's JSON shape, which seeds the same literal — and a stray header appears on
+    // the guest page. The window is 30 days now; the string is NOT a claim about the window.
     if (events.length > 0) categories.push({ name: capStr(cat.name, 80) || 'This week', events })
   }
 
