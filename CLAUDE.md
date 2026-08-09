@@ -252,10 +252,6 @@ Each high-volume / public surface has its OWN no-card AI Studio key (separate fr
 - `api/public-pricing.ts` cache is `s-maxage=60` — admin trial/price edits show on the landing within ~1 min.
 
 ### Tracked security follow-ups (S19; updated S24)
-- ~~**`guests` readable by ALL authenticated hosts**~~ **RESOLVED S24 (F-01)** — guest creation moved server-side (`api/create-booking`), `guests_host_read` replaced with a host-scoped SELECT policy. Verified live: cross-tenant overlap 0.
-- ~~**`guests_insert_open` anon INSERT**~~ **RESOLVED S24 (F-02)** — policy dropped; anon + authenticated INSERT revoked (service-role inserts only).
-- ~~**`function_search_path_mutable` on `set_updated_at` + `auth_owns_apartment`**~~ **RESOLVED S24** — `search_path=public` pinned on both.
-- ~~**Non-public SECURITY DEFINER EXECUTE grants** (`auth_owns_apartment`, `enforce_property_cap`, `handle_new_user`)~~ **RESOLVED S24** — PUBLIC EXECUTE revoked (anon/authenticated can no longer RPC them). `guest_host_card` remains anon-callable BY DESIGN (guest page reads host branding).
 - **STILL OPEN — leaked-password protection disabled** (Auth dashboard HaveIBeenPwned toggle; pending).
 - **STILL OPEN — `api/guest-state.ts` rate limiter is per-instance best-effort** (serverless memory not shared) — a shared-store / Vercel-firewall limiter is a later option.
 - **STILL OPEN — QR key rotation:** a leaked per-apartment key is revocable only by rotating `apartment_qr_secrets.qr_secret`, which invalidates every printed QR for that apartment (no per-guest revocation).
@@ -442,6 +438,23 @@ Each high-volume / public surface has its OWN no-card AI Studio key (separate fr
   plausible country-name character class, and a word-cap tight enough to block it also blocks
   "Democratic Republic of the Congo". The country now derives from the key's own validated
   2-letter code via `Intl.DisplayNames` — **fixed alphabet in, ICU out, no host text in the path.**
+
+- **WHEN A COMMENT QUANTIFIES A WINDOW, DERIVE THE NUMBER FROM THE CONCURRENCY MODEL, not from the
+  sentence that reads well (Aug 8 2026).** THREE off-by-a-boundary claims in ONE session, all in
+  **PROSE about time and concurrency**, all caught by the gates with the **code correct each
+  time**: (a) a bound on when work **STARTS** described as one on when it **FINISHES**; (b) "reads
+  some feeds" when it can read **ZERO**; (c) "one apartment wide" when `mapPool`'s 4 workers make
+  it a **POOL-WIDTH**. A comment overstating detector coverage stops the next reader re-deriving it.
+
+- **A TEST THAT NEVER RAN THE CODE UNDER TEST IS WORSE THAN NO TEST (Aug 8 2026).** An
+  RLS-simulation probe used a **fabricated `sub` UUID**, so RLS blocked the UPDATE, zero rows
+  changed, **the trigger was never exercised — and it LOOKED like a pass.** Caught only because an
+  unrelated column in the same statement also failed to change. **Assert that the control you are
+  NOT testing let the write through.**
+
+- **SEPARATE NOTICES FROM FAILURES BEFORE ANY DETECTOR KEYS ON THEM (Aug 8 2026).** One `errors[]`
+  serving **both host copy AND machine classification** misclassifies: a notice firing before any
+  work makes a healthy unit **permanently "failed"**. Split the COUNT, leave the strings alone.
 
 **THE DURABLE LESSON — BOTH REVIEW GATES INDEPENDENTLY CAUGHT A DEFECT IN THE PROMPT'S OWN SPEC,
 not in the code.** The instruction was to gate the alarm on `deferred === 0`. That is **wrong in
@@ -741,14 +754,40 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   because `generated_at` already staggers naturally. Also skip expired hosts, and log outcomes.
 - A `demo-create` cooldown was NOT built (secondary surface: Turnstile + one-demo gated).
   Fail-closed reconsideration remains a recorded non-blocking option.
-- **OPEN 1 — THE DATE-WINDOW GUARD IS INERT ON NON-ENGLISH DATES. PROMOTED (Aug 7 2026).** The
-  12:45 UTC run showed **`datesUnparseable` 5 of 8** and `eventsDroppedOutOfWindow` 2, with
-  **"20 August - 1 November"** and **"28 August - 6 September"** surviving a 7-14 August window,
-  because `eventDateInWindow` returns `null` = KEEP for anything it cannot parse. **NOT a
-  regression — the parser is unchanged — but the EXPOSURE GREW: on a shared city row one bad
-  parse now reaches EVERY host in that city, not one.** That is what promotes it. Fix is a
-  `d.m.yyyy` parse branch: small, testable, no AI involved, and `npm run test:city-events` already
-  exists to pin it.
+- ~~**OPEN 1 — DATE-WINDOW GUARD INERT ON NON-ENGLISH DATES**~~ **CLOSED by `cc8e870` — BOTH
+  HALVES OF THE DIAGNOSIS WERE WRONG.** The named cause (non-English dates) and the prescribed fix
+  (a `d.m.yyyy` branch) would have caught **NONE** of the cited survivors: each was an ENGLISH
+  **CROSS-MONTH RANGE** hitting a deliberate `size !== 1 -> null` branch. `datesUnparseable` pooled
+  THREE populations — cross-month ranges / empty date / `d.m.yyyy`. Evidence: docs/history.md,
+  "Aug 8 2026 — date-window guard: the measured evidence".
+- **CLAUDE.md SIZE IS NOW STRUCTURAL, not a trim problem.** 149,873 chars / 151,230 **BYTES** —
+  only **127 chars under the 150,000 working limit** (already 150,186 bytes BEFORE this session,
+  so the byte overage is pre-existing). The
+  one-record rule **CAPS GROWTH BUT CREATES NO HEADROOM** — this close took **FOUR rounds**
+  against the conservation gate. Also measured: **an honest pointer costs ~half a move's saving**,
+  so archiving has a floor on what it can return. **NEXT: a dedicated restructuring session with
+  the conservation gate** — candidates are splitting `## Lessons / learnings` (35,514) into ACTIVE
+  CONSTRAINTS vs ARCHIVED LEARNINGS, and PHASE I (15,230) with the permanent Tiqets licence
+  obligations and the locked GYG never-intermix rule **HOISTED FIRST**. Do NOT attempt either at a
+  session close.
+- **OPEN — STEP 7 / SELF-ATTACK DRILL (argued in `cron-sync-ical.ts` + commits):** `ok` = "no
+  failure recorded", NOT "work was done" — two in-code empty-success paths (deadline-adjacent,
+  window = one **POOL-WIDTH**; the SILENT no-`https://` path), not exhaustive. Alarm is
+  **single-success-suppressible**, never the sole iCal health signal. Cron ignores
+  `result.capped`. ntfy is a third consumer of `deferred + ok + failed === apartments.length`.
+  `PropertySetup.tsx`'s "Calendar synced" toast hides the strings (UI, mockup-first).
+- **OPEN — CITY COMPRESSION MEASURED, NOT PROJECTED (Aug 8 2026), and it is WEAK EVIDENCE.** The
+  fleet is **10 apartments across 8 cities**, Helsinki the only city with more than one. Fully
+  backfilled the cron would run **8 units for 10 apartments — about 1.25x compression, NOT a
+  multiple.** The recorded ~8-apartment Tavily runway becomes **~10**. **CAVEAT, and it is the
+  whole point: this is a TEST fleet whose geography was CHOSEN**, so it says almost nothing about
+  real host clustering — which is the entire lever. **Re-derive at >= 10 paying hosts; that is
+  when the card decision should be taken**, not at the 50-host milestone.
+- **OPEN — THE LEAN-CONTEXT RULE IS NOW A MEASURED CONSTRAINT, not a design preference.** The
+  Aug 8 run measured **`corpusChars` 15,102 — up 27% from B3.5's 11,195** — roughly **5.4-5.9k
+  tokens against Groq's 6K TPM ORG-WIDE ceiling**. That ONE call nearly filled it. **Step 6 adds
+  guest chat to the SAME pool**, so PILOT STEP 2's rule (b) — the router's ungrounded leg must not
+  embed the guide — is now backed by measurement.
 - ~~**OPEN — LRU ROTATION CAN STALL**~~ **CLOSED by `73587d3`.** `last_attempted_at` on
   `city_events_by_city` is stamped on success, B3.1 skip AND failure (not on deferral), so a city
   that consistently fails no longer pins the head of the queue. **The per-apartment fallback
@@ -964,69 +1003,52 @@ deliberately rather than by accident.
 > Moved to docs/history.md — "SESSION Aug 7 2026 — B3.5 smoke PASSED, cron concurrency fixed, CLAUDE.md split". Superseded by the full-day record below.
 > Moved to docs/history.md — "SESSION CLOSE — Aug 6 2026: pilot Steps 4 and 5 shipped, city-cache scoped, B3.5 shipped".
 
-## SESSION Aug 7 2026 — the city-level events cache, built and live
+## SESSION Aug 8 2026 — date-window guard corrected; iCal sync bounded, fair and honest
 
-**HEAD `9291f74`, verified live: deploy `dpl_9g3FPzPyGX5PQF79odhm87aJB5Bq` READY.** Four code
-commits, three migrations, one docs split. Events are now cached per CITY instead of per
-APARTMENT, so N apartments in one city cost ONE search and ONE bill instead of N.
+**HEAD `4cce676`. Four commits, three migrations, all HEAD == Vercel READY when shipped.**
 
-### THE FOUR COMMITS
-- **`d254df9` — `cron-refresh-events` correct at concurrency 1.** Two apartments in flight
-  breached Groq's 6K TPM ORG-WIDE ceiling deterministically, starving guest-chat, the guide and
-  daily-greeting across every tenant. Concurrency 1 alone would have been incomplete: serialising
-  a pool whose items cost ~75s under a 150s `maxDuration` means run 3+ is killed mid-flight,
-  SILENTLY — no JSON summary, no wholesale-failure ntfy. So also a **65s `START_DEADLINE_MS`**
-  that defers rather than starting work it cannot finish, **least-recently-refreshed ordering** so
-  the deadline cannot starve a fixed tail, and the alarm scoped to `attempted`.
-- **`48eb2e6` — canonical city identity (cache commit 1 of 3).** `reverseGeocode()` in
-  `_lib/geo.ts` reusing the SAME 550ms gate as forward geocoding (the LocationIQ limit is
-  per-key, not per-endpoint); `POST /api/resolve-canonical-city`; `GET
-  /api/backfill-canonical-city`; fire-and-forget from `PropertySetup` only when the coordinates
-  actually CHANGED. `normalizecity=1` and `accept-language=en` are both load-bearing.
-- **`73587d3` — the cache becomes CITY-KEYED (commit 2).** One shared helper, `eventsCacheRef` in
-  `_lib/city-events.ts`, owns WHERE the row lives; each caller keeps its own guards, counters,
-  alarms and copy. Cron does ONE unit of work per distinct city key plus one per unkeyed
-  apartment. Ordering moved to **`last_attempted_at`** — the OPEN-1 fix from `d254df9`: it is
-  stamped on success, B3.1 skip AND failure, but deliberately NOT on deferral, because a deferred
-  unit was never attempted.
-- **`9291f74` — LocationIQ counter (commit 3).** `bump_api_counter` on
-  `/api/resolve-canonical-city`, 20/hour, caller-keyed, placed after the ownership check and
-  before the vendor call. Fails closed but SOFTLY — `200 { resolved: false, reason }`, never a
-  4xx, because the caller is fire-and-forget and must never fail a save. Registered in
-  `cron-spend-audit.ts` as `'resolve-canonical-city': 60`.
+- **`cc8e870` — `eventDateInWindow`.** Empty-date events dropped **AT THE CALL SITE** with their
+  own `eventsDroppedNoDate` counter — **not inside the function**, whose `null` contract means
+  "cannot judge"; returning `false` would have corrupted `eventsDroppedOutOfWindow`. Cross-month
+  ranges judged when unambiguous. `d.m.yyyy` incl. ranges, **d.m-vs-m.d ambiguity resolved by
+  WIDENING** (union of both readings) rather than choosing. **TWO TEST ASSERTIONS DELIBERATELY
+  CHANGED, not weakened** — they pinned the old keep-everything branch. Suite 24/24.
+- **`dc04dc1` (b1) — optional absolute `deadlineAt`. THE BOUND WENT IN THE URL LOOP, NOT THE
+  CRON:** 20 links x 10s = 200s vs maxDuration 150, and a cron-level start-deadline fixes
+  **NEITHER** caller — the interactive route 504s with its counter unit already spent. Both opt in
+  (115s / 100s). Unfetched URLs enter `incompleteSources` **INCLUSIVE of the abandoned index**;
+  without that `reconcile_ical_bookings` soft-cancels live bookings that existed only in an
+  **UNREAD** feed. **Gate must-fix:** the deadline bounds when a fetch **STARTS, not FINISHES**, so
+  the last can overrun 10s — reserves cut 125->115 and 110->100, cron overrun modelled as **+10s
+  WALL CLOCK** (4 workers overrun concurrently, not additively).
+- **`d5cc9e7` (b2).** Least-recently-synced ordering (**ASC, NULLS FIRST — Postgres defaults to
+  NULLS LAST, the exact inversion of intent**); deferral **reusing `deadlineAt`, no second
+  constant**; attempt stamp **AFTER the deferral check, BEFORE the sync**; this cron's first
+  wholesale-failure alarm, on `attempted >= 2 && ok === 0 && failed === attempted`. **`>= 2` is a
+  DELIBERATE DEPARTURE from `d254df9`:** at 1 the claim is indistinguishable from one host's broken
+  link — the B3.2 alarm-fatigue cost. Deferral enters as **`attempted`**, never `deferred === 0`.
+- **`4cce676` (b3) — `SyncResult.failures`,** at exactly the three genuine failure sites and **no
+  notice site**, required on all three return paths. b2 keyed `failed` on `errors.length > 0`, but
+  **`errors` mixes NOTICES with FAILURES and the MAX_ICAL_URLS notice fires UNCONDITIONALLY BEFORE
+  ANY FETCH** — so a >20-link apartment was `failed` forever, never `succeeded`. `errors[]`
+  unchanged (host copy; Step 7 rewrites it). `stampFailures` in JSON, kept **OUT** of the alarm.
 
 ### THE THREE MIGRATIONS — applied via Supabase MCP, in NO commit
 **A future session reading only git history will not see these.**
-- **`add_canonical_city_columns`** — five nullable `canonical_*` columns on `apartments` plus a
-  partial index on the key.
-- **`create_city_events_by_city`** — `city_key` PK, `payload`, `generated_at`,
-  `last_attempted_at`. RLS ON, ZERO policies, anon/authenticated hold nothing — **verified
-  against the LIVE ACL, not against the statement having run without error.**
-- **`protect_canonical_city_columns`** — BEFORE UPDATE trigger reverting all five `canonical_*`
-  columns unless `current_user` is `service_role` / `postgres` / `supabase_admin`.
+- **`add_ical_last_synced_at`** — the column + `trg_protect_ical_sync` (BEFORE UPDATE).
+- **`rename_ical_sync_trigger_to_convention`** — the first name broke the `trg_` convention.
+- **`protect_ical_sync_column_on_insert`** — the UPDATE guard left row **CREATION** uncovered;
+  `OLD` does not exist on INSERT, so it needed a `TG_OP` branch. **Live impact NIL, and why it was
+  closed anyway is the durable part:** that argument rests entirely on `ASC NULLS FIRST` in a
+  TypeScript file, and **a DB-level security property must not depend on application code that can
+  change without anyone re-deriving it.**
 
-### LIVE PROOF — measured, not assumed
-Sweet home + Test Apartment 1 both resolve to **`fi:helsinki`** and share ONE row; Casa Marco
-`es:barcelona`; Maison Lumiere `fr:paris`. **FIVE apartments are unkeyed and still on their own
-rows, so the per-apartment fallback is the COMMON path today, not an edge case** — it must stay
-behaviourally identical to pre-commit-2 production. Trigger verified THREE ways: an
-`authenticated` write of the key was reverted, a `service_role` write landed, an ordinary host
-save of a normal column was unaffected. First city-keyed generation smoke-tested 12:45 UTC — city
-row written, `last_attempted_at` stamped, the per-apartment row untouched at 09:01:22.
+All three were **VERIFIED AGAINST LIVE BEHAVIOUR**, not against a statement running without
+error — observations in docs/history.md, "Aug 8 2026 — date-window guard: the measured
+evidence".
 
-### STATUS CHANGE — do not delete this as dead code
-Commit 2's **key/city AGREEMENT CHECK** in `_lib/city-events.ts` was LOAD-BEARING when written,
-because `authenticated` then held UPDATE on those columns. `protect_canonical_city_columns`
-retired that. **It is now DEFENCE IN DEPTH, not the control — still correct, still keep it, but
-its status changed.**
-
-### CORRECTION
-The Routes table listed `/onboarding` → `OnboardingFlow`. **NEITHER EXISTS** in the repo
-(verified during `48eb2e6`); the row is removed. `PropertySetup` is the only address-save path.
-
-**NOT a correction:** the three "NEXT ACTION is Step 6" lines are **CORRECT, not stale**. The
-city-level events cache was the work that preceded Step 6 and it is now complete. Leave them —
-this is recorded so it is not re-litigated as drift.
+**NEXT ACTION is PILOT STEP 6** (guest-chat router + host-picks). The "NEXT ACTION is Step 6"
+lines elsewhere are **CORRECT, not stale** — recorded so it is not re-litigated as drift.
 
 ## ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026) — CANONICAL, supersedes the pre-billing checklist
 
@@ -1318,12 +1340,6 @@ COMMIT TRAIL: DB counter migration -> 5423285 -> f0a1cb8 -> 6b33d40 -> f8952b0 -
   LocationIQ) + a cheap LLM, so it needs no grounding at all — and because the coordinates come
   from the POI data, that structurally kills both the fabricated-business problem and the
   geocoding weakness.** See "MODEL-MIGRATION ANALYSIS" for the old framing.
-- **~~RAISED — `generate-guide.ts` has NO server-side cooldown~~ — RESOLVED (`6fd015c`,
-  Aug 4 2026).** `GUIDE_FRESH_HOURS = 24` in `PropertySetup.tsx` was UI-only, so an
-  authenticated host could loop the endpoint and spend **Bemgu's** quota. Now gated by an
-  **atomic per-host 6h claim on `hosts.guide_claimed_at`**, taken before generation and proven
-  live (calls 2–6 of a loop returned instant `429 cooldown`, no Gemini call, €0). Details in
-  "SESSION Aug 4 2026 (2)".
 - **NEW, minor: `coercePlaces` does not enforce the 5-per-category cap the prompt requests.**
   Harmless today — the post-retry total still cannot exceed `MAX_GEOCODE`.
 - **`subscription_status` is DECOUPLED from the access gate.** `PrivateRoute` uses
@@ -1331,12 +1347,6 @@ COMMIT TRAIL: DB counter migration -> 5423285 -> f0a1cb8 -> 6b33d40 -> f8952b0 -
   'active' in the superadmin panel grants no access.** The operator set `is_exempt = true` on
   host `1d5a3b9c` (udy@tlv.capital) to work around this. **Either reconcile the two or make
   the admin panel warn.**
-- **~~Enable GitHub secret scanning + push protection~~ — VERIFIED ALREADY ENABLED (Jul 29 2026).
-  No action was needed.** A full
-  history scan of **all 279 commits found ZERO secrets**, no `.env` ever committed, no
-  client-side AI provider calls, and no secret-named `VITE_` vars — **the Anna's Stays failure
-  modes are all absent.** Push protection makes that mechanical rather than dependent on
-  discipline.
 - **ALL DATABASE CONTENT IS TEST DATA created by the operator. There are no real users.**
   Decide before the Stripe flip whether to wipe or flag it — **this interacts with the
   retention gaps in the legal workstream below.**

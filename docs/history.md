@@ -12,6 +12,109 @@ CLAUDE.md; this file is the archive of work already shipped.
 
 ---
 
+## CLOSED ITEMS ARCHIVED Aug 8 2026 (verbatim, moved from CLAUDE.md)
+
+- ~~**`guests` readable by ALL authenticated hosts**~~ **RESOLVED S24 (F-01)** — guest creation moved server-side (`api/create-booking`), `guests_host_read` replaced with a host-scoped SELECT policy. Verified live: cross-tenant overlap 0.
+- ~~**`guests_insert_open` anon INSERT**~~ **RESOLVED S24 (F-02)** — policy dropped; anon + authenticated INSERT revoked (service-role inserts only).
+- ~~**`function_search_path_mutable` on `set_updated_at` + `auth_owns_apartment`**~~ **RESOLVED S24** — `search_path=public` pinned on both.
+- ~~**Non-public SECURITY DEFINER EXECUTE grants** (`auth_owns_apartment`, `enforce_property_cap`, `handle_new_user`)~~ **RESOLVED S24** — PUBLIC EXECUTE revoked (anon/authenticated can no longer RPC them). `guest_host_card` remains anon-callable BY DESIGN (guest page reads host branding).
+- **~~RAISED — `generate-guide.ts` has NO server-side cooldown~~ — RESOLVED (`6fd015c`,
+  Aug 4 2026).** `GUIDE_FRESH_HOURS = 24` in `PropertySetup.tsx` was UI-only, so an
+  authenticated host could loop the endpoint and spend **Bemgu's** quota. Now gated by an
+  **atomic per-host 6h claim on `hosts.guide_claimed_at`**, taken before generation and proven
+  live (calls 2–6 of a loop returned instant `429 cooldown`, no Gemini call, €0). Details in
+  "SESSION Aug 4 2026 (2)".
+- **~~Enable GitHub secret scanning + push protection~~ — VERIFIED ALREADY ENABLED (Jul 29 2026).
+  No action was needed.** A full
+  history scan of **all 279 commits found ZERO secrets**, no `.env` ever committed, no
+  client-side AI provider calls, and no secret-named `VITE_` vars — **the Anna's Stays failure
+  modes are all absent.** Push protection makes that mechanical rather than dependent on
+  discipline.
+
+---
+
+## Aug 8 2026 — date-window guard: the measured evidence
+
+The run evidence behind `cc8e870`, moved here from CLAUDE.md so the always-loaded file carries
+the correction and not the raw counters. The Aug 8 session record joins this file at the next
+session close.
+
+**EVIDENCE (09:00 UTC, window 8-15 Aug):** `eventsExtracted` 4, `eventsDroppedOutOfWindow` 6,
+`datesUnparseable` 2 — "Helsinki Festival" (18 Aug - 5 Sep) and "Poets of the Fall" (empty date)
+reached the **SHARED city row**. **4 WAS NOT A RECALL FAILURE:** the model emitted **10**, inside
+target, and the guard dropped 6 — a city corpus lists a MONTH against a SEVEN-DAY window, so
+~60% is legitimately out of scope. **Retrieval-scope mismatch, not a prompt problem; supports
+not opening B3.6.**
+
+**VERIFIED AGAINST LIVE BEHAVIOUR, not against statements running without error:** an
+`authenticated` write of `canonical_city_key` and `ical_last_synced_at` was reverted **while
+`floor_note` in the SAME statement landed**; a `service_role` write landed; an INSERT seeding the
+column came back NULL. Fleet back to **10 apartments, 0 stamped, 6 triggers**.
+
+---
+
+## SESSION Aug 7 2026 — the city-level events cache, built and live
+
+**HEAD `9291f74`, verified live: deploy `dpl_9g3FPzPyGX5PQF79odhm87aJB5Bq` READY.** Four code
+commits, three migrations, one docs split. Events are now cached per CITY instead of per
+APARTMENT, so N apartments in one city cost ONE search and ONE bill instead of N.
+
+### THE FOUR COMMITS
+- **`d254df9` — `cron-refresh-events` correct at concurrency 1.** Two apartments in flight
+  breached Groq's 6K TPM ORG-WIDE ceiling deterministically, starving guest-chat, the guide and
+  daily-greeting across every tenant. Concurrency 1 alone would have been incomplete: serialising
+  a pool whose items cost ~75s under a 150s `maxDuration` means run 3+ is killed mid-flight,
+  SILENTLY — no JSON summary, no wholesale-failure ntfy. So also a **65s `START_DEADLINE_MS`**
+  that defers rather than starting work it cannot finish, **least-recently-refreshed ordering** so
+  the deadline cannot starve a fixed tail, and the alarm scoped to `attempted`.
+- **`48eb2e6` — canonical city identity (cache commit 1 of 3).** `reverseGeocode()` in
+  `_lib/geo.ts` reusing the SAME 550ms gate as forward geocoding (the LocationIQ limit is
+  per-key, not per-endpoint); `POST /api/resolve-canonical-city`; `GET
+  /api/backfill-canonical-city`; fire-and-forget from `PropertySetup` only when the coordinates
+  actually CHANGED. `normalizecity=1` and `accept-language=en` are both load-bearing.
+- **`73587d3` — the cache becomes CITY-KEYED (commit 2).** One shared helper, `eventsCacheRef` in
+  `_lib/city-events.ts`, owns WHERE the row lives; each caller keeps its own guards, counters,
+  alarms and copy. Cron does ONE unit of work per distinct city key plus one per unkeyed
+  apartment. Ordering moved to **`last_attempted_at`** — the OPEN-1 fix from `d254df9`: it is
+  stamped on success, B3.1 skip AND failure, but deliberately NOT on deferral, because a deferred
+  unit was never attempted.
+- **`9291f74` — LocationIQ counter (commit 3).** `bump_api_counter` on
+  `/api/resolve-canonical-city`, 20/hour, caller-keyed, placed after the ownership check and
+  before the vendor call. Fails closed but SOFTLY — `200 { resolved: false, reason }`, never a
+  4xx, because the caller is fire-and-forget and must never fail a save. Registered in
+  `cron-spend-audit.ts` as `'resolve-canonical-city': 60`.
+
+### THE THREE MIGRATIONS — applied via Supabase MCP, in NO commit
+**A future session reading only git history will not see these.**
+- **`add_canonical_city_columns`** — five nullable `canonical_*` columns on `apartments` plus a
+  partial index on the key.
+- **`create_city_events_by_city`** — `city_key` PK, `payload`, `generated_at`,
+  `last_attempted_at`. RLS ON, ZERO policies, anon/authenticated hold nothing — **verified
+  against the LIVE ACL, not against the statement having run without error.**
+- **`protect_canonical_city_columns`** — BEFORE UPDATE trigger reverting all five `canonical_*`
+  columns unless `current_user` is `service_role` / `postgres` / `supabase_admin`.
+
+### LIVE PROOF — measured, not assumed
+Sweet home + Test Apartment 1 both resolve to **`fi:helsinki`** and share ONE row; Casa Marco
+`es:barcelona`; Maison Lumiere `fr:paris`. **FIVE apartments are unkeyed and still on their own
+rows, so the per-apartment fallback is the COMMON path today, not an edge case** — it must stay
+behaviourally identical to pre-commit-2 production. Trigger verified THREE ways: an
+`authenticated` write of the key was reverted, a `service_role` write landed, an ordinary host
+save of a normal column was unaffected. First city-keyed generation smoke-tested 12:45 UTC — city
+row written, `last_attempted_at` stamped, the per-apartment row untouched at 09:01:22.
+
+### STATUS CHANGE — do not delete this as dead code
+Commit 2's **key/city AGREEMENT CHECK** in `_lib/city-events.ts` was LOAD-BEARING when written,
+because `authenticated` then held UPDATE on those columns. `protect_canonical_city_columns`
+retired that. **It is now DEFENCE IN DEPTH, not the control — still correct, still keep it, but
+its status changed.**
+
+### CORRECTION
+The Routes table listed `/onboarding` → `OnboardingFlow`. **NEITHER EXISTS** in the repo
+(verified during `48eb2e6`); the row is removed. `PropertySetup` is the only address-save path.
+
+---
+
 ## Phase I Stage 5 — decision + status (Jul 27 2026)
 
 ### Stage 5 — DECISION + status (Jul 27 2026): "Option A, tease-focused"
