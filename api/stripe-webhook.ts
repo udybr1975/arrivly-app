@@ -180,6 +180,69 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
 
   const newStatus = mapStatus(sub.status)
+  // ITEM-LEVEL FIRST, THEN ROOT — DO NOT COLLAPSE THIS TO ONE READ. The two branches are two
+  // different Stripe API versions, and keeping both is what makes an API-version change
+  // survivable rather than a silent data loss:
+  //   acacia (2025-02-24, the version now pinned in api/_lib/stripe.ts) carries
+  //     `current_period_end` on the subscription ROOT;
+  //   Basil  (2025-03-31) MOVED it onto `items.data[0]`.
+  // Whichever version is on the wire, one of these two reads is the live one and the other is
+  // absent — so this expression is correct across the upgrade instead of only after it.
+  //
+  // WHAT DROPPING THE APPARENTLY-DEAD BRANCH WOULD COST — NOT TODAY, BUT AT THE NEXT VERSION
+  // CHANGE, when the branch that survived becomes the absent one. Delete the item-level read now
+  // and nothing happens at all, which is exactly the trap: the cost is deferred to whoever moves
+  // the pin, and by then the deletion looks unrelated.
+  //
+  // WHEN IT DOES BITE, THE OBVIOUS GUESS IS WRONG. It is NOT "null on every host row": the write
+  // below is GUARDED on non-null, so the column is simply NOT WRITTEN. Existing subscribers keep
+  // a FROZEN stale value and only hosts who never had one stay NULL — which is harder to spot
+  // than a null, because grepping for nulls finds none and wrongly clears the bug. Nothing throws
+  // and nothing logs.
+  //
+  // Deliberately NOT enumerating the downstream symptoms here — a list in this comment would be a
+  // second copy of derivable facts, and it rotted on every pass before it was removed. Trace them
+  // at the time instead. IT TAKES TWO GREPS, NOT ONE, because the consumers straddle a file
+  // boundary and the camelCase local finds only half:
+  //   `currentPeriodEnd`          — the local, consumed inside this handler;
+  //   `hosts.current_period_end`  — the persisted column, read OUTSIDE this file (the host-facing
+  //                                 renewal / cancels-on date), which is where a frozen value is
+  //                                 most visible and longest-lived.
+  //
+  // ONLY THE ITEM-LEVEL `as any` IS REQUIRED. That read is a Basil shape absent from the installed
+  // acacia typings entirely — `types/SubscriptionItems.d.ts` has no `current_period_end` — so
+  // without the cast the forward-compatible branch would not compile.
+  //
+  // THE ROOT CAST IS REDUNDANT, AND NOT HARMLESS. `types/Subscriptions.d.ts` declares the field on
+  // the root, so that read compiles uncast today; the cast's real effect is to SUPPRESS the
+  // compile error a Basil-typed SDK bump would otherwise raise there — the same migration signal
+  // api/_lib/stripe.ts deliberately preserves and tells you not to cast away. Removing it is a
+  // code change and out of scope here; just know the canary is blunted on this read while it stands.
+  //
+  // WHICH VERSION GOVERNS WHAT — the two objects in this handler are versioned by DIFFERENT
+  // things, and conflating them is the trap:
+  //   `sub` comes from `subscriptions.retrieve()`, an OUTBOUND call, so its shape follows the
+  //     client's pinned apiVersion (api/_lib/stripe.ts).
+  //   The EVENT PAYLOAD parsed above is rendered by Stripe BEFORE it reaches us, at the version
+  //     stored on the webhook ENDPOINT (Dashboard config). `constructEvent` only HMAC-verifies and
+  //     JSON.parses — it performs no version translation — so THE CLIENT PIN DOES NOT GOVERN IT.
+  //
+  // AND THE PAYLOAD IS NOT UNIFORMLY SAFE ACROSS THAT GAP. Two of the three payload reads above
+  // are stable: `checkout.session.completed`'s `subscription`, and `customer.subscription.*`'s
+  // `id`. THE INVOICE BRANCH IS NOT — Basil REMOVED `subscription` from the Invoice object,
+  // relocating it to `parent.subscription_details.subscription`. Because that read comes off a
+  // `Record<string, unknown>` cast there would be no compile error and no throw: `subId` resolves
+  // null, the guard above logs and returns 200 {ignored:true}, and `invoice.payment_succeeded` /
+  // `invoice.payment_failed` SILENTLY STOP UPDATING HOSTS — indistinguishable from a legitimately
+  // ignored event. Reachability depends on the endpoint's configured version, which is LIVE
+  // DASHBOARD STATE AND NOT ASSERTABLE FROM THIS FILE — check it in the Stripe Dashboard, and do
+  // not trust a claim here about what it currently is (an undated assertion about a value that can
+  // change with no deploy is exactly the drift this paragraph warns about). It was an acacia-era
+  // version when this was written. Re-versioning that endpoint is a DASHBOARD ACTION WITH NO
+  // DEPLOY, so it is its own migration, separate from the client pin.
+  //
+  // This is one of FOUR sites carrying this fallback: also api/change-plan.ts (1) and
+  // api/cancel-subscription.ts (2). Change one, change all.
   const periodEndUnix =
     (sub.items?.data?.[0] as any)?.current_period_end ??
     (sub as any).current_period_end ??

@@ -2,11 +2,49 @@ import Stripe from 'stripe'
 
 let _stripe: Stripe | null = null
 
+/**
+ * THE WIRE API VERSION, PINNED IN SOURCE — and the reason it must be here rather than left to the
+ * SDK is that OMITTING IT DOES NOT OMIT THE HEADER.
+ *
+ * Verified in the installed stripe@17.7.0 source, not assumed:
+ *   cjs/apiVersion.js       ApiVersion = '2025-02-24.acacia'
+ *   cjs/stripe.core.js:16   DEFAULT_API_VERSION = ApiVersion
+ *   cjs/stripe.core.js:78   version: props.apiVersion || DEFAULT_API_VERSION
+ *   cjs/RequestSender.js:223  'Stripe-Version': apiVersion
+ * So `new Stripe(key)` sends the SDK's baked-in default on EVERY request, which made the wire API
+ * version a property of whatever happened to be in node_modules. Until the lockfile was synced
+ * (6bb48d5) that was unpinned, so a plain `npm install` could have moved the API version under a
+ * live billing integration with no source change and nothing to review.
+ *
+ * THIS VALUE IS A NO-OP AT RUNTIME. It is byte-identical to what the SDK already sends today; the
+ * change is that the API version is now a property of the SOURCE instead of the dependency tree.
+ * Do not read this commit as an upgrade — it deliberately is not one.
+ *
+ * UPGRADING IT IS A REAL MIGRATION, NOT A STRING EDIT. The next line after acacia is Basil
+ * (2025-03-31), which MOVED `current_period_end` off the subscription root onto
+ * `items.data[0]`. An item-level -> root fallback is what makes that survivable, and it lives at
+ * FOUR sites across THREE files — read all of them before touching this string, and expect to
+ * verify a real webhook event afterwards:
+ *   api/stripe-webhook.ts      (1 site)
+ *   api/change-plan.ts         (1 site)
+ *   api/cancel-subscription.ts (2 sites)
+ *
+ * TYPE NOTE: the SDK types `apiVersion` as `LatestApiVersion`, a single-member union equal to this
+ * literal, so it typechecks with no cast. If a future SDK bump makes this line fail to compile,
+ * that failure IS the migration notice — do not silence it with a cast.
+ *
+ * BUT DO NOT RELY ON CI TO RAISE IT: `npm run build` (`tsc -b && vite build`) does NOT typecheck
+ * `api/` — no tsconfig includes it — so a dependency bump that moves the SDK default can land
+ * GREEN. That notice surfaces in an editor or under an explicit `npx tsc --noEmit` on this file,
+ * not in the build.
+ */
+const STRIPE_API_VERSION = '2025-02-24.acacia'
+
 function getStripe(): Stripe {
   if (!_stripe) {
     const key = process.env.STRIPE_SECRET_KEY
     if (!key) throw new Error('STRIPE_SECRET_KEY not configured')
-    _stripe = new Stripe(key)
+    _stripe = new Stripe(key, { apiVersion: STRIPE_API_VERSION })
   }
   return _stripe
 }
