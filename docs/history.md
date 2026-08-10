@@ -1810,3 +1810,31 @@ OPEN — UNDATED
 > - **`bemgu.com`** is registered by a third party (dormant GoDaddy-builder placeholder, reg. Mar 2025, renewed to Mar 2027) — a possible future acquisition; revisit post-revenue.
 > - **Test-fixture rule reaffirmed:** Sweet home booking `ARR-EVT777` dates must be re-refreshed (`check_in = current_date-1`, `check_out = current_date+3`) before any guest-page test.
 >
+
+## Session — 9-10 Aug 2026 (HEAD 2b71fec)
+
+Three commits: `c7ea052` (Groq rate-limit + token-usage observability), `874c26d` (events window
+7 → 30 days + a read-time past-event filter), `2b71fec` (TPM/TPD docs correction). **Their commit
+messages are unusually complete — git holds that detail and it is NOT restated here.**
+
+**1. RECALL IS CORPUS-LIMITED, NOT WINDOW-LIMITED — WHICH FALSIFIES `874c26d`'s STATED PREMISE.**
+It argued the 7-day window throttled recall and predicted 5-8 events; the first 30-day run
+(10 Aug 09:01, fi:helsinki) returned **TWO**, and candidates ran **8, 10, 7 — FLAT across window
+widths**. The limiter is the Tavily corpus, not the window. **Read that commit message with this
+correction beside it.** Full item under OPEN ITEMS.
+
+**2. A BOUND HANDED TO A PARSER IS PART OF THE PARSER.** The 400-day far bound made the read-time
+filter structurally unable to return `false`. Both gates caught it — the **FOURTH SPEC defect (not
+implementation defect) in two sessions.** Recorded under Lessons, with the bullet-diff trap.
+
+**3. THE GATES KEEP CATCHING PROSE, NOT CODE.** `90aed01` ran **six** rounds with the code
+unchanged after round 1; two failures were fixes for earlier fixes, and at round 5 the gates
+DISAGREED about one clause — the signal to DELETE it rather than revise again. That produced the
+GATE STOPPING CONDITION; `7f3dac5` then ran two rounds under it.
+
+**4. GUEST-CHAT'S 40/HOUR BRAKE IS MIS-SIZED AGAINST TPD.** Its own commit, before Step 6, never
+folded into the migration. Full item under OPEN ITEMS.
+
+**NEXT ACTION: the CLAUDE.md restructuring session, ALONE — not Step 6.** Then, in order: the
+guest-chat brake decision, Commit B (events staleness gate), Step 6. All "Step 6 is next" pointers
+in this file have been updated.

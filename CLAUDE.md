@@ -381,6 +381,7 @@ Claude in chat NEVER pushes to GitHub. All code changes are delivered as Claude 
   review gates report — including applying a reviewer's own suggestion, and including a
   one-line change — both gates run again before committing. **No exceptions for small
   changes.** A verdict only covers the bytes the reviewer actually read.
+- **GATE STOPPING CONDITION (Aug 10 2026).** Once BOTH gates return PASS with zero must-fix, STOP and commit. After a passing verdict the only permitted edits are ones resolving a must-fix; remaining warnings go in the commit message as known residuals. If a gate still returns must-fix after round three, stop and report. **Why:** `90aed01` ran SIX rounds with the code unchanged after round 1 — every later round failed on COMMENT accuracy, two of them on fixes for earlier fixes, and at round 5 the gates DISAGREED about one clause, which is the signal to DELETE it rather than revise again.
 - **STANDING FALSE POSITIVE — `api/welcome.ts` lat/lng.** The security-auditor repeatedly
   reports that `api/welcome.ts` returns `lat`/`lng` even when `welcome_show_address` is
   false. **It does not.** `street`, `street_number`, `lat` and `lng` are all inside the same
@@ -645,34 +646,60 @@ Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live
 > Moved to docs/history.md — "SESSION Aug 8 2026 — date-window guard corrected; iCal sync bounded, fair and honest".
 > Moved to docs/history.md — "Session — 10 Aug 2026 (HEAD 7f3dac5)". Its OPEN blocks were HOISTED
 > first — the seven items live in Known notes, Tracked security follow-ups and OPEN ITEMS.
+> Moved to docs/history.md — "Session — 9-10 Aug 2026 (HEAD 2b71fec)". Its GATE STOPPING
+> CONDITION was HOISTED into Agent policy first — it existed nowhere else.
 
-## Session — 9-10 Aug 2026 (HEAD 2b71fec)
+## Session — 10 Aug 2026 (restructuring, HEAD e694e90)
 
-Three commits: `c7ea052` (Groq rate-limit + token-usage observability), `874c26d` (events window
-7 → 30 days + a read-time past-event filter), `2b71fec` (TPM/TPD docs correction). **Their commit
-messages are unusually complete — git holds that detail and it is NOT restated here.**
+**CLAUDE.md: 156,898 -> 97,532 chars (-38%).** Four docs-only commits, no source file touched.
+`4f9ead5` hoist · `94d22e6` key-map consolidation · `bb32f51` deletions · `e694e90` moves.
 
-**1. RECALL IS CORPUS-LIMITED, NOT WINDOW-LIMITED — WHICH FALSIFIES `874c26d`'s STATED PREMISE.**
-It argued the 7-day window throttled recall and predicted 5-8 events; the first 30-day run
-(10 Aug 09:01, fi:helsinki) returned **TWO**, and candidates ran **8, 10, 7 — FLAT across window
-widths**. The limiter is the Tavily corpus, not the window. **Read that commit message with this
-correction beside it.** Full item under OPEN ITEMS.
+**WHY ARCHIVING COULD NEVER HAVE WORKED, measured rather than argued.** ~22% of the file sat
+inside blocks carrying a `~~strikethrough~~` or SUPERSEDED marker. The editorial convention was to
+retain a wrong claim and explain why it was wrong — good epistemics, and invisible to archiving,
+because superseded claims live INSIDE durable sections. Two disciplined closes in a row shrank the
+record and still grew the file. **The fix was to split on LIFETIME, not topic:** invariants and
+live work stay; reasoning trails move to purpose-named files under `docs/`.
 
-**2. A BOUND HANDED TO A PARSER IS PART OF THE PARSER.** The 400-day far bound made the read-time
-filter structurally unable to return `false`. Both gates caught it — the **FOURTH SPEC defect (not
-implementation defect) in two sessions.** Recorded under Lessons, with the bullet-diff trap.
+**THE POINTER-COST FINDING WAS AN ARTEFACT.** The recorded "a move returns ~half its size once an
+honest pointer is written" is true only when items move INDIVIDUALLY. One pointer per BLOCK makes
+the cost fixed, not proportional — 44 blocks and 54,025 moved chars cost ~4,900 of pointers and
+hoists, roughly 9%.
 
-**3. THE GATES KEEP CATCHING PROSE, NOT CODE.** `90aed01` ran **six** rounds with the code
-unchanged after round 1; two failures were fixes for earlier fixes, and at round 5 the gates
-DISAGREED about one clause — the signal to DELETE it rather than revise again. That produced the
-GATE STOPPING CONDITION; `7f3dac5` then ran two rounds under it.
+**A PROOF MUST NOT CLAIM MORE THAN THE CHECK SUPPORTS — and the commit type decides the check.**
+Three different proofs were needed and they are not interchangeable. A PURE MOVE gets the exact
+round-trip (`4f9ead5` also got an independent delta decomposition, arrived at from the other
+direction). A DELETION gets neither — there is nothing to substitute back — so it gets a FORWARD
+hoist check proving the content already exists elsewhere, run BEFORE removal. A MIXED commit gets
+neither honestly: `e694e90` was therefore split into Phase A (move everything to sentinels, prove
+byte-identical) and Phase B (collapse sentinels into pointers and hoists, verify forward), because
+the compressed rules and the LAUNCH BLOCKERS spine are new text no round-trip can validate.
 
-**4. GUEST-CHAT'S 40/HOUR BRAKE IS MIS-SIZED AGAINST TPD.** Its own commit, before Step 6, never
-folded into the migration. Full item under OPEN ITEMS.
+**THE THREE-COPIES PATTERN IS SYSTEMIC, not a one-off.** The Gemini key map existed in three
+places, each partial, none wrong; consolidating required reconciling a 4-vs-5 surface list (the
+fuller list wins — under-listing a shared key is the error that bites). The same pattern then
+surfaced again: deleting one copy of the "re-test grounding on Gemini 3" claim left a second alive
+elsewhere.
 
-**NEXT ACTION: the CLAUDE.md restructuring session, ALONE — not Step 6.** Then, in order: the
-guest-chat brake decision, Commit B (events staleness gate), Step 6. All "Step 6 is next" pointers
-in this file have been updated.
+**LESSON — SIZE ESTIMATES BY EYE ARE UNRELIABLE; MEASURE REPRESENTATIVE LINES.** Chat-side
+projections missed by +234 then by -14,500 (~13%). Both landed safe by luck, not method. Measure
+before projecting.
+
+**LAUNCH BLOCKERS is the substantive change.** Six launch-critical items were scattered across
+four sections, which is why AI-pilot work kept reading as the next thing to do when none of it is
+a launch blocker. They now sit in one ordered section.
+
+**FOUND AND RECORDED, not fixed:** the npm-audit count is 8 in Known notes and 7 in OPEN ITEMS.
+Reconcile by RUNNING it, never by picking.
+
+**VERIFIED AGAINST LIVE DB this session:** five hosts carry sandbox subscriptions, confirming the
+6-9 Sept auto-cancel item mails real addresses. Four of five billing-test host descriptions were
+materially stale — notably Yiftach, named as the clean "Add card" test row, now HAS a
+subscription. `ARR-EVT777` expires 11 Aug; re-roll before any guest-page test.
+
+**NEXT ACTION: RETENTION CRONS.** They gate publishing every legal document, and the legal review
+is the only external dependency, so it has a lead time nothing else has. Then: the 6-9 Sept fixture
+decision, the guest-chat 40/h brake re-sizing (own commit, own arithmetic), Commit B, Step 6.
 
 ## ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026) — CANONICAL, supersedes the pre-billing checklist
 
