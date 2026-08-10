@@ -212,28 +212,6 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 
 ---
 
-## Gemini AI key map (per-surface isolation)
-
-> **STALE-FRAMING POINTER (Aug 4 2026, REVISED Aug 5 2026) — read before acting on any "no-card"
-> wording below.** The per-surface key **ISOLATION is correct and STAYS**. The Aug 4 position was
-> that **all five projects must be on BILLING before launch**, because Google's terms permit
-> **only Paid Services** for API Clients made available to EEA/CH/UK users and grounding's
-> processor-DPA cover requires paid quota. **That requirement is now answered a different way:
-> the ZERO-GOOGLE AI PILOT (Aug 5) REMOVES Google from the stack instead of paying for it — the
-> Bemgu billing account is CLOSED and all five projects are back on no-card free tier as an
-> accepted pre-launch bridge state.** So "no-card" wording below is once again accurate for the
-> interim, and the key map itself is superseded per-surface as each one migrates. See the
-> ZERO-GOOGLE AI PILOT section (canonical) and "SESSION Aug 4 2026" for the terms reasoning.
-
-Each high-volume / public surface has its OWN no-card AI Studio key (separate free-tier daily quota), with `|| GEMINI_API_KEY` fallback so behaviour is unchanged until the dedicated key is present in Vercel. NO secret values live in this repo (public).
-- **Shared `GEMINI_API_KEY`** serves: `rewrite-rules`, `bulk-import`, `greeting` / `daily-greeting`, `host-picks`.
-- **`GEMINI_API_KEY_GUIDES`** → `api/_lib/guide.ts` (guides). Reads `GEMINI_API_KEY_GUIDES || GEMINI_API_KEY`.
-- **`GEMINI_API_KEY_CHAT`** → `api/guest-chat.ts` (guest chat). Reads `GEMINI_API_KEY_CHAT || GEMINI_API_KEY`.
-- **`GEMINI_API_KEY_EVENTS`** → `api/_lib/city-events.ts` (city events; shared by the guest lazy-fill, `cron-refresh-events`, and host `refresh-events`). Reads `GEMINI_API_KEY_EVENTS || GEMINI_API_KEY` (`acd16f4`, Jun 25 2026). Set in Vercel production + preview.
-- **Grounded endpoints (`guest-chat`, `city-events`) MUST stay on Gemini** — Groq can't do Google Search grounding. The non-grounded shared-key endpoints are the only ones eligible to move to Groq later (capacity/redundancy, see "On the horizon").
-
----
-
 ## Known notes / minor debt
 - Cron sequential loops in `cron-sync-ical` AND `cron-refresh-events` share the "batch at scale / maxDuration" debt — fine at current apartment counts; batch before many booked apartments. (Phase G cron-batching item.) **⚠ NO LONGER "fine at current counts" FOR `cron-refresh-events` (Aug 6 2026): at B3.3+ prompt sizes its `mapPool` concurrency of 2 EXCEEDS the 12K TPM Groq org ceiling deterministically (2 x ~7.6k debit, measured Aug 10), so a multi-candidate run is expected to 429 AND starves guest-chat / guide / daily-greeting across every tenant while it runs. Fix is `concurrency: 1`, and it is the top of this debt — see "SESSION CLOSE Aug 6 2026" open item 1.**
 - `city-events` lazy-fill: the FIRST guest to view an uncached apartment waits ~the generation time (one-off); the cron pre-warms apartments with current/upcoming bookings so most are already warm.
@@ -403,11 +381,9 @@ Each high-volume / public surface has its OWN no-card AI Studio key (separate fr
 
 - **Public guest-facing AI endpoints are spend-gated by verifying the booking token BEFORE calling the model, not by rate-limiting alone.** `api/guest-chat.ts` (S21) returns `403 verify_required` for the public tier before any Gemini/brand/prompt work, so only a verified in-dates booking can spend tokens — the same gate `daily-greeting` uses. The added per-instance rate limiter (15/60s, keyed apartmentId+IP) is a second layer but BEST-EFFORT: Vercel spreads requests across lambda instances, each with its own in-memory Map, so the 429 can't be observed reliably from outside and is NOT a hard cross-instance cap. Treat verify-gating (not the limiter) as the real spend control.
 
-- **guest-chat runs on its own AI key (`GEMINI_API_KEY_CHAT`), isolated from the shared `GEMINI_API_KEY`.** It reads `process.env.GEMINI_API_KEY_CHAT || GEMINI_API_KEY` (same fallback shape as the guides key) and is a no-card key created in a SEPARATE AI Studio project so its free-tier DAILY quota is its own. INTERIM (S21): it stays no-card until the Google payment issue is resolved, then this single key flips to BILLED — which removes the daily cap; the verify-gate + limiter bound the spend. Groq cannot replace guest-chat (needs googleSearch grounding). **SUPERSEDED IN PART (Aug 4 2026): this is NOT a one-key quota flip pending a payment issue — ALL FIVE projects must go to billing before launch, for the contractual (EEA paid-only) and grounding-DPA reasons in "SESSION Aug 4 2026". The isolation itself stays correct.** **FULLY SUPERSEDED (Aug 5 2026) by the ZERO-GOOGLE AI PILOT — TWO corrections: (a) there is NO billing flip, the Bemgu billing account is CLOSED; (b) "Groq cannot replace guest-chat" is NO LONGER TRUE — the pilot replaces grounding with a ROUTER (cheap LLM for ungrounded turns, Geoapify/LocationIQ POI for "nearby X", Tavily for open-web), so guest-chat does not need googleSearch at all. The per-surface key isolation still stays correct, and its brake (40/h, victim-keyed, fail-closed) moves with it.**
+- **Keep every high-volume or public AI surface on its OWN key/project.** A shared key means one surface exhausting its daily quota takes down the others — this actually happened (25 Jun 2026: the events cron 429'd every apartment on the shared key and fired the "all refreshes failed" alarm; closed by `acd16f4`). The isolation is provider-independent and outlives Gemini. Key table under "ZERO-GOOGLE AI PILOT -> MECHANISM"; the superseded billing-flip and "Groq cannot replace guest-chat" annotations are dropped — both are false under the pilot.
 
 - **Gemini free-tier quota is a DAILY cap; exhausting it surfaces as intermittent guest-facing 500s — not a code bug.** In S21 testing an 18-call burst exhausted the free-tier daily quota; later chats returned Gemini `429 "exceeded your current quota"` (plus transient `503 "high demand"`), surfaced as a 500. The daily cap does NOT reset within a minute, so "wait a moment" is wrong advice for a quota 429. Before blaming app code for guest-chat failures, check the Vercel runtime logs for the upstream Gemini status code; a dedicated/billed key is the fix, not a code change.
-
-- **city-events runs on its own AI key (`GEMINI_API_KEY_EVENTS`), isolated from the shared `GEMINI_API_KEY`** (`acd16f4`, Jun 25 2026). `api/_lib/city-events.ts` reads `process.env.GEMINI_API_KEY_EVENTS || process.env.GEMINI_API_KEY` (same fallback shape as the guides/chat keys) — a no-card key in a SEPARATE AI Studio project so its free-tier DAILY quota is its own; the `if (!apiKey)` guard and `scrubErr` key-scrubbing are unchanged. Trigger: on 2026-06-25 the `0 4 * * *` events cron 429'd every apartment and fired the ntfy "all refreshes failed" alert because the shared key's daily quota was exhausted at 04:00 UTC (≈21:00 Pacific, the tail of Gemini's quota-day; free-tier resets ~midnight Pacific). The shared key still serves the non-grounded endpoints — keep each high-volume/public Gemini surface on its own dedicated key. **ANNOTATION (Aug 4 2026): the "no-card" part is now a launch blocker, not a cost choice — all five projects go to billing before launch (see "SESSION Aug 4 2026"). The per-surface isolation stays.**
 
 - **Windows PowerShell dev-env gotchas (setting Vercel env vars locally).** `npx` can fail with `npx.ps1 cannot be loaded` (unsigned script) — fix once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or call `npx.cmd`. In PowerShell `curl` is an alias for `Invoke-WebRequest` (different flags) — use `curl.exe` for real curl. Inline `-d '{json}'` mangles quotes in PowerShell — write the body to a file and pass `--data "@file"`. A Vercel env-var add needs a redeploy (`npx vercel redeploy <url>`) to take effect. **(Jul 27 2026 addendum)** `npx.ps1` can STILL be blocked under `RemoteSigned` when the file carries the downloaded-from-internet flag — use `npx.cmd` or `Unblock-File`.
 
@@ -1019,13 +995,7 @@ only, TRUNCATE/TRIGGER/REFERENCES revoked).
 Bemgu splits AI across **five keys in separate projects**, so each carries its **own daily
 allowance** instead of sharing one pool:
 
-| Key | Surfaces | Note |
-|---|---|---|
-| `GEMINI_API_KEY` | `_lib/greeting`, `_lib/host-picks`, `bulk-import`, `rewrite-rules`, `guide-assistant` | **the only ones that compete with each other** |
-| `GEMINI_API_KEY_GUIDES` | `_lib/guide` | own project |
-| `GEMINI_API_KEY_CHAT` | `guest-chat` | **GROUNDED** |
-| `GEMINI_API_KEY_EVENTS` | `_lib/city-events` | **GROUNDED** |
-| `GEMINI_API_KEY_PUBLIC` | `welcome-chat` | `gemini-3.1-flash-lite`, no grounding |
+> The key table is consolidated under "ZERO-GOOGLE AI PILOT -> MECHANISM".
 
 **CONSEQUENCE: the effective ceiling is well above 20 calls/day, so QUOTA IS NOT CURRENTLY
 THE BINDING CONSTRAINT.** Do not plan around the 20 RPD figure as if it were global. **The
@@ -1174,6 +1144,22 @@ needs **no logic change** — the endpoint keys do not move.
 (`AI_PROVIDER_CHAT=groq|gemini`, `AI_PROVIDER_GUIDE=poi|gemini`, …). **The Gemini code paths are
 KEPT as the `gemini` branch and never deleted.** Graduation is then an env-var flip + redeploy,
 per surface.
+
+**GEMINI KEY MAP — the single copy. Five keys, five projects, each with its own free-tier daily
+quota. Still live: Step 8 (deleting these vars from Vercel) has NOT run, and the `gemini` branch
+stays dormant in code. Alarms name the env var and the project ID, never a key value.**
+
+| Env var | Project | Surfaces | Note |
+|---|---|---|---|
+| `GEMINI_API_KEY` (shared) | gen-lang-client-0819525902 | `_lib/greeting` / `daily-greeting`, `_lib/host-picks`, `bulk-import`, `rewrite-rules`, `guide-assistant` | the only ones competing with each other — **disabling it is blunt** |
+| `GEMINI_API_KEY_GUIDES` | gen-lang-client-0816353550 | `_lib/guide` | |
+| `GEMINI_API_KEY_CHAT` | gen-lang-client-0221179352 | `guest-chat` | was GROUNDED |
+| `GEMINI_API_KEY_EVENTS` | gen-lang-client-0131909896 | `_lib/city-events` (guest lazy-fill, `cron-refresh-events`, host `refresh-events`) | was GROUNDED |
+| `GEMINI_API_KEY_PUBLIC` | (separate project, no card) | `welcome-chat` | `gemini-3.1-flash-lite`, NO grounding |
+
+Every dedicated key reads `<KEY> || GEMINI_API_KEY`, so behaviour is unchanged when the dedicated
+var is absent. Keep each high-volume or public AI surface on its own key/project — that isolation
+is provider-independent and survives the pilot.
 
 **WORK PLAN.** Every code step: single-block prompt, code-reviewer + security-auditor blocking,
 HEAD == Vercel READY verified after.
@@ -1350,13 +1336,6 @@ Caller-keyed alarms (create-booking, sync-ical, generate-guide, refresh-events) 
 "block this host". NEVER blanket-rewrite the caller-keyed ones. Classify by the ownership check
 that precedes the bump, not the variable name (refresh-events passes apt.host_id but is
 caller-keyed).
-
-KEY MAP (env var -> project; alarms name these, never a key value):
-- GEMINI_API_KEY_CHAT   = gen-lang-client-0221179352 (guest-chat only; CONFIRMED)
-- GEMINI_API_KEY_EVENTS = gen-lang-client-0131909896 (city-events + refresh-events; CONFIRMED)
-- GEMINI_API_KEY_GUIDES = gen-lang-client-0816353550 (guide)
-- GEMINI_API_KEY shared = gen-lang-client-0819525902 (daily-greeting + host-picks + rewrite +
-  bulk-import -> disabling is blunt)
 
 2x CEILING RULE: a counter unit != a Google call. Automatic retry (and empty-reply
 fall-through) means real billed calls ~= 2x the limit; AbortSignal does NOT reduce Google
