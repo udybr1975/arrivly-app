@@ -881,3 +881,119 @@ vars being present.
   no host id.** The only guest-controlled free text reaching Groq anywhere is `condition`
   (<=100 chars, already validated).
 
+
+## AI MODELS AND QUOTA — MEASURED (Jul 29 2026), not assumed
+
+- **`gemini-2.5-flash` shuts down 16 Oct 2026** and is **ALREADY refused to new Google Cloud
+  projects** (404 "no longer available to new users"). Existing projects are grandfathered —
+  which is the only reason this app still works on it.
+- **Free-tier limits observed on a NEW project:** 2.5-flash **5 RPM / 20 RPD**;
+  3.1-flash-lite **15 RPM / 500 RPD**; **3.5-flash NOT AVAILABLE on free tier (429)**.
+- **Google Search grounding: 1,500 RPD free on the 2.5 line, but ZERO on Gemini 3.** Proven:
+  same key and model returns 200 without a `tools` array and 429 with one.
+- **`welcome-chat` runs `gemini-3.1-flash-lite` on `GEMINI_API_KEY_PUBLIC`** (separate
+  project, no card) with **NO grounding**.
+- **The other EIGHT call sites still run `gemini-2.5-flash`:** `_lib/greeting`,
+  `_lib/city-events`, `_lib/guide`, `_lib/host-picks`, `bulk-import`, `guest-chat`,
+  `guide-assistant`, `rewrite-rules`. **Migrating them is a PRE-LAUNCH task** (hard deadline
+  16 Oct 2026).
+- **`guest-chat` and `city-events` depend on grounding, which is paid-only on Gemini 3.**
+  **That is the real AI cost driver to size before marketing.**
+
+### QUOTA IS PER GOOGLE CLOUD PROJECT, NOT PER ACCOUNT (Jul 29 2026)
+
+Bemgu splits AI across **five keys in separate projects**, so each carries its **own daily
+allowance** instead of sharing one pool:
+
+> The key table is consolidated under "ZERO-GOOGLE AI PILOT -> MECHANISM".
+
+**CONSEQUENCE: the effective ceiling is well above 20 calls/day, so QUOTA IS NOT CURRENTLY
+THE BINDING CONSTRAINT.** Do not plan around the 20 RPD figure as if it were global. **The
+real deadline is the 16 Oct 2026 model shutdown.**
+
+> **ANNOTATION (Aug 4 2026, SUPERSEDED Aug 5 2026).** The Aug 4 position was that the free tier
+> is not an option independently of quota — Google's terms permit **only Paid Services** for API
+> Clients made available to EEA/CH/UK users, and grounding's processor-DPA cover also requires
+> paid quota — so billing would be added to each of the five projects. **The ZERO-GOOGLE AI PILOT
+> (Aug 5, canonical) replaces that: billing is CLOSED, the five projects are back on no-card free
+> tier as an accepted bridge, and the surfaces migrate OFF Google instead.** ~~Re-test grounding
+> on Gemini 3 once billing is live~~ — moot; the pilot dissolves the 16 Oct migration tension
+> below by a different route, since the grounded surfaces move to Tavily/POI + a cheap LLM and no
+> surface depends on Google grounding. See "SESSION Aug 4 2026" for the terms reasoning.
+
+### MODEL-MIGRATION ANALYSIS — do NOT big-bang this (Jul 29 2026)
+
+**The 500 RPD free allowance belongs specifically to Flash-LITE. Gemini 3 Flash is 5 RPM /
+20 RPD — identical to `gemini-2.5-flash`.** So the 25× quota gain comes from choosing a
+**SMALLER model, not a newer generation**. It is a **capability trade, not a free upgrade**,
+and that is why the migration splits three ways:
+
+- **CANNOT MOVE** (grounded, and grounding is zero-quota on Gemini 3): **`guest-chat`,
+  `_lib/city-events`**. ~~Stuck on `gemini-2.5-flash` until billing is enabled or 16 Oct forces
+  the issue.~~ **RESOLVED DIFFERENTLY (Aug 5 2026): the ZERO-GOOGLE AI PILOT moves both to
+  Tavily/POI + a cheap LLM, so neither needs Google grounding and neither is stuck.** The 16 Oct
+  deadline stops binding once they migrate.
+- **SAFE TO MOVE** (simple, text-in/text-out, no strict structure, no deep world knowledge):
+  **`_lib/greeting`, `rewrite-rules`, `guide-assistant`**.
+- **TEST BEFORE MOVING** (knowledge-heavy and/or strict JSON — where a lite model is most
+  likely to degrade): **`_lib/guide`** (must recall 30 real businesses with real addresses,
+  and **guide accuracy is already the known weak spot** — see the fabricated-business note
+  below), **`_lib/host-picks`** (must identify real places from partial names a host typed),
+  **`bulk-import`** (simple classification, so probably fine).
+
+**RECOMMENDED ORDER:** (1) **fix the guide's grounding first** — it is a real defect and the
+pattern is already proven in-house (see the CITY GUIDE section below); (2) move the three
+safe endpoints and verify; (3) **compare real output side by side** for `guide` and
+`host-picks` on Flash-Lite **before** committing to the switch; (4) then decide the
+grounding-cost question for the two stuck endpoints.
+
+**NOTE THE TENSION:** grounding the guide ties it to the 2.5 line, which is the line being
+retired. Steps (1) and (3) pull in opposite directions for that one endpoint — resolve it
+deliberately rather than by accident.
+
+- **VENDOR RISK ON GROQ — recorded, not acted on (Aug 6 2026):** NVIDIA acquired Groq's **founder,
+  president and ~90% of engineering in Dec 2025**, and standalone GroqCloud's long-term trajectory
+  is described as uncertain. `ai-provider.ts` makes switching an env flip, which is exactly why that
+  abstraction was built — **but a SECOND provider actually implemented behind that interface is
+  worth having eventually**, since today the interface has one real branch plus a dormant Gemini one.
+
+- **xAI (Grok) — PRICED AND DEFERRED (Aug 6 2026). NOTE IT IS A DIFFERENT COMPANY FROM Groq despite
+  the near-identical name** — do not conflate them in any future note. Grok 4 Fast **$0.20/$0.50
+  per 1M tokens** plus **$5-10 per 1,000 web searches** (**sources DISAGREE on the tool rate —
+  VERIFY IN CONSOLE before relying on it**). Events-only estimate: **~$0.025-0.045/run**;
+  **~$0.75-1.35/month today**, **~$34-61/month at 50 hosts** per-apartment, or **~$15-27 with
+  city-level caching** (see the city-cache design below — it changes the vendor maths for every
+  vendor, including the free one). **Blocked on the card requirement, and its EEA terms/DPA are
+  UNCHECKED.**
+
+**SIDE EFFECT OF THE NO-CARD INTERIM — stated plainly.** Per the Aug 4 terms finding, the Gemini
+free tier is **not** the compliant EEA basis. That is **accepted as a pre-launch BRIDGE state,
+and this plan removes it entirely.**
+
+~~Rollback is `AI_PROVIDER_EVENTS=gemini` + redeploy.~~ **DECISION Aug 6 2026 (Udy, explicit): NO
+ROLLBACK TO GEMINI ON EVENTS, UNDER ANY CIRCUMSTANCES.** The `gemini` branch stays in the code as
+history and as the abstraction's second arm, **not** as an operational lever. Two reasons it would
+be the wrong move anyway: it is contractually non-compliant for EEA users on the free tier (Aug 4
+finding), and — per B3.4 — **it would silently disable BOTH new validators**, since the window check
+and the aggregator-url check live only on the Tavily path.
+
+- **Step 0** — this docs commit.
+
+- **Step 1 — DONE.** Checks, no code: Groq terms/DPA (ZDR confirmed); Tavily DPA (**none
+  self-serve** — hence the no-personal-data-in-queries rule); LocationIQ; Geoapify. Findings live in
+  `docs/providers/README.md`, the manifest to read before relying on any provider-terms claim.
+
+- **Step 2 — CLOSED, APPROVED BY UDY (Aug 6 2026).** Quality benchmark on Sweet home. Evidence
+  and the three binding design rules it produced are in "PILOT STEP 2 — BENCHMARK CLOSED" below.
+
+- **Step 3 — SHIPPED + SMOKE-VERIFIED + LOG-VERIFIED (Aug 6 2026, `b90a648`).** `ai-provider.ts`
+  + greeting / rewrite-rules / bulk-import / guide-assistant on Groq. Details in "PILOT STEP 3 —
+  SHIPPED" below.
+
+- **Step 4 — SHIPPED (Aug 6 2026).** Guide on Geoapify POI data + Groq prose, blurb migrated with
+  it (plus B2.1, tiered Sight). Details in "PILOT STEP 4 — SHIPPED" below.
+
+- **Step 5 — SHIPPED (Aug 6 2026), then FIVE correctness/quality rounds B3.1-B3.5.** City events on
+  Tavily search + Groq extraction. Details in "PILOT STEP 5 — SHIPPED" below plus the B3.1-B3.5
+  subsections (moved to docs/pilot-history.md). **FULLY SMOKE-VERIFIED: B3.4 on Aug 6, B3.5 on
+  Aug 7 (PASSED). Step 5 is closed — B3.5 stands as the last events round.**

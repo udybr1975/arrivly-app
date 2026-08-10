@@ -1795,3 +1795,18 @@ OPEN — UNDATED
   Vercel logs — that path has never executed on this endpoint.
 - `app_settings.trial_days` is 14; the original project brief says 30. Brief is
   stale, code and UI agree.
+
+## Domain migration + rebrand (Jul 12-17 2026) — moved from CLAUDE.md
+
+> **Domain migration — COMPLETED (Jul 12 2026):** `bemgu.app` is live; the old `arrivly.anna-stays.fi` now **308-redirects permanently** to it (keep the old domain forever). Stripe **TEST** webhook endpoint is now `https://bemgu.app/api/stripe-webhook`. **Resend = a separate Bemgu account** (region eu-west-1, domain `bemgu.app` verified SPF/DKIM); `RESEND_API_KEY` in Vercel was swapped to the Bemgu account key. `VITE_APP_URL` in Vercel = `https://bemgu.app`. The app URL everywhere in this doc is now **https://bemgu.app**.
+>
+> **Domain migration + rebrand — FULLY COMPLETE AND SMOKE-TESTED (Jul 17 2026):** all **8/8** prod smoke tests PASSED — (1) demo signup email via the new pipeline; (2) password-reset recovery-hash flow on `bemgu.app` (verified in DB: sign-in + password update 38s apart; **NOTE/lesson:** GoTrue clears `recovery_sent_at` once the link is consumed, so its absence after the flow is normal, not a failure); (3) Google sign-in; (4) plain email/password login; (5) guest-page active state (token `ARR-EVT777`); (6) PWA installs as "Bemgu"; (7) QR downloads as `bemgu-qr-*` and scans to `bemgu.app`; (8) Stripe webhook — real events (`invoice.payment_succeeded`, `customer.subscription.updated`, Jul 14) delivered to `https://bemgu.app/api/stripe-webhook` with **200 OK**. The migration + rebrand is done; only Part G (affiliate registration) remains open.
+>
+> **Durable facts discovered during the migration + smoke tests (Jul 17 2026):**
+> - **Supabase auth emails now route through Resend via Custom SMTP:** host `smtp.resend.com`, port `465`, username `resend`, password = the **bemgu-production Resend API key**, sender **`Bemgu <hello@bemgu.app>`**. Supabase's built-in mailer is no longer used (it was rate-limited and sent from a Supabase address). Supabase email **templates** (incl. the Magic Link/OTP template that carried an ARRIVLY header) were rebranded to Bemgu in the dashboard.
+> - **Cloudflare Turnstile widgets are HOSTNAME-ALLOWLISTED:** `bemgu.app` was added to the widget's allowed hostnames (old domain kept). Any future domain event MUST repeat this or the demo money-gate shows "Unable to connect".
+> - **Google OAuth consent screen:** App name = **"Bemgu"**; authorized domains include `bemgu.app` (plus the load-bearing `ptkabdelgxkgfslfialx.supabase.co`). The Google popup currently says "to continue to `ptkabdelgxkgfslfialx.supabase.co`" — expected Supabase-architecture behaviour, NOT a bug.
+> - **Porkbun account** (registrar for `bemgu.app`/`.co`/`.net` + `getbemgu.com`) is 2FA-protected; free email forwarding provides `hello@`/`info@bemgu.app` → Gmail; Resend "Enable Receiving" stays **OFF** (forwarding owns inbound).
+> - **`bemgu.com`** is registered by a third party (dormant GoDaddy-builder placeholder, reg. Mar 2025, renewed to Mar 2027) — a possible future acquisition; revisit post-revenue.
+> - **Test-fixture rule reaffirmed:** Sweet home booking `ARR-EVT777` dates must be re-refreshed (`check_in = current_date-1`, `check_out = current_date+3`) before any guest-page test.
+>
