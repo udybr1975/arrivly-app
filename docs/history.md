@@ -1704,3 +1704,94 @@ evidence".
 
 **NEXT ACTION is PILOT STEP 6** (guest-chat router + host-picks). The "NEXT ACTION is Step 6"
 lines elsewhere are **CORRECT, not stale** — recorded so it is not re-litigated as drift.
+## Session — 10 Aug 2026 (HEAD 7f3dac5)
+
+Triggered by a "Subscription event: started / Growth -> Growth" email for host
+11b5b459 (udy.baryosef@jchelsinki.fi) on 9 Aug 20:05 UTC.
+
+ROOT CAUSE. `api/create-subscription.ts` opened a fresh Checkout session with
+no check for an existing live subscription, so every checkout run stacked
+another concurrent Stripe subscription on the same customer. The DB column was
+overwritten each time; superseded subscriptions stayed alive and kept billing.
+`sub_1TgVsf` (created 9 Jun, orphaned since) renewed on 9 Aug and flipped the
+host from `expired` to `active`. The notice read "started" because the
+classifier's `oldStatus === 'expired'` branch fired — behaving exactly as
+written.
+
+SHIPPED (4 commits, all verified READY on Vercel with matching SHAs):
+- 1735d30 — duplicate-subscription guard. `findBlockingSubscription` in
+  `api/_lib/stripe.ts`; blocks with 409 `subscription_exists` /
+  `subscription_needs_payment`, fails CLOSED (503) if the Stripe lookup errors.
+  Writes no billing column — the webhook stays the single writer.
+- 6bb48d5 — package-lock.json sync. `stripe` was declared in package.json but
+  absent from the lockfile; `npm ci` failed and every build resolved the SDK
+  fresh. 248/3, no source touched.
+- 90aed01 — explicit Stripe API version pin. Six gate rounds, all failures on
+  comment prose; the code never changed after round 1.
+- 7f3dac5 — invoice subscription-id extraction across API versions.
+
+STRIPE CLEANUP. Four orphaned sandbox subscriptions cancelled: Anna's 8 Jun
+`sub_1Tg9xv`, two for arrivlyudyarrivly@gmail.com (8 Jul), one for
+udy.bar.yosef+demo3 (30 Jun). Proven beforehand to fire nothing — their
+`metadata.host_id` pointed at deleted rows and their `stripe_customer_id`
+matched nothing on file, so both webhook lookups fail. Confirmed after: no
+audit rows, no host row changed. Five subscriptions remain, one per host.
+
+DB MIGRATIONS on `hosts`:
+- `revoke_client_insert_on_hosts_billing_columns` — SILENT NO-OP, superseded.
+- `revoke_client_insert_on_hosts_table_level` — the real fix.
+Verified: 0 columns with client INSERT. Signup smoke-tested live (trigger
+writes tier 1 / trial correctly); test account removed, cascade clean.
+
+KEY LESSONS
+- A column-level REVOKE CANNOT subtract from a table-level GRANT. Postgres
+  accepts it, reports success, changes nothing. Revoke at the level the grant
+  was made. Same family as the `REVOKE ... FROM PUBLIC` lesson. ALWAYS re-read
+  the catalog after a grant change — success means the statement parsed.
+- Omitting `apiVersion` does NOT omit the `Stripe-Version` header. Verified in
+  stripe@17.7.0 source: `version: props.apiVersion || DEFAULT_API_VERSION`,
+  default `2025-02-24.acacia`. Unpinned SDK = unpinned wire API version.
+- TWO Stripe versions govern this integration. The client pin governs outbound
+  calls. The webhook ENDPOINT version (Dashboard, no deploy, no code review)
+  governs inbound payload shape. Endpoint verified at `2026-04-22.dahlia` on
+  10 Aug 2026 — a dated observation, not a timeless claim.
+- `npm install` reporting "up to date" refers to node_modules, NOT the
+  lockfile. It can rewrite package-lock.json without saying so.
+- A green `npm run build` proves nothing about `api/` — `tsc -b` excludes it
+  and Vite only bundles `src/`. Use `npm ci` and `test:stripe`.
+
+NEW STANDING RULE — GATE STOPPING CONDITION. Once both gates return PASS with
+zero must-fix, STOP and commit. After a passing verdict the only permitted
+edits are ones resolving a must-fix; remaining warnings are recorded as "known
+residuals" in the commit message. If a gate still returns must-fix items after
+round three, stop and report rather than attempt a fourth fix. Rationale:
+90aed01 ran six rounds where the code never changed after round 1 — reviewers
+can always improve prose, so "could be better" must not be treated as "must
+act". 7f3dac5 ran two rounds under this rule.
+
+OPEN — DATED
+- EARLY SEPT 2026: all five remaining sandbox subscriptions auto-cancel at
+  90 days (6-9 Sept). Each WILL resolve a host row and send a real cancellation
+  email — including anna.humalainen@gmail.com and yiftach@xn--gnai-8qa.com.
+  Decide before then whether test fixtures should carry real addresses.
+
+OPEN — UNDATED
+- No `sub.id === hostRow.stripe_subscription_id` check before the `hosts`
+  update in `api/stripe-webhook.ts` (~line 272). Host state is last-writer-wins
+  from any Arrivly-metadata subscription carrying that `host_id`. THIS IS THE
+  MECHANISM BEHIND THE 9 AUG INCIDENT. Currently unreachable — the guard
+  prevents new duplicates and the existing ones are cancelled — but it should
+  be closed with a `sub.id` equality or newest-wins rule.
+- `DELETE` granted to `anon` and `authenticated` on `hosts` with NO delete
+  policy. Blocked by RLS, so not exploitable, but the same shape as the INSERT
+  grant with a much larger blast radius (cascades to apartments, bookings,
+  picks). Found 10 Aug, deliberately untouched.
+- 8 npm vulnerabilities (2 moderate, 6 high) — untriaged, dev-time vs shipped
+  unknown. `npm audit fix` NOT run.
+- Redundant root `as any` in `api/stripe-webhook.ts` blunts the compile-error
+  canary a Basil-typed SDK bump would raise. One-token removal, no runtime
+  effect.
+- First real `invoice.payment_succeeded` after 7f3dac5 is worth watching in the
+  Vercel logs — that path has never executed on this endpoint.
+- `app_settings.trial_days` is 14; the original project brief says 30. Brief is
+  stale, code and UI agree.

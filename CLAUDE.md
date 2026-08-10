@@ -250,12 +250,18 @@ Each high-volume / public surface has its OWN no-card AI Studio key (separate fr
 - `countUnread` in `Layout.tsx` called directly from event listeners with no mounted guard at call site — safe because `mounted` flag is closed over and listeners are removed on cleanup before it matters; no real bug (W3, `c294bda`).
 - `BookingManager.tsx` `arrivly:messages-read` handler calls `loadBookings()` without a cancellation signal — tiny stale-overwrite race on rapid apartment switching; fold into next BookingManager change.
 - `api/public-pricing.ts` cache is `s-maxage=60` — admin trial/price edits show on the landing within ~1 min.
+- **8 npm vulnerabilities (2 moderate, 6 high) — UNTRIAGED; dev-time vs shipped is unknown.** `npm audit fix` NOT run, because it touches the lockfile and every commit it could have ridden on was scoped elsewhere. **Triage before the pentest gate.** (Supersedes the earlier 7-total measurement; the counting difference between `npm audit` and GitHub's alert list is already recorded under DEPENDENCY VULNS.)
+- **Redundant root `as any` in `api/stripe-webhook.ts` blunts a compile-error canary.** `types/Subscriptions.d.ts` declares `current_period_end` on the root, so that read compiles uncast; the cast's only effect is to SUPPRESS the error a Basil-typed SDK bump would raise there — the exact migration signal `api/_lib/stripe.ts` preserves and tells you not to cast away. **One-token removal, no runtime effect** — take it on the next non-comment edit to that block.
+- **First real `invoice.payment_succeeded` after `7f3dac5` is worth watching in the Vercel logs.** That path has NEVER executed on this endpoint (the pre-Basil field read resolved null and returned 200), so nothing downstream of the id extraction has run here. Specifically check it resolves the CURRENT subscription, not a superseded one — see the `sub.id` item under Tracked security follow-ups.
+- **`app_settings.trial_days` is 14; the original project brief says 30.** The brief is STALE — code and UI agree on 14, and 14 is the confirmed live plan value. Recorded so the discrepancy is not "discovered" again and fixed in the wrong direction.
 
 ### Tracked security follow-ups (S19; updated S24)
 - **STILL OPEN — leaked-password protection disabled** (Auth dashboard HaveIBeenPwned toggle; pending).
 - **STILL OPEN — `api/guest-state.ts` rate limiter is per-instance best-effort** (serverless memory not shared) — a shared-store / Vercel-firewall limiter is a later option.
 - **STILL OPEN — QR key rotation:** a leaked per-apartment key is revocable only by rotating `apartment_qr_secrets.qr_secret`, which invalidates every printed QR for that apartment (no per-guest revocation).
 - **STILL OPEN (by-design, INFO):** the 4 RLS-on/zero-policy service-role tables (`admin_audit`, `apartment_qr_secrets`, `app_settings`, `city_events_cache`) and the intentional anon `guest_host_card` EXECUTE remain as advisor INFO/WARN — accepted by design.
+- **STILL OPEN — no `sub.id === hostRow.stripe_subscription_id` check before the `hosts` update** in `api/stripe-webhook.ts` (~line 272). Host state is last-writer-wins from ANY Arrivly-metadata subscription carrying that `host_id`. **THIS IS THE MECHANISM BEHIND THE 9 AUG INCIDENT** (a superseded subscription renewed and flipped a host `expired` → `active`). Currently UNREACHABLE — the duplicate-subscription guard blocks new duplicates and the existing ones are cancelled — so this is latent, not live. Close it with a `sub.id` equality check or an explicit newest-wins rule.
+- **STILL OPEN — `DELETE` granted to `anon` and `authenticated` on `hosts` with NO delete policy.** Blocked by RLS, so not exploitable today, but it is **the same shape as the INSERT grant that was revoked on 10 Aug, with a far larger blast radius** — a delete cascades to apartments, bookings and picks. Found 10 Aug 2026 and deliberately left untouched (a table-level revoke on a live billing table, at a session close, is the wrong moment). Same lesson applies: revoke at the level the grant was made.
 
 ---
 
@@ -455,6 +461,24 @@ Each high-volume / public surface has its OWN no-card AI Studio key (separate fr
 - **SEPARATE NOTICES FROM FAILURES BEFORE ANY DETECTOR KEYS ON THEM (Aug 8 2026).** One `errors[]`
   serving **both host copy AND machine classification** misclassifies: a notice firing before any
   work makes a healthy unit **permanently "failed"**. Split the COUNT, leave the strings alone.
+
+- **A BOUND HANDED TO A PARSER IS PART OF THE PARSER (Aug 10 2026).** The read-time event filter
+  was specified with a **400-day** far bound, which made it **STRUCTURALLY UNABLE TO RETURN FALSE**
+  for the dominant date shape: `eventDateInWindow` INFERS candidate years from the bounds it is
+  handed, and a span of **365+ days contains every (day, month) pair at least once**, so
+  `years.some(...)` always succeeds. The number was reasoned about as a *filter argument* when it
+  was a *parser input*. **Both gates caught it independently.** The shipped bound is 45 days,
+  DERIVED (30-day generation window + slack) rather than picked, and a regression test pins the
+  MECHANISM — it asserts a 400-day span cannot return false — so a future "let's widen it" edit
+  fails the suite instead of silently re-neutering the filter. **GENERAL RULE: when you reuse a
+  well-tested predicate at a new caller's parameters, its test coverage does NOT come with it.**
+
+- **`grep -v "^[+-][+-]"` SILENTLY HIDES EVERY CHANGE TO A MARKDOWN BULLET (Aug 10 2026).** That
+  filter exists to drop a diff's `---`/`+++` headers. But a removed bullet `- Cron sequential…`
+  renders as `-- Cron sequential…` and is swallowed by it. **In a file that is almost entirely
+  bullets — this one — that hides almost everything.** Caught only because the RAW `+/-` count was
+  16 against a filtered view showing 12. **RAW COUNTS ARE THE RELIABLE CHECK**, and this will
+  recur on every future CLAUDE.md edit, so do not re-derive it each time.
 
 **THE DURABLE LESSON — BOTH REVIEW GATES INDEPENDENTLY CAUGHT A DEFECT IN THE PROMPT'S OWN SPEC,
 not in the code.** The instruction was to gate the alarm on `deferred === 0`. That is **wrong in
@@ -694,12 +718,45 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 
 ### OPEN ITEMS — PRIORITY CHANGES (Aug 4 2026)
 
+- **⏰ DATED — EARLY SEPT 2026 (6-9 Sept). THE ONLY ITEM IN THIS FILE WITH A REAL DEADLINE, and it
+  sends REAL EMAIL TO REAL PEOPLE.** All five remaining sandbox subscriptions hit Stripe's 90-day
+  limit and auto-cancel. Each one WILL resolve a host row and send a genuine cancellation email —
+  including to **anna.humalainen@gmail.com** and **yiftach@xn--gnai-8qa.com**. Decide before then
+  whether test fixtures should carry real addresses at all. Doing nothing is a decision that mails
+  those people.
+- **NEXT ACTION IS THE CLAUDE.md RESTRUCTURING SESSION, ALONE — NOT Step 6.** The file is over its
+  working limit and every close widens the breach (see the size item below), so restructuring is
+  now the blocking prerequisite rather than a someday item. Then, IN ORDER: (1) the guest-chat
+  brake decision — see the TPD item below, which must be settled BEFORE Step 6 and as its own
+  commit; (2) **Commit B, the events staleness gate** — refresh a city when its cache is older
+  than ~20 days instead of daily, ~30x the Tavily and token saving, now justified on COST grounds
+  because item 1 of the 9-10 Aug record weakened the quality argument; (3) Step 6.
+- **EVENTS RECALL IS CORPUS-LIMITED, NOT WINDOW-LIMITED — the untouched lever is SEARCH.** Measured
+  10 Aug: the first 30-day run returned **TWO** events where `874c26d` predicted 5-8, and candidate
+  counts across runs were **8, 10, 7 — FLAT regardless of window width**. The binding constraint is
+  the **Tavily corpus** (4 searches, 14 snippets, ~13k chars), so every past round that tuned the
+  extraction prompt was working downstream of the real limit. **The lever is query design, results
+  per search, and number of searches** — none of which has been touched. **Read `874c26d`'s message
+  with this correction beside it**: its stated premise (the 7-day window was throttling recall) is
+  FALSIFIED, though the widening was still right for the different reason it also gives.
+  **Sequence it AFTER Commit B** — the staleness gate cuts run frequency, which is what buys the
+  Tavily headroom any recall work would spend.
+- **GUEST-CHAT'S 40/HOUR BRAKE IS MIS-SIZED AGAINST TPD, and it must be settled BEFORE Step 6.**
+  At ~2.3k tok/turn, 40 calls/hour is **~92k tokens from ONE host against a 100K/day FLEET-WIDE
+  ceiling** — a single host at the *permitted* rate exhausts every AI surface for every tenant for
+  the rest of the day. The brake was sized for Gemini economics (cost per call), not for a shared
+  daily pool, and nothing about the number was wrong under the assumptions it was chosen with.
+  **Re-size it DELIBERATELY, in its own commit with its own recorded arithmetic — NOT silently
+  inside the Step 6 migration.** Folding it in would breach the standing rule that a migration
+  never changes who may ask or how often.
 - **~~NEXT ACTION — PILOT STEP 1 CHECKS (no code)~~ — DONE (Aug 6 2026). Steps 1-5 of the pilot are
   all COMPLETE and live.** ~~NEXT ACTION: (1) SMOKE-TEST B3.5; (2) `cron-refresh-events`
   concurrency 2 → 1.~~ **BOTH DONE Aug 7 2026** — B3.5 smoke PASSED, and the cron fix shipped
-  as `d254df9`. **NEXT ACTION is now Step 6 (guest-chat router + host-picks)**, whose acceptance
-  test is the 20-question benchmark under "PILOT STEP 2". See "SESSION Aug 7 2026" and
-  "ZERO-GOOGLE AI PILOT — APPROVED PLAN", still canonical for this workstream.
+  as `d254df9`. ~~**NEXT ACTION is now Step 6 (guest-chat router + host-picks)**~~ — **SUPERSEDED
+  Aug 10 2026. Step 6 is NO LONGER NEXT:** the restructuring session comes first, then the
+  guest-chat brake decision, then Commit B, THEN Step 6 (see the top of this list). Its acceptance
+  test is still the 20-question benchmark under "PILOT STEP 2". See "ZERO-GOOGLE AI PILOT —
+  APPROVED PLAN", still canonical for this workstream.
 - **~~NEW, TOP OF PRE-LIVE — enable billing on ALL FIVE Gemini projects~~ — SUPERSEDED Aug 5 2026
   by the ZERO-GOOGLE AI PILOT.** The Bemgu billing account is now CLOSED with zero linked
   projects; **there is no billing flip**. The two grounds recorded below still explain WHY Google
@@ -761,16 +818,21 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   THREE populations — cross-month ranges / empty date / `d.m.yyyy`. Evidence: docs/history.md,
   "Aug 8 2026 — date-window guard: the measured evidence".
 - **CLAUDE.md SIZE IS NOW STRUCTURAL, not a trim problem. THE LIMIT IS NOW BREACHED ON BOTH
-  MEASURES.** **152,326 chars / 153,699 BYTES at the 10 Aug close — ~2,326 chars OVER the 150,000
-  working limit**, up from 149,873 chars (127 under) at the Aug 8 close. That close was the last
-  one the one-record rule could keep inside the limit. The 10 Aug session **archived 3,655 chars
-  and added 5,494**, a net **+1,957** — and it was a DISCIPLINED close, not a bloated one: one
-  record out, one in, conservation proved by exact round-trip. **THAT IS THE POINT — the rule
-  caps the RATE of growth, not the DIRECTION**, because a session's record is simply longer than
-  the one it evicts whenever the session did more. Also measured: **an honest pointer costs ~half
-  a move's saving**, so archiving has a floor on what it can return.
-  **CONSEQUENCE: the restructuring session below is no longer deferrable to "eventually" — every
-  further close now widens the breach.** **NEXT: a dedicated restructuring session with
+  MEASURES.** **156,898 chars / 158,311 BYTES at the 9-10 Aug close — ~6,898 chars OVER the 150,000
+  working limit**, against 149,873 chars (127 UNDER) at the Aug 8 close. That was the last close
+  the one-record rule could keep inside the limit. **THE RULE CAPS THE RATE OF GROWTH, NOT THE
+  DIRECTION** — a record is longer than the one it evicts whenever the session did more, and both
+  of the last two closes were DISCIPLINED (one record out, one in, conservation proved by exact
+  round-trip) and still grew the file. Also measured: **an honest pointer costs ~half a move's
+  saving**, so archiving has a floor on what it can return.
+  **THIS CLOSE IS THE PROOF, and it is the strongest case yet:** the outgoing record was 5,494
+  chars and the new one is ~1,800, so the record swap alone was NET NEGATIVE — yet the file still
+  grew, because **HOISTING SEVEN OPEN ITEMS OUT OF THAT RECORD COST MORE THAN THE RECORD SAVED.**
+  That is not waste: those items include the only dated deadline in the file, and burying them was
+  the failure this close existed to prevent. **The conclusion stands regardless — you cannot
+  archive your way back under the limit; only restructuring gets there.**
+  **CONSEQUENCE: the restructuring session is NO LONGER DEFERRABLE and is the NEXT SESSION, alone.
+  Every further close widens the breach.** **NEXT: a dedicated restructuring session with
   the conservation gate** — candidates are splitting `## Lessons / learnings` (35,514) into ACTIVE
   CONSTRAINTS vs ARCHIVED LEARNINGS, and PHASE I (15,230) with the permanent Tiqets licence
   obligations and the locked GYG never-intermix rule **HOISTED FIRST**. Do NOT attempt either at a
@@ -1008,98 +1070,36 @@ deliberately rather than by accident.
 > Moved to docs/history.md — "SESSION Aug 7 2026 — B3.5 smoke PASSED, cron concurrency fixed, CLAUDE.md split". Superseded by the full-day record below.
 > Moved to docs/history.md — "SESSION CLOSE — Aug 6 2026: pilot Steps 4 and 5 shipped, city-cache scoped, B3.5 shipped".
 > Moved to docs/history.md — "SESSION Aug 8 2026 — date-window guard corrected; iCal sync bounded, fair and honest".
+> Moved to docs/history.md — "Session — 10 Aug 2026 (HEAD 7f3dac5)". Its OPEN blocks were HOISTED
+> first — the seven items live in Known notes, Tracked security follow-ups and OPEN ITEMS.
 
-## Session — 10 Aug 2026 (HEAD 7f3dac5)
+## Session — 9-10 Aug 2026 (HEAD 2b71fec)
 
-Triggered by a "Subscription event: started / Growth -> Growth" email for host
-11b5b459 (udy.baryosef@jchelsinki.fi) on 9 Aug 20:05 UTC.
+Three commits: `c7ea052` (Groq rate-limit + token-usage observability), `874c26d` (events window
+7 → 30 days + a read-time past-event filter), `2b71fec` (TPM/TPD docs correction). **Their commit
+messages are unusually complete — git holds that detail and it is NOT restated here.**
 
-ROOT CAUSE. `api/create-subscription.ts` opened a fresh Checkout session with
-no check for an existing live subscription, so every checkout run stacked
-another concurrent Stripe subscription on the same customer. The DB column was
-overwritten each time; superseded subscriptions stayed alive and kept billing.
-`sub_1TgVsf` (created 9 Jun, orphaned since) renewed on 9 Aug and flipped the
-host from `expired` to `active`. The notice read "started" because the
-classifier's `oldStatus === 'expired'` branch fired — behaving exactly as
-written.
+**1. RECALL IS CORPUS-LIMITED, NOT WINDOW-LIMITED — WHICH FALSIFIES `874c26d`'s STATED PREMISE.**
+It argued the 7-day window throttled recall and predicted 5-8 events; the first 30-day run
+(10 Aug 09:01, fi:helsinki) returned **TWO**, and candidates ran **8, 10, 7 — FLAT across window
+widths**. The limiter is the Tavily corpus, not the window. **Read that commit message with this
+correction beside it.** Full item under OPEN ITEMS.
 
-SHIPPED (4 commits, all verified READY on Vercel with matching SHAs):
-- 1735d30 — duplicate-subscription guard. `findBlockingSubscription` in
-  `api/_lib/stripe.ts`; blocks with 409 `subscription_exists` /
-  `subscription_needs_payment`, fails CLOSED (503) if the Stripe lookup errors.
-  Writes no billing column — the webhook stays the single writer.
-- 6bb48d5 — package-lock.json sync. `stripe` was declared in package.json but
-  absent from the lockfile; `npm ci` failed and every build resolved the SDK
-  fresh. 248/3, no source touched.
-- 90aed01 — explicit Stripe API version pin. Six gate rounds, all failures on
-  comment prose; the code never changed after round 1.
-- 7f3dac5 — invoice subscription-id extraction across API versions.
+**2. A BOUND HANDED TO A PARSER IS PART OF THE PARSER.** The 400-day far bound made the read-time
+filter structurally unable to return `false`. Both gates caught it — the **FOURTH SPEC defect (not
+implementation defect) in two sessions.** Recorded under Lessons, with the bullet-diff trap.
 
-STRIPE CLEANUP. Four orphaned sandbox subscriptions cancelled: Anna's 8 Jun
-`sub_1Tg9xv`, two for arrivlyudyarrivly@gmail.com (8 Jul), one for
-udy.bar.yosef+demo3 (30 Jun). Proven beforehand to fire nothing — their
-`metadata.host_id` pointed at deleted rows and their `stripe_customer_id`
-matched nothing on file, so both webhook lookups fail. Confirmed after: no
-audit rows, no host row changed. Five subscriptions remain, one per host.
+**3. THE GATES KEEP CATCHING PROSE, NOT CODE.** `90aed01` ran **six** rounds with the code
+unchanged after round 1; two failures were fixes for earlier fixes, and at round 5 the gates
+DISAGREED about one clause — the signal to DELETE it rather than revise again. That produced the
+GATE STOPPING CONDITION; `7f3dac5` then ran two rounds under it.
 
-DB MIGRATIONS on `hosts`:
-- `revoke_client_insert_on_hosts_billing_columns` — SILENT NO-OP, superseded.
-- `revoke_client_insert_on_hosts_table_level` — the real fix.
-Verified: 0 columns with client INSERT. Signup smoke-tested live (trigger
-writes tier 1 / trial correctly); test account removed, cascade clean.
+**4. GUEST-CHAT'S 40/HOUR BRAKE IS MIS-SIZED AGAINST TPD.** Its own commit, before Step 6, never
+folded into the migration. Full item under OPEN ITEMS.
 
-KEY LESSONS
-- A column-level REVOKE CANNOT subtract from a table-level GRANT. Postgres
-  accepts it, reports success, changes nothing. Revoke at the level the grant
-  was made. Same family as the `REVOKE ... FROM PUBLIC` lesson. ALWAYS re-read
-  the catalog after a grant change — success means the statement parsed.
-- Omitting `apiVersion` does NOT omit the `Stripe-Version` header. Verified in
-  stripe@17.7.0 source: `version: props.apiVersion || DEFAULT_API_VERSION`,
-  default `2025-02-24.acacia`. Unpinned SDK = unpinned wire API version.
-- TWO Stripe versions govern this integration. The client pin governs outbound
-  calls. The webhook ENDPOINT version (Dashboard, no deploy, no code review)
-  governs inbound payload shape. Endpoint verified at `2026-04-22.dahlia` on
-  10 Aug 2026 — a dated observation, not a timeless claim.
-- `npm install` reporting "up to date" refers to node_modules, NOT the
-  lockfile. It can rewrite package-lock.json without saying so.
-- A green `npm run build` proves nothing about `api/` — `tsc -b` excludes it
-  and Vite only bundles `src/`. Use `npm ci` and `test:stripe`.
-
-NEW STANDING RULE — GATE STOPPING CONDITION. Once both gates return PASS with
-zero must-fix, STOP and commit. After a passing verdict the only permitted
-edits are ones resolving a must-fix; remaining warnings are recorded as "known
-residuals" in the commit message. If a gate still returns must-fix items after
-round three, stop and report rather than attempt a fourth fix. Rationale:
-90aed01 ran six rounds where the code never changed after round 1 — reviewers
-can always improve prose, so "could be better" must not be treated as "must
-act". 7f3dac5 ran two rounds under this rule.
-
-OPEN — DATED
-- EARLY SEPT 2026: all five remaining sandbox subscriptions auto-cancel at
-  90 days (6-9 Sept). Each WILL resolve a host row and send a real cancellation
-  email — including anna.humalainen@gmail.com and yiftach@xn--gnai-8qa.com.
-  Decide before then whether test fixtures should carry real addresses.
-
-OPEN — UNDATED
-- No `sub.id === hostRow.stripe_subscription_id` check before the `hosts`
-  update in `api/stripe-webhook.ts` (~line 272). Host state is last-writer-wins
-  from any Arrivly-metadata subscription carrying that `host_id`. THIS IS THE
-  MECHANISM BEHIND THE 9 AUG INCIDENT. Currently unreachable — the guard
-  prevents new duplicates and the existing ones are cancelled — but it should
-  be closed with a `sub.id` equality or newest-wins rule.
-- `DELETE` granted to `anon` and `authenticated` on `hosts` with NO delete
-  policy. Blocked by RLS, so not exploitable, but the same shape as the INSERT
-  grant with a much larger blast radius (cascades to apartments, bookings,
-  picks). Found 10 Aug, deliberately untouched.
-- 8 npm vulnerabilities (2 moderate, 6 high) — untriaged, dev-time vs shipped
-  unknown. `npm audit fix` NOT run.
-- Redundant root `as any` in `api/stripe-webhook.ts` blunts the compile-error
-  canary a Basil-typed SDK bump would raise. One-token removal, no runtime
-  effect.
-- First real `invoice.payment_succeeded` after 7f3dac5 is worth watching in the
-  Vercel logs — that path has never executed on this endpoint.
-- `app_settings.trial_days` is 14; the original project brief says 30. Brief is
-  stale, code and UI agree.
+**NEXT ACTION: the CLAUDE.md restructuring session, ALONE — not Step 6.** Then, in order: the
+guest-chat brake decision, Commit B (events staleness gate), Step 6. All "Step 6 is next" pointers
+in this file have been updated.
 
 ## ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026) — CANONICAL, supersedes the pre-billing checklist
 
@@ -1186,9 +1186,12 @@ HEAD == Vercel READY verified after.
   Tavily search + Groq extraction. Details in "PILOT STEP 5 — SHIPPED" below plus the B3.1-B3.5
   subsections (moved to docs/pilot-history.md). **FULLY SMOKE-VERIFIED: B3.4 on Aug 6, B3.5 on
   Aug 7 (PASSED). Step 5 is closed — B3.5 stands as the last events round.**
-- **Step 6 — NEXT, and now unblocked** (the B3.5 smoke and the cron concurrency fix are both
-  done, `d254df9`) — guest-chat router +
-  host-picks. Acceptance test = the 20-question benchmark set recorded under "PILOT STEP 2".
+- **Step 6 — unblocked but NO LONGER NEXT (Aug 10 2026)** (the B3.5 smoke and the cron concurrency
+  fix are both done, `d254df9`) — guest-chat router + host-picks. Acceptance test = the 20-question
+  benchmark set recorded under "PILOT STEP 2". **THREE THINGS COME FIRST, in order: the CLAUDE.md
+  restructuring session; the guest-chat 40/h brake re-sizing against TPD (its OWN commit — folding
+  it into this migration would breach the rule that a migration never changes who may ask or how
+  often); and Commit B, the events staleness gate.**
 - **Step 7** — alarm-text sweep + **SELF-ATTACK DRILL** (burst chat past 40, hammer
   `city-events-public`, booking flood; verify the brakes trip and the ntfy wording is right).
   **The drill is a graduation PREREQUISITE.**
@@ -1275,8 +1278,9 @@ Aug 9. (Standing rule: re-roll before any guest-page test.)
 Tavily is DONE too** (`5f15005` through `fc5c97e`, five rounds). **REMAINING in this plan: B4 /
 Step 6** the chat router + host-picks — the 20-question benchmark above is its acceptance test —
 then **Step 7** the self-attack drill (**remember the recorded stale-alarm residual list**) and
-**Step 8** delete the `GEMINI_*` vars. See "SESSION CLOSE Aug 6 2026" for what must happen before
-Step 6 starts.
+**Step 8** delete the `GEMINI_*` vars. **NOTE (Aug 10 2026): Step 6 is not the next action.** The
+restructuring session, the guest-chat brake re-sizing and Commit B all precede it — see the top of
+"OPEN ITEMS — PRIORITY CHANGES".
 
 > Moved to docs/pilot-history.md — "PILOT STEP 5 — SHIPPED: city events on Tavily search + Groq extraction".
 > Moved to docs/pilot-history.md — "B3.5 — THE LAST EVENTS ROUND: the prompt rebalanced for RECALL".
