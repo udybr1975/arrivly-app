@@ -760,12 +760,17 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   **CROSS-MONTH RANGE** hitting a deliberate `size !== 1 -> null` branch. `datesUnparseable` pooled
   THREE populations — cross-month ranges / empty date / `d.m.yyyy`. Evidence: docs/history.md,
   "Aug 8 2026 — date-window guard: the measured evidence".
-- **CLAUDE.md SIZE IS NOW STRUCTURAL, not a trim problem.** 149,873 chars / 151,230 **BYTES** —
-  only **127 chars under the 150,000 working limit** (already 150,186 bytes BEFORE this session,
-  so the byte overage is pre-existing). The
-  one-record rule **CAPS GROWTH BUT CREATES NO HEADROOM** — this close took **FOUR rounds**
-  against the conservation gate. Also measured: **an honest pointer costs ~half a move's saving**,
-  so archiving has a floor on what it can return. **NEXT: a dedicated restructuring session with
+- **CLAUDE.md SIZE IS NOW STRUCTURAL, not a trim problem. THE LIMIT IS NOW BREACHED ON BOTH
+  MEASURES.** **152,326 chars / 153,699 BYTES at the 10 Aug close — ~2,326 chars OVER the 150,000
+  working limit**, up from 149,873 chars (127 under) at the Aug 8 close. That close was the last
+  one the one-record rule could keep inside the limit. The 10 Aug session **archived 3,655 chars
+  and added 5,494**, a net **+1,957** — and it was a DISCIPLINED close, not a bloated one: one
+  record out, one in, conservation proved by exact round-trip. **THAT IS THE POINT — the rule
+  caps the RATE of growth, not the DIRECTION**, because a session's record is simply longer than
+  the one it evicts whenever the session did more. Also measured: **an honest pointer costs ~half
+  a move's saving**, so archiving has a floor on what it can return.
+  **CONSEQUENCE: the restructuring session below is no longer deferrable to "eventually" — every
+  further close now widens the breach.** **NEXT: a dedicated restructuring session with
   the conservation gate** — candidates are splitting `## Lessons / learnings` (35,514) into ACTIVE
   CONSTRAINTS vs ARCHIVED LEARNINGS, and PHASE I (15,230) with the permanent Tiqets licence
   obligations and the locked GYG never-intermix rule **HOISTED FIRST**. Do NOT attempt either at a
@@ -1002,53 +1007,99 @@ deliberately rather than by accident.
 > Moved to docs/history.md — "SESSION Aug 4 2026 (2) — pre-billing security: scrubErr + atomic per-host guide cooldown SHIPPED".
 > Moved to docs/history.md — "SESSION Aug 7 2026 — B3.5 smoke PASSED, cron concurrency fixed, CLAUDE.md split". Superseded by the full-day record below.
 > Moved to docs/history.md — "SESSION CLOSE — Aug 6 2026: pilot Steps 4 and 5 shipped, city-cache scoped, B3.5 shipped".
+> Moved to docs/history.md — "SESSION Aug 8 2026 — date-window guard corrected; iCal sync bounded, fair and honest".
 
-## SESSION Aug 8 2026 — date-window guard corrected; iCal sync bounded, fair and honest
+## Session — 10 Aug 2026 (HEAD 7f3dac5)
 
-**HEAD `4cce676`. Four commits, three migrations, all HEAD == Vercel READY when shipped.**
+Triggered by a "Subscription event: started / Growth -> Growth" email for host
+11b5b459 (udy.baryosef@jchelsinki.fi) on 9 Aug 20:05 UTC.
 
-- **`cc8e870` — `eventDateInWindow`.** Empty-date events dropped **AT THE CALL SITE** with their
-  own `eventsDroppedNoDate` counter — **not inside the function**, whose `null` contract means
-  "cannot judge"; returning `false` would have corrupted `eventsDroppedOutOfWindow`. Cross-month
-  ranges judged when unambiguous. `d.m.yyyy` incl. ranges, **d.m-vs-m.d ambiguity resolved by
-  WIDENING** (union of both readings) rather than choosing. **TWO TEST ASSERTIONS DELIBERATELY
-  CHANGED, not weakened** — they pinned the old keep-everything branch. Suite 24/24.
-- **`dc04dc1` (b1) — optional absolute `deadlineAt`. THE BOUND WENT IN THE URL LOOP, NOT THE
-  CRON:** 20 links x 10s = 200s vs maxDuration 150, and a cron-level start-deadline fixes
-  **NEITHER** caller — the interactive route 504s with its counter unit already spent. Both opt in
-  (115s / 100s). Unfetched URLs enter `incompleteSources` **INCLUSIVE of the abandoned index**;
-  without that `reconcile_ical_bookings` soft-cancels live bookings that existed only in an
-  **UNREAD** feed. **Gate must-fix:** the deadline bounds when a fetch **STARTS, not FINISHES**, so
-  the last can overrun 10s — reserves cut 125->115 and 110->100, cron overrun modelled as **+10s
-  WALL CLOCK** (4 workers overrun concurrently, not additively).
-- **`d5cc9e7` (b2).** Least-recently-synced ordering (**ASC, NULLS FIRST — Postgres defaults to
-  NULLS LAST, the exact inversion of intent**); deferral **reusing `deadlineAt`, no second
-  constant**; attempt stamp **AFTER the deferral check, BEFORE the sync**; this cron's first
-  wholesale-failure alarm, on `attempted >= 2 && ok === 0 && failed === attempted`. **`>= 2` is a
-  DELIBERATE DEPARTURE from `d254df9`:** at 1 the claim is indistinguishable from one host's broken
-  link — the B3.2 alarm-fatigue cost. Deferral enters as **`attempted`**, never `deferred === 0`.
-- **`4cce676` (b3) — `SyncResult.failures`,** at exactly the three genuine failure sites and **no
-  notice site**, required on all three return paths. b2 keyed `failed` on `errors.length > 0`, but
-  **`errors` mixes NOTICES with FAILURES and the MAX_ICAL_URLS notice fires UNCONDITIONALLY BEFORE
-  ANY FETCH** — so a >20-link apartment was `failed` forever, never `succeeded`. `errors[]`
-  unchanged (host copy; Step 7 rewrites it). `stampFailures` in JSON, kept **OUT** of the alarm.
+ROOT CAUSE. `api/create-subscription.ts` opened a fresh Checkout session with
+no check for an existing live subscription, so every checkout run stacked
+another concurrent Stripe subscription on the same customer. The DB column was
+overwritten each time; superseded subscriptions stayed alive and kept billing.
+`sub_1TgVsf` (created 9 Jun, orphaned since) renewed on 9 Aug and flipped the
+host from `expired` to `active`. The notice read "started" because the
+classifier's `oldStatus === 'expired'` branch fired — behaving exactly as
+written.
 
-### THE THREE MIGRATIONS — applied via Supabase MCP, in NO commit
-**A future session reading only git history will not see these.**
-- **`add_ical_last_synced_at`** — the column + `trg_protect_ical_sync` (BEFORE UPDATE).
-- **`rename_ical_sync_trigger_to_convention`** — the first name broke the `trg_` convention.
-- **`protect_ical_sync_column_on_insert`** — the UPDATE guard left row **CREATION** uncovered;
-  `OLD` does not exist on INSERT, so it needed a `TG_OP` branch. **Live impact NIL, and why it was
-  closed anyway is the durable part:** that argument rests entirely on `ASC NULLS FIRST` in a
-  TypeScript file, and **a DB-level security property must not depend on application code that can
-  change without anyone re-deriving it.**
+SHIPPED (4 commits, all verified READY on Vercel with matching SHAs):
+- 1735d30 — duplicate-subscription guard. `findBlockingSubscription` in
+  `api/_lib/stripe.ts`; blocks with 409 `subscription_exists` /
+  `subscription_needs_payment`, fails CLOSED (503) if the Stripe lookup errors.
+  Writes no billing column — the webhook stays the single writer.
+- 6bb48d5 — package-lock.json sync. `stripe` was declared in package.json but
+  absent from the lockfile; `npm ci` failed and every build resolved the SDK
+  fresh. 248/3, no source touched.
+- 90aed01 — explicit Stripe API version pin. Six gate rounds, all failures on
+  comment prose; the code never changed after round 1.
+- 7f3dac5 — invoice subscription-id extraction across API versions.
 
-All three were **VERIFIED AGAINST LIVE BEHAVIOUR**, not against a statement running without
-error — observations in docs/history.md, "Aug 8 2026 — date-window guard: the measured
-evidence".
+STRIPE CLEANUP. Four orphaned sandbox subscriptions cancelled: Anna's 8 Jun
+`sub_1Tg9xv`, two for arrivlyudyarrivly@gmail.com (8 Jul), one for
+udy.bar.yosef+demo3 (30 Jun). Proven beforehand to fire nothing — their
+`metadata.host_id` pointed at deleted rows and their `stripe_customer_id`
+matched nothing on file, so both webhook lookups fail. Confirmed after: no
+audit rows, no host row changed. Five subscriptions remain, one per host.
 
-**NEXT ACTION is PILOT STEP 6** (guest-chat router + host-picks). The "NEXT ACTION is Step 6"
-lines elsewhere are **CORRECT, not stale** — recorded so it is not re-litigated as drift.
+DB MIGRATIONS on `hosts`:
+- `revoke_client_insert_on_hosts_billing_columns` — SILENT NO-OP, superseded.
+- `revoke_client_insert_on_hosts_table_level` — the real fix.
+Verified: 0 columns with client INSERT. Signup smoke-tested live (trigger
+writes tier 1 / trial correctly); test account removed, cascade clean.
+
+KEY LESSONS
+- A column-level REVOKE CANNOT subtract from a table-level GRANT. Postgres
+  accepts it, reports success, changes nothing. Revoke at the level the grant
+  was made. Same family as the `REVOKE ... FROM PUBLIC` lesson. ALWAYS re-read
+  the catalog after a grant change — success means the statement parsed.
+- Omitting `apiVersion` does NOT omit the `Stripe-Version` header. Verified in
+  stripe@17.7.0 source: `version: props.apiVersion || DEFAULT_API_VERSION`,
+  default `2025-02-24.acacia`. Unpinned SDK = unpinned wire API version.
+- TWO Stripe versions govern this integration. The client pin governs outbound
+  calls. The webhook ENDPOINT version (Dashboard, no deploy, no code review)
+  governs inbound payload shape. Endpoint verified at `2026-04-22.dahlia` on
+  10 Aug 2026 — a dated observation, not a timeless claim.
+- `npm install` reporting "up to date" refers to node_modules, NOT the
+  lockfile. It can rewrite package-lock.json without saying so.
+- A green `npm run build` proves nothing about `api/` — `tsc -b` excludes it
+  and Vite only bundles `src/`. Use `npm ci` and `test:stripe`.
+
+NEW STANDING RULE — GATE STOPPING CONDITION. Once both gates return PASS with
+zero must-fix, STOP and commit. After a passing verdict the only permitted
+edits are ones resolving a must-fix; remaining warnings are recorded as "known
+residuals" in the commit message. If a gate still returns must-fix items after
+round three, stop and report rather than attempt a fourth fix. Rationale:
+90aed01 ran six rounds where the code never changed after round 1 — reviewers
+can always improve prose, so "could be better" must not be treated as "must
+act". 7f3dac5 ran two rounds under this rule.
+
+OPEN — DATED
+- EARLY SEPT 2026: all five remaining sandbox subscriptions auto-cancel at
+  90 days (6-9 Sept). Each WILL resolve a host row and send a real cancellation
+  email — including anna.humalainen@gmail.com and yiftach@xn--gnai-8qa.com.
+  Decide before then whether test fixtures should carry real addresses.
+
+OPEN — UNDATED
+- No `sub.id === hostRow.stripe_subscription_id` check before the `hosts`
+  update in `api/stripe-webhook.ts` (~line 272). Host state is last-writer-wins
+  from any Arrivly-metadata subscription carrying that `host_id`. THIS IS THE
+  MECHANISM BEHIND THE 9 AUG INCIDENT. Currently unreachable — the guard
+  prevents new duplicates and the existing ones are cancelled — but it should
+  be closed with a `sub.id` equality or newest-wins rule.
+- `DELETE` granted to `anon` and `authenticated` on `hosts` with NO delete
+  policy. Blocked by RLS, so not exploitable, but the same shape as the INSERT
+  grant with a much larger blast radius (cascades to apartments, bookings,
+  picks). Found 10 Aug, deliberately untouched.
+- 8 npm vulnerabilities (2 moderate, 6 high) — untriaged, dev-time vs shipped
+  unknown. `npm audit fix` NOT run.
+- Redundant root `as any` in `api/stripe-webhook.ts` blunts the compile-error
+  canary a Basil-typed SDK bump would raise. One-token removal, no runtime
+  effect.
+- First real `invoice.payment_succeeded` after 7f3dac5 is worth watching in the
+  Vercel logs — that path has never executed on this endpoint.
+- `app_settings.trial_days` is 14; the original project brief says 30. Brief is
+  stale, code and UI agree.
 
 ## ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026) — CANONICAL, supersedes the pre-billing checklist
 

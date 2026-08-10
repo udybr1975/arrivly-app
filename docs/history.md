@@ -1658,3 +1658,49 @@ being copied rather than moved, so they appeared both in CLAUDE.md and inside th
 then moved to history. **A surplus means duplication; a shortfall means silent loss — check for
 both.**
 
+## SESSION Aug 8 2026 — date-window guard corrected; iCal sync bounded, fair and honest
+
+**HEAD `4cce676`. Four commits, three migrations, all HEAD == Vercel READY when shipped.**
+
+- **`cc8e870` — `eventDateInWindow`.** Empty-date events dropped **AT THE CALL SITE** with their
+  own `eventsDroppedNoDate` counter — **not inside the function**, whose `null` contract means
+  "cannot judge"; returning `false` would have corrupted `eventsDroppedOutOfWindow`. Cross-month
+  ranges judged when unambiguous. `d.m.yyyy` incl. ranges, **d.m-vs-m.d ambiguity resolved by
+  WIDENING** (union of both readings) rather than choosing. **TWO TEST ASSERTIONS DELIBERATELY
+  CHANGED, not weakened** — they pinned the old keep-everything branch. Suite 24/24.
+- **`dc04dc1` (b1) — optional absolute `deadlineAt`. THE BOUND WENT IN THE URL LOOP, NOT THE
+  CRON:** 20 links x 10s = 200s vs maxDuration 150, and a cron-level start-deadline fixes
+  **NEITHER** caller — the interactive route 504s with its counter unit already spent. Both opt in
+  (115s / 100s). Unfetched URLs enter `incompleteSources` **INCLUSIVE of the abandoned index**;
+  without that `reconcile_ical_bookings` soft-cancels live bookings that existed only in an
+  **UNREAD** feed. **Gate must-fix:** the deadline bounds when a fetch **STARTS, not FINISHES**, so
+  the last can overrun 10s — reserves cut 125->115 and 110->100, cron overrun modelled as **+10s
+  WALL CLOCK** (4 workers overrun concurrently, not additively).
+- **`d5cc9e7` (b2).** Least-recently-synced ordering (**ASC, NULLS FIRST — Postgres defaults to
+  NULLS LAST, the exact inversion of intent**); deferral **reusing `deadlineAt`, no second
+  constant**; attempt stamp **AFTER the deferral check, BEFORE the sync**; this cron's first
+  wholesale-failure alarm, on `attempted >= 2 && ok === 0 && failed === attempted`. **`>= 2` is a
+  DELIBERATE DEPARTURE from `d254df9`:** at 1 the claim is indistinguishable from one host's broken
+  link — the B3.2 alarm-fatigue cost. Deferral enters as **`attempted`**, never `deferred === 0`.
+- **`4cce676` (b3) — `SyncResult.failures`,** at exactly the three genuine failure sites and **no
+  notice site**, required on all three return paths. b2 keyed `failed` on `errors.length > 0`, but
+  **`errors` mixes NOTICES with FAILURES and the MAX_ICAL_URLS notice fires UNCONDITIONALLY BEFORE
+  ANY FETCH** — so a >20-link apartment was `failed` forever, never `succeeded`. `errors[]`
+  unchanged (host copy; Step 7 rewrites it). `stampFailures` in JSON, kept **OUT** of the alarm.
+
+### THE THREE MIGRATIONS — applied via Supabase MCP, in NO commit
+**A future session reading only git history will not see these.**
+- **`add_ical_last_synced_at`** — the column + `trg_protect_ical_sync` (BEFORE UPDATE).
+- **`rename_ical_sync_trigger_to_convention`** — the first name broke the `trg_` convention.
+- **`protect_ical_sync_column_on_insert`** — the UPDATE guard left row **CREATION** uncovered;
+  `OLD` does not exist on INSERT, so it needed a `TG_OP` branch. **Live impact NIL, and why it was
+  closed anyway is the durable part:** that argument rests entirely on `ASC NULLS FIRST` in a
+  TypeScript file, and **a DB-level security property must not depend on application code that can
+  change without anyone re-deriving it.**
+
+All three were **VERIFIED AGAINST LIVE BEHAVIOUR**, not against a statement running without
+error — observations in docs/history.md, "Aug 8 2026 — date-window guard: the measured
+evidence".
+
+**NEXT ACTION is PILOT STEP 6** (guest-chat router + host-picks). The "NEXT ACTION is Step 6"
+lines elsewhere are **CORRECT, not stale** — recorded so it is not re-litigated as drift.
