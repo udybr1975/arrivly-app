@@ -19,52 +19,15 @@ context automatically every session, which is exactly what splitting this file a
 > - **Test-fixture rule reaffirmed:** Sweet home booking `ARR-EVT777` dates must be re-refreshed (`check_in = current_date-1`, `check_out = current_date+3`) before any guest-page test.
 >
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **Current HEAD (code) — `9291f74`** (Aug 7 2026), live and SHA-verified against Vercel
-> production (`9291f74` = deploy `dpl_9g3FPzPyGX5PQF79odhm87aJB5Bq`, READY). Four code commits
-> that day: `d254df9` (cron-refresh-events at concurrency 1) → `48eb2e6` (canonical city identity,
-> city-cache commit 1 of 3) → `73587d3` (city-keyed cache, commit 2) → `9291f74` (LocationIQ
-> counter, commit 3). **THREE MIGRATIONS were applied via Supabase MCP and appear in NO commit —
-> see "SESSION Aug 7 2026".**
-> PRIOR — the Aug 6 2026 session shipped **eight** commits, all
-> live and SHA-verified against Vercel production (`fc5c97e` = deploy
-> `dpl_HdjyX4DZkSPeaJht4rXJqpVnYsvc`, READY):
-> `6baafe8` (Step 4 — guide on Geoapify POI + Groq prose, blurb migrated) → `085ff2f` (B2.1 —
-> tiered Sight, significance before proximity) → `5f15005` (Step 5 — city events on Tavily + Groq)
-> → `862973b` (B3.1 — never overwrite good events with an empty extraction) → `be1b1a9` (B3.2 —
-> cron wholesale-failure condition + `no_events` toast) → `8e62b83` (B3.3 — retrieval quality) →
-> `863e6e1` (B3.4 — aggregator-url rejection, theme diversity, server-side date window) →
-> `fc5c97e` (B3.5 — prompt rebalanced for recall; **LAST events round**).
-> **B3.5 IS NOW SMOKE-VERIFIED AND PASSED (Aug 7 2026)** — from the real 09:00 UTC cron run,
-> not a manual trigger. Fabrication clean, diversity resolved, recall 3 → 6. One unanticipated
-> finding: the OPTIONAL FIELDS COLLAPSED (desc, price, venue). **B3.5 still stands as the last
-> events round — do NOT open B3.6.** See "SESSION Aug 7 2026".
-> PRIOR: `3c56c95` (shared `scrubErr` helper) → `6fd015c` (atomic per-host `generate-guide`
-> cooldown), Aug 4 session 2; then `b90a648` (Step 3 — four surfaces on Groq).
-> PRIOR HISTORY: `d282fe8` (guide dedupe + empty-category retry) closed the Jul 29 session 2
-> chain `fbf58aa` (fra1 pin + ntfy scrub) → `1af1012` (grounded guide + English descriptions)
-> → `a940158` (distance rules + Coffee + per-generation logging) → `d282fe8`.
-> Preceding that: `98017fe` (geocoding bias
-> + 25 km bound), `27b881b` (cross-tenant anon leak CLOSED — see the SECURITY section),
-> `82fd0dc` → `5f16b42` → `ff444a0` → `aa446d2` → `d79fd9e` (welcome page `/w/:code` Phase 1).
+> **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars.
+> **Current HEAD (code) — `7f3dac5`** (10 Aug 2026), deploy `dpl_BLvAWx8aqgngcWN4jgiETN1B9DRL`, READY. Docs-only commits land on top of it; a docs tip is not a mismatch. Full commit ancestry is in git — do not restate it here.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
 > — so the pentest gate runs on the Tiers 1–3 surface, and Phase F needs its own second
 > security pass before Tier 4 is sold.
 >
-> **THE FOUR THINGS BLOCKING LAUNCH:** (1) **~~enable billing on ALL FIVE Gemini projects~~ —
-> REPLACED Aug 5 2026 by the ZERO-GOOGLE AI PILOT (see its canonical section; the Bemgu billing
-> account is CLOSED and there is no billing flip).** The reason billing was ever required stands
-> and is what the pilot answers: Google's terms permit **only Paid Services** for API Clients made
-> available to EEA/CH/UK users, and grounding's processor-DPA cover also requires paid quota — a
-> **CONDITION OF LAWFUL USE, not a quota upgrade**. The pilot removes Google from the stack rather
-> than paying for it. **The pre-billing security review's in-code half is COMPLETE** — see
-> "SPEND-ABUSE HARDENING — COMPLETE, CANONICAL SUMMARY". **Next action: PILOT STEP 1 CHECKS.**
-> (2) the legal/compliance workstream — inventory DONE, **eight gaps still open** (2 + 3 closed
-> by `fbf58aa`); documents 3/4/5 **DRAFTED, unpublished** — and the **retention crons must ship
-> before any of them is published**; (3) migrating the eight `gemini-2.5-flash` call sites before
-> its **16 Oct 2026 shutdown**, and sizing the paid-grounding cost; (4) the pentest gate.
-> Also open but smaller: welcome-page Part 2, and the pre-live additions listed further down.
+> **THE FOUR THINGS BLOCKING LAUNCH:** (1) ~~Gemini billing~~ — dissolved by the ZERO-GOOGLE AI PILOT; Google is leaving the stack, there is no billing flip. (2) the legal/compliance workstream — inventory DONE, **eight gaps open**, documents 3/4/5 DRAFTED but unpublished, and **the retention crons must ship before any of them is published**. (3) the `gemini-2.5-flash` **16 Oct 2026** shutdown — binds only if a surface graduates back to Google. (4) the pentest gate. Also open but smaller: welcome-page Part 2 and the pre-live additions.
 >
 > Full session-by-session history — including the long HEAD chain this line replaced — is in
 > docs/history.md.
@@ -731,33 +694,6 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   **Re-size it DELIBERATELY, in its own commit with its own recorded arithmetic — NOT silently
   inside the Step 6 migration.** Folding it in would breach the standing rule that a migration
   never changes who may ask or how often.
-- **~~NEXT ACTION — PILOT STEP 1 CHECKS (no code)~~ — DONE (Aug 6 2026). Steps 1-5 of the pilot are
-  all COMPLETE and live.** ~~NEXT ACTION: (1) SMOKE-TEST B3.5; (2) `cron-refresh-events`
-  concurrency 2 → 1.~~ **BOTH DONE Aug 7 2026** — B3.5 smoke PASSED, and the cron fix shipped
-  as `d254df9`. ~~**NEXT ACTION is now Step 6 (guest-chat router + host-picks)**~~ — **SUPERSEDED
-  Aug 10 2026. Step 6 is NO LONGER NEXT:** the restructuring session comes first, then the
-  guest-chat brake decision, then Commit B, THEN Step 6 (see the top of this list). Its acceptance
-  test is still the 20-question benchmark under "PILOT STEP 2". See "ZERO-GOOGLE AI PILOT —
-  APPROVED PLAN", still canonical for this workstream.
-- **~~NEW, TOP OF PRE-LIVE — enable billing on ALL FIVE Gemini projects~~ — SUPERSEDED Aug 5 2026
-  by the ZERO-GOOGLE AI PILOT.** The Bemgu billing account is now CLOSED with zero linked
-  projects; **there is no billing flip**. The two grounds recorded below still explain WHY Google
-  free tier cannot be the launch basis — which the pilot resolves by REMOVING Google from the
-  stack, not by paying for it: the **contractual** EEA/CH/UK paid-only restriction, and the
-  **grounding processor-DPA** cover that exists only on paid quota. See "SESSION Aug 4 2026".
-- **MUST PRECEDE BILLING — the pre-billing SECURITY REVIEW. THE IN-CODE HALF IS NOW COMPLETE
-  (Aug 5 2026) — see "SPEND-ABUSE HARDENING — COMPLETE, CANONICAL SUMMARY" for the whole
-  picture; that section is the single source of truth and this entry defers to it.** Moving from
-  no-card to billed keys converts a leaked key from a **quota nuisance into unbounded spend**,
-  and **this repo is PUBLIC**. Every expensive (grounded) Gemini surface and both pass-minting
-  doors are now capped cross-instance, with rolling + cross-host detection live. **~~REMAINING and
-  still blocking the flip: per-project budget caps on the four remaining Gemini projects, API key
-  restrictions, key rotation after the flip~~ — MOOT under the ZERO-GOOGLE AI PILOT: the billing
-  account is CLOSED, so there are no Google keys to cap, restrict or rotate.** Those steps return
-  only if a surface graduates back to Google, and the pilot already specifies a fresh enforcement
-  cap sized by the 2x ceiling rule at that point. Still open but NOT blocking: `demo-create` has
-  no cooldown (Turnstile + one-demo-per-account gated). The log/bundle half is satisfied by the
-  shared `scrubErr` helper (`3c56c95`) plus the clean 279-commit history scan.
 - **RETENTION CRONS move onto the CRITICAL PATH** — they must ship **before any legal document
   is published** (see the SEQUENCING TRAP in the legal workstream).
 - **DEPENDENCY VULNS — MEASURED Aug 7 2026, replacing both stale claims.** The old "14 Dependabot
@@ -780,11 +716,6 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   an SPA is self-inflicted only. `fixAvailable: true` for every one — but **`npm audit fix` was
   NOT run**, because that touches the lockfile and this was a docs-only commit. **Triage before
   the pentest gate.**
-- **~~Re-test grounding on Gemini 3 once billing is live~~ — SUPERSEDED by the ZERO-GOOGLE AI
-  PILOT.** Billing is closed, so there is nothing to re-test. The pilot **dissolves the 16 Oct
-  `gemini-2.5-flash` shutdown pressure by a different route**: grounded surfaces move to
-  Tavily/POI + a cheap LLM, so no surface depends on Google grounding at all. Revisit only if a
-  surface graduates back.
 - **THE MONTHLY GUIDE CRON HAS NEVER RUN, AND IS NOW STRUCTURALLY UNABLE TO.** No guide's
   `generated_at` matches the 10:00 UTC 1st-of-month schedule. It loops apartments
   **sequentially**, and a guide call now costs **up to ~99s each** — roughly **one apartment per
@@ -793,32 +724,7 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   because `generated_at` already staggers naturally. Also skip expired hosts, and log outcomes.
 - A `demo-create` cooldown was NOT built (secondary surface: Turnstile + one-demo gated).
   Fail-closed reconsideration remains a recorded non-blocking option.
-- ~~**OPEN 1 — DATE-WINDOW GUARD INERT ON NON-ENGLISH DATES**~~ **CLOSED by `cc8e870` — BOTH
-  HALVES OF THE DIAGNOSIS WERE WRONG.** The named cause (non-English dates) and the prescribed fix
-  (a `d.m.yyyy` branch) would have caught **NONE** of the cited survivors: each was an ENGLISH
-  **CROSS-MONTH RANGE** hitting a deliberate `size !== 1 -> null` branch. `datesUnparseable` pooled
-  THREE populations — cross-month ranges / empty date / `d.m.yyyy`. Evidence: docs/history.md,
-  "Aug 8 2026 — date-window guard: the measured evidence".
-- **CLAUDE.md SIZE IS NOW STRUCTURAL, not a trim problem. THE LIMIT IS NOW BREACHED ON BOTH
-  MEASURES.** **156,898 chars / 158,311 BYTES at the 9-10 Aug close — ~6,898 chars OVER the 150,000
-  working limit**, against 149,873 chars (127 UNDER) at the Aug 8 close. That was the last close
-  the one-record rule could keep inside the limit. **THE RULE CAPS THE RATE OF GROWTH, NOT THE
-  DIRECTION** — a record is longer than the one it evicts whenever the session did more, and both
-  of the last two closes were DISCIPLINED (one record out, one in, conservation proved by exact
-  round-trip) and still grew the file. Also measured: **an honest pointer costs ~half a move's
-  saving**, so archiving has a floor on what it can return.
-  **THIS CLOSE IS THE PROOF, and it is the strongest case yet:** the outgoing record was 5,494
-  chars and the new one is ~1,800, so the record swap alone was NET NEGATIVE — yet the file still
-  grew, because **HOISTING SEVEN OPEN ITEMS OUT OF THAT RECORD COST MORE THAN THE RECORD SAVED.**
-  That is not waste: those items include the only dated deadline in the file, and burying them was
-  the failure this close existed to prevent. **The conclusion stands regardless — you cannot
-  archive your way back under the limit; only restructuring gets there.**
-  **CONSEQUENCE: the restructuring session is NO LONGER DEFERRABLE and is the NEXT SESSION, alone.
-  Every further close widens the breach.** **NEXT: a dedicated restructuring session with
-  the conservation gate** — candidates are splitting `## Lessons / learnings` (35,514) into ACTIVE
-  CONSTRAINTS vs ARCHIVED LEARNINGS, and PHASE I (15,230) with the permanent Tiqets licence
-  obligations and the locked GYG never-intermix rule **HOISTED FIRST**. Do NOT attempt either at a
-  session close.
+- **CLAUDE.md size — RESTRUCTURED 10 Aug 2026.** The one-record rule caps the RATE of growth, not the DIRECTION, so archiving alone could never get back under the 150,000 working limit; ~22% of the file was strikethrough supersede narrative, which no archive move ever touches. Fixed by splitting on LIFETIME rather than topic: invariants and live work stay, reasoning trails moved to purpose-named files under `docs/`. **Standing rules: (a) delete a superseded claim rather than striking it through and explaining it — git holds the correction; (b) one pointer per moved BLOCK, never per item, or the pointer costs half the saving; (c) when this file passes ~140,000, restructure again rather than trimming.**
 - **OPEN — STEP 7 / SELF-ATTACK DRILL (argued in `cron-sync-ical.ts` + commits):** `ok` = "no
   failure recorded", NOT "work was done" — two in-code empty-success paths (deadline-adjacent,
   window = one **POOL-WIDTH**; the SILENT no-`https://` path), not exhaustive. Alarm is
@@ -837,11 +743,7 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   maxTokens 2,048 RESERVED) against Groq's **12K TPM** — HALF of it, not nearly all. **Step 6 adds
   guest chat to the SAME pool**, so PILOT STEP 2's rule (b) — the router's ungrounded leg must not
   embed the guide — still binds, but on **100K TPD**, not on TPM.
-- ~~**OPEN — LRU ROTATION CAN STALL**~~ **CLOSED by `73587d3`.** `last_attempted_at` on
-  `city_events_by_city` is stamped on success, B3.1 skip AND failure (not on deferral), so a city
-  that consistently fails no longer pins the head of the queue. **The per-apartment fallback
-  still has no such column and therefore keeps this residual** — unchanged from before, and it
-  shrinks as apartments gain keys.
+- **OPEN (residual) — the per-apartment events-cache fallback has no `last_attempted_at`,** so a consistently-failing apartment can pin the head of the LRU queue. The city-keyed path was fixed by `73587d3`; this shrinks as apartments gain canonical keys.
 - **OPEN — `demo-create.ts` is a FOURTH writer bypassing the `eventsCacheRef` helper.** Safe today
   ONLY because a demo apartment has no canonical key, and it **breaks QUIETLY** if that changes —
   the seeded row stops being the one the guest page reads. **`backfill-canonical-city.ts` selects
