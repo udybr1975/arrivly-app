@@ -17,7 +17,7 @@
 // exactly why `SubscriptionLike` is a minimal structural type rather than `Stripe.Subscription`.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { findBlockingSubscription, ARRIVLY_STRIPE_METADATA } from './stripe.ts'
+import { findBlockingSubscription, subscriptionIdFromInvoice, ARRIVLY_STRIPE_METADATA } from './stripe.ts'
 
 // Build a subscription carrying Bemgu's own metadata. `app` is spread from the SHARED constant,
 // never hardcoded here — a test that hardcoded 'arrivly' would keep passing if the constant were
@@ -140,4 +140,66 @@ test('empty, null and malformed input never block and never throw', () => {
     findBlockingSubscription([{ id: 'sub_x', status: null, metadata: { ...ARRIVLY_STRIPE_METADATA } }]),
     null,
   )
+})
+
+// ── subscriptionIdFromInvoice ────────────────────────────────────────────────────────────────
+//
+// WHY: the webhook's `invoice.*` branch read `obj.subscription`, which Basil (2025-03-31) REMOVED
+// from Invoice. Against the live endpoint (rendered at 2026-04-22.dahlia) that resolved null, so
+// `invoice.payment_succeeded` / `invoice.payment_failed` were silently ignored — a 200, no error.
+// These pin BOTH payload shapes so the fallback cannot be "tidied" down to one read again.
+
+test('invoice: reads the Basil/dahlia shape (parent.subscription_details.subscription)', () => {
+  const invoice = { parent: { subscription_details: { subscription: 'sub_dahlia' } } }
+  assert.equal(subscriptionIdFromInvoice(invoice), 'sub_dahlia')
+})
+
+test('invoice: falls back to the pre-Basil root field', () => {
+  assert.equal(subscriptionIdFromInvoice({ subscription: 'sub_legacy' }), 'sub_legacy')
+})
+
+test('invoice: the Basil shape WINS when both are present', () => {
+  // A transitional payload carrying both must not resolve to the legacy value.
+  const invoice = {
+    subscription: 'sub_legacy',
+    parent: { subscription_details: { subscription: 'sub_dahlia' } },
+  }
+  assert.equal(subscriptionIdFromInvoice(invoice), 'sub_dahlia')
+})
+
+test('invoice: accepts EXPANDED objects in either position', () => {
+  // `expand` turns a ref string into the full object; the id is then one level down.
+  assert.equal(
+    subscriptionIdFromInvoice({ parent: { subscription_details: { subscription: { id: 'sub_exp' } } } }),
+    'sub_exp',
+  )
+  assert.equal(subscriptionIdFromInvoice({ subscription: { id: 'sub_exp_legacy' } }), 'sub_exp_legacy')
+})
+
+test('invoice: NO subscription -> null, so the caller still ignores it', () => {
+  // A one-off invoice unrelated to any subscription. The 200 {ignored:true} guard depends on this
+  // staying null — do not make the helper "helpful" here.
+  assert.equal(subscriptionIdFromInvoice({ id: 'in_oneoff', customer: 'cus_x' }), null)
+  assert.equal(subscriptionIdFromInvoice({ subscription: null }), null)
+  assert.equal(subscriptionIdFromInvoice({ parent: null }), null)
+  assert.equal(subscriptionIdFromInvoice({ parent: { subscription_details: null } }), null)
+  assert.equal(subscriptionIdFromInvoice({ parent: { subscription_details: { subscription: null } } }), null)
+})
+
+test('invoice: malformed input never throws', () => {
+  for (const bad of [null, undefined, 'not-an-object', 42, [], { parent: 'string' }, { parent: { subscription_details: 7 } }]) {
+    assert.equal(subscriptionIdFromInvoice(bad), null)
+  }
+  // An expanded object with a non-string id is not a usable ref.
+  assert.equal(subscriptionIdFromInvoice({ subscription: { id: 123 } }), null)
+})
+
+test('invoice: a Basil payload with an EMPTY parent falls through to the root', () => {
+  // A present-but-empty `parent` must not shadow a usable root value.
+  //
+  // NOT an operator test, despite appearances: `refId` returns `string | null`, and `??` differs
+  // from `||` only on a falsy-non-nullish left side (i.e. `''`). Here `fromParent` is null, so an
+  // implementation using `||` passes this too. Stripe does not emit `subscription: ''`, and under
+  // `??` that value would fall to the caller's `!subId` guard anyway — fail-closed either way.
+  assert.equal(subscriptionIdFromInvoice({ parent: {}, subscription: 'sub_root' }), 'sub_root')
 })

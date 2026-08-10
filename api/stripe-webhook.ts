@@ -1,7 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
-import { getStripe, tierForPriceId, ARRIVLY_STRIPE_METADATA } from './_lib/stripe.js'
+import { getStripe, tierForPriceId, ARRIVLY_STRIPE_METADATA, subscriptionIdFromInvoice } from './_lib/stripe.js'
 import {
   sendEmail,
   formatMoney,
@@ -104,9 +104,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const id = obj.id
     subId = typeof id === 'string' ? id : null
   } else {
-    // invoice.*
-    const s = obj.subscription
-    subId = typeof s === 'string' ? s : null
+    // invoice.* — Basil moved the subscription ref off the root to
+    // `parent.subscription_details.subscription`, so reading only `obj.subscription` resolved null
+    // on any post-Basil endpoint and silently ignored every invoice event. Same straddle-both-
+    // versions shape as the `current_period_end` fallback below.
+    subId = subscriptionIdFromInvoice(obj)
   }
 
   if (!subId) {
@@ -227,19 +229,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   //     stored on the webhook ENDPOINT (Dashboard config). `constructEvent` only HMAC-verifies and
   //     JSON.parses — it performs no version translation — so THE CLIENT PIN DOES NOT GOVERN IT.
   //
-  // AND THE PAYLOAD IS NOT UNIFORMLY SAFE ACROSS THAT GAP. Two of the three payload reads above
-  // are stable: `checkout.session.completed`'s `subscription`, and `customer.subscription.*`'s
-  // `id`. THE INVOICE BRANCH IS NOT — Basil REMOVED `subscription` from the Invoice object,
-  // relocating it to `parent.subscription_details.subscription`. Because that read comes off a
-  // `Record<string, unknown>` cast there would be no compile error and no throw: `subId` resolves
-  // null, the guard above logs and returns 200 {ignored:true}, and `invoice.payment_succeeded` /
-  // `invoice.payment_failed` SILENTLY STOP UPDATING HOSTS — indistinguishable from a legitimately
-  // ignored event. Reachability depends on the endpoint's configured version, which is LIVE
-  // DASHBOARD STATE AND NOT ASSERTABLE FROM THIS FILE — check it in the Stripe Dashboard, and do
-  // not trust a claim here about what it currently is (an undated assertion about a value that can
-  // change with no deploy is exactly the drift this paragraph warns about). It was an acacia-era
-  // version when this was written. Re-versioning that endpoint is a DASHBOARD ACTION WITH NO
-  // DEPLOY, so it is its own migration, separate from the client pin.
+  // AND THE PAYLOAD IS NOT UNIFORMLY SAFE ACROSS THAT GAP. `checkout.session.completed`'s
+  // `subscription` and `customer.subscription.*`'s `id` both survived acacia -> Basil. THE INVOICE
+  // PAYLOAD DID NOT: Basil REMOVED `subscription` from Invoice, relocating it to
+  // `parent.subscription_details.subscription`. That branch now goes through
+  // `subscriptionIdFromInvoice` (api/_lib/stripe.ts), which reads the current shape then the
+  // pre-Basil root, so it spans both versions — it did not before, and this was NOT hypothetical:
+  // the endpoint was verified rendering 2026-04-22.dahlia on 10 Aug 2026, so both invoice events
+  // had ALWAYS resolved null and returned 200 {ignored:true} — no compile error and no throw,
+  // because the read comes off a `Record<string, unknown>` cast, and indistinguishable from a
+  // legitimately ignored event. Impact was contained only because `customer.subscription.updated`
+  // covers the same ground; that fix restored a REDUNDANT path, it did not repair a broken one.
+  //
+  // The endpoint's configured version is LIVE DASHBOARD STATE, NOT ASSERTABLE FROM THIS FILE.
+  // Re-versioning it is a DASHBOARD ACTION WITH NO DEPLOY — its own migration, separate from the
+  // client pin. Check the Dashboard; do not trust an undated claim here. (The previous version of
+  // this paragraph carried exactly such a claim, and it was already wrong when written.)
   //
   // This is one of FOUR sites carrying this fallback: also api/change-plan.ts (1) and
   // api/cancel-subscription.ts (2). Change one, change all.

@@ -183,4 +183,38 @@ export function findBlockingSubscription(
   return needsPayment
 }
 
+/** A Stripe ref field, which is a string id unless the caller expanded it into an object. */
+function refId(v: unknown): string | null {
+  if (typeof v === 'string') return v
+  if (v && typeof v === 'object' && typeof (v as { id?: unknown }).id === 'string') {
+    return (v as { id: string }).id
+  }
+  return null
+}
+
+/**
+ * The subscription id on an `invoice.*` payload, across API versions.
+ *
+ * Basil (2025-03-31) REMOVED `Invoice.subscription`, moving it to
+ * `parent.subscription_details.subscription`. Read the current shape first, fall back to the
+ * pre-Basil root — same straddle-both-versions reasoning as the `current_period_end` fallback.
+ * Returns null for an invoice genuinely unrelated to a subscription; the caller ignores those.
+ */
+export function subscriptionIdFromInvoice(invoice: unknown): string | null {
+  if (!invoice || typeof invoice !== 'object') return null
+  const inv = invoice as Record<string, unknown>
+
+  const parent = inv.parent
+  const details =
+    parent && typeof parent === 'object'
+      ? (parent as Record<string, unknown>).subscription_details
+      : null
+  const fromParent =
+    details && typeof details === 'object'
+      ? refId((details as Record<string, unknown>).subscription)
+      : null
+
+  return fromParent ?? refId(inv.subscription)
+}
+
 export { getStripe }
