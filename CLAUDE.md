@@ -235,7 +235,7 @@ Each high-volume / public surface has its OWN no-card AI Studio key (separate fr
 ---
 
 ## Known notes / minor debt
-- Cron sequential loops in `cron-sync-ical` AND `cron-refresh-events` share the "batch at scale / maxDuration" debt — fine at current apartment counts; batch before many booked apartments. (Phase G cron-batching item.) **⚠ NO LONGER "fine at current counts" FOR `cron-refresh-events` (Aug 6 2026): at B3.3+ prompt sizes its `mapPool` concurrency of 2 EXCEEDS the 6K TPM Groq org ceiling deterministically, so a multi-candidate run is expected to 429 AND starves guest-chat / guide / daily-greeting across every tenant while it runs. Fix is `concurrency: 1`, and it is the top of this debt — see "SESSION CLOSE Aug 6 2026" open item 1.**
+- Cron sequential loops in `cron-sync-ical` AND `cron-refresh-events` share the "batch at scale / maxDuration" debt — fine at current apartment counts; batch before many booked apartments. (Phase G cron-batching item.) **⚠ NO LONGER "fine at current counts" FOR `cron-refresh-events` (Aug 6 2026): at B3.3+ prompt sizes its `mapPool` concurrency of 2 EXCEEDS the 12K TPM Groq org ceiling deterministically (2 x ~7.6k debit, measured Aug 10), so a multi-candidate run is expected to 429 AND starves guest-chat / guide / daily-greeting across every tenant while it runs. Fix is `concurrency: 1`, and it is the top of this debt — see "SESSION CLOSE Aug 6 2026" open item 1.**
 - `city-events` lazy-fill: the FIRST guest to view an uncached apartment waits ~the generation time (one-off); the cron pre-warms apartments with current/upcoming bookings so most are already warm.
 - **`cron-refresh-events` schedule vs Gemini quota-day — CLOSED (`dbfc034`, Jul 28 2026).** Both Gemini crons rescheduled off the tail of the free-tier quota day: `cron-refresh-events` `0 4 * * *` → **`0 9 * * *`**; `cron-refresh-guides` `0 3 1 * *` → **`0 10 1 * *`** (verified via source that it calls Gemini through `generateGuideForApartment` → `api/_lib/guide.ts`). Key isolation confirmed at the same time: events reads `GEMINI_API_KEY_EVENTS || GEMINI_API_KEY`, guides reads `GEMINI_API_KEY_GUIDES || GEMINI_API_KEY` — each a separate AI Studio project with its own daily quota, so neither reschedule is neutralised by key-sharing. **HONEST FRAMING:** the Jun 25 incident was already mitigated a month earlier by the dedicated events key (`acd16f4`); this reschedule is defence-in-depth for events, and the FIRST timing protection for guides. code-reviewer PASS (0 must-fix); vercel.json only, 2 changed lines, both schedule strings. Original entry follows for history: The events cron runs `0 4 * * *` (04:00 UTC ≈ 21:00 Pacific) — the TAIL of Gemini's free-tier quota-day (free-tier daily limits reset ~midnight Pacific ≈ 07:00–08:00 UTC). On 2026-06-25 this run 429'd every candidate apartment and fired the ntfy "all event refreshes failed" alert because city-events was still on the SHARED `GEMINI_API_KEY`, whose daily quota was exhausted. Mitigated by the dedicated `GEMINI_API_KEY_EVENTS` (`acd16f4`) giving the events surface its own daily quota. **Not yet done (Udy deferred):** reschedule `cron-refresh-events` from `0 4 * * *` → `0 9 * * *` in `vercel.json` so the run lands just AFTER the Pacific reset — the dedicated key lowers recurrence risk, the reschedule mostly removes it. NOTE: the cron itself behaved correctly that day (returned 200, left cache rows intact / stale-safe; the alert only fires when `refreshed === 0`). VERIFICATION PENDING: the next 04:00 UTC run is the passive test — no ntfy alert = the dedicated key worked.
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
@@ -789,10 +789,10 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   real host clustering — which is the entire lever. **Re-derive at >= 10 paying hosts; that is
   when the card decision should be taken**, not at the 50-host milestone.
 - **OPEN — THE LEAN-CONTEXT RULE IS NOW A MEASURED CONSTRAINT, not a design preference.** The
-  Aug 8 run measured **`corpusChars` 15,102 — up 27% from B3.5's 11,195** — roughly **5.4-5.9k
-  tokens against Groq's 6K TPM ORG-WIDE ceiling**. That ONE call nearly filled it. **Step 6 adds
+  Aug 8 measured **`corpusChars` 15,102**; the Aug 9 run BILLED **7,079 tok** (prompt 5,031 +
+  maxTokens 2,048 RESERVED) against Groq's **12K TPM** — HALF of it, not nearly all. **Step 6 adds
   guest chat to the SAME pool**, so PILOT STEP 2's rule (b) — the router's ungrounded leg must not
-  embed the guide — is now backed by measurement.
+  embed the guide — still binds, but on **100K TPD**, not on TPM.
 - ~~**OPEN — LRU ROTATION CAN STALL**~~ **CLOSED by `73587d3`.** `last_attempted_at` on
   `city_events_by_city` is stamped on success, B3.1 skip AND failure (not on deferral), so a city
   that consistently fails no longer pins the head of the queue. **The per-apartment fallback
@@ -1116,7 +1116,7 @@ one at a time (below). Anna's Stays billing is a separate account and is untouch
 the graduation milestone, a number Udy set on Aug 5.
 > **⚠ RECONCILED Aug 6 2026 — THE FREE STACK DOES NOT REACH 50 HOSTS, whichever vendor.** Measured:
 > **Tavily free = 1,000 credits/month FLEET-WIDE** = ~250 runs at 4 credits/run = **~8 booked
-> apartments refreshed daily**; **Groq free = 1,000 req/day and 6K TPM ORG-WIDE** across all eight
+> apartments refreshed daily**; **Groq free = 1K RPD, 12K TPM, 100K TPD ORG-WIDE; TPM debits prompt+maxTokens** across all eight
 > surfaces. **Real free runway is ~10-20 hosts, not 50.** And the escape hatch below is narrower
 > than it reads: **Groq's own Developer tier REQUIRES A CARD**, so "paid Groq with a hard spend
 > limit" does **not** preserve the no-card state either. **The card question is therefore DEFERRED,
@@ -1254,8 +1254,8 @@ taste. Do not rediscover them:**
 - **(b) THE ROUTER'S UNGROUNDED LEG MUST NOT EMBED THE GUIDE.** `guest-chat`'s system prompt is
   currently **~1,600 tokens because it embeds the full guide JSON (~960 tok)**. Retrieve the
   relevant category on demand instead; floor is ~700 tok. **Context that makes this binding:
-  Groq free tier is 6K TPM ORG-WIDE ≈ 2-3 chat calls/minute at the current footprint** — the
-  prompt size, not the request count, is what would throttle chat first.
+  Groq free tier is 12K TPM but only 100K TPD ORG-WIDE, and TPM debits prompt+maxTokens** — TPD
+  is the binder: at ~2.3k tok/turn one host at the 40/h brake burns ~92k in ONE hour.
 - **(c) CHAT HISTORY MUST BE TRUNCATED SERVER-SIDE.**
 
 **Geoapify Free is capped at 5 req/s**, so guide POI queries must run **SEQUENTIALLY with a
