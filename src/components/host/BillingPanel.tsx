@@ -49,6 +49,23 @@ function priceForTier(tier: number, plans: Plan[]): string {
   return `${currencySymbol(plan.currency)}${(plan.price_cents / 100).toFixed(0)}/mo`
 }
 
+// The endpoint's error CODE, for routing decisions. `parseApiError` turns the same code into host
+// copy; this returns it raw so a caller can also send the host somewhere. Kept separate because a
+// message and a route are different jobs.
+function apiErrorCode(err: unknown): string | undefined {
+  try { return JSON.parse((err as Error).message)?.error } catch { return undefined }
+}
+
+// Shown when the duplicate-subscription guard refused AND the billing portal then failed to open.
+// Kept identical in wording to ChoosePlan's copy of this — a host can meet either page in the same
+// incident, and two different explanations of one refusal reads as two different problems.
+function portalFallbackCopy(code: 'subscription_exists' | 'subscription_needs_payment'): string {
+  const tail = "We couldn't open your billing details just now — please try again in a moment."
+  return code === 'subscription_exists'
+    ? `You already have a subscription, so nothing new was started and you haven't been charged twice. ${tail}`
+    : `Your existing subscription needs a payment first. ${tail}`
+}
+
 function parseApiError(err: unknown): string {
   let code: string | undefined
   try { code = JSON.parse((err as Error).message)?.error } catch {}
@@ -65,6 +82,11 @@ function parseApiError(err: unknown): string {
     case 'no_subscription': return "No active subscription found."
     case 'booking_tier_unavailable': return "This tier is not yet available."
     case 'payment_failed': return "Your card couldn't be charged for the upgrade, so your plan wasn't changed. Update your payment method and try again."
+    // The duplicate-subscription guard on /create-subscription. Both are REFUSALS that changed
+    // nothing in Stripe, so the copy must not imply anything failed or was charged.
+    case 'subscription_exists': return "You already have a subscription, so nothing new was started and you haven't been charged twice. Opening your billing details, where you can review and manage it…"
+    case 'subscription_needs_payment': return "Your existing subscription needs a payment first. Opening your billing details so you can update your card…"
+    case 'billing_unavailable': return "We couldn't reach our payment provider just now, so nothing was started. Please try again in a moment."
     default: return 'Something went wrong. Please try again.'
   }
 }
@@ -183,6 +205,36 @@ export default function BillingPanel() {
       window.location.href = data.url
     } catch (err) {
       setActionError(parseApiError(err))
+
+      // The duplicate-subscription guard refused. BOTH codes route to the Stripe billing portal,
+      // and the reason is worth stating because the obvious destination is wrong:
+      //
+      // "send them to the plan-change flow" IS UNREACHABLE FOR PRECISELY THESE HOSTS. This handler
+      // only runs in `chooseMode` (`!hasSubscription || status === 'expired'`), while the Change
+      // plan / upgrade / downgrade controls render only in `manageMode` — the negation. So every
+      // host who can reach a `subscription_exists` here is in the drift-or-expired shape where
+      // those controls are not on the page, and `refetchHost()` cannot conjure them: the stale row
+      // IS the drift. `change-plan.ts` would reject them anyway (`no_subscription` on a null id,
+      // `not_switchable` on a stale one).
+      //
+      // The portal always works: `billing-portal` needs only `stripe_customer_id`, and this guard
+      // fires only when the customer already existed. It is also where a host can actually see and
+      // cancel the superseded subscription that caused this.
+      const code = apiErrorCode(err)
+      if (code === 'subscription_exists' || code === 'subscription_needs_payment') {
+        // The cards stay DISABLED across this hand-off — `setChoosingTier(null)` runs at the end
+        // of the catch, not before it. Otherwise a second click during the portal round trip
+        // re-fires /create-subscription and can race two `window.location.href` assignments. The
+        // server guard is the real control (a repeat call is simply refused again); this is UX.
+        const opened = await handlePaymentPortal(true)
+        // Redirecting: leave the cards disabled while the browser navigates away.
+        if (opened) return
+        // Nothing opened, and `handlePaymentPortal` has already replaced the message with its own
+        // generic "Something went wrong" — which discards the one fact that actually reassures
+        // this host: they have NOT been charged twice. Put that back, with an action they can
+        // take. (ChoosePlan does the same, deliberately; the two must not diverge.)
+        setActionError(portalFallbackCopy(code))
+      }
       setChoosingTier(null)
     }
   }
@@ -252,15 +304,23 @@ export default function BillingPanel() {
     }
   }
 
-  async function handlePaymentPortal() {
+  // `preserveError` is for the duplicate-subscription guard path: the caller has already set an
+  // explanatory message and clearing it would leave the host staring at nothing for the whole
+  // round trip — the `portalPending` spinner lives in the manageMode footer, which is hidden in
+  // exactly the state that path is reachable from.
+  // Returns true only if a redirect was actually initiated, so a caller can tell "handed off to
+  // Stripe" apart from "nothing happened" — the two need different copy.
+  async function handlePaymentPortal(preserveError = false): Promise<boolean> {
     setPortalPending(true)
-    setActionError(null)
+    if (!preserveError) setActionError(null)
     try {
       const data = await api.post<{ url: string }>('/billing-portal', {})
       if (!data.url) throw new Error('no portal url')
       window.location.href = data.url
+      return true
     } catch (err) {
       setActionError(parseApiError(err))
+      return false
     } finally {
       setPortalPending(false)
     }
@@ -513,7 +573,9 @@ export default function BillingPanel() {
             </button>
           </div>
           <button
-            onClick={handlePaymentPortal}
+            // Wrapped, NOT passed by reference: React would hand the MouseEvent to
+            // `preserveError`, and a truthy event would keep a stale error on screen.
+            onClick={() => handlePaymentPortal()}
             disabled={portalPending}
             className="text-[11px] text-[#a8842f] hover:text-[#c8a24e] underline underline-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >

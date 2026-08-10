@@ -119,7 +119,11 @@ export default function KeepDemoModal({ open, onClose, tier }: Props) {
             return
           }
         } catch {
-          // fall through to /choose-plan so they can retry
+          // Fall through to /choose-plan so they can retry — including for the new
+          // duplicate-subscription refusals (which a just-converted demo host should never be able
+          // to trigger, having never subscribed). That page now recognises those codes and sends
+          // the host to the Stripe portal itself, so recovery lives in ONE place rather than being
+          // duplicated here.
         }
         window.location.assign('/choose-plan')
         return

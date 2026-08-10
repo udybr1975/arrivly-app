@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
@@ -29,10 +29,29 @@ function currencySymbol(code: string): string {
   return map[code.toLowerCase()] ?? code.toUpperCase()
 }
 
+// The endpoint's error CODE, for routing decisions — a message and a route are different jobs.
+function apiErrorCode(err: unknown): string | undefined {
+  try { return JSON.parse((err as Error).message)?.error } catch { return undefined }
+}
+
+// Shown when the guard refused AND the billing portal then failed to open. Keeps the one fact
+// that actually reassures the host — they have not been charged twice — instead of collapsing to
+// a generic "something went wrong", which is what the portal's own error handling would say.
+function portalFallbackCopy(code: 'subscription_exists' | 'subscription_needs_payment'): string {
+  const tail = "We couldn't open your billing details just now — please try again in a moment."
+  return code === 'subscription_exists'
+    ? `You already have a subscription, so nothing new was started and you haven't been charged twice. ${tail}`
+    : `Your existing subscription needs a payment first. ${tail}`
+}
+
 function parseApiError(err: unknown): string {
-  let code: string | undefined
-  try { code = JSON.parse((err as Error).message)?.error } catch {}
+  const code = apiErrorCode(err)
   if (code === 'booking_tier_unavailable') return 'This tier is not yet available. Please choose a different plan.'
+  // The duplicate-subscription guard on /create-subscription. Both are REFUSALS — nothing was
+  // started in Stripe and nothing was charged — so the copy must not read as a failure.
+  if (code === 'subscription_exists') return "You already have a subscription, so nothing new was started and you haven't been charged twice. Opening your billing details, where you can review and manage it…"
+  if (code === 'subscription_needs_payment') return 'Your existing subscription needs a payment first. Opening your billing details so you can update your card…'
+  if (code === 'billing_unavailable') return "We couldn't reach our payment provider just now, so nothing was started. Please try again in a moment."
   return 'Something went wrong. Please try again.'
 }
 
@@ -44,6 +63,11 @@ export default function ChoosePlan() {
   const [choosingTier, setChoosingTier] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [cancelledBanner, setCancelledBanner] = useState(false)
+  // Guards the redirect below, which happens AFTER an awaited round trip to /billing-portal: a
+  // host who leaves the page while that request is in flight must not be sent to Stripe by a
+  // response that outlived their intent.
+  const mountedRef = useRef(true)
+  useEffect(() => () => { mountedRef.current = false }, [])
 
   // Read ?checkout=cancelled once on mount (Stripe cancel redirect).
   useEffect(() => {
@@ -99,6 +123,34 @@ export default function ChoosePlan() {
       window.location.href = data.url
     } catch (err) {
       setError(parseApiError(err))
+
+      // The duplicate-subscription guard refused: this host already has a subscription, so the
+      // plan picker can only ever refuse them again.
+      //
+      // NOT `/dashboard/billing`, WHICH BOUNCES. `PrivateRoute`'s `needsPlan` is keyed on
+      // `hosts.stripe_subscription_id`, and the drift case is exactly a row where that is null or
+      // stale — so an internal redirect sends them straight back here. The Stripe portal is
+      // outside that gate and always available (billing-portal needs only `stripe_customer_id`,
+      // which this host must have for the guard to have fired at all), and it is where they can
+      // actually see and cancel the superseded subscription.
+      const code = apiErrorCode(err)
+      if (code === 'subscription_exists' || code === 'subscription_needs_payment') {
+        // The cards stay DISABLED across this hand-off — `setChoosingTier(null)` deliberately does
+        // not run before it. Otherwise a host can click a second card mid-flight and race two
+        // `window.location.href` assignments.
+        try {
+          const portal = await api.post<{ url?: string }>('/billing-portal', {})
+          if (portal?.url && mountedRef.current) {
+            window.location.href = portal.url
+            return
+          }
+        } catch { /* fall through to the honest fallback below */ }
+        // NOTHING OPENED. The message set above ends in "Opening your billing details…", so
+        // leaving it would promise a redirect that is never going to arrive. Replace it with copy
+        // that still carries the reassurance the host most needs — no second charge — and an
+        // action they can actually take.
+        if (mountedRef.current) setError(portalFallbackCopy(code))
+      }
       setChoosingTier(null)
     }
   }

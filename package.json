@@ -9,7 +9,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:affiliate-links": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/affiliate-links.test.mjs",
-    "test:city-events": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/city-events.test.mjs"
+    "test:city-events": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/city-events.test.mjs",
+    "test:stripe": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/stripe.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.6.0",
