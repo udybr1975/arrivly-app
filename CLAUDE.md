@@ -589,6 +589,48 @@ node_modules are unaffected.
 
 ---
 
+## PERMANENT PROVIDER CONSTRAINTS (binding — never relax)
+
+Hoisted out of PHASE I so they survive that section being archived. ITEM 2 and ITEM 3 keep their original labels from the PRE-MARKETING terms review; ITEM 3 carries one OPEN action (the Viator name-consent line) — it is not fully closed.
+
+### Tiqets licence obligations (permanent — confirmed by email Jul 26 2026)
+- **Image credits (clause 9.1c):** image access is **ENABLED + VERIFIED LIVE (Jul 27 2026)** for partner `bemgu-188668`. Confirmed shape from the (now-removed) `[experiences:tiqets:imgdebug]` one-shot log: each `images[]` object carries `{ small, medium, large, extra_large, credits, alt_text }` — the credit field is **`credits`** (string or null; null is valid — a caption renders only when Tiqets provides one, e.g. "Stromma Finland" / "Helsinki Dreamdays Tours" on Sweet home cards). `540d57f` maps `imageCredit` from the selected image's `credits`; `ExperiencesSheet` renders it as a caption — **never strip it.**
+- **Cache-freshness floor:** images/product data must refresh at least every **14 days** (Tiqets disclaims liability for stale images). The current 7-day `expires_at` + daily cron satisfies it — **NEVER extend `experiences_cache` TTL beyond 14 days.**
+- **Viator constraints still stand (unchanged):** guest pages carrying marketplace content are **noindex**; per-host custom domains would breach Viator's own-domain clause (do NOT offer custom host domains while experiences render on the guest page).
+
+**ITEM 2 (LOCKED ARCHITECTURAL CONSTRAINT — applies now, no action needed).**
+**GYG Partner TCs 4.2.2(v)** prohibits the Partner from *"edit, modify, filter, change
+the order of, suppress, or replace any part of the GYG Platform Content, including
+intermixing data from sources other than GetYourGuide"*.
+**Bemgu is COMPLIANT today** only because GYG is link-out ONLY (a city-level link, no
+product cards) — the blended Explore list contains Viator + Tiqets content exclusively,
+so no GYG content is intermixed.
+**PERMANENT RULE: GYG product cards must NEVER be added to the blended Explore list.**
+If GYG content is ever displayed, it must live in its own separated, unmixed,
+unreordered section. Treat this as locked, alongside the never-cross-sum currency rule.
+Related GYG constraints: 4.2.2(i) own-site only; 4.2.2(ii) Partner Platform design must
+stay "significantly distinct" from the GYG Platform and GYG content must not be the
+primary content; 3.1.4 no scraping / AI extraction (Bemgu uses official APIs — fine);
+3.2.2 must disclose the GYG relationship as law requires and must never imply the
+Partner Platform is endorsed by or official to GYG.
+
+**ITEM 3 (LOW RISK — fold into the pending Viator email).**
+**Viator General Terms 3.6** requires the Partner to *submit to Viator all proposed uses
+of its names, logos, marks and/or trademarks* and not publish any such use *without
+prior written consent*. The locked "text-only attribution, no logos" decision was
+correct, but the clause covers **names**, not just logos — so the word "Viator" in a
+card caption technically sits inside it. Add a one-line consent request to the open
+Viator thread.
+Also from Viator: **B-1.2** — Travel Product Information/Links may not be displayed
+through any website/channel/platform other than the Partner Site (independently
+CONFIRMS the existing note that per-host custom domains would break Viator); **3.2** —
+must display all Travel Product Information provided and may not add to, alter or amend
+it; **3.2** — no systematic analysis/extraction of the Viator Marketplace incl. reviews;
+**14 (Publicity)** — no press release, advertisement or public statement about the
+existence/contents of the Agreement or the parties' relationship without Viator's prior
+written consent. **Flag:** the landing page comps table's "3 earning marketplaces"
+framing brushes against clause 14 — review the marketing copy against it before launch.
+
 ## PHASE I — EXPERIENCE CONNECTORS (Stages 0/4A/4B SHIPPED + verified live, Jul 26 2026; scoped S29, Jul 10 2026)
 
 Phase I part (b) — third-party bookable experiences on the guest-page Explore tab — is **BUILT, SHIPPED and verified live in production** through Stage 4B. This supersedes the loose "Viator/GetYourGuide/OpenTable" line in the Phase I roadmap bullet above. The scoping text below is retained for context; the "Build stages" list carries current status. **Remaining: Stage 5** (marketplace reporting ingest — until then commission figures deliberately link out to each provider dashboard).
@@ -614,11 +656,6 @@ Phase I part (b) — third-party bookable experiences on the guest-page Explore 
 - **The link builder (`api/_lib/affiliate-links.ts`) is PARSE-AND-REWRITE (`URLSearchParams.set`), NEVER append.** Provider APIs return **PRE-TAGGED** product URLs (Viator embeds `pid`/`mcid`/`medium=api`; Tiqets embeds `partner`); blindly appending duplicated ids and produced conflicting `medium=api`+`medium=link`. **c-full critical:** a tier-3 host's link carries **ONLY the host's** partner ID — Bemgu's `pid` is REPLACED and Bemgu's `mcid` is **DROPPED** on host-owned Viator links. Covered by a `node:test` suite — **`npm run test:affiliate-links` — keep these assertions green forever** (a dev-only `.ts` resolver hook lets plain-node import the api/ TS; not shipped/imported by runtime).
 
 **Open verification items / external threads:** (a) exact commission rates are account-level and change — product copy must say "typically ~8%", **never promise a number**; (b) **Viator multi-tenant / host-own-ID permission — REPLIED ~Jul 29, NO APPROVAL GIVEN, still OPEN and now a TIER 3 LAUNCH DEPENDENCY** (sent Jul 24; see "SESSION Aug 4 2026" for what the reply did and did not say, and for the drafted-unsent response); (c) **Tiqets image pipeline — VERIFIED LIVE Jul 27 for partner `bemgu-188668`** (cache invalidated via MCP → lazy-fill returned real Tiqets CDN image URLs on all Sweet home cards; ratings + `imageCredit` mapping shipped). Only a final visual caption eyeball on a live card remains (if not already done). **DONE this session (was item d):** the Tiqets `reviewCount`-null bug is fixed (`146173f` — `ratings.total`/`ratings.average` mapping) and the temporary `[experiences:tiqets:debug]` log is removed.
-
-### Tiqets licence obligations (permanent — confirmed by email Jul 26 2026)
-- **Image credits (clause 9.1c):** image access is **ENABLED + VERIFIED LIVE (Jul 27 2026)** for partner `bemgu-188668`. Confirmed shape from the (now-removed) `[experiences:tiqets:imgdebug]` one-shot log: each `images[]` object carries `{ small, medium, large, extra_large, credits, alt_text }` — the credit field is **`credits`** (string or null; null is valid — a caption renders only when Tiqets provides one, e.g. "Stromma Finland" / "Helsinki Dreamdays Tours" on Sweet home cards). `540d57f` maps `imageCredit` from the selected image's `credits`; `ExperiencesSheet` renders it as a caption — **never strip it.**
-- **Cache-freshness floor:** images/product data must refresh at least every **14 days** (Tiqets disclaims liability for stale images). The current 7-day `expires_at` + daily cron satisfies it — **NEVER extend `experiences_cache` TTL beyond 14 days.**
-- **Viator constraints still stand (unchanged):** guest pages carrying marketplace content are **noindex**; per-host custom domains would breach Viator's own-domain clause (do NOT offer custom host domains while experiences render on the guest page).
 
 ### Credentials, keys & environment (Stage 4A/4B ops — Jul 26 2026)
 - **Viator has TWO key types on the SAME dashboard page (Tools → Affiliate API): SANDBOX (issued first, top of page) and PRODUCTION (a separate "Get key" step below).** Sandbox keys `401` against the production API — this cost ~2 days of debugging. `VIATOR_API_KEY` in Vercel **Production** is now the **PRODUCTION** key, stored with Vercel's **"sensitive" flag** (write-only — re-copy from the Viator dashboard if it's ever needed again). `TIQETS_API_TOKEN` unchanged. Partner IDs are NON-SECRET; API keys/tokens are SECRETS (server-side env, no `VITE_` prefix). GYG has no API key at this access level (link/widget-based).
@@ -664,38 +701,7 @@ Tiqets affiliate landing page lists "hotels, travel companies" among welcome par
 types; and Tiqets knowingly configured per-campaign tracking for a multi-property host
 platform across three support threads.
 
-**ITEM 2 (LOCKED ARCHITECTURAL CONSTRAINT — applies now, no action needed).**
-**GYG Partner TCs 4.2.2(v)** prohibits the Partner from *"edit, modify, filter, change
-the order of, suppress, or replace any part of the GYG Platform Content, including
-intermixing data from sources other than GetYourGuide"*.
-**Bemgu is COMPLIANT today** only because GYG is link-out ONLY (a city-level link, no
-product cards) — the blended Explore list contains Viator + Tiqets content exclusively,
-so no GYG content is intermixed.
-**PERMANENT RULE: GYG product cards must NEVER be added to the blended Explore list.**
-If GYG content is ever displayed, it must live in its own separated, unmixed,
-unreordered section. Treat this as locked, alongside the never-cross-sum currency rule.
-Related GYG constraints: 4.2.2(i) own-site only; 4.2.2(ii) Partner Platform design must
-stay "significantly distinct" from the GYG Platform and GYG content must not be the
-primary content; 3.1.4 no scraping / AI extraction (Bemgu uses official APIs — fine);
-3.2.2 must disclose the GYG relationship as law requires and must never imply the
-Partner Platform is endorsed by or official to GYG.
-
-**ITEM 3 (LOW RISK — fold into the pending Viator email).**
-**Viator General Terms 3.6** requires the Partner to *submit to Viator all proposed uses
-of its names, logos, marks and/or trademarks* and not publish any such use *without
-prior written consent*. The locked "text-only attribution, no logos" decision was
-correct, but the clause covers **names**, not just logos — so the word "Viator" in a
-card caption technically sits inside it. Add a one-line consent request to the open
-Viator thread.
-Also from Viator: **B-1.2** — Travel Product Information/Links may not be displayed
-through any website/channel/platform other than the Partner Site (independently
-CONFIRMS the existing note that per-host custom domains would break Viator); **3.2** —
-must display all Travel Product Information provided and may not add to, alter or amend
-it; **3.2** — no systematic analysis/extraction of the Viator Marketplace incl. reviews;
-**14 (Publicity)** — no press release, advertisement or public statement about the
-existence/contents of the Agreement or the parties' relationship without Viator's prior
-written consent. **Flag:** the landing page comps table's "3 earning marketplaces"
-framing brushes against clause 14 — review the marketing copy against it before launch.
+> ITEMS 2 and 3 moved to "PERMANENT PROVIDER CONSTRAINTS" — they are binding obligations, not review findings. ITEM 1 stays here because it is an unresolved verification with a data gap.
 
 **COMMERCIAL CONTEXT (no legal effect).** Tiqets was **acquired by Expedia Group in
 December 2025**; Viator is TripAdvisor. Two of the three marketplaces are now owned by
