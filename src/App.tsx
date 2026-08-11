@@ -15,7 +15,7 @@ import ChoosePlan from './components/host/ChoosePlan'
 import Dashboard from './components/host/Dashboard'
 import PropertySetup from './components/host/PropertySetup'
 import BookingManager from './components/host/BookingManager'
-import QRCodePanel from './components/host/QRCodePanel'
+import SharePanel from './components/host/SharePanel'
 import BrandingPanel from './components/host/BrandingPanel'
 import BillingPanel from './components/host/BillingPanel'
 import EarningsPanel from './components/host/EarningsPanel'
@@ -99,7 +99,9 @@ export default function App() {
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/dashboard/property/:aptId" element={<PropertySetup />} />
               <Route path="/dashboard/bookings" element={<BookingManager />} />
-              <Route path="/dashboard/qr" element={<QRCodePanel />} />
+              <Route path="/dashboard/share" element={<SharePanel />} />
+              {/* Legacy path — bookmarks and older in-app links must keep working. */}
+              <Route path="/dashboard/qr" element={<Navigate to="/dashboard/share" replace />} />
               <Route path="/dashboard/branding" element={<BrandingPanel />} />
               <Route path="/dashboard/billing" element={<BillingPanel />} />
               <Route path="/dashboard/earnings" element={<EarningsPanel />} />

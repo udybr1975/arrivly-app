@@ -4,7 +4,7 @@ import { ExternalLink, Smartphone } from 'lucide-react'
 
 // Demo "Be your guest" spotlight — the signature moment: the host opens / scans the
 // SAME live guest page their seeded guest sees. `url` is the token guest URL (built by
-// the caller with the same shape QRCodePanel/BookingManager use). Reuses the existing
+// the caller with the same shape SharePanel/BookingManager use). Reuses the existing
 // `qrcode` generator. Presentational only.
 export default function BeYourGuestCard({ url }: { url: string }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)

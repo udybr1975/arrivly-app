@@ -137,16 +137,19 @@ export const GUIDE_MODULES: GuideModule[] = [
   {
     id: 'guest-page-qr',
     category: 'guest-page',
-    title: 'Guest page & QR',
-    summary: 'One QR, one link — it never changes, even when guests do.',
+    title: 'Share',
+    summary: 'Two things per property: a link you send before the trip, and a code you print for the wall.',
     status: 'live',
-    page: '/dashboard/qr',
+    page: '/dashboard/share',
     related: ['property', 'branding'],
-    tags: ['qr', 'guest page', 'share', 'print', 'url'],
-    body: `- **The QR code** — the scannable code for this property. *Why:* guests scan it on arrival to open their page; one code per property, forever.
-- **Copy guest page URL** — copies the link. *Why:* share it in a message or your listing without printing anything.
+    tags: ['qr', 'guest page', 'share', 'print', 'url', 'welcome link', 'message'],
+    body: `- **Step 1 — send this** — the message you paste into Airbnb, Booking.com or WhatsApp once a booking is confirmed. *Why:* it carries the welcome link, which opens your guide *before* the guest travels — early enough for them to book tables and tours.
+- **Copy message** — copies the whole message, not just the link. *Why:* one tap and it's ready to paste; the link is already inside it.
+- **Edit** — rewrite the message in your own words, then Save. *Why:* say it your way. Edits are saved for that property only, and if you delete the link it's added back automatically.
+- **Step 2 — print this** — the QR code for the wall. *Why:* guests scan it once they've arrived; one code per property, forever. **Don't send this one to guests** — it opens the in-stay page, not the pre-arrival guide.
 - **Download** (PNG) — saves the QR as an image. *Why:* drop it into a welcome card, sign, or printout.
-- **Print card** — prints a ready-made QR card. *Why:* a physical code to leave in the apartment.
+- **Print** — prints a ready-made QR card. *Why:* a physical code to leave in the apartment.
+- **Guest can't scan the code?** — reveals the plain guest page URL with a copy button. *Why:* a fallback for a guest whose camera won't cooperate.
 
 > **What guests see when they scan:** their name and a welcome, WiFi, house rules, the live city guide and local events, a chatbot that knows your apartment, and — during their stay only — the private check-in details. After checkout the page becomes a friendly "till next time" goodbye; with no valid booking it shows a neutral page (no private data ever leaks).`,
   },

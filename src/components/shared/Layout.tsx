@@ -35,7 +35,7 @@ const NAV_GROUPS: Array<{ label?: string; items: NavEntry[] }> = [
   {
     label: 'Your place',
     items: [
-      { to: '/dashboard/qr', label: 'Guest page & QR', Icon: QrCode },
+      { to: '/dashboard/share', label: 'Share', Icon: QrCode },
       { to: '/dashboard/branding', label: 'Branding', Icon: Palette },
     ],
   },
