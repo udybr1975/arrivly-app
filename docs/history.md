@@ -1838,3 +1838,55 @@ folded into the migration. Full item under OPEN ITEMS.
 **NEXT ACTION: the CLAUDE.md restructuring session, ALONE — not Step 6.** Then, in order: the
 guest-chat brake decision, Commit B (events staleness gate), Step 6. All "Step 6 is next" pointers
 in this file have been updated.
+
+## Session — 10 Aug 2026 (restructuring, HEAD e694e90)
+
+**CLAUDE.md: 156,898 -> 97,532 chars (-38%).** Four docs-only commits, no source file touched.
+`4f9ead5` hoist · `94d22e6` key-map consolidation · `bb32f51` deletions · `e694e90` moves.
+
+**WHY ARCHIVING COULD NEVER HAVE WORKED, measured rather than argued.** ~22% of the file sat
+inside blocks carrying a `~~strikethrough~~` or SUPERSEDED marker. The editorial convention was to
+retain a wrong claim and explain why it was wrong — good epistemics, and invisible to archiving,
+because superseded claims live INSIDE durable sections. Two disciplined closes in a row shrank the
+record and still grew the file. **The fix was to split on LIFETIME, not topic:** invariants and
+live work stay; reasoning trails move to purpose-named files under `docs/`.
+
+**THE POINTER-COST FINDING WAS AN ARTEFACT.** The recorded "a move returns ~half its size once an
+honest pointer is written" is true only when items move INDIVIDUALLY. One pointer per BLOCK makes
+the cost fixed, not proportional — 44 blocks and 54,025 moved chars cost ~4,900 of pointers and
+hoists, roughly 9%.
+
+**A PROOF MUST NOT CLAIM MORE THAN THE CHECK SUPPORTS — and the commit type decides the check.**
+Three different proofs were needed and they are not interchangeable. A PURE MOVE gets the exact
+round-trip (`4f9ead5` also got an independent delta decomposition, arrived at from the other
+direction). A DELETION gets neither — there is nothing to substitute back — so it gets a FORWARD
+hoist check proving the content already exists elsewhere, run BEFORE removal. A MIXED commit gets
+neither honestly: `e694e90` was therefore split into Phase A (move everything to sentinels, prove
+byte-identical) and Phase B (collapse sentinels into pointers and hoists, verify forward), because
+the compressed rules and the LAUNCH BLOCKERS spine are new text no round-trip can validate.
+
+**THE THREE-COPIES PATTERN IS SYSTEMIC, not a one-off.** The Gemini key map existed in three
+places, each partial, none wrong; consolidating required reconciling a 4-vs-5 surface list (the
+fuller list wins — under-listing a shared key is the error that bites). The same pattern then
+surfaced again: deleting one copy of the "re-test grounding on Gemini 3" claim left a second alive
+elsewhere.
+
+**LESSON — SIZE ESTIMATES BY EYE ARE UNRELIABLE; MEASURE REPRESENTATIVE LINES.** Chat-side
+projections missed by +234 then by -14,500 (~13%). Both landed safe by luck, not method. Measure
+before projecting.
+
+**LAUNCH BLOCKERS is the substantive change.** Six launch-critical items were scattered across
+four sections, which is why AI-pilot work kept reading as the next thing to do when none of it is
+a launch blocker. They now sit in one ordered section.
+
+**FOUND AND RECORDED, not fixed:** the npm-audit count is 8 in Known notes and 7 in OPEN ITEMS.
+Reconcile by RUNNING it, never by picking.
+
+**VERIFIED AGAINST LIVE DB this session:** five hosts carry sandbox subscriptions, confirming the
+6-9 Sept auto-cancel item mails real addresses. Four of five billing-test host descriptions were
+materially stale — notably Yiftach, named as the clean "Add card" test row, now HAS a
+subscription. `ARR-EVT777` expires 11 Aug; re-roll before any guest-page test.
+
+**NEXT ACTION: RETENTION CRONS.** They gate publishing every legal document, and the legal review
+is the only external dependency, so it has a lead time nothing else has. Then: the 6-9 Sept fixture
+decision, the guest-chat 40/h brake re-sizing (own commit, own arithmetic), Commit B, Step 6.

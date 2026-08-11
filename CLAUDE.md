@@ -159,11 +159,14 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - Date reverts pending: ARR-SWEET1 check_out → 2026-06-02; ARR-TEST01 → original 27–31 May (or delete).
 - 3 guest push subs on ARR-SWEET1 (booking f803d95e) from push testing — old phone `fxoFeLto…`, new-phone tab `dPjCzkTFG…`, new-phone installed app `emdrm-rTQYM…`; decide whether to prune.
 
-**Billing-test hosts (S19 cont.):**
-- **Roy** (udy.bar.yosef@sterlights.com) `3b11235b-d6af-4291-a929-db0194065740` — billing sanity click-through; now tier 2, status trial, sub `sub_1TgnuY…` / `cus_UgADqTdBVkwPFj`, trial ends ~2026-06-24.
-- **Yaron** (udy@1234.com) `06eb554e-40eb-45fd-a6ed-7dbc2edbc0c1` — subscribed-during-trial (completed Checkout; trialing `sub_1TlZaX…` / `cus_Ul5l…`, no charge until ~2026-07-07).
-- **Udyn** `11b5b459-d631-41b1-8d5c-327613f0e346` — parked in `grace` on the test-clock sub (`cus_UkzljDJks6qaGC` / `sub_1TlTpFFgkuKMBYAu7yJaesdN`).
-- **Yiftach** (yiftach@xn--gnai-8qa.com) `6dbfbda4` — clean trial, no subscription (a pre-fix subscribe attempt errored before creating anything; nothing to remove).
+**Billing-test host rows rot fast — VERIFY AGAINST LIVE DB, never trust this list.** Checked
+11 Aug 2026: Roy `3b11235b`, Yaron `06eb554e`, Udyn `11b5b459` and Yiftach `6dbfbda4` are ALL
+`active` with live subscriptions — four of five prior descriptions were wrong, and Yiftach was
+named here as the clean "no subscription / Add card" row when he now has one. Also undocumented:
+host **Shay** (`udy.bar.yosef+demo@gmail.com`, demo, trial). **Fixtures survive retention by
+DATE-REFRESHING, never by exemption** — an exemption makes the privacy notice false. Refreshed
+11 Aug: `ARR-EVT777` and `ARR-PAR777` to current-1/current+3, `ARR-BCN777` to current-6/current-2
+(thank-you state).
 
 ---
 
@@ -199,6 +202,12 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 ---
 
 ## Lessons / learnings
+
+- **A REVOKE MUST NAME THE ROLES THAT HOLD THE GRANT, AND THE CATALOG MUST CONFIRM IT.** Supabase default privileges grant EXECUTE to `anon` and `authenticated` BY NAME on every new function in `public`, so `REVOKE ... FROM PUBLIC` is a SILENT NO-OP against them. Four new SECURITY DEFINER retention functions shipped with `anon` holding EXECUTE — and SECURITY DEFINER bypasses RLS, so any holder of the public anon key could have called `cleanup_guest_identities(0)` and erased every guest name. Caught only by querying `pg_proc.proacl` afterwards. **Same class as the column-vs-table REVOKE trap already recorded here, and that record did not prevent it.** Always revoke from `anon, authenticated` explicitly and diff the ACL against a known-good function.
+
+- **WHEN A FACT LIVES IN N PLACES, ENUMERATE THE SITES — DO NOT GREP FOR A PHRASING.** Grep finds the copies you wrote and misses the ones you didn't. Failed FOUR times in two sessions: three partial Gemini key maps; "messages 90 days" missed by three search variants; a table row containing neither the number nor the searched phrase; and `RETENTION CRONS` skipped by a `[Rr]etention` search because it was uppercase. **Three of four table rows updated is the signature.** List the assertion sites first, tick each individually.
+
+- **RE-MEASURE AT THE MOMENT YOU STATE A NUMBER, especially about an irreversible delete.** Estimates missed by +234, then -14,500, then quoted "~34 messages" when the true figure was 29 — stale because a fixture date-refresh performed EARLIER IN THE SAME SESSION had moved bookings back inside the window. A figure measured before your own change does not describe the state you are describing.
 
 - **Supabase Storage rejects the host's gotrue user JWT on this project.** Never upload with an anon/host session — mint a server-side signed upload URL via `api/create-upload-url.ts` (service-role) and use `uploadToSignedUrl`. Also lifts the Vercel 4.5 MB body limit. Evidence in docs/learnings.md.
 
@@ -353,6 +362,11 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 At every session close, the PREVIOUS session record moves to `docs/history.md` BEFORE the new one
 is written. Never two.
 
+**HOIST RULES, NOT ONLY OPEN ITEMS.** Anything a session invents — a rule, a threshold, a
+convention — is born inside that session's record and has no other home unless moved. **Open items
+get noticed because they read as unfinished; rules read as settled, which is exactly why they slip
+through.** The GATE STOPPING CONDITION was nearly archived one session after adoption.
+
 **This treats the cause, not the symptom.** The file reached **290,660 chars** because session
 records were APPEND-ONLY and nothing ever left — the `b9c34d4` split cut it in half, but a split
 is a one-off remedy for a process that would simply refill it. Working limit: **150,000 chars.**
@@ -382,6 +396,8 @@ Claude in chat NEVER pushes to GitHub. All code changes are delivered as Claude 
   one-line change — both gates run again before committing. **No exceptions for small
   changes.** A verdict only covers the bytes the reviewer actually read.
 - **GATE STOPPING CONDITION (Aug 10 2026).** Once BOTH gates return PASS with zero must-fix, STOP and commit. After a passing verdict the only permitted edits are ones resolving a must-fix; remaining warnings go in the commit message as known residuals. If a gate still returns must-fix after round three, stop and report. **Why:** `90aed01` ran SIX rounds with the code unchanged after round 1 — every later round failed on COMMENT accuracy, two of them on fixes for earlier fixes, and at round 5 the gates DISAGREED about one clause, which is the signal to DELETE it rather than revise again.
+- **A CODE GATE DOES NOT ADJUDICATE PROSE — SPLIT THE COMMIT (Aug 11 2026).** The retention commit passed both gates at round 1, then failed rounds 2 and 3 with **zero executable lines changed**, entirely on documentation accuracy across four files — the `90aed01` failure repeating. When the only remaining must-fix is prose: **commit the gate-verified code, then fix the documents in a separate docs-only commit**, which needs no gates.
+- **MATCH THE PROOF TO THE COMMIT TYPE; NEVER CLAIM MORE THAN THE CHECK SUPPORTS.** A **pure move** is provable by EXACT ROUND-TRIP. A **deletion** is NOT — nothing can be substituted back, so the only check is the FORWARD one: locate the durable content in the post-edit file BEFORE removing its source. A **mixed** commit gets neither honestly; split it into a move phase proved against sentinels, then a collapse phase verified forward. State which proof was used, and which was unavailable.
 - **STANDING FALSE POSITIVE — `api/welcome.ts` lat/lng.** The security-auditor repeatedly
   reports that `api/welcome.ts` returns `lat`/`lng` even when `welcome_show_address` is
   false. **It does not.** `street`, `street_number`, `lat` and `lng` are all inside the same
@@ -404,6 +420,15 @@ node_modules are unaffected.
 ## PERMANENT PROVIDER CONSTRAINTS (binding — never relax)
 
 Hoisted out of PHASE I so they survive that section being archived. ITEM 2 and ITEM 3 keep their original labels from the PRE-MARKETING terms review; ITEM 3 carries one OPEN action (the Viator name-consent line) — it is not fully closed.
+
+### VIATOR — HOST-OWN-PID IS PROHIBITED (written ruling, 4 Aug 2026)
+**Viator Partner Support (Diego) answered the 23 Jul multi-tenant question in writing. Two halves, opposite answers:**
+- **PERMITTED, and never questioned: Bemgu's OWN PID (`P00310630`) + `mcid=42383` on Viator links served from `bemgu.app`, on host-BRANDED pages.** Bemgu owns, operates and maintains the domain, so every guest page on it IS Bemgu's "Partner Site". The 31 Jul message states plainly that Viator's affiliate relationship is with Bemgu and payouts issue to Bemgu. **The marketplace and its revenue are unaffected.**
+- **PROHIBITED: a HOST's own PID on links served from `bemgu.app`.** Two clauses: **"Partner Site"** is defined in the VPP General Terms as a property *"owned, operated and maintained by you"* (the registered partner); and **Service Terms B-1.5** forbids display of Travel Product Information or Links *"through any website, channel, platform or system other than the Partner Site"*. Hosts do not own bemgu.app, so their PIDs may not ride on links from it.
+
+**CONSEQUENCE — DECIDED BY UDY 11 Aug 2026: Viator is REMOVED from the Tier-3 "connect your own account" feature.** GYG and Tiqets are SEPARATE contracts under separate terms — **do not assume either answer applies to them**; ask both in writing, Tiqets first (it uses the same host-ID substitution path via `partner=`).
+
+**Diego's reply is INCOMPLETE:** it promises "the permissible pathways to launch this feature compliantly" and then omits that section entirely. A one-line follow-up asking for it is outstanding and cheap — an agency or partner-network structure could restore the feature later, which is why `hosts.viator_partner_id` is left in place rather than dropped.
 
 ### Tiqets licence obligations (permanent — confirmed by email Jul 26 2026)
 - **Image credits (clause 9.1c):** image access is **ENABLED + VERIFIED LIVE (Jul 27 2026)** for partner `bemgu-188668`. Confirmed shape from the (now-removed) `[experiences:tiqets:imgdebug]` one-shot log: each `images[]` object carries `{ small, medium, large, extra_large, credits, alt_text }` — the credit field is **`credits`** (string or null; null is valid — a caption renders only when Tiqets provides one, e.g. "Stromma Finland" / "Helsinki Dreamdays Tours" on Sweet home cards). `540d57f` maps `imageCredit` from the selected image's `credits`; `ExperiencesSheet` renders it as a caption — **never strip it.**
@@ -474,6 +499,11 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 
 ### OPEN ITEMS — PRIORITY CHANGES (Aug 4 2026)
 
+- **VIATOR TIER-3 REMOVAL — the only item with a written compliance finding behind it.** Five verified sites: `api/_lib/affiliate-links.ts` (the `usingHostId` branch sets a host `pid` and strips `mcid` — Viator must NEVER take a host PID; leave GYG/Tiqets untouched pending their answers); `api/_lib/affiliate-links.test.mjs` line ~48, whose test ASSERTS the prohibited behaviour and must be inverted; `EarningsConnect.tsx` (Viator card + `viator_partner_id` input + line ~146 copy); `EarningsPanel.tsx` line ~379; `Landing.tsx` line ~63. **STAY UNCHANGED and are still true:** `Landing.tsx` ~245 (three-marketplace comparison) and ~289 ("live on every guest page"), and the Viator clicks column in EarningsPanel — those describe coverage and click reporting, not host attribution.
+- **HOST ADDRESS CHANGES ARE UNRESTRICTED, and that defeats the property cap.** A Tier-1 host capped at 2 can edit property B's address to a third flat — and the QR encodes the apartment UUID and never changes, so the printed code in the new flat just works. The cap counts ROWS, nothing counts addresses. **Do NOT blanket-lock:** typo fixes, onboarding mistakes and genuine relocations are all legitimate. **Proposed rule — defend the cap, not the edit:** a change staying within a few km AND the same `canonical_city_key` is a correction, allow it; a change beyond that is a SWAP and gets gated. **Better than a hard wall: "this is a new property — upgrade to add it",** which turns an abuse route into an upgrade prompt. **Also unverified: whether an address change currently invalidates the guide, the geocoded host picks, the events cache city key and the weather coordinates** — a legitimate move leaving the old city's guide attached is its own bug. Mockup-first.
+- **WELCOME SHARE PANEL — makes a shipped feature reachable.** "Step 1, you send it" (welcome link) vs "Step 2, you print it" (QR), with an explicit "do not send this one" on the QR card. This also settles the queued welcome-vs-QR placement question. Mockup-first.
+- **RUN `api/backfill-canonical-city` BY HAND** — GET with `Authorization: Bearer <CRON_SECRET>`. Idempotent. Watch `resolvedNoKey`: a city that resolves with no valid country code stays on the per-apartment path.
+- **ASK GYG AND TIQETS THE VIATOR QUESTION IN WRITING.** Tiqets first — it uses the same host-ID substitution path (`partner=`). Now a known risk, not a theoretical one.
 - **⏰ DATED — EARLY SEPT 2026 (6-9 Sept). THE ONLY ITEM IN THIS FILE WITH A REAL DEADLINE, and it
   sends REAL EMAIL TO REAL PEOPLE.** All five remaining sandbox subscriptions hit Stripe's 90-day
   limit and auto-cancel. Each one WILL resolve a host row and send a genuine cancellation email —
@@ -651,58 +681,55 @@ Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live
 > first — the seven items live in Known notes, Tracked security follow-ups and OPEN ITEMS.
 > Moved to docs/history.md — "Session — 9-10 Aug 2026 (HEAD 2b71fec)". Its GATE STOPPING
 > CONDITION was HOISTED into Agent policy first — it existed nowhere else.
+> Moved to docs/history.md — "Session — 10 Aug 2026 (restructuring, HEAD e694e90)". Its three
+> standing size rules were already hoisted into the CLAUDE.md-size open item.
 
-## Session — 10 Aug 2026 (restructuring, HEAD e694e90)
+## Session — 11 Aug 2026 (retention crons + Viator ruling, HEAD 4d5ac2f)
 
-**CLAUDE.md: 156,898 -> 97,532 chars (-38%).** Four docs-only commits, no source file touched.
-`4f9ead5` hoist · `94d22e6` key-map consolidation · `bb32f51` deletions · `e694e90` moves.
+**LAUNCH BLOCKER 1 CLOSED.** `1b7c3d7` code, `4d5ac2f` docs, after the restructuring commits
+`4f9ead5` / `94d22e6` / `bb32f51` / `e694e90` / `2bcd076`. CLAUDE.md 156,898 -> ~100k the same day;
+detail in docs/history.md.
 
-**WHY ARCHIVING COULD NEVER HAVE WORKED, measured rather than argued.** ~22% of the file sat
-inside blocks carrying a `~~strikethrough~~` or SUPERSEDED marker. The editorial convention was to
-retain a wrong claim and explain why it was wrong — good epistemics, and invisible to archiving,
-because superseded claims live INSIDE durable sections. Two disciplined closes in a row shrank the
-record and still grew the file. **The fix was to split on LIFETIME, not topic:** invariants and
-live work stay; reasoning trails move to purpose-named files under `docs/`.
+**THE SEQUENCING TRAP IS RESOLVED.** The drafted guest notice §6 promised erasure periods the code
+did not implement. Now matched: messages 30, guest identities 30, greetings 30, guest push 7, admin
+audit 365. **Messages moved 90 -> 30 rather than the document moving to 90** — minimisation is the
+defensible direction, and a notice is a promise, not a description of whatever the cron does. Four
+of five "undecided" periods turned out to be already decided by notice §6; only `admin_audit` was
+open, and 365 is a recommendation carrying `[CONFIRM]`.
 
-**THE POINTER-COST FINDING WAS AN ARTEFACT.** The recorded "a move returns ~half its size once an
-honest pointer is written" is true only when items move INDIVIDUALLY. One pointer per BLOCK makes
-the cost fixed, not proportional — 44 blocks and 54,025 moved chars cost ~4,900 of pointers and
-hoists, roughly 9%.
+**ERASURE MECHANISM.** `guests.first_name` is NOT NULL, so it cannot be nulled in place. The sweep
+nulls `bookings.guest_id`, then deletes the `guests` row only when no booking still references it —
+a repeat guest with a recent stay is never erased, and the booking survives nameless. Periods are
+cron constants; the SECURITY DEFINER functions take `retention_days` as a parameter, so a change is
+one line and no migration. A `< 7` guard refuses to run rather than let a near-zero constant wipe a
+table. **First run 04:00 UTC 12 Aug** — the 11 Aug slot preceded the deploy by ~8h.
 
-**A PROOF MUST NOT CLAIM MORE THAN THE CHECK SUPPORTS — and the commit type decides the check.**
-Three different proofs were needed and they are not interchangeable. A PURE MOVE gets the exact
-round-trip (`4f9ead5` also got an independent delta decomposition, arrived at from the other
-direction). A DELETION gets neither — there is nothing to substitute back — so it gets a FORWARD
-hoist check proving the content already exists elsewhere, run BEFORE removal. A MIXED commit gets
-neither honestly: `e694e90` was therefore split into Phase A (move everything to sentinels, prove
-byte-identical) and Phase B (collapse sentinels into pointers and hoists, verify forward), because
-the compressed rules and the LAUNCH BLOCKERS spine are new text no round-trip can validate.
+**MEASURED FIRST-RUN EFFECT:** 29 of 38 messages, 12 guest identities, 2 guest push subscriptions;
+greetings and audit reap 0 (a zero is normal, not a broken sweep). All lapsed test/demo rows.
 
-**THE THREE-COPIES PATTERN IS SYSTEMIC, not a one-off.** The Gemini key map existed in three
-places, each partial, none wrong; consolidating required reconciling a 4-vs-5 surface list (the
-fuller list wins — under-listing a shared key is the error that bites). The same pattern then
-surfaced again: deleting one copy of the "re-test grounding on Gemini 3" claim left a second alive
-elsewhere.
+**STILL OPEN, DELIBERATELY:** the bookings<->guest LINK. The booking row is retained indefinitely on
+a business-records rationale once the link is severed and it stops being personal data. **That is the
+one retention decision still gating Art. 17 erasure.**
 
-**LESSON — SIZE ESTIMATES BY EYE ARE UNRELIABLE; MEASURE REPRESENTATIVE LINES.** Chat-side
-projections missed by +234 then by -14,500 (~13%). Both landed safe by luck, not method. Measure
-before projecting.
+**THE VIATOR RULING — see PERMANENT PROVIDER CONSTRAINTS.** The reply arrived 4 Aug and was NEVER
+RECORDED; three sessions since read "awaiting reply" as current. **A provider answer that changes a
+launch dependency sat in an inbox this file cannot see.** The connected Gmail is `udy@tlv.capital`;
+the Bemgu thread runs through `hello@bemgu.app`, which is NOT connected — so a Gmail search
+returning nothing means "wrong inbox", never "no reply". **Ask Udy directly for provider replies.**
 
-**LAUNCH BLOCKERS is the substantive change.** Six launch-critical items were scattered across
-four sections, which is why AI-pilot work kept reading as the next thing to do when none of it is
-a launch blocker. They now sit in one ordered section.
+**FOUND 11 Aug — THE WELCOME PAGE IS LIVE AND INVISIBLE.** `/w/:code` is routed and rendering, and
+**NO host component references `welcome_code` or `/w/`** — swept all thirteen under
+`src/components/host`. There is no copy button, no link, nothing. (Dashboard's 14 "welcome" hits are
+the onboarding modal.) The pre-arrival surface was shipped without the one control that makes it
+usable, which is why it keeps feeling unsolved. **The share panel is therefore higher value than the
+"upcoming" guest-page state**, which was over-rated: the welcome page already carries experiences,
+so the "affiliate revenue is switched off pre-arrival" claim was FALSE.
 
-**FOUND AND RECORDED, not fixed:** the npm-audit count is 8 in Known notes and 7 in OPEN ITEMS.
-Reconcile by RUNNING it, never by picking.
-
-**VERIFIED AGAINST LIVE DB this session:** five hosts carry sandbox subscriptions, confirming the
-6-9 Sept auto-cancel item mails real addresses. Four of five billing-test host descriptions were
-materially stale — notably Yiftach, named as the clean "Add card" test row, now HAS a
-subscription. `ARR-EVT777` expires 11 Aug; re-roll before any guest-page test.
-
-**NEXT ACTION: RETENTION CRONS.** They gate publishing every legal document, and the legal review
-is the only external dependency, so it has a lead time nothing else has. Then: the 6-9 Sept fixture
-decision, the guest-chat 40/h brake re-sizing (own commit, own arithmetic), Commit B, Step 6.
+**FOUND 11 Aug — CANONICAL CITY BACKFILL IS HALF DONE.** 4 of 10 apartments have a
+`canonical_city_key`, all resolved 7 Aug 11:53-12:50; the other 6 have `canonical_resolved_at` NULL
+= never attempted. `api/backfill-canonical-city.ts` is idempotent, CRON_SECRET-gated and **on no
+schedule** — it must be called by hand. One ("Penthouse in the sky") is correctly excluded, being
+invisible. Re-running takes the events cron from 9 units to ~7.
 
 ## ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026) — CANONICAL, supersedes the pre-billing checklist
 
