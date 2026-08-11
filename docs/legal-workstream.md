@@ -19,11 +19,17 @@ launch blocker.
 This split means TWO privacy documents, not one, and it is why a DPA (GDPR Art. 28) is
 required. Products routinely get this wrong by writing a single blurred policy.
 
-**SEQUENCING TRAP — ON THE CRITICAL PATH. The retention crons must ship BEFORE publication
-and BEFORE the lawyer review.** The drafts state guest names and messages are erased **30 days
-after check-out**. **THE CODE DOES NOT DO THIS:** messages are on **90 days**, and the
-guest-name, greeting and push sweeps **do not exist at all**. Publishing first would put a
+**SEQUENCING TRAP — CLOSED 11 Aug 2026.** It read: the retention crons must ship BEFORE
+publication and BEFORE the lawyer review, because the drafts state guest names and messages are
+erased **30 days after check-out** while the code did not do it (messages were on 90 days; the
+guest-name, greeting and push sweeps did not exist at all). Publishing first would have put a
 **FALSE STATEMENT into a privacy notice** — materially worse than having no notice.
+**Now shipped:** `cron-cleanup-messages` moved 90 → 30 (the CODE moved, not the document —
+minimisation is the defensible direction) and `cron-retention` sweeps guest identities 30d,
+greetings 30d, guest push 7d, admin audit 365d. The code matches §6, so the documents are
+publishable and the lawyer review can start. **The trap itself is permanent, only its instance is
+closed:** these periods are now a two-sided contract — change a constant and the notice AND the
+Art. 30 record in the SAME commit, or none of them.
 
 **STEP 1 IS DONE (Jul 28–29 2026) — the data inventory exists, as an external `.docx`
 (not in this repo).** It covers the Art. 30 record in BOTH roles (controller for hosts,
@@ -38,9 +44,13 @@ residency, client-side disclosures, transfers, and Art. 32 measures.
    (US), LocationIQ, wttr.in and Stripe all still receive data outside the EU.
 3. ~~**ntfy alert payloads unaudited**~~ **CLOSED (`fbf58aa`)** — all 7 call sites audited;
    host names removed from 4, the rest send aggregate counts only.
-4. **Retention undecided** for: `guests`, the bookings↔guest link, `daily_greetings`, guest
-   `push_subscriptions`, `admin_audit`. **These BLOCK the Art. 17 erasure feature** — the
-   delete flow cannot be built correctly until each has a decided retention period.
+4. **Retention — DECIDED AND IMPLEMENTED 11 Aug 2026** for `guests` (30d), `daily_greetings`
+   (30d) and guest `push_subscriptions` (7d), matching guest notice §6. `admin_audit` runs at
+   365d but **[CONFIRM] — that period is the founder's recommendation, NOT counsel's.**
+   **STILL OPEN: the booking ROW.** The guest LINK is severed automatically (the identity sweep
+   nulls `bookings.guest_id` at 30 days, so the row stops being personal data), but the row
+   itself is retained INDEFINITELY and deliberately, on a business-records rationale. That is
+   the one retention decision still gating the Art. 17 erasure feature.
 5. **Gemini terms — VERIFIED AT SOURCE Aug 4 2026, and the answer changed.** The **unpaid-tier
    data-training worry is DEAD**: for EEA/CH/UK developers Google applies the **paid** data
    terms to all Services, so no training on prompts/responses and the processor DPA already
@@ -97,8 +107,10 @@ secret scanning + push protection confirmed **already enabled** 29 Jul.
    `legal-dpa-DRAFT.md`, plus the Art. 30 data inventory as both
    `legal-data-inventory-2026-07-28.md` (readable/diffable) and
    `legal-data-inventory-2026-07-28.docx` (the format counsel will want).
-   All remain **DRAFT, NOT published, NOT in force**, pending the **retention crons shipping**
-   (SEQUENCING TRAP above) and **Finnish lawyer review**. Every `[CONFIRM]` / `[BUILD]` marker
+   All remain **DRAFT, NOT published, NOT in force**. ~~pending the retention crons shipping~~
+   — **those SHIPPED 11 Aug 2026 (SEQUENCING TRAP above is CLOSED), so the only remaining
+   condition is the Finnish lawyer review**, which is now the longest-lead item on the launch
+   path and should start first. Every `[CONFIRM]` / `[BUILD]` marker
    is intact and IS the outstanding to-do list — **never resolve, tidy, renumber or remove one.**
    **Three `[CONFIRM]` markers are now answerable from the 4 Aug Gemini terms verification**
    (host policy open item 6; the host policy §7 transfer-mechanism marker citing "Google's terms

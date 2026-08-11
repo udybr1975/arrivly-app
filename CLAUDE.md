@@ -19,7 +19,7 @@ context automatically every session, which is exactly what splitting this file a
 > — so the pentest gate runs on the Tiers 1–3 surface, and Phase F needs its own second
 > security pass before Tier 4 is sold.
 >
-> **THE FOUR THINGS BLOCKING LAUNCH:** (1) ~~Gemini billing~~ — dissolved by the ZERO-GOOGLE AI PILOT; Google is leaving the stack, there is no billing flip. (2) the legal/compliance workstream — inventory DONE, **eight gaps open**, documents 3/4/5 DRAFTED but unpublished, and **the retention crons must ship before any of them is published**. (3) the `gemini-2.5-flash` **16 Oct 2026** shutdown — binds only if a surface graduates back to Google. (4) the pentest gate. Also open but smaller: welcome-page Part 2 and the pre-live additions.
+> **THE FOUR THINGS BLOCKING LAUNCH:** (1) ~~Gemini billing~~ — dissolved by the ZERO-GOOGLE AI PILOT; Google is leaving the stack, there is no billing flip. (2) the legal/compliance workstream — inventory DONE, **eight gaps open**, documents 3/4/5 DRAFTED but unpublished, (the retention crons that gated publication SHIPPED 11 Aug 2026). (3) the `gemini-2.5-flash` **16 Oct 2026** shutdown — binds only if a surface graduates back to Google. (4) the pentest gate. Also open but smaller: welcome-page Part 2 and the pre-live additions.
 >
 > Full session-by-session history — including the long HEAD chain this line replaced — is in
 > docs/history.md.
@@ -178,7 +178,7 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - `sendPushToHost` url check uses `startsWith('/')`, which also admits protocol-relative `//host` — only ever set from the host's own send-push request (self-targeted), so negligible.
 - send-push `apartmentId` is not ownership-checked — latent only (lookup forces `host_id = userId`, so a foreign apartmentId matches zero rows).
 - `api/guest-chat.ts` (S21): verify-gated (public tier → `403 verify_required` before any Gemini call) + per-instance rate limiter (15/min, apt+IP) + dedicated `GEMINI_API_KEY_CHAT`. The limiter is per-instance best-effort, not a hard cross-instance cap. `generate-guide` remains host-auth+ownership-gated (no public AI-spend surface).
-- Message retention: add ~90-day post-checkout cleanup job before public launch (Phase G).
+- **Retention crons SHIPPED (11 Aug 2026)** — `cron-cleanup-messages` (30d) and `cron-retention` (guest identities 30d, greetings 30d, guest push 7d, admin audit 365d). **The periods are a PUBLISHED PROMISE** in the guest notice §6 and in the Art. 30 record: change a constant and the document in the SAME commit, or neither. **No exemptions, ever** — a carve-out makes the notice false for everyone; fixtures survive by refreshing their DATES.
 - sw.js `showNotification().then()` — if showNotification rejects, badge is not set and the rejection is swallowed by `event.waitUntil`; low risk, standard SW pattern (W2, `c294bda`).
 - `countUnread` in `Layout.tsx` called directly from event listeners with no mounted guard at call site — safe because `mounted` flag is closed over and listeners are removed on cleanup before it matters; no real bug (W3, `c294bda`).
 - `BookingManager.tsx` `arrivly:messages-read` handler calls `loadBookings()` without a cancellation signal — tiny stale-overwrite race on rapid apartment switching; fold into next BookingManager change.
@@ -461,7 +461,7 @@ Phase I part (b) — third-party bookable experiences on the guest-page Explore 
 After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 properties; unlimited remains Tier 4's second leg** (alongside the future booking platform). Rationale: keeps T4 sellable BEFORE Phase F ships, and protects pricing power over large property managers; caps can always be **relaxed later, never tightened**. **Marketing MUST always say "up to 12" for Portfolio — NEVER "unlimited".**
 
 ## LAUNCH BLOCKERS (ordered — the calendar runs on the first two)
-1. **Retention crons — NOT BUILT, and they gate everything legal.** The drafted notices state guest names and messages are erased 30 days after check-out. **The code does not do this** (messages 90 days; the guest-name, greeting and push sweeps do not exist). Publishing first would put a FALSE STATEMENT in a privacy notice — materially worse than having no notice.
+1. **Retention crons — SHIPPED 11 Aug 2026, blocker CLEARED.** `cron-cleanup-messages` (30d) and `cron-retention` (guest identities 30d, greetings 30d, guest push 7d, admin audit 365d) now match the drafted notice §6, so the documents are publishable. **The constraint is permanent even though the blocker is closed:** these periods are a two-sided contract — change a constant and the notice AND the Art. 30 record in the SAME commit, or none of them. **No exemptions, ever.**
 2. **Legal review — the only external dependency, so start it earliest.** Four documents DRAFTED and committed under `docs/`, NOT published, NOT in force; **eight of ten inventory gaps open**; a Finnish lawyer must review. Every `[CONFIRM]`/`[BUILD]` marker in those files IS the to-do list — never resolve, tidy, renumber or remove one. Roles are THREE-WAY: Bemgu controller for host data, PROCESSOR for guest data, controller in its own right for logs and anti-abuse.
 3. **npm audit triage — and the two recorded counts DISAGREE** (Known notes says 8; OPEN ITEMS says 7 on `d254df9`). Reconcile by running it, not by picking. Precedes the pentest gate.
 4. **Pentest / "hacker" agent gate** — runs once on the Tiers 1-3 surface. Phase F needs its own second pass before Tier 4 is sold.
@@ -505,8 +505,11 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   **Re-size it DELIBERATELY, in its own commit with its own recorded arithmetic — NOT silently
   inside the Step 6 migration.** Folding it in would breach the standing rule that a migration
   never changes who may ask or how often.
-- **RETENTION CRONS move onto the CRITICAL PATH** — they must ship **before any legal document
-  is published** (see the SEQUENCING TRAP in the legal workstream).
+- **~~RETENTION CRONS move onto the CRITICAL PATH~~ — SHIPPED 11 Aug 2026 (`1b7c3d7`), blocker
+  cleared.** The RULE stays and is permanent: retention periods are a two-sided contract between
+  the code and the published notice — change a constant and the guest notice §6 AND the Art. 30
+  record in the SAME commit, or none of them. **No exemptions, ever.** The next condition on
+  publication is the Finnish lawyer review, not code.
 - **DEPENDENCY VULNS — MEASURED Aug 7 2026, replacing both stale claims.** The old "14 Dependabot
   alerts (7 high, 7 moderate)" and the older "3 dev-only vulns" (`docs/history.md`, S24 residual)
   are both superseded. `npm audit` on `d254df9` reports **7 total: 5 high, 2 moderate, 0 critical.**
