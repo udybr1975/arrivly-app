@@ -103,12 +103,22 @@ test('gyg city link: mandatory partner_id + cmp, no dupes', () => {
   assert.equal(u.searchParams.get('q'), 'Barcelona')
 })
 
+// THESE TWO WERE ON `viator` UNTIL 11 Aug 2026 AND MUST NOT BE MOVED BACK. The Viator
+// compliance short-circuit added in `52b196d` returns Bemgu's pid before the tier check and
+// before the blank-id guard, so on `viator` both assertions passed WITHOUT EVER REACHING the
+// logic they are named for — and the blank-id fallback was then covered for no provider at all.
+// They are pinned to gyg/tiqets, which still run the real tier-gate path. Viator's own
+// short-circuit is asserted separately above, at every tier.
 test('resolvePartnerId: below gate always Bemgu, even with a host id set', () => {
-  assert.equal(resolvePartnerId('viator', 2, { viator: 'P99999999', gyg: null, tiqets: null }), BEMGU_VIATOR_PID)
+  assert.equal(resolvePartnerId('gyg', 2, { viator: null, gyg: 'GYGHOST', tiqets: null }), BEMGU_GYG_PARTNER_ID)
 })
 
-test('resolvePartnerId: at gate falls back to Bemgu when host id blank', () => {
-  assert.equal(resolvePartnerId('viator', 3, { viator: '   ', gyg: null, tiqets: null }), BEMGU_VIATOR_PID)
+test('resolvePartnerId: at gate falls back to Bemgu when host id blank (gyg)', () => {
+  assert.equal(resolvePartnerId('gyg', 3, { viator: null, gyg: '   ', tiqets: null }), BEMGU_GYG_PARTNER_ID)
+})
+
+test('resolvePartnerId: at gate falls back to Bemgu when host id blank (tiqets)', () => {
+  assert.equal(resolvePartnerId('tiqets', 3, { viator: null, gyg: null, tiqets: '   ' }), BEMGU_TIQETS_PARTNER_ID)
 })
 
 test('unparseable deep link degrades to a stamped provider homepage (no throw)', () => {

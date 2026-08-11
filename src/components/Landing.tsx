@@ -61,7 +61,7 @@ const TIER_META: Record<number, { name: string; badge?: string; featured?: boole
     bullets: [
       'Everything in Host',
       'Connect your own GetYourGuide & Tiqets accounts',
-      'Keep 100% of experience commissions — paid to you directly',
+      'Keep 100% of GetYourGuide & Tiqets commissions — paid to you directly',
     ],
   },
   4: {
@@ -248,7 +248,7 @@ const COMPS_ROWS: CompRow[] = [
   },
   {
     label: 'You keep 100% of the commission',
-    bemgu: { mark: 'brass', text: 'on Portfolio — paid to you directly' },
+    bemgu: { mark: 'brass', text: 'on Portfolio — GetYourGuide & Tiqets, paid to you directly' },
     hostfully: { mark: 'dash' },
     touchstay: { mark: 'dash' },
   },
@@ -287,7 +287,7 @@ const COMPS_ROWS: CompRow[] = [
 const COMPS_STATS = [
   { stat: '2–3 bookings', desc: 'Roughly what it takes per month for guest tour commissions to cover the whole fee' },
   { stat: '3 marketplaces', desc: 'Viator, GetYourGuide and Tiqets — live on every guest page from day one' },
-  { stat: '100% yours', desc: 'On Portfolio, marketplaces pay commissions to you directly — Bemgu never touches your money' },
+  { stat: '100% yours', desc: 'On Portfolio, GetYourGuide and Tiqets pay commissions to you directly — Bemgu never touches your money' },
 ]
 
 const STEPS = [
