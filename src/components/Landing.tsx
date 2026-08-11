@@ -212,7 +212,7 @@ const FAQS = [
   },
   {
     q: 'How does the revenue share work?',
-    a: 'When a guest books an experience through the marketplace, you earn a share — the guest books directly with the provider, so you are never the middleman and hold no inventory. The figures shown are illustrative; the actual share varies by provider and tier.',
+    a: 'When a guest books through GetYourGuide or Tiqets on Portfolio, you earn a share — the guest books directly with the provider, so you are never the middleman and hold no inventory. Viator is the exception: Viator does not permit host accounts on our pages, so those commissions go to Bemgu. The figures shown are illustrative; the actual share varies by provider.',
   },
   {
     q: 'Can I cancel anytime?',
@@ -775,7 +775,7 @@ export default function Landing() {
               {[
                 {
                   t: 'Earn on the whole catalogue',
-                  d: 'Tours, restaurant tables, attraction tickets, transfers — every bookable experience a guest taps can earn.',
+                  d: 'Tours, restaurant tables, attraction tickets, transfers — the experiences a guest taps can earn.',
                 },
                 {
                   t: 'When a pick is bookable',
