@@ -396,8 +396,11 @@ Claude in chat NEVER pushes to GitHub. All code changes are delivered as Claude 
   one-line change — both gates run again before committing. **No exceptions for small
   changes.** A verdict only covers the bytes the reviewer actually read.
 - **GATE STOPPING CONDITION (Aug 10 2026).** Once BOTH gates return PASS with zero must-fix, STOP and commit. After a passing verdict the only permitted edits are ones resolving a must-fix; remaining warnings go in the commit message as known residuals. If a gate still returns must-fix after round three, stop and report. **Why:** `90aed01` ran SIX rounds with the code unchanged after round 1 — every later round failed on COMMENT accuracy, two of them on fixes for earlier fixes, and at round 5 the gates DISAGREED about one clause, which is the signal to DELETE it rather than revise again.
+- **SWEEP STOPPING CONDITION (Aug 11 2026).** A "find every place X is claimed" sweep runs ONCE, not iteratively. **(1) Enumerate the SURFACE before the first edit — repo-wide, over the VALUE and the VERB, across ALL file types including markdown, JSON and DB-stored copy — and FREEZE the list.** The list does not grow after work starts. **(2) Everything on it ships in ONE commit;** if that is too large, it is a refactor needing a plan, not a sweep. **(3) State the closure test up front** — "when nothing new turns up" is not a test; "every file containing the value or verb has been read and every hit classified" is. **(4) GATE WARNINGS ARE RESIDUALS, NOT WORK ORDERS** — record and batch them; they never start the next commit in the same thread. **(5) Hard cap TWO commits per defect family;** a third needs Udy's explicit approval plus a stated reason the enumeration failed. **(6) If a new site appears after the freeze, STOP AND REPORT — do not patch** — and classify it: INSIDE the set means carelessness, OUTSIDE means the surface was drawn wrong.
+  **WHY: gate PASS cannot signal completeness.** A gate inspects only the diff in front of it and is structurally blind to files you did not touch. The Viator copy sweep ran SIX commits because each PASS felt like closure while the next defect sat in an untouched file, and the warnings waved through were the only thread back to it. **Completeness is established BEFORE the work by defining the surface — never after it by asking a reviewer.**
 - **A CODE GATE DOES NOT ADJUDICATE PROSE — SPLIT THE COMMIT (Aug 11 2026).** The retention commit passed both gates at round 1, then failed rounds 2 and 3 with **zero executable lines changed**, entirely on documentation accuracy across four files — the `90aed01` failure repeating. When the only remaining must-fix is prose: **commit the gate-verified code, then fix the documents in a separate docs-only commit**, which needs no gates.
 - **MATCH THE PROOF TO THE COMMIT TYPE; NEVER CLAIM MORE THAN THE CHECK SUPPORTS.** A **pure move** is provable by EXACT ROUND-TRIP. A **deletion** is NOT — nothing can be substituted back, so the only check is the FORWARD one: locate the durable content in the post-edit file BEFORE removing its source. A **mixed** commit gets neither honestly; split it into a move phase proved against sentinels, then a collapse phase verified forward. State which proof was used, and which was unavailable.
+- **PROVIDER REPLIES LIVE IN AN INBOX THIS PROJECT CANNOT SEE.** The connected Gmail is `udy@tlv.capital`; Bemgu correspondence runs through `hello@bemgu.app`, which is NOT connected. **A Gmail search returning nothing means WRONG INBOX, never "no reply."** The Viator ruling sat unread for three sessions because "awaiting reply" was read as current. When a provider answer is pending, ASK UDY — never infer silence from an empty search.
 - **STANDING FALSE POSITIVE — `api/welcome.ts` lat/lng.** The security-auditor repeatedly
   reports that `api/welcome.ts` returns `lat`/`lng` even when `welcome_show_address` is
   false. **It does not.** `street`, `street_number`, `lat` and `lng` are all inside the same
@@ -505,7 +508,7 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 - **VIATOR TIER-3 REMOVAL — the only item with a written compliance finding behind it.** Five verified sites: `api/_lib/affiliate-links.ts` (the `usingHostId` branch sets a host `pid` and strips `mcid` — Viator must NEVER take a host PID; leave GYG/Tiqets untouched pending their answers); `api/_lib/affiliate-links.test.mjs` line ~48, whose test ASSERTS the prohibited behaviour and must be inverted; `EarningsConnect.tsx` (Viator card + `viator_partner_id` input + line ~146 copy); `EarningsPanel.tsx` line ~379; `Landing.tsx` line ~63. **STAY UNCHANGED and are still true:** `Landing.tsx` ~245 (three-marketplace comparison) and ~289 ("live on every guest page"), and the Viator clicks column in EarningsPanel — those describe coverage and click reporting, not host attribution.
 - **HOST ADDRESS CHANGES ARE UNRESTRICTED, and that defeats the property cap.** A Tier-1 host capped at 2 can edit property B's address to a third flat — and the QR encodes the apartment UUID and never changes, so the printed code in the new flat just works. The cap counts ROWS, nothing counts addresses. **Do NOT blanket-lock:** typo fixes, onboarding mistakes and genuine relocations are all legitimate. **Proposed rule — defend the cap, not the edit:** a change staying within a few km AND the same `canonical_city_key` is a correction, allow it; a change beyond that is a SWAP and gets gated. **Better than a hard wall: "this is a new property — upgrade to add it",** which turns an abuse route into an upgrade prompt. **Also unverified: whether an address change currently invalidates the guide, the geocoded host picks, the events cache city key and the weather coordinates** — a legitimate move leaving the old city's guide attached is its own bug. Mockup-first.
 - **WELCOME SHARE PANEL — makes a shipped feature reachable.** "Step 1, you send it" (welcome link) vs "Step 2, you print it" (QR), with an explicit "do not send this one" on the QR card. This also settles the queued welcome-vs-QR placement question. Mockup-first.
-- **RUN `api/backfill-canonical-city` BY HAND** — GET with `Authorization: Bearer <CRON_SECRET>`. Idempotent. Watch `resolvedNoKey`: a city that resolves with no valid country code stays on the per-apartment path.
+- **RUN `api/backfill-canonical-city` BY HAND** — GET with `Authorization: Bearer <CRON_SECRET>`. Idempotent. On no schedule. Watch `resolvedNoKey`: a city that resolves with no valid country code stays on the per-apartment path. **HALF DONE as of 11 Aug 2026:** 4 of 10 apartments carry a `canonical_city_key` (all resolved 7 Aug); the other 6 have `canonical_resolved_at` NULL = never attempted. Re-running takes the events cron from 9 units to ~7.
 - **PRE-LIVE — OBTAIN WRITTEN CONFIRMATION FROM GYG AND TIQETS ON MULTI-TENANT HOST-OWN-ID.** Udy's own terms review (11 Aug 2026) cleared BOTH to keep host-own-partner-ID on Tier 3, and the code ships that way. **But note the EVIDENCE CLASS: that is a self-assessment, not a provider ruling.** For Viator we hold a written answer from Partner Support; for GYG and Tiqets we hold our own reading. **Viator is the proof that the two differ** — the terms were read carefully, the risk was spotted, the question was asked anyway, and the answer came back NO. Send the same question to both **before the Stripe live flip**, so a paying Tier-3 host is never sold a connection a provider later refuses. **Tiqets first — it uses the same partner-ID substitution shape (`partner=`) that Viator prohibited.** Contacts parked in PHASE I. If either answers no, Tier 3 needs repositioning, not just a code change.
 - **⏰ DATED — EARLY SEPT 2026 (6-9 Sept). THE ONLY ITEM IN THIS FILE WITH A REAL DEADLINE, and it
   sends REAL EMAIL TO REAL PEOPLE.** All five remaining sandbox subscriptions hit Stripe's 90-day
@@ -687,52 +690,63 @@ Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live
 > Moved to docs/history.md — "Session — 10 Aug 2026 (restructuring, HEAD e694e90)". Its three
 > standing size rules were already hoisted into the CLAUDE.md-size open item.
 
-## Session — 11 Aug 2026 (retention crons + Viator ruling, HEAD 4d5ac2f)
+> Moved to docs/history.md — "Session — 11 Aug 2026 (retention crons + Viator ruling, HEAD
+> 4d5ac2f)". Its Gmail/inbox rule was HOISTED into Agent policy first — it existed nowhere else.
 
-**LAUNCH BLOCKER 1 CLOSED.** `1b7c3d7` code, `4d5ac2f` docs, after the restructuring commits
-`4f9ead5` / `94d22e6` / `bb32f51` / `e694e90` / `2bcd076`. CLAUDE.md 156,898 -> ~100k the same day;
-detail in docs/history.md.
+## Session — 11 Aug 2026 (Viator enforcement + earnings-copy sweep, HEAD 9fa4b7b)
 
-**THE SEQUENCING TRAP IS RESOLVED.** The drafted guest notice §6 promised erasure periods the code
-did not implement. Now matched: messages 30, guest identities 30, greetings 30, guest push 7, admin
-audit 365. **Messages moved 90 -> 30 rather than the document moving to 90** — minimisation is the
-defensible direction, and a notice is a promise, not a description of whatever the cron does. Four
-of five "undecided" periods turned out to be already decided by notice §6; only `admin_audit` was
-open, and 365 is a recommendation carrying `[CONFIRM]`.
+**SHIPPED:** `52b196d` Viator host-own-PID removal · `6a2e180` evidence-class record · `5e6fe76`
+`d1c1712` `e20ad7d` `f5b413e` `9fa4b7b` earnings-copy corrections. All gates PASS, most at round 1.
+DB: `revoke update (viator_partner_id) on hosts from authenticated` and `revoke delete on hosts
+from anon, authenticated`, both verified from the catalog.
 
-**ERASURE MECHANISM.** `guests.first_name` is NOT NULL, so it cannot be nulled in place. The sweep
-nulls `bookings.guest_id`, then deletes the `guests` row only when no booking still references it —
-a repeat guest with a recent stay is never erased, and the booking survives nameless. Periods are
-cron constants; the SECURITY DEFINER functions take `retention_days` as a parameter, so a change is
-one line and no migration. A `< 7` guard refuses to run rather than let a near-zero constant wipe a
-table. **First run 04:00 UTC 12 Aug** — the 11 Aug slot preceded the deploy by ~8h.
+**THE ONE-COMMIT FIX TOOK SIX.** The Viator code change was `52b196d` and it was correct first
+time. The other five were all one task: finding every place the site claims "you earn commission."
+**The cause was asking "did we get them all?" and answering with a PHRASE SEARCH** — first `100%`,
+then more words, then headings, then mockup captions — widening the net while fishing the same
+pond. The right question, never asked until the end, was WHERE DOES THIS CLAIM LIVE IN THE WHOLE
+CODEBASE. That is a thirty-second search and it closed the list. See SWEEP STOPPING CONDITION.
 
-**MEASURED FIRST-RUN EFFECT:** 29 of 38 messages, 12 guest identities, 2 guest push subscriptions;
-greetings and audit reap 0 (a zero is normal, not a broken sweep). All lapsed test/demo rows.
+**TWO REAL DEFECTS FOUND, NEITHER ABOUT VIATOR:**
+- **Hosts below Tier 3 earn ZERO commission on ALL THREE providers** — `resolvePartnerId` returns
+  Bemgu's id below `EXPERIENCES_TIER_GATE` — and the pricing page, hero and signup page carried
+  no tier qualifier anywhere.
+- **"2–3 bookings covers your fee" was arithmetically FALSE at Bemgu's own constants.**
+  `config.ts` AOV 90 x commission 0.08 = **EUR 7.20/booking**; Portfolio EUR 25 needs **3.47**.
+  Two bookings = 58% of the fee, three = 86%. The CLAUDE.md ~EUR 315/mo anchor independently gave
+  3.5. Both internal sources agreed against the page. Now "3–4". **The copy moved to the
+  arithmetic, never the reverse.** Known trade: only "about 4" is true at every point of the range.
 
-**STILL OPEN, DELIBERATELY:** the bookings<->guest LINK. The booking row is retained indefinitely on
-a business-records rationale once the link is severed and it stops being personal data. **That is the
-one retention decision still gating Art. 17 erasure.**
+**"PORTFOLIO" IS LOAD-BEARING BY ACCIDENT.** Tier names DIVERGE: the landing page says
+**Host** and **Full booking**; `tierCopy.ts` and `BillingPanel` say **Growth** and **Pro**.
+Portfolio is the only name matching all three surfaces, which is the sole reason every
+"on Portfolio" qualifier survives from landing to dashboard. Rename it on one surface and they
+all decouple at once.
 
-**THE VIATOR RULING — see PERMANENT PROVIDER CONSTRAINTS.** The reply arrived 4 Aug and was NEVER
-RECORDED; three sessions since read "awaiting reply" as current. **A provider answer that changes a
-launch dependency sat in an inbox this file cannot see.** The connected Gmail is `udy@tlv.capital`;
-the Bemgu thread runs through `hello@bemgu.app`, which is NOT connected — so a Gmail search
-returning nothing means "wrong inbox", never "no reply". **Ask Udy directly for provider replies.**
+**MECHANISM NOTE — SELF-QUALIFYING BEATS PARENT PROSE.** Landing scopes its hero figures with a
+15px parent that precedes them in DOM order. AuthShell's DOM order is reversed, so the claim was
+made self-qualifying instead ("and on Portfolio, you earn") — qualifier and claim in the SAME text
+node at the same size. Prominence parity by construction; it cannot decouple under a later CSS
+change. Prefer this. Also: fixing the shared `AUTH_POINTS` default covered all FIVE AuthShell
+render surfaces; a per-caller fix would have left four stale.
 
-**FOUND 11 Aug — THE WELCOME PAGE IS LIVE AND INVISIBLE.** `/w/:code` is routed and rendering, and
-**NO host component references `welcome_code` or `/w/`** — swept all thirteen under
-`src/components/host`. There is no copy button, no link, nothing. (Dashboard's 14 "welcome" hits are
-the onboarding modal.) The pre-arrival surface was shipped without the one control that makes it
-usable, which is why it keeps feeling unsolved. **The share panel is therefore higher value than the
-"upcoming" guest-page state**, which was over-rated: the welcome page already carries experiences,
-so the "affiliate revenue is switched off pre-arrival" claim was FALSE.
+**OPEN DECISIONS FOR UDY — recorded, not decided:**
+- **`ExperiencesSheet.tsx:197` — the guest-facing disclosure names the WRONG BENEFICIARY.** It
+  says "Your host may earn a commission." For Viator that is never true, and below Tier 3 it is
+  never true for any provider — **Bemgu** earns. This is the only consumer-facing disclosure in
+  the set and the highest-stakes one. **The defect is beneficiary identity, not tier scope**, so
+  the fix is naming the beneficiary, not adding "on Portfolio". Suggested: "Your host or Bemgu
+  may earn a commission…"
+- **Tier names: one set or two?** See above.
 
-**FOUND 11 Aug — CANONICAL CITY BACKFILL IS HALF DONE.** 4 of 10 apartments have a
-`canonical_city_key`, all resolved 7 Aug 11:53-12:50; the other 6 have `canonical_resolved_at` NULL
-= never attempted. `api/backfill-canonical-city.ts` is idempotent, CRON_SECRET-gated and **on no
-schedule** — it must be called by hand. One ("Penthouse in the sky") is correctly excluded, being
-invisible. Re-running takes the events cron from 9 units to ~7.
+**RESIDUALS:** `EarningsPanel.tsx ~301` is unqualified but sits in `confirmedCard`, which renders
+only when `confirmedCount > 0` — never in production today. **`tierCopy.ts` is the file to watch:**
+it feeds `/choose-plan`, the actual point of payment, and today carries NO earnings claim — any
+bullet added there lands straight on the payment page. Non-code axes never swept: emails, push
+copy, `index.html`, DB-stored copy.
+
+**NEXT ACTION: the welcome share panel.** `/w/:code` is live and no host component links to it.
+Mockup-first. Fresh surface, unrelated to this sweep.
 
 ## ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026) — CANONICAL, supersedes the pre-billing checklist
 

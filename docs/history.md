@@ -1890,3 +1890,50 @@ subscription. `ARR-EVT777` expires 11 Aug; re-roll before any guest-page test.
 **NEXT ACTION: RETENTION CRONS.** They gate publishing every legal document, and the legal review
 is the only external dependency, so it has a lead time nothing else has. Then: the 6-9 Sept fixture
 decision, the guest-chat 40/h brake re-sizing (own commit, own arithmetic), Commit B, Step 6.
+
+## Session — 11 Aug 2026 (retention crons + Viator ruling, HEAD 4d5ac2f)
+
+**LAUNCH BLOCKER 1 CLOSED.** `1b7c3d7` code, `4d5ac2f` docs, after the restructuring commits
+`4f9ead5` / `94d22e6` / `bb32f51` / `e694e90` / `2bcd076`. CLAUDE.md 156,898 -> ~100k the same day;
+detail in docs/history.md.
+
+**THE SEQUENCING TRAP IS RESOLVED.** The drafted guest notice §6 promised erasure periods the code
+did not implement. Now matched: messages 30, guest identities 30, greetings 30, guest push 7, admin
+audit 365. **Messages moved 90 -> 30 rather than the document moving to 90** — minimisation is the
+defensible direction, and a notice is a promise, not a description of whatever the cron does. Four
+of five "undecided" periods turned out to be already decided by notice §6; only `admin_audit` was
+open, and 365 is a recommendation carrying `[CONFIRM]`.
+
+**ERASURE MECHANISM.** `guests.first_name` is NOT NULL, so it cannot be nulled in place. The sweep
+nulls `bookings.guest_id`, then deletes the `guests` row only when no booking still references it —
+a repeat guest with a recent stay is never erased, and the booking survives nameless. Periods are
+cron constants; the SECURITY DEFINER functions take `retention_days` as a parameter, so a change is
+one line and no migration. A `< 7` guard refuses to run rather than let a near-zero constant wipe a
+table. **First run 04:00 UTC 12 Aug** — the 11 Aug slot preceded the deploy by ~8h.
+
+**MEASURED FIRST-RUN EFFECT:** 29 of 38 messages, 12 guest identities, 2 guest push subscriptions;
+greetings and audit reap 0 (a zero is normal, not a broken sweep). All lapsed test/demo rows.
+
+**STILL OPEN, DELIBERATELY:** the bookings<->guest LINK. The booking row is retained indefinitely on
+a business-records rationale once the link is severed and it stops being personal data. **That is the
+one retention decision still gating Art. 17 erasure.**
+
+**THE VIATOR RULING — see PERMANENT PROVIDER CONSTRAINTS.** The reply arrived 4 Aug and was NEVER
+RECORDED; three sessions since read "awaiting reply" as current. **A provider answer that changes a
+launch dependency sat in an inbox this file cannot see.** The connected Gmail is `udy@tlv.capital`;
+the Bemgu thread runs through `hello@bemgu.app`, which is NOT connected — so a Gmail search
+returning nothing means "wrong inbox", never "no reply". **Ask Udy directly for provider replies.**
+
+**FOUND 11 Aug — THE WELCOME PAGE IS LIVE AND INVISIBLE.** `/w/:code` is routed and rendering, and
+**NO host component references `welcome_code` or `/w/`** — swept all thirteen under
+`src/components/host`. There is no copy button, no link, nothing. (Dashboard's 14 "welcome" hits are
+the onboarding modal.) The pre-arrival surface was shipped without the one control that makes it
+usable, which is why it keeps feeling unsolved. **The share panel is therefore higher value than the
+"upcoming" guest-page state**, which was over-rated: the welcome page already carries experiences,
+so the "affiliate revenue is switched off pre-arrival" claim was FALSE.
+
+**FOUND 11 Aug — CANONICAL CITY BACKFILL IS HALF DONE.** 4 of 10 apartments have a
+`canonical_city_key`, all resolved 7 Aug 11:53-12:50; the other 6 have `canonical_resolved_at` NULL
+= never attempted. `api/backfill-canonical-city.ts` is idempotent, CRON_SECRET-gated and **on no
+schedule** — it must be called by hand. One ("Penthouse in the sky") is correctly excluded, being
+invisible. Re-running takes the events cron from 9 units to ~7.
