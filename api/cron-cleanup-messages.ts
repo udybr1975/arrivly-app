@@ -6,7 +6,7 @@ import { sendNtfy } from './_lib/ntfy.js'
 // Daily cron (05:00 UTC). Data-retention cleanup: HARD-DELETES guest/host messages
 // whose linked booking checked out more than RETENTION_DAYS ago. The retention
 // anchor is the BOOKING checkout date (booking.check_out), NOT the message age —
-// intent is to remove conversations from stays that ended 90+ days ago, so an
+// intent is to remove conversations from stays that ended 30+ days ago, so an
 // in-progress or recent stay's thread is never touched.
 //
 // This is a hard delete (data minimisation) — rows are removed, not flagged.
@@ -22,7 +22,10 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const RETENTION_DAYS = 90
+// 30, NOT 90 — the guest privacy notice §6 promises erasure 30 days after check-out, and the
+// document was NOT moved to 90 to match the code: minimisation is the defensible direction, and
+// a notice is a promise to the guest rather than a description of whatever the cron happens to do.
+const RETENTION_DAYS = 30
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
