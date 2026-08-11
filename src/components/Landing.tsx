@@ -564,14 +564,14 @@ function PhoneMockup() {
           <span className="text-[9px] uppercase tracking-wide text-white/50">Booked a table</span>
         </div>
         <div className="mt-1 font-['Fraunces'] text-[20px] font-light text-[#e7d6ad]">+€6.40</div>
-        <div className="text-[8px] leading-tight text-white/35">example earning · Portfolio</div>
+        <div className="text-[10px] leading-tight text-white/60">example earning · Portfolio</div>
       </div>
 
       {/* lift-out callout — experience booked (illustrative; share varies) */}
       <div className="absolute -left-4 bottom-[14%] w-[160px] rounded-[12px] border border-[#2c2925] bg-[#23211d] p-3 shadow-2xl sm:-left-10">
         <div className="text-[9px] uppercase tracking-wide text-white/50">Sailing trip booked</div>
         <div className="mt-1 font-['Fraunces'] text-[20px] font-light text-[#e7d6ad]">+€18.60</div>
-        <div className="text-[8px] leading-tight text-white/35">illustrative · Portfolio · share varies by provider</div>
+        <div className="text-[10px] leading-tight text-white/60">illustrative · Portfolio · share varies by provider</div>
       </div>
     </div>
   )

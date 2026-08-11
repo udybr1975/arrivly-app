@@ -19,11 +19,19 @@ const SCRIM_BACKGROUND = [
 
 const TEXT_SHADOW = '0 1px 18px rgba(20,15,12,.7)'
 
-const DEFAULT_POINTS = [
+// EXPORTED so /signup imports it rather than keeping a third copy of the same claim — three
+// copies of one earnings sentence is what produced the eight-pass copy sweep.
+// The earning line is SELF-QUALIFYING: the tier scope sits inside the claim itself, not in a
+// parent or a caption, because the +EUR6.40 lift-out beside it is aria-hidden and desktop-only
+// and therefore cannot carry a disclosure. Host commission is Portfolio-only (tier >=
+// EXPERIENCES_TIER_GATE) and Viator is always Bemgu-attributed — see PERMANENT PROVIDER
+// CONSTRAINTS in CLAUDE.md.
+export const AUTH_POINTS = [
   'Personalised the moment they scan',
   'A live guide that refreshes itself',
-  'Experiences they book — and you earn',
+  'Experiences they book — and on Portfolio, you earn',
 ]
+const DEFAULT_POINTS = AUTH_POINTS
 
 function CheckIcon({ className = '' }: { className?: string }) {
   return (
@@ -66,7 +74,7 @@ export default function AuthShell({ headline, sub, points = DEFAULT_POINTS, chil
             <span className="text-[9px] uppercase tracking-[.14em] text-[#f0ede6]/55">Table booked</span>
           </div>
           <div className="mt-1 font-['Fraunces'] text-[22px] font-light text-[#e7d6ad]">+€6.40</div>
-          <div className="text-[8px] leading-tight text-[#f0ede6]/40">example earning · from a guest tap</div>
+          <div className="text-[10px] leading-tight text-[#f0ede6]/60">example earning · Portfolio · from a guest tap</div>
         </div>
 
         <div className="relative z-10 flex h-full flex-col justify-between p-9 md:p-10">

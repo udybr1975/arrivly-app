@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
-import AuthShell from './AuthShell'
+import AuthShell, { AUTH_POINTS } from './AuthShell'
 import SocialAuthButtons from './SocialAuthButtons'
 
 const INPUT =
@@ -18,11 +18,7 @@ const SIGNUP_HEADLINE = (
 )
 const SIGNUP_SUB =
   "One QR code in the apartment. WiFi, check-in, a live city guide, what's on this week, and a 24/7 concierge — branded to you."
-const SIGNUP_POINTS = [
-  'Personalised the moment they scan',
-  'A live guide that refreshes itself',
-  'Experiences they book — and you earn',
-]
+// Shared with AuthShell rather than re-declared — one definition of the earnings claim.
 
 export default function Signup() {
   const navigate = useNavigate()
@@ -94,7 +90,7 @@ export default function Signup() {
 
   if (awaitingConfirmation) {
     return (
-      <AuthShell headline={SIGNUP_HEADLINE} sub={SIGNUP_SUB} points={SIGNUP_POINTS}>
+      <AuthShell headline={SIGNUP_HEADLINE} sub={SIGNUP_SUB} points={AUTH_POINTS}>
         <h1 className="font-['Fraunces'] font-light text-[31px] leading-tight text-[#1c1c1a]">Check your email</h1>
         <p className="mt-3 text-sm leading-relaxed text-[#6f6757]">
           We've sent a confirmation link to <strong className="text-[#1c1c1a]">{email}</strong>. Click it to activate
@@ -110,7 +106,7 @@ export default function Signup() {
   }
 
   return (
-    <AuthShell headline={SIGNUP_HEADLINE} sub={SIGNUP_SUB} points={SIGNUP_POINTS}>
+    <AuthShell headline={SIGNUP_HEADLINE} sub={SIGNUP_SUB} points={AUTH_POINTS}>
       {/* step indicator */}
       <div className="mb-6">
         <div className="flex items-center justify-between text-[11px] uppercase tracking-[.08em] text-[#8a8170]">

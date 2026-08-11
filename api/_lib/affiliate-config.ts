@@ -9,6 +9,9 @@
 
 // Bemgu's OWN affiliate identifiers — used for guests of tier 1–2 hosts (Bemgu earns
 // the commission) and as the fallback whenever a tier 3+ host has not connected theirs.
+// BEMGU_VIATOR_PID IS THE EXCEPTION: it is used at EVERY tier, including a tier-3 host who HAS
+// connected a Viator id, because a host PID may not ride on links served from bemgu.app
+// (written ruling, 4 Aug 2026). It is never a fallback for Viator — it is the only value.
 export const BEMGU_GYG_PARTNER_ID = 'VMY9NWZ'
 export const BEMGU_VIATOR_PID = 'P00310630'
 export const VIATOR_MCID = '42383' // Viator channel id for the link tool — constant

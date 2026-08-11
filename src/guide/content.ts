@@ -169,7 +169,7 @@ export const GUIDE_MODULES: GuideModule[] = [
     category: 'guest-page',
     title: 'Earning more',
     summary:
-      'Surface tours, tickets and restaurant reservations on your guest page — and earn from what guests book. (Preview — not live yet.)',
+      'Surface tours, tickets and restaurant reservations on your guest page — and, on Portfolio, earn from what guests book. (Preview — not live yet.)',
     status: 'coming-soon',
     related: ['billing'],
     tags: ['experiences', 'affiliate', 'monetisation'],
