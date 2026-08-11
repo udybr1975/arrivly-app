@@ -14,6 +14,11 @@ export const BEMGU_VIATOR_PID = 'P00310630'
 export const VIATOR_MCID = '42383' // Viator channel id for the link tool — constant
 export const BEMGU_TIQETS_PARTNER_ID = 'bemgu-188668'
 
-// Hosts at tier >= this use their OWN partner IDs (provider pays the host directly);
-// lower tiers keep Bemgu's IDs (Bemgu earns). See "c-full" in CLAUDE.md Phase I.
+// Hosts at tier >= this use their OWN GetYourGuide and Tiqets partner IDs (those providers
+// pay the host directly); lower tiers keep Bemgu's IDs (Bemgu earns). See "c-full" in
+// CLAUDE.md Phase I.
+// VIATOR IS THE EXCEPTION AND IS ALWAYS BEMGU-ATTRIBUTED, at every tier: a host PID may not
+// ride on links served from bemgu.app (written ruling, 4 Aug 2026 — VPP General Terms
+// "Partner Site" + Service Terms B-1.5). `resolvePartnerId` short-circuits Viator ABOVE this
+// gate, so the gate governs gyg/tiqets only. See PERMANENT PROVIDER CONSTRAINTS in CLAUDE.md.
 export const EXPERIENCES_TIER_GATE = 3

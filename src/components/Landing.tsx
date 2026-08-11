@@ -285,9 +285,9 @@ const COMPS_ROWS: CompRow[] = [
 ]
 
 const COMPS_STATS = [
-  { stat: '2–3 bookings', desc: 'Roughly what it takes per month, on Portfolio, for guest tour commissions to cover the whole fee' },
+  { stat: '3–4 bookings', desc: 'Roughly what it takes per month, on Portfolio, for guest tour commissions to cover the whole fee' },
   { stat: '3 marketplaces', desc: 'Viator, GetYourGuide and Tiqets — live on every guest page from day one' },
-  { stat: '100% yours', desc: 'On Portfolio, GetYourGuide and Tiqets pay commissions to you directly — Bemgu never touches your money' },
+  { stat: '100% on Portfolio', desc: 'GetYourGuide and Tiqets pay commissions to you directly — Bemgu never touches your money' },
 ]
 
 const STEPS = [
@@ -564,14 +564,14 @@ function PhoneMockup() {
           <span className="text-[9px] uppercase tracking-wide text-white/50">Booked a table</span>
         </div>
         <div className="mt-1 font-['Fraunces'] text-[20px] font-light text-[#e7d6ad]">+€6.40</div>
-        <div className="text-[8px] leading-tight text-white/35">example earning</div>
+        <div className="text-[8px] leading-tight text-white/35">example earning · Portfolio</div>
       </div>
 
       {/* lift-out callout — experience booked (illustrative; share varies) */}
       <div className="absolute -left-4 bottom-[14%] w-[160px] rounded-[12px] border border-[#2c2925] bg-[#23211d] p-3 shadow-2xl sm:-left-10">
         <div className="text-[9px] uppercase tracking-wide text-white/50">Sailing trip booked</div>
         <div className="mt-1 font-['Fraunces'] text-[20px] font-light text-[#e7d6ad]">+€18.60</div>
-        <div className="text-[8px] leading-tight text-white/35">illustrative — actual share varies by provider</div>
+        <div className="text-[8px] leading-tight text-white/35">illustrative · Portfolio · share varies by provider</div>
       </div>
     </div>
   )
@@ -672,7 +672,7 @@ export default function Landing() {
             <p className="mx-auto mt-6 max-w-[480px] text-[15px] leading-[1.7] text-[#f0ede6]/60 md:mx-0">
               One QR code in the apartment. Your guest scans it and gets WiFi, check-in, a live
               city guide, events and a 24/7 chatbot — branded to you. Then they book experiences,
-              and you earn.
+              and on Portfolio, you earn.
             </p>
             <p className="mx-auto mt-5 max-w-[480px] font-['Fraunces'] italic text-[17px] leading-snug text-[#e7d6ad] md:mx-0">
               Made by hosts, for hosts who care about their guests.
