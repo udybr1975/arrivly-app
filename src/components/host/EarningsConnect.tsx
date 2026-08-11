@@ -13,6 +13,20 @@ import {
 } from '../../lib/experienceProviders'
 import Loader from '../shared/Loader'
 
+// VIATOR IS NOT CONNECTABLE — filtered HERE, at this component's render, and deliberately NOT by
+// narrowing the shared `EXPERIENCE_PROVIDERS` constant. That constant also drives EarningsPanel's
+// per-provider cards and its blurred upsell row, where Viator must still appear: guests really do
+// click Viator links on the host's pages, and those taps are reported. Narrowing the shared set to
+// "fix" this page would silently delete Viator from the earnings surface too.
+//
+// WHY: Viator Partner Support ruled in writing (4 Aug 2026) that a HOST's own PID may not ride on
+// links served from bemgu.app — VPP General Terms define "Partner Site" as a property the
+// registered partner owns/operates/maintains, and Service Terms B-1.5 forbids display of Links
+// through any other channel. Bemgu's OWN pid on bemgu.app remains expressly permitted, so Viator
+// content and Bemgu's Viator revenue are unaffected. GYG and Tiqets are separate contracts and
+// keep host-own-ID connection. Enforcement is at `resolvePartnerId`; this is only the UI.
+const CONNECTABLE_PROVIDERS = EXPERIENCE_PROVIDERS.filter(p => p.key !== 'viator')
+
 // ── Phase H chrome tokens ────────────────────────────────────────────────────
 const CARD = 'bg-[#fffdf9] border border-[#e4ddd0] rounded-[14px] p-5 mb-4'
 const INPUT =
@@ -74,7 +88,9 @@ export default function EarningsConnect() {
   // Invalid/absent param → no-op; guarded so it never re-fires.
   useEffect(() => {
     if (scrolledRef.current || loading) return
-    if (requestedProvider !== 'viator' && requestedProvider !== 'gyg' && requestedProvider !== 'tiqets') return
+    // Viator is NOT connectable (4 Aug 2026 ruling — see CONNECTABLE_PROVIDERS below), so a
+    // ?provider=viator deep link must not scroll to a section that no longer exists.
+    if (requestedProvider !== 'gyg' && requestedProvider !== 'tiqets') return
     const el = sectionRefs.current[requestedProvider]
     if (!el) return
     el.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -143,11 +159,12 @@ export default function EarningsConnect() {
       </Link>
       <h1 className="text-[22px] font-['Fraunces'] font-light text-[#231d17]">Connect your marketplaces</h1>
       <p className="text-[12px] text-[#8a8276] mt-1 mb-5 max-w-lg leading-relaxed">
-        Connect your own Viator, GetYourGuide and Tiqets accounts and the marketplaces pay you directly. Until
-        you connect one, your pages keep working on Bemgu's links — nothing breaks.
+        Connect your own GetYourGuide and Tiqets accounts and those marketplaces pay you directly.
+        Viator experiences stay on your pages and earn for Bemgu. Until you connect one, your pages
+        keep working on Bemgu's links — nothing breaks.
       </p>
 
-      {EXPERIENCE_PROVIDERS.map(meta => (
+      {CONNECTABLE_PROVIDERS.map(meta => (
         <div
           key={meta.key}
           id={`provider-${meta.key}`}

@@ -60,7 +60,7 @@ const TIER_META: Record<number, { name: string; badge?: string; featured?: boole
     badge: 'Earn with it',
     bullets: [
       'Everything in Host',
-      'Connect your own Viator, GetYourGuide & Tiqets accounts',
+      'Connect your own GetYourGuide & Tiqets accounts',
       'Keep 100% of experience commissions — paid to you directly',
     ],
   },

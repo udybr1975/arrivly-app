@@ -45,18 +45,33 @@ test('viator: adds medium=link only when absent', () => {
   assert.equal(new URL(out).searchParams.get('medium'), 'link')
 })
 
-test('viator: tier-3 host id REPLACES the embedded Bemgu pid (only one pid, host-owned)', () => {
+test('viator: a tier-3 host id is IGNORED — Bemgu pid and mcid always ride', () => {
+  // INVERTED 11 Aug 2026. This test previously asserted the host id REPLACED Bemgu's pid, which
+  // Viator Partner Support ruled in writing (4 Aug 2026) is PROHIBITED: links are served from
+  // bemgu.app, and the VPP General Terms define "Partner Site" as a property the registered
+  // partner owns/operates/maintains, while Service Terms B-1.5 forbids display of Links through
+  // any other channel. Do NOT "fix" this back — the assertions below ARE the compliance boundary.
   const pre = `https://www.viator.com/tours/x?pid=${BEMGU_VIATOR_PID}&mcid=${VIATOR_MCID}&medium=api`
   const out = buildExperienceLink({
     provider: 'viator', deepLinkPath: pre, apartmentId: APT, hostTier: 3,
     hostPartnerIds: { viator: 'P99999999', gyg: null, tiqets: null },
   })
   assert.equal(count(out, 'pid'), 1)
-  assert.equal(new URL(out).searchParams.get('pid'), 'P99999999')
-  assert.ok(!out.includes(BEMGU_VIATOR_PID), 'must not contain Bemgu pid alongside host pid')
-  // Bemgu's channel id (mcid) must NOT ride on a host-owned link.
-  assert.equal(new URL(out).searchParams.has('mcid'), false)
-  assert.ok(!out.includes(VIATOR_MCID), 'must not carry Bemgu mcid on a host link')
+  assert.equal(new URL(out).searchParams.get('pid'), BEMGU_VIATOR_PID, 'Viator must carry BEMGU pid')
+  assert.ok(!out.includes('P99999999'), 'a stored host Viator id must never reach the link')
+  // mcid rides because this is a Bemgu link — the stale-id inconsistency the derived
+  // `usingHostId` exists to prevent would have stripped it.
+  assert.equal(new URL(out).searchParams.get('mcid'), VIATOR_MCID, 'Bemgu mcid must ride')
+})
+
+test('viator: resolvePartnerId ignores a host id at every tier', () => {
+  for (const tier of [1, 2, 3, 4]) {
+    assert.equal(
+      resolvePartnerId('viator', tier, { viator: 'P99999999', gyg: null, tiqets: null }),
+      BEMGU_VIATOR_PID,
+      `tier ${tier} must resolve to Bemgu's Viator pid`,
+    )
+  }
 })
 
 test('tiqets: rewrites a pre-tagged partner param, adds tq_campaign, no dupes', () => {

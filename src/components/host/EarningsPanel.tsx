@@ -212,6 +212,13 @@ function ConnectedState({
                       <ExternalLink size={11} />
                     </a>
                   </>
+                ) : p.key === 'viator' ? (
+                  // Viator is not connectable — a host PID may not ride on links served from
+                  // bemgu.app (written ruling, 4 Aug 2026). No CTA, and no deep link to a
+                  // section EarningsConnect no longer renders.
+                  <span className="text-[11px] text-[#8a8276] leading-relaxed">
+                    Earns for Bemgu — Viator does not permit host accounts on our pages.
+                  </span>
                 ) : (
                   <Link
                     to={`/dashboard/earnings/connect?provider=${p.key}`}
@@ -257,6 +264,9 @@ function ConnectedState({
             </table>
           </div>
         )}
+        <p className="text-[10.5px] text-[#a79e8e] leading-relaxed mt-3">
+          Viator commissions go to Bemgu — Viator does not permit host accounts on our pages. GetYourGuide and Tiqets can be connected to your own accounts.
+        </p>
         <p className="text-[10.5px] text-[#a79e8e] leading-relaxed mt-3">
           Taps are guest clicks on experience links — a helpful signal, not a booking count. Actual bookings,
           commission and payouts are reported in each marketplace's own partner dashboard.
@@ -376,7 +386,7 @@ function UpgradeCard() {
       </div>
       <p className="text-[12px] text-[#b6ad9e] leading-relaxed mb-4 max-w-lg">
         Right now these bookings earn a commission for Bemgu. On Portfolio (Tier {gateTier}) and above you connect
-        your own Viator, GetYourGuide and Tiqets accounts — and the marketplaces pay <em>you</em> directly. Bemgu
+        your own GetYourGuide and Tiqets accounts — and the marketplaces pay <em>you</em> directly. Bemgu
         never touches your money.
       </p>
       <Link

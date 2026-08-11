@@ -43,6 +43,12 @@ export function resolvePartnerId(
   hostTier: number,
   hostPartnerIds: HostPartnerIds | null | undefined,
 ): string {
+  // Viator: host-own-PID is PROHIBITED (written ruling, 4 Aug 2026 — VPP General Terms
+  // "Partner Site" + Service Terms B-1.5). Links are served from bemgu.app, which hosts do
+  // not own. Viator ALWAYS carries Bemgu's PID, regardless of tier or any stored host id.
+  // GYG and Tiqets are unaffected — different contracts, host-own-ID permitted there.
+  if (provider === 'viator') return BEMGU_IDS.viator
+
   if (hostTier >= EXPERIENCES_TIER_GATE) {
     const own = hostPartnerIds?.[provider]
     if (own && own.trim()) return own.trim()
@@ -79,9 +85,11 @@ export function buildExperienceLink(args: {
 }): string {
   const { provider, deepLinkPath, apartmentId, hostTier, hostPartnerIds } = args
   const partnerId = resolvePartnerId(provider, hostTier, hostPartnerIds)
-  // True when we resolved to the HOST's own partner id (not Bemgu's fallback).
-  const usingHostId =
-    hostTier >= EXPERIENCES_TIER_GATE && !!hostPartnerIds?.[provider]?.trim()
+  // DERIVED FROM THE RESOLUTION, never recomputed in parallel. Computing this from
+  // `hostPartnerIds` independently would let the two disagree: after the Viator ruling a stale
+  // stored Viator id would make `usingHostId` true and DELETE `mcid` from a link that now carries
+  // BEMGU's pid — a Bemgu link with no channel id, i.e. unattributed revenue. One source of truth.
+  const usingHostId = partnerId !== BEMGU_IDS[provider]
   const campaign = `bemgu-${apartmentId}`
   const url = parseOnOrigin(provider, deepLinkPath)
 
