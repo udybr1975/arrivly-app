@@ -23,9 +23,12 @@ export const ARRIVLY_CONFIG = {
 
   // Experiences marketplace (Phase I). `experiencesTierGate` MIRRORS the server-side
   // EXPERIENCES_TIER_GATE in api/_lib/affiliate-config.ts — hosts at/above this tier
-  // connect their OWN partner IDs and keep the commission; below it links carry Bemgu's
-  // IDs and the Earnings tease shows an upgrade path. `experienceEstimate` drives the
-  // tease's illustrative figures ONLY — clearly labelled assumptions, never real earnings.
+  // connect their OWN GetYourGuide and Tiqets partner IDs and keep those commissions;
+  // below it links carry Bemgu's IDs and the Earnings tease shows an upgrade path.
+  // VIATOR IS ALWAYS BEMGU-ATTRIBUTED at every tier — a host PID may not ride on links
+  // served from bemgu.app (written ruling, 4 Aug 2026; see PERMANENT PROVIDER
+  // CONSTRAINTS in CLAUDE.md), so the gate does not apply to it. `experienceEstimate`
+  // drives the tease's illustrative figures ONLY — labelled assumptions, never real earnings.
   experiencesTierGate: 3,
   experienceEstimate: {
     conversionRate: 0.045, // ~4–5% of taps become a booking

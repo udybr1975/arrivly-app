@@ -285,7 +285,7 @@ const COMPS_ROWS: CompRow[] = [
 ]
 
 const COMPS_STATS = [
-  { stat: '2–3 bookings', desc: 'Roughly what it takes per month for guest tour commissions to cover the whole fee' },
+  { stat: '2–3 bookings', desc: 'Roughly what it takes per month, on Portfolio, for guest tour commissions to cover the whole fee' },
   { stat: '3 marketplaces', desc: 'Viator, GetYourGuide and Tiqets — live on every guest page from day one' },
   { stat: '100% yours', desc: 'On Portfolio, GetYourGuide and Tiqets pay commissions to you directly — Bemgu never touches your money' },
 ]
@@ -769,12 +769,12 @@ export default function Landing() {
             </h2>
             <p className="mt-5 max-w-[460px] text-[15px] leading-[1.7] text-[#1c1c1a]/65">
               Guests already book tours, tables and tickets during their stay. With Bemgu they
-              book them from your page — and a share comes back to you.
+              book them from your page — and on Portfolio, a share comes back to you.
             </p>
             <ul className="mt-8 space-y-5">
               {[
                 {
-                  t: 'Earn on the whole catalogue',
+                  t: 'Earn across the catalogue',
                   d: 'Tours, restaurant tables, attraction tickets, transfers — the experiences a guest taps can earn.',
                 },
                 {
