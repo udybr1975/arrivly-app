@@ -1937,3 +1937,58 @@ so the "affiliate revenue is switched off pre-arrival" claim was FALSE.
 = never attempted. `api/backfill-canonical-city.ts` is idempotent, CRON_SECRET-gated and **on no
 schedule** — it must be called by hand. One ("Penthouse in the sky") is correctly excluded, being
 invisible. Re-running takes the events cron from 9 units to ~7.
+
+## Session — 11 Aug 2026 (Viator enforcement + earnings-copy sweep, HEAD 9fa4b7b)
+
+**SHIPPED:** `52b196d` Viator host-own-PID removal · `6a2e180` evidence-class record · `5e6fe76`
+`d1c1712` `e20ad7d` `f5b413e` `9fa4b7b` earnings-copy corrections. All gates PASS, most at round 1.
+DB: `revoke update (viator_partner_id) on hosts from authenticated` and `revoke delete on hosts
+from anon, authenticated`, both verified from the catalog.
+
+**THE ONE-COMMIT FIX TOOK SIX.** The Viator code change was `52b196d` and it was correct first
+time. The other five were all one task: finding every place the site claims "you earn commission."
+**The cause was asking "did we get them all?" and answering with a PHRASE SEARCH** — first `100%`,
+then more words, then headings, then mockup captions — widening the net while fishing the same
+pond. The right question, never asked until the end, was WHERE DOES THIS CLAIM LIVE IN THE WHOLE
+CODEBASE. That is a thirty-second search and it closed the list. See SWEEP STOPPING CONDITION.
+
+**TWO REAL DEFECTS FOUND, NEITHER ABOUT VIATOR:**
+- **Hosts below Tier 3 earn ZERO commission on ALL THREE providers** — `resolvePartnerId` returns
+  Bemgu's id below `EXPERIENCES_TIER_GATE` — and the pricing page, hero and signup page carried
+  no tier qualifier anywhere.
+- **"2–3 bookings covers your fee" was arithmetically FALSE at Bemgu's own constants.**
+  `config.ts` AOV 90 x commission 0.08 = **EUR 7.20/booking**; Portfolio EUR 25 needs **3.47**.
+  Two bookings = 58% of the fee, three = 86%. The CLAUDE.md ~EUR 315/mo anchor independently gave
+  3.5. Both internal sources agreed against the page. Now "3–4". **The copy moved to the
+  arithmetic, never the reverse.** Known trade: only "about 4" is true at every point of the range.
+
+**"PORTFOLIO" IS LOAD-BEARING BY ACCIDENT.** Tier names DIVERGE: the landing page says
+**Host** and **Full booking**; `tierCopy.ts` and `BillingPanel` say **Growth** and **Pro**.
+Portfolio is the only name matching all three surfaces, which is the sole reason every
+"on Portfolio" qualifier survives from landing to dashboard. Rename it on one surface and they
+all decouple at once.
+
+**MECHANISM NOTE — SELF-QUALIFYING BEATS PARENT PROSE.** Landing scopes its hero figures with a
+15px parent that precedes them in DOM order. AuthShell's DOM order is reversed, so the claim was
+made self-qualifying instead ("and on Portfolio, you earn") — qualifier and claim in the SAME text
+node at the same size. Prominence parity by construction; it cannot decouple under a later CSS
+change. Prefer this. Also: fixing the shared `AUTH_POINTS` default covered all FIVE AuthShell
+render surfaces; a per-caller fix would have left four stale.
+
+**OPEN DECISIONS FOR UDY — recorded, not decided:**
+- **`ExperiencesSheet.tsx:197` — the guest-facing disclosure names the WRONG BENEFICIARY.** It
+  says "Your host may earn a commission." For Viator that is never true, and below Tier 3 it is
+  never true for any provider — **Bemgu** earns. This is the only consumer-facing disclosure in
+  the set and the highest-stakes one. **The defect is beneficiary identity, not tier scope**, so
+  the fix is naming the beneficiary, not adding "on Portfolio". Suggested: "Your host or Bemgu
+  may earn a commission…"
+- **Tier names: one set or two?** See above.
+
+**RESIDUALS:** `EarningsPanel.tsx ~301` is unqualified but sits in `confirmedCard`, which renders
+only when `confirmedCount > 0` — never in production today. **`tierCopy.ts` is the file to watch:**
+it feeds `/choose-plan`, the actual point of payment, and today carries NO earnings claim — any
+bullet added there lands straight on the payment page. Non-code axes never swept: emails, push
+copy, `index.html`, DB-stored copy.
+
+**NEXT ACTION: the welcome share panel.** `/w/:code` is live and no host component links to it.
+Mockup-first. Fresh surface, unrelated to this sweep.

@@ -24,9 +24,9 @@ Three items raised this session. **Do not write a prompt for any of them until d
    clicking Edit opens the setup page **below its own tab bar**. Surfaced on the property edit
    page, but it affects **EVERY route**.
 
-### Anon-read lockdown: guide_recommendations + host_picks (PARKED — do NOT build until asked)
+### Anon-read lockdown: guide_recommendations + host_picks — DONE, not parked (verified live 12 Aug 2026)
 
-`guide_recommendations.guide_guest_read` and `host_picks.host_picks_guest_read` are `USING(true)` anon-read **AND load-bearing** — `GuestPage` reads both tables directly via the anon client (the Explore tab). Locking them down requires the **reader-migration-first pattern** (move those reads to a service-role endpoint, THEN drop the anon policies), same shape as the guest-disclosure-chain lockdown (S19). A quick policy drop would break the guest Explore tab. Low urgency (data is non-sensitive: host picks + neighbourhood guide), but tracked.
+This item described `guide_guest_read` and `host_picks_guest_read` as live `USING(true)` anon policies that `GuestPage` depended on. **Both were dropped on 28 Jul 2026 and the reader migration was completed.** Verified from `pg_policies`: `guide_recommendations` now has only `guide_host_select`, and `host_picks` only `host_picks_host_all` — both scoped `apartment_id IN (select id from apartments where host_id = auth.uid())`. Verified from source: **no component under `src/components/guest/` reads either table**; guest-side access runs through service-role endpoints (`api/guest-bootstrap.ts`, `api/guest-preview.ts`, `api/welcome.ts`, `api/_lib/guide.ts`). The reader-migration-first pattern this entry called for is exactly what was done. Kept as a worked example of that pattern rather than deleted.
 
 ## WELCOME PAGE — Phase 1 SHIPPED (Jul 28–29 2026); Part 2 NOT BUILT
 
