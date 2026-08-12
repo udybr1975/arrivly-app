@@ -878,7 +878,24 @@ export default function PropertySetup() {
       >
         ← Back to properties
       </Link>
-      <h1 className="text-[22px] font-['Fraunces'] font-light text-[#231d17] mb-4">Property setup</h1>
+      {/* "Property setup" stays the page title; the NAME is the subject, so it leads and
+          the title drops to an eyebrow above it. A host with several properties needs to
+          know which one is open before they read anything else.
+
+          The name tracks the Basics field on every keystroke, and that is DELIBERATE — it
+          is live feedback on a rename, and the alternative (snapshotting the loaded name)
+          would leave the header contradicting the field the host is typing in until they
+          save. No second state variable, so no way for the two to diverge.
+
+          `truncate` keeps a long name on ONE line, so it cannot wrap and push the tab bar
+          down. Its width bound comes from the page wrapper's `max-w-3xl`; no `min-w-0` is
+          needed because this is a flex-free block, where that class would do nothing. */}
+      <div className="mb-4">
+        <div className="text-[10px] uppercase tracking-[.08em] text-[#a79e8e]">Property setup</div>
+        <h1 className="mt-0.5 text-[22px] font-['Fraunces'] font-light text-[#231d17] truncate">
+          {basic.name.trim() || (apartmentId === null ? 'New property' : 'Untitled property')}
+        </h1>
+      </div>
 
       {/* Tab bar — horizontal premium tabs */}
       <div className="flex gap-2 flex-wrap mb-5">

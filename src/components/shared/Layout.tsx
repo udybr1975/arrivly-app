@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ComponentType } from 'react'
-import { Outlet, NavLink, useNavigate } from 'react-router-dom'
+import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import {
   Menu,
   Home,
@@ -74,6 +74,41 @@ const navItemClass = ({ isActive }: { isActive: boolean }) =>
 
 export default function Layout() {
   const navigate = useNavigate()
+  const { pathname } = useLocation()
+
+  // Route scroll-reset. THE WINDOW IS THE SCROLLER HERE — do not "fix" this to target the
+  // `overflow-auto` <main> below, which was tried and is a silent no-op. Derivation, so it
+  // is not re-litigated: the root div is `flex min-h-screen`, a MINIMUM, so its height is
+  // auto; <main> is `flex-1 overflow-auto` and stretches to the flex line's cross size,
+  // which is AT LEAST its own content height — the `md:h-screen md:self-start` sidebar can
+  // make the line taller on a short page, never shorter — so scrollHeight <= clientHeight
+  // and its scrollTop is pinned at 0 either way. Nothing else pins a height — #root is
+  // bare and index.css is only the
+  // three @tailwind directives. The tell is the sidebar: it is a SIBLING of <main> with
+  // `md:sticky md:top-0`, which only pins the way this dashboard actually behaves if the
+  // document scrolls.
+  //
+  // Two-arg scrollTo, not the options object: `behavior: 'instant'` is a WebIDL enum value
+  // added in ~2022, and an invalid enum in a dictionary member THROWS TypeError rather than
+  // being ignored — inside a passive effect, with no error boundary above Layout, that
+  // blanks the dashboard on older Safari instead of merely missing a scroll. The two-arg
+  // form is instant by definition and cannot throw.
+  //
+  // Keyed on `pathname` ONLY, deliberately. A querystring change is same-page navigation —
+  // the `?tab=` deep-link into PropertySetup is the case that matters — and jumping a host
+  // to the top mid-edit when they switch tabs would be worse than the bug this fixes.
+  //
+  // Instant, not smooth: this is a page replacement, not a movement within a page, so
+  // animating it would show the outgoing scroll position travelling through content the
+  // host never asked to see. Instant also sidesteps prefers-reduced-motion entirely.
+  //
+  // Scoped to the dashboard on purpose. Public routes (`/`, `/login`, `/guest`, `/w/:code`)
+  // render OUTSIDE this Layout and scroll the window, so they are untouched — they are
+  // mostly single-screen or intentionally long-scrolling, and the landing page in
+  // particular relies on its own scroll position for the reveal animations.
+  useEffect(() => {
+    window.scrollTo(0, 0)
+  }, [pathname])
   const [email, setEmail] = useState('')
   const [host, setHost] = useState<HostData | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
@@ -524,7 +559,11 @@ export default function Layout() {
         </div>
       </aside>
 
-      {/* Main — pt-16 clears the fixed mobile top bar; md restores normal padding */}
+      {/* Main — pt-16 clears the fixed mobile top bar; md restores normal padding.
+          `overflow-auto` here does NOT make this the scroll container: its parent has no
+          definite height, so this element stretches to at least its own content height and
+          can never overflow. The route scroll-reset above targets the window for that
+          reason. */}
       <main className="flex-1 px-4 pb-8 pt-16 md:px-8 md:pt-8 overflow-auto min-w-0">
         <GuideContext.Provider value={guideValue}>
           {demoExpired ? (
