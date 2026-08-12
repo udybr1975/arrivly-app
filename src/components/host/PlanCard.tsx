@@ -77,9 +77,22 @@ export default function PlanCard({
           // right at the source. `-ml-0.5` is an optical correction, not a stray margin —
           // the name's `tracking-[.14em]` emits a trailing letter-space, so a raw `gap-2`
           // reads ~9.5px before the descriptor against a true 8px before the pill.
+          //
+          // COLOUR — a DELIBERATE departure from this file's usual `#8a8276` muted token,
+          // which is 3.73:1 on the `#fffdf9` card and so ALREADY below WCAG AA (4.5:1)
+          // where it carries `valueProp` at 12.5px — a pre-existing residual, since 12.5px
+          // never qualified for the 3:1 large-text allowance either. At 10.5px there is
+          // not even an argument to make. `#6b6354` is 5.84:1 and already in the palette
+          // (`src/components/demo/UpgradeWall.tsx:62`). This is the string that explains
+          // the €49 tier, so it has to be readable.
+          // Ratios measured, not estimated; the tier NAME beside it (`#a8842f`, 3.44:1)
+          // is lower still and untouched — a card-wide contrast sweep is its own job.
+          // The `featured` arm is UNREACHABLE and left alone rather than restyled:
+          // `featured` is `!!copy.mostPopular` (tier 2 only) and tier 4 is the only tier
+          // carrying a descriptor — disjoint, re-verified against tierCopy.ts.
           <span
             className={`min-w-0 truncate -ml-0.5 text-[10.5px] font-normal lowercase ${
-              featured ? 'text-[#c8a24e]' : 'text-[#8a8276]'
+              featured ? 'text-[#c8a24e]' : 'text-[#6b6354]'
             }`}
           >
             ({descriptor})
