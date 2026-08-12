@@ -8,6 +8,46 @@ import Loader from '../shared/Loader'
 import { resolveImageUrl, uploadImage, deleteImage } from '../../lib/imageUtils'
 import { useToast } from '../shared/Toast'
 
+// The move distance that counts as "a different place". THE DATABASE OWNS THE OTHER COPY of
+// this number: `public.enforce_property_address_swap()` blocks a move beyond it for a host at
+// their property cap. There is no migration file in this repo, so this comment is the only
+// signpost that changing either half is a two-sided change.
+const MOVED_KM_THRESHOLD = 1
+
+// Great-circle distance in km. Unrounded — callers round only where they display it, so the
+// MOVED_KM_THRESHOLD is compared against the real value rather than a rounded one.
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number) {
+  const R = 6371
+  const toRad = (d: number) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLng = toRad(lng2 - lng1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)))
+}
+
+// The DB trigger sends `cap=N;km=X` in the error HINT. Parsed DEFENSIVELY: the hint is a
+// diagnostic channel, not a contract — PostgREST may drop it, a future trigger edit may reword
+// it, and a malformed value must never turn a blocked save into a thrown exception. Anything
+// unparseable comes back null and the panel falls back to copy that needs no numbers.
+function parseSwapHint(hint: unknown): { capText: string | null; kmText: string | null } {
+  if (typeof hint !== 'string') return { capText: null, kmText: null }
+  const cap = /(?:^|;)\s*cap=(\d{1,4})(?:;|$)/.exec(hint)
+  const km = /(?:^|;)\s*km=(\d{1,6}(?:\.\d{1,3})?)(?:;|$)/.exec(hint)
+  const capNum = cap ? Number(cap[1]) : NaN
+  const kmNum = km ? Number(km[1]) : NaN
+  return {
+    capText: Number.isFinite(capNum) && capNum > 0 ? String(capNum) : null,
+    kmText: Number.isFinite(kmNum) && kmNum > 0 ? formatKm(kmNum) : null,
+  }
+}
+
+// One decimal under 10 km, whole numbers above — "1.4 km" and "37 km" both read naturally.
+function formatKm(km: number) {
+  return km < 10 ? km.toFixed(1) : String(Math.round(km))
+}
+
 type Tab = 'basic' | 'wifi' | 'checkin' | 'rules' | 'extras' | 'picks' | 'guide' | 'calendars' | 'look'
 
 const TABS: { key: Tab; label: string; privateLock?: boolean }[] = [
@@ -36,6 +76,18 @@ const BTN_SAVE = 'bg-[#c8a24e] text-[#16100d] px-5 py-2.5 rounded-[10px] text-xs
 const BTN_AI = 'bg-[#1c1c1a] text-[#f0ede6] px-5 py-2.5 rounded-[10px] text-xs font-semibold hover:bg-[#2a2a28] transition-colors disabled:opacity-40 disabled:hover:bg-[#1c1c1a]'
 const BTN_OUTLINE = 'bg-transparent border border-[#e4ddd0] text-[#231d17] px-4 py-2 rounded-[10px] text-xs font-medium hover:bg-[#f0ede6] transition-colors disabled:opacity-40'
 
+// Shape of the Basics tab's form state, named so a ref can hold a restorable snapshot of it.
+type BasicFields = {
+  name: string
+  maxGuests: number
+  country: string
+  city: string
+  neighborhood: string
+  street: string
+  streetNumber: string
+  floorNote: string
+}
+
 // Relative-time helper for the Guide & events status lines.
 function timeAgo(iso: string): string {
   const diff = Date.now() - new Date(iso).getTime()
@@ -61,10 +113,20 @@ export default function PropertySetup() {
   // actually moved the pin, so canonical-city resolution runs once per real address change
   // rather than on every save (that is what keeps us inside LocationIQ's 5,000/day free tier).
   const savedCoordsRef = useRef<{ lat: number | null; lng: number | null }>({ lat: null, lng: null })
+  // The last Basics values known to be STORED. A blocked address swap rejects the WHOLE row
+  // write, so "Keep the current address" restores every field, not just the address — otherwise
+  // the form would keep showing values the DB refused and the host would believe they saved.
+  const savedBasicRef = useRef<BasicFields | null>(null)
   const [hostId, setHostId] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [feedback, setFeedback] = useState<{ ok: boolean; msg: string } | null>(null)
+  // Address-swap panels. `swapBlocked` = the DB trigger refused the write (host at their cap,
+  // move beyond MOVED_KM_THRESHOLD) — the stored address is unchanged. `moveNotice` = the write
+  // SUCCEEDED and moved
+  // the property far enough that its generated content now describes somewhere else.
+  const [swapBlocked, setSwapBlocked] = useState<{ capText: string | null; kmText: string | null } | null>(null)
+  const [moveNotice, setMoveNotice] = useState<{ kmText: string } | null>(null)
 
   // Tab 1
   const [basic, setBasic] = useState({
@@ -149,6 +211,10 @@ export default function PropertySetup() {
 
       setLoading(true)
       setFeedback(null)
+      // Both address panels describe THIS apartment, and the route renders the same element for
+      // every :aptId — without this, a panel survives a switch and asserts something about a
+      // property that is no longer open.
+      clearAddressPanels()
       setBasic({ name: '', maxGuests: 2, country: '', city: '', neighborhood: '', street: '', streetNumber: '', floorNote: '' })
       setWifi({ ssid: '', password: '' })
       setCheckin({ checkInFrom: '', checkOutBy: '', doorCode: '', entryInstructions: '' })
@@ -167,6 +233,7 @@ export default function PropertySetup() {
       // address (same street+number geocodes to identical coordinates), so that apartment would
       // never resolve a canonical city. Routine for a multi-property host.
       savedCoordsRef.current = { lat: null, lng: null }
+      savedBasicRef.current = null
       // new-tab state reset on apartment switch
       setGuideGeneratedAt(null)
       setGuideMsg(null)
@@ -206,6 +273,16 @@ export default function PropertySetup() {
       savedCoordsRef.current = {
         lat: typeof apt.lat === 'number' ? apt.lat : null,
         lng: typeof apt.lng === 'number' ? apt.lng : null,
+      }
+      savedBasicRef.current = {
+        name: apt.name ?? '',
+        maxGuests: apt.max_guests ?? 2,
+        country: apt.country ?? '',
+        city: apt.city ?? '',
+        neighborhood: apt.neighborhood ?? '',
+        street: apt.street ?? '',
+        streetNumber: apt.street_number ?? '',
+        floorNote: apt.floor_note ?? '',
       }
       // Honour a ?tab= deep-link (e.g. Bookings → "Manage calendars"). For an existing
       // property every tab is unlocked, so no lock check is needed; the 'new' branch above
@@ -365,7 +442,15 @@ export default function PropertySetup() {
   }
 
   // ── Tab 1 ──────────────────────────────────────────────────────────────────
+  // Both address panels are transient: a new save supersedes them, and switching tabs means the
+  // host has moved on. Cleared in one place so neither can outlive the state it describes.
+  function clearAddressPanels() {
+    setSwapBlocked(null)
+    setMoveNotice(null)
+  }
+
   async function saveBasic() {
+    clearAddressPanels()
     if (!basicComplete) return
     setSaving(true)
     const { data: { user } } = await supabase.auth.getUser()
@@ -422,7 +507,20 @@ export default function PropertySetup() {
     let savedId: string | null = apartmentId
     if (apartmentId) {
       const { error } = await supabase.from('apartments').update(fields).eq('id', apartmentId).eq('host_id', user.id)
-      if (error) { showErr(error.message); setSaving(false); return }
+      if (error) {
+        // The BEFORE UPDATE trigger `apartments_enforce_address_swap` raises this when a host who
+        // is AT their property cap moves an address beyond the trigger's own threshold (the DB
+        // half of MOVED_KM_THRESHOLD). The stored row is unchanged,
+        // so this is an upgrade prompt rather than a failure: a panel, not a red toast, because
+        // it needs two actions and a contact route that a toast cannot carry.
+        if (error.message?.includes('property_address_swap_blocked')) {
+          setSwapBlocked(parseSwapHint(error.hint))
+          setFeedback(null)
+          setSaving(false)
+          return
+        }
+        showErr(error.message); setSaving(false); return
+      }
     } else {
       const { data, error } = await supabase
         .from('apartments')
@@ -447,6 +545,28 @@ export default function PropertySetup() {
       api.post('/city-image', { apartmentId: savedId }).catch(() => {})
     }
 
+    // Staleness notice. MUST run BEFORE the enrichment block below, which advances
+    // savedCoordsRef. That ref is the only record of where this property used to be; once it
+    // moves, the previous coordinates are gone and the distance can no longer be computed.
+    // Deliberately does NOT regenerate anything — the host chooses, because an automatic
+    // refresh here would spend a per-host cooldown they never asked to spend, on a property
+    // they may still be mid-edit on.
+    if (
+      savedId &&
+      typeof fields.lat === 'number' &&
+      typeof fields.lng === 'number' &&
+      typeof savedCoordsRef.current.lat === 'number' &&
+      typeof savedCoordsRef.current.lng === 'number'
+    ) {
+      const movedKm = haversineKm(
+        savedCoordsRef.current.lat,
+        savedCoordsRef.current.lng,
+        fields.lat,
+        fields.lng,
+      )
+      setMoveNotice(movedKm > MOVED_KM_THRESHOLD ? { kmText: formatKm(movedKm) } : null)
+    }
+
     // Silent enrichment: resolve the coordinates into a canonical city identity for the
     // (commit 2) city-level events cache. Fire-and-forget — never awaited, never toasts, never
     // fails the save, never blocks navigation. A failure just leaves the columns NULL, which
@@ -468,6 +588,10 @@ export default function PropertySetup() {
         void api.post('/resolve-canonical-city', { apartmentId: savedId }).catch(() => {})
       }
     }
+
+    // The save succeeded, so this is now the stored state — a later blocked save must restore
+    // THIS, not whatever was loaded when the page opened.
+    savedBasicRef.current = { ...basic }
 
     if (geoMissed) {
       setFeedback({
@@ -909,6 +1033,7 @@ export default function PropertySetup() {
                 if (locked) { toast('Save your basic info first to unlock this tab', 'info'); return }
                 setTab(t.key)
                 setFeedback(null)
+                clearAddressPanels()
               }}
               className={`px-3.5 py-1.5 rounded-[9px] text-xs font-medium transition-colors border ${
                 tab === t.key
@@ -926,6 +1051,89 @@ export default function PropertySetup() {
       </div>
 
       {/* Save feedback */}
+      {/* Address swap REFUSED by the DB trigger. Deliberately an upgrade prompt, not an error:
+          nothing the host did was invalid, they simply have no room for another property. No
+          tier NAME or PRICE appears here — neither is loaded on this page, so any figure would
+          be a hardcoded number free to go stale. The cap comes from the trigger's hint or is
+          omitted entirely. */}
+      {swapBlocked && (
+        <div role="alert" className="mb-3 rounded-[12px] border border-[#e8d5a8] bg-[#faf3e2] px-4 py-3.5">
+          <h2 className="text-[14px] font-['Fraunces'] font-normal text-[#231d17]">
+            That looks like a different property
+          </h2>
+          <p className="mt-1 text-[12.5px] leading-[1.55] text-[#6b6354]">
+            {swapBlocked.kmText
+              ? `The address you entered is ${swapBlocked.kmText} km from the one saved here, so we've kept the original.`
+              : "The address you entered is a long way from the one saved here, so we've kept the original."}{' '}
+            {swapBlocked.capText
+              ? `Your plan covers ${swapBlocked.capText} properties and you're using all of them.`
+              : "You're using every property your plan covers."}
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Link
+              to="/dashboard/billing"
+              className="inline-flex items-center rounded-[9px] bg-[#c8a24e] px-3.5 py-2 text-[12.5px] font-semibold text-[#16100d] transition-colors hover:bg-[#e7d6ad]"
+            >
+              View plans
+            </Link>
+            <button
+              type="button"
+              onClick={() => {
+                // The trigger rejected the WHOLE row write, so restoring only the address would
+                // leave the other Basics fields showing values that were never saved. Restores
+                // the last known-stored snapshot; falls back to dismissing if there is none.
+                if (savedBasicRef.current) setBasic(savedBasicRef.current)
+                setSwapBlocked(null)
+              }}
+              className="rounded-[9px] border border-[#e8d5a8] px-3.5 py-2 text-[12.5px] text-[#6b6354] transition-colors hover:bg-white"
+            >
+              Keep the current address
+            </button>
+          </div>
+          <p className="mt-2.5 text-[11.5px] text-[#8a8276]">
+            Moved this property for good?{' '}
+            <a
+              href="mailto:hello@bemgu.app?subject=Moved%20property%20address"
+              className="underline underline-offset-2 hover:text-[#231d17]"
+            >
+              Get in touch
+            </a>{' '}
+            and we'll sort it.
+          </p>
+        </div>
+      )}
+
+      {/* Save SUCCEEDED and the pin moved far enough that the generated content now describes
+          somewhere else. A persistent card rather than a toast, because it has to survive long
+          enough to act on. Nothing is regenerated here — both buttons just switch tabs. */}
+      {moveNotice && (
+        <div role="status" className="mb-3 rounded-[12px] border border-[#d4dcc0] bg-[#eaf0dd] px-4 py-3.5">
+          <h2 className="text-[14px] font-['Fraunces'] font-normal text-[#231d17]">
+            This property moved {moveNotice.kmText} km
+          </h2>
+          <p className="mt-1 text-[12.5px] leading-[1.55] text-[#6b6354]">
+            Weather, directions and the cover photo already follow the new address. The city guide
+            and your saved picks still describe the old one.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => { setTab('guide'); clearAddressPanels() }}
+              className="rounded-[9px] bg-[#c8a24e] px-3.5 py-2 text-[12.5px] font-semibold text-[#16100d] transition-colors hover:bg-[#e7d6ad]"
+            >
+              Update the guide
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTab('picks'); clearAddressPanels() }}
+              className="rounded-[9px] border border-[#d4dcc0] px-3.5 py-2 text-[12.5px] text-[#4a6128] transition-colors hover:bg-white"
+            >
+              Review my picks
+            </button>
+          </div>
+        </div>
+      )}
+
       {feedback && (
         <div className={`text-xs rounded-[10px] px-3.5 py-2.5 mb-3 ${
           feedback.ok
