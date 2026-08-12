@@ -218,9 +218,12 @@ export const GUIDE_MODULES: GuideModule[] = [
   {
     id: 'full-booking',
     category: 'run-stays',
-    title: 'Full booking',
+    // Titled for BOTH senses on purpose: 'Full booking' is the FEATURE (and stays, per the
+    // product-noun rule), while '(Pro)' names the tier that unlocks it. Titling it plain 'Pro'
+    // would collide with the 'Billing & plans' module, which is where tiers are explained.
+    title: 'Full booking (Pro)',
     summary:
-      'Take real bookings end-to-end — availability, request, approve, pay — on the top plan. (Preview — not live yet.)',
+      'Take real bookings end-to-end — availability, request, approve, pay — on the Pro plan. (Preview — not live yet.)',
     status: 'coming-soon',
     related: ['billing'],
     tags: ['booking', 'tier 4', 'availability', 'payments'],

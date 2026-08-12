@@ -1,5 +1,11 @@
 export const TIER_COPY: Record<1 | 2 | 3 | 4, {
   name: string
+  // PRESENTATIONAL ONLY, and deliberately NOT part of `name`. Rendered beside the name on
+  // plan-SELECTION surfaces (ChoosePlan, the Landing pricing card) so the €49 tier explains
+  // itself at the moment of choosing. Keeping it out of `name` is what leaves billing emails
+  // (`api/_lib/email.ts` TIER_NAMES) and webhook alerts (`api/stripe-webhook.ts` TIER_NAMES_W)
+  // reading a plain 'Pro' — those are separate maps, and this field must never leak into them.
+  descriptor?: string
   tagline: string
   bullets: string[]
   mostPopular?: boolean
@@ -33,6 +39,7 @@ export const TIER_COPY: Record<1 | 2 | 3 | 4, {
   },
   4: {
     name: 'Pro',
+    descriptor: 'full booking',
     tagline: 'Guest experience plus a full direct-booking engine.',
     bullets: [
       'Everything in Portfolio',

@@ -2,7 +2,7 @@
 
 > **What this is.** The written guidance for a first-time host: every control in the setup-and-run journey, *what it does* and *why it's needed*. It's authored as **modules** — each `##` section is one module. The one-line **In one line** under each heading is what the per-page first-visit hint strip shows; the rest is the full Guide-drawer article; the whole file is also the corpus the "Ask Arrivly" assistant answers from.
 >
-> **Modular by design.** Adding a feature later = adding a module (e.g. *Earning more*, *Full booking*), tagged `status: coming-soon` until it ships. Nothing here needs rewriting when that happens.
+> **Modular by design.** Adding a feature later = adding a module (e.g. *Earning more*, *Full booking (Pro)*), tagged `status: coming-soon` until it ships. Nothing here needs rewriting when that happens.
 >
 > **Voice.** Written from the host's side of the screen: plain verbs, sentence case, says what happens when you press the thing and why you'd want to. Grounded in the live app (commit `112a6401`).
 >
@@ -217,9 +217,9 @@ This module exists now so the structure is ready. When it ships, it explains the
 
 ---
 
-## 12 · Full booking  `coming-soon`
+## 12 · Full booking (Pro)  `coming-soon`
 
-**In one line:** Take real bookings end-to-end — availability, request, approve, pay — on the top plan. *(Preview — not live yet.)*
+**In one line:** Take real bookings end-to-end — availability, request, approve, pay — on the Pro plan. *(Preview — not live yet.)*
 
 Placeholder module for the Tier-4 booking system. Present in the Guide so the day it launches it switches from preview to full instructions with no restructuring.
 

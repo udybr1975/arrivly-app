@@ -45,13 +45,13 @@ const DEFAULT_PRICING: Pricing = { trialDays: 14, fromPriceEuros: 10, currency: 
 
 // Marketing labels + copy — defined HERE (never written to the DB/config). Prices and
 // property caps come from the fetched plans; only presentation lives in this map.
-const TIER_META: Record<number, { name: string; badge?: string; featured?: boolean; comingSoon?: boolean; bullets: string[] }> = {
+const TIER_META: Record<number, { name: string; descriptor?: string; badge?: string; featured?: boolean; comingSoon?: boolean; bullets: string[] }> = {
   1: {
     name: 'Starter',
     bullets: ['Every guest-page feature', 'AI concierge, guide & live events', 'Bookable tours & tickets on the page'],
   },
   2: {
-    name: 'Host',
+    name: 'Growth',
     bullets: ['Everything in Starter', 'Room for a growing portfolio'],
   },
   3: {
@@ -59,13 +59,17 @@ const TIER_META: Record<number, { name: string; badge?: string; featured?: boole
     featured: true,
     badge: 'Earn with it',
     bullets: [
-      'Everything in Host',
+      'Everything in Growth',
       'Connect your own GetYourGuide & Tiqets accounts',
       'Keep 100% of GetYourGuide & Tiqets commissions — paid to you directly',
     ],
   },
   4: {
-    name: 'Full booking',
+    name: 'Pro',
+    // Plan-SELECTION surfaces only. Tier 4's canonical name is 'Pro'; the descriptor
+    // explains what the €49 buys at the moment of choosing. It is presentational and
+    // never part of the name, so billing emails and webhook alerts stay plain 'Pro'.
+    descriptor: 'full booking',
     comingSoon: true,
     badge: 'Coming soon',
     bullets: ['Everything in Portfolio', 'Complete direct-booking platform'],
@@ -895,6 +899,11 @@ export default function Landing() {
 
                     <h3 className={`font-['Fraunces'] text-[20px] font-normal ${meta.comingSoon ? 'text-[#f0ede6]/70' : 'text-[#f0ede6]'}`}>
                       {meta.name}
+                      {meta.descriptor && (
+                        <span className={`ml-1.5 font-['Inter'] text-[13px] font-normal ${meta.comingSoon ? 'text-[#f0ede6]/45' : 'text-[#f0ede6]/60'}`}>
+                          ({meta.descriptor})
+                        </span>
+                      )}
                     </h3>
 
                     <div className="mt-3 flex items-end gap-1.5">
