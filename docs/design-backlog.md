@@ -5,28 +5,64 @@ Moved out of CLAUDE.md, which keeps the live rules and points here.
 ### UX — NEEDS A DESIGN CONVERSATION FIRST (discussion list, NOT the build list — Jul 29 2026)
 
 Three items raised this session. **Do not write a prompt for any of them until discussed.**
+**STATUS 12 Aug 2026 — ALL THREE ARE NOW BUILT.** Kept as the record of what was decided and why,
+not as a to-do list. Re-read before reopening any of them.
 
-1. **WELCOME LINK vs QR CODE placement.** The agreed Phase-a mockup puts the welcome link
-   side by side with the QR code. Udy wants to revisit: the two have **completely different
-   jobs** — the link is **SENT** to a guest who has just booked, the QR is **PRINTED** and left
-   in the flat — and side-by-side placement risks a host sending the wrong one. **NOTE: this
-   REOPENS an already-agreed and recorded design decision** (the "Step 1 you send it / Step 2
-   you print it" split under WELCOME PAGE Part 2), so that recorded agreement **must not be
-   treated as settled** at the start of the Phase-a build.
-2. **PROPERTY NAME MISSING from the edit page.** `PropertySetup.tsx` renders a hard-coded
-   `<h1>Property setup</h1>`; the property name **is loaded into state but never displayed**.
-   With several properties every edit page looks identical, so a host cannot tell which one
-   they are editing.
-3. **NO SCROLL RESET ON ROUTE CHANGE — global, not local.** Verified: **no `ScrollRestoration`,
-   no scroll-to-top handler, no `autoFocus`, no `scrollIntoView` anywhere in `src/`.** React
-   Router does not reset scroll position by default, so navigating from a scrolled page lands
-   the next page mid-content — e.g. scrolling the dashboard to reach a property card and
-   clicking Edit opens the setup page **below its own tab bar**. Surfaced on the property edit
-   page, but it affects **EVERY route**.
+1. ~~**WELCOME LINK vs QR CODE placement.**~~ **SETTLED BY BUILDING IT — `8ff40e5`.** The
+   concern was that side-by-side placement risks a host sending the printed code to a guest. The
+   shipped Share panel keeps the two apart and labelled by JOB — "Step 1 — send this" (green,
+   the welcome link inside a copyable message) above "Step 2 — print this" (the QR, carrying an
+   explicit **"Don't send this one to guests — it's for the wall"** warning). The guest-page URL
+   is demoted to a collapsed disclosure. The recorded agreement was upheld, not overturned.
+2. ~~**PROPERTY NAME MISSING from the edit page.**~~ **BUILT — `a34af78`.** "Property setup"
+   is now an eyebrow above an `<h1>` carrying the property name, from the `basic.name` already in
+   state (no new query). Tracks the Basics field live rather than snapshotting, so the header
+   cannot contradict the field being typed into; falls back to 'New property' / 'Untitled
+   property'; `truncate` against the wrapper's `max-w-3xl` keeps the tab bar in place.
+3. ~~**NO SCROLL RESET ON ROUTE CHANGE.**~~ **BUILT — `a34af78`**, in `Layout`, keyed on
+   `pathname` only so a `?tab=` switch cannot jump a host to the top mid-edit. **Read the lesson
+   in CLAUDE.md before touching it:** the first version targeted the `overflow-auto` `<main>` and
+   was a SILENT NO-OP — the window is the scroller, because the root's `min-h-screen` is a
+   minimum, so `<main>` stretches and can never overflow. (The old claim here that there is "no
+   `scrollIntoView` anywhere in `src/`" was also wrong — there are five, all within-page panes.)
 
 ### Anon-read lockdown: guide_recommendations + host_picks — DONE, not parked (verified live 12 Aug 2026)
 
 This item described `guide_guest_read` and `host_picks_guest_read` as live `USING(true)` anon policies that `GuestPage` depended on. **Both were dropped on 28 Jul 2026 and the reader migration was completed.** Verified from `pg_policies`: `guide_recommendations` now has only `guide_host_select`, and `host_picks` only `host_picks_host_all` — both scoped `apartment_id IN (select id from apartments where host_id = auth.uid())`. Verified from source: **no component under `src/components/guest/` reads either table**; guest-side access runs through service-role endpoints (`api/guest-bootstrap.ts`, `api/guest-preview.ts`, `api/welcome.ts`, `api/_lib/guide.ts`). The reader-migration-first pattern this entry called for is exactly what was done. Kept as a worked example of that pattern rather than deleted.
+
+## PHASE H — COLOUR TOKENS FIRST, THEN CONTRAST (scoped 12 Aug 2026; ONE item, do NOT fix piecemeal)
+
+**This is a SINGLE Phase H item, not four contrast bugs.** Four sub-AA colours were measured
+while shipping unrelated work, and the instinct each time was to fix that one site. That was
+considered and **REJECTED**: naming one colour in isolation leaves the codebase half-tokenised
+with no rule about which colours have names, so the next person cannot tell whether a hex is
+deliberate or unconverted.
+
+**PREREQUISITE FINDING — there is NO token layer at all (measured 12 Aug 2026).** `src/` carries
+**2,006 hardcoded hex occurrences across 143 distinct colours**. `tailwind.config.js` has an
+**empty `theme.extend`** and `src/index.css` is **only the three `@tailwind` directives** — so
+every colour in the app is a literal at its use site. Top by frequency: `#c8a24e` (217),
+`#1c1c1a` (161), `#f0ede6` (130), `#231d17` (130), `#8a8276` (112), `#fffdf9` (92), `#e4ddd0`
+(86), `#e7d6ad` (74), `#a79e8e` (52).
+
+**ORDER IS LOAD-BEARING: introduce the token layer FIRST, then apply contrast corrections on top
+of it.** Doing it the other way means correcting values that are about to move anyway, and
+re-testing twice.
+
+**Contrast failures — all COMPUTED (Tailwind v3, WCAG 2.x relative luminance), not estimated:**
+| Colour | On | Ratio | Note |
+|---|---|---|---|
+| `#a79e8e` (LABEL token) | `#f0ede6` | **2.27:1** | the worst, and the most used — 52 sites |
+| `#8a8276` (PlanCard valueProp) | `#fffdf9` | 3.73:1 | 12.5px, so not large text either |
+| `#a8842f` (PlanCard tier name) | `#fffdf9` | 3.44:1 | lower than the descriptor beside it |
+| `#f0ede6/45` (Landing descriptor) | `#23211d` | ~3.90:1 | 13px |
+| reference: `#8a8276` | `#f0ede6` | 3.24:1 | still short of AA |
+| reference: `#6b6354` | `#f0ede6` | 5.08:1 | passes; already in the palette |
+
+**KNOWN EXCEPTION — DO NOT SWEEP BLINDLY.** `src/components/demo/UpgradeWall.tsx:21` uses
+`#a79e8e` as **disabled-button text** (`BTN_DISABLED_CREAM`). Disabled controls are **exempt**
+from WCAG contrast requirements, and raising it would make a disabled button read as enabled —
+a worse defect than the one being fixed. Any sweep must classify by ROLE, not by hex value.
 
 ## WELCOME PAGE — Phase 1 SHIPPED (Jul 28–29 2026); Part 2 NOT BUILT
 
@@ -49,9 +85,10 @@ only, TRUNCATE/TRIGGER/REFERENCES revoked).
 (model selection), `aa446d2` (grounding removed), `d79fd9e` (no-live-info prompt bullet).
 
 **PART 2 REMAINING (not built):**
-- **Share panel** — rename the QR panel: "**Step 1, you send it**" (welcome link) vs
-  "**Step 2, you print it**" (QR), with a stay timeline and an explicit "do not send this
-  one" line on the QR card.
+- ~~**Share panel**~~ — **SHIPPED `8ff40e5`** as `/dashboard/share` (`SharePanel.tsx`, replacing
+  `QRCodePanel`; `/dashboard/qr` redirects). The "Step 1 you send it / Step 2 you print it" split
+  and the "don't send this one" warning are live. **The stay timeline was NOT built** — that part
+  of this bullet is still open.
 - **AI-drafted, editable welcome note.**
 - **Three copy-ready message variants** (Airbnb / WhatsApp / email) with 2–3 language options.
 - **View-count display.**

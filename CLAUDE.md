@@ -12,7 +12,7 @@ context automatically every session, which is exactly what splitting this file a
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars.
-> **Current HEAD (code) — `5153bc4`** (12 Aug 2026), Share panel + its residual fixes. Docs-only commits land on top of it; a docs tip is not a mismatch. Full commit ancestry is in git — do not restate it here.
+> **Current HEAD (code) — `a34af78`** (12 Aug 2026), route scroll-reset + property name in the setup header. Docs-only commits land on top of it; a docs tip is not a mismatch. Full commit ancestry is in git — do not restate it here.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -350,6 +350,14 @@ DATE-REFRESHING, never by exemption** — an exemption makes the privacy notice 
 - **WORKFLOW — migrations belong to Claude-in-chat via Supabase MCP, NOT to Claude Code mid-build.** In Stage 4B a needed corrective migration was applied by Claude Code during the build. The fix was correct and verified, but the rule is: **if a migration turns out to be needed mid-build, STOP and report back** rather than applying it. Future code prompts must state this explicitly (reader-migration-first sequencing stays a chat-side responsibility).
 
 
+- **`overflow-auto` DOES NOT MEAN THAT ELEMENT SCROLLS (Aug 12 2026).** An element scrolls only
+  if it can be SHORTER than its content. `Layout`'s root is `flex min-h-screen` — a **MINIMUM** —
+  so `<main class="flex-1 overflow-auto">` stretches to at least its content height and its
+  `scrollTop` is permanently 0. A `<main>`-targeted route scroll-reset SHIPPED and was a silent
+  no-op; `window.scrollTo(0, 0)` is correct here. **The tell was in the same file:** a SIBLING
+  sidebar with `md:sticky md:top-0` can only pin the way this dashboard actually behaves if the
+  DOCUMENT scrolls. Checking that `overflow-auto` is present is not checking who scrolls.
+
 - **`grep -v "^[+-][+-]"` SILENTLY HIDES EVERY CHANGE TO A MARKDOWN BULLET (Aug 10 2026).** That
   filter exists to drop a diff's `---`/`+++` headers. But a removed bullet `- Cron sequential…`
   renders as `-- Cron sequential…` and is swallowed by it. **In a file that is almost entirely
@@ -399,6 +407,7 @@ Claude in chat NEVER pushes to GitHub. All code changes are delivered as Claude 
   one-line change — both gates run again before committing. **No exceptions for small
   changes.** A verdict only covers the bytes the reviewer actually read.
 - **GATE STOPPING CONDITION (Aug 10 2026).** Once BOTH gates return PASS with zero must-fix, STOP and commit. After a passing verdict the only permitted edits are ones resolving a must-fix; remaining warnings go in the commit message as known residuals. If a gate still returns must-fix after round three, stop and report. **Why:** `90aed01` ran SIX rounds with the code unchanged after round 1 — every later round failed on COMMENT accuracy, two of them on fixes for earlier fixes, and at round 5 the gates DISAGREED about one clause, which is the signal to DELETE it rather than revise again.
+- **VERIFY A QUEUE ITEM BEFORE BUILDING FOR IT (Aug 12 2026).** An entry describes the state when it was WRITTEN, not now. On 12 Aug, three of four queued defects were already solved or misdescribed — the guide cron was not overdue, the iCal 504 was already bounded, and the events staleness gate already shipped. Check source and live state first; the cost of checking is a minute and the cost of not checking is a commit that fixes nothing.
 - **SWEEP STOPPING CONDITION (Aug 11 2026).** A "find every place X is claimed" sweep runs ONCE, not iteratively. **(1) Enumerate the SURFACE before the first edit — repo-wide, over the VALUE and the VERB, across ALL file types including markdown, JSON and DB-stored copy — and FREEZE the list.** The list does not grow after work starts. **(2) Everything on it ships in ONE commit;** if that is too large, it is a refactor needing a plan, not a sweep. **(3) State the closure test up front** — "when nothing new turns up" is not a test; "every file containing the value or verb has been read and every hit classified" is. **(4) GATE WARNINGS ARE RESIDUALS, NOT WORK ORDERS** — record and batch them; they never start the next commit in the same thread. **(5) Hard cap TWO commits per defect family;** a third needs Udy's explicit approval plus a stated reason the enumeration failed. **(6) If a new site appears after the freeze, STOP AND REPORT — do not patch** — and classify it: INSIDE the set means carelessness, OUTSIDE means the surface was drawn wrong.
   **WHY: gate PASS cannot signal completeness.** A gate inspects only the diff in front of it and is structurally blind to files you did not touch. The Viator copy sweep ran SIX commits because each PASS felt like closure while the next defect sat in an untouched file, and the warnings waved through were the only thread back to it. **Completeness is established BEFORE the work by defining the surface — never after it by asking a reviewer.**
 - **COMMENT-ONLY EXEMPTION to the GATE STOPPING CONDITION (Aug 12 2026).** A post-verdict edit that changes ONLY comments or whitespace, with no executable change and a green build, does not re-trigger the gates; record it in the commit message. **Any edit touching an expression, condition, or identifier DOES re-trigger, however small.**
@@ -523,13 +532,11 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   including to **anna.humalainen@gmail.com** and **yiftach@xn--gnai-8qa.com**. Decide before then
   whether test fixtures should carry real addresses at all. Doing nothing is a decision that mails
   those people.
-- **NEXT ACTION IS THE CLAUDE.md RESTRUCTURING SESSION, ALONE — NOT Step 6.** The file is over its
-  working limit and every close widens the breach (see the size item below), so restructuring is
-  now the blocking prerequisite rather than a someday item. Then, IN ORDER: (1) the guest-chat
-  brake decision — see the TPD item below, which must be settled BEFORE Step 6 and as its own
-  commit; (2) **Commit B, the events staleness gate** — refresh a city when its cache is older
-  than ~20 days instead of daily, ~30x the Tavily and token saving, now justified on COST grounds
-  because item 1 of the 9-10 Aug record weakened the quality argument; (3) Step 6.
+- **NEXT ACTION — the queue ahead of Step 6 is now EMPTY (re-verified 12 Aug 2026).** The
+  restructuring session is done; **Commit B, the events staleness gate, is DONE** — `city-events.ts`
+  stamps `generated_at` on both caches, carries `last_attempted_at`, and holds the OPEN-1 fix from
+  `d254df9`; live, `city_events_by_city` refreshed 11 and 12 Aug with **zero rows older than 7
+  days**. The guest-chat brake is downgraded (below), not a blocker. **Step 6 is next.**
 - **EVENTS RECALL IS CORPUS-LIMITED, NOT WINDOW-LIMITED — the untouched lever is SEARCH.** Measured
   10 Aug: the first 30-day run returned **TWO** events where `874c26d` predicted 5-8, and candidate
   counts across runs were **8, 10, 7 — FLAT regardless of window width**. The binding constraint is
@@ -540,14 +547,15 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   FALSIFIED, though the widening was still right for the different reason it also gives.
   **Sequence it AFTER Commit B** — the staleness gate cuts run frequency, which is what buys the
   Tavily headroom any recall work would spend.
-- **GUEST-CHAT'S 40/HOUR BRAKE IS MIS-SIZED AGAINST TPD, and it must be settled BEFORE Step 6.**
-  At ~2.3k tok/turn, 40 calls/hour is **~92k tokens from ONE host against a 100K/day FLEET-WIDE
-  ceiling** — a single host at the *permitted* rate exhausts every AI surface for every tenant for
-  the rest of the day. The brake was sized for Gemini economics (cost per call), not for a shared
-  daily pool, and nothing about the number was wrong under the assumptions it was chosen with.
-  **Re-size it DELIBERATELY, in its own commit with its own recorded arithmetic — NOT silently
-  inside the Step 6 migration.** Folding it in would breach the standing rule that a migration
-  never changes who may ask or how often.
+- **GUEST-CHAT'S 40/HOUR BRAKE — DOWNGRADED 12 Aug 2026: leave it until real guest usage exists.**
+  `api/guest-chat.ts:87` `CHAT_HOURLY_LIMIT = 40`, enforced via `bump_api_counter`, alerting once at
+  limit+1. The arithmetic still holds — at ~2.3k tok/turn, 40/hour is ~92k tokens from ONE host
+  against a 100K/day FLEET-WIDE ceiling, so one host at the *permitted* rate could exhaust every AI
+  surface for every tenant. **But the number cannot be sized without traffic to size it against, and
+  there is none: no real guests exist yet.** Any figure chosen now is a second guess replacing the
+  first. **Revisit on real usage.** If it is ever changed, it goes in its OWN commit with its own
+  recorded arithmetic — never folded into the Step 6 migration, which must not change who may ask or
+  how often.
 - **~~RETENTION CRONS move onto the CRITICAL PATH~~ — SHIPPED 11 Aug 2026 (`1b7c3d7`), blocker
   cleared.** The RULE stays and is permanent: retention periods are a two-sided contract between
   the code and the published notice — change a constant and the guest notice §6 AND the Art. 30
@@ -573,12 +581,15 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   an SPA is self-inflicted only. `fixAvailable: true` for every one — but **`npm audit fix` was
   NOT run**, because that touches the lockfile and this was a docs-only commit. **Triage before
   the pentest gate.**
-- **THE MONTHLY GUIDE CRON HAS NEVER RUN, AND IS NOW STRUCTURALLY UNABLE TO.** No guide's
-  `generated_at` matches the 10:00 UTC 1st-of-month schedule. It loops apartments
-  **sequentially**, and a guide call now costs **up to ~99s each** — roughly **one apartment per
-  invocation**. **Batching + staggering is the strongest candidate for the next piece of guide
-  work.** Staggering needs **no new column** — the rule is "refresh guides older than N days",
-  because `generated_at` already staggers naturally. Also skip expired hosts, and log outcomes.
+- **TEST THE MONTHLY GUIDE CRON BY HAND BEFORE 1 SEPT — it is not overdue, it is UNPROVEN.**
+  Corrected 12 Aug 2026: the previous entry read "has never run and is structurally unable to",
+  which misread the schedule. `vercel.json` schedules `cron-refresh-guides` **`0 10 1 * *`** —
+  monthly, on the 1st. It has simply not had many chances. **The real risk is unchanged and
+  unmeasured:** it loops apartments **sequentially** with no deadline guard, and a guide call can
+  cost **~99s**, so a 10-property fan-out against `maxDuration` 150 is untested. Trigger it manually
+  and watch the outcome before the 1 Sept run. Batching + staggering stays the fix if it truncates;
+  staggering needs **no new column** ("refresh guides older than N days" — `generated_at` already
+  staggers). Also skip expired hosts, and log outcomes.
 - A `demo-create` cooldown was NOT built (secondary surface: Turnstile + one-demo gated).
   Fail-closed reconsideration remains a recorded non-blocking option.
 - **CLAUDE.md size — RESTRUCTURED 10 Aug 2026.** The one-record rule caps the RATE of growth, not the DIRECTION, so archiving alone could never get back under the 150,000 working limit; ~22% of the file was strikethrough supersede narrative, which no archive move ever touches. Fixed by splitting on LIFETIME rather than topic: invariants and live work stay, reasoning trails moved to purpose-named files under `docs/`. **Standing rules: (a) delete a superseded claim rather than striking it through and explaining it — git holds the correction; (b) one pointer per moved BLOCK, never per item, or the pointer costs half the saving; (c) when this file passes ~140,000, restructure again rather than trimming.**
@@ -600,6 +611,17 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   maxTokens 2,048 RESERVED) against Groq's **12K TPM** — HALF of it, not nearly all. **Step 6 adds
   guest chat to the SAME pool**, so PILOT STEP 2's rule (b) — the router's ungrounded leg must not
   embed the guide — still binds, but on **100K TPD**, not on TPM.
+- **OPEN — THE SHARE MESSAGE AND `host_picks` ARE NOW COUPLED, and nothing enforces it.** The
+  default welcome message promises "our own favourite places to eat and drink nearby", and
+  `SharePanel` nags when a property has **zero `host_picks`** — the first time those two facts have
+  met in the UI. A host who copies the message with no picks saved sends a promise the guest page
+  does not keep. The nag is the only link; there is no gate, and none is proposed. **Design
+  question, not a bug** — decide whether the message should soften when picks are empty, or the
+  nag should be stronger.
+- **OPEN (new, 12 Aug 2026) — `city_events_cache` holds ONE row, last generated 7 Aug,** while
+  `city_events_by_city` refreshes daily (2 rows, 11 and 12 Aug). Either a dead legacy row or a
+  per-apartment path nothing feeds any more. **One look, not a build** — decide whether to delete
+  the row or the fallback path.
 - **OPEN (residual) — the per-apartment events-cache fallback has no `last_attempted_at`,** so a consistently-failing apartment can pin the head of the LRU queue. The city-keyed path was fixed by `73587d3`; this shrinks as apartments gain canonical keys.
 - **OPEN — `demo-create.ts` is a FOURTH writer bypassing the `eventsCacheRef` helper.** Safe today
   ONLY because a demo apartment has no canonical key, and it **breaks QUIETLY** if that changes —
@@ -617,12 +639,12 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   another city and be resolved there by the server. Key and content then AGREE, so the row gets a
   **CORRECT** generation for the city claimed — **spend at someone else's credit, not content
   poisoning.**
-- **OPEN 2 — `cron-sync-ical` has the SAME FAILURE SHAPE fixed in `d254df9`.**
-  `MAX_ICAL_URLS` 20 x the 10s `safeFetchIcal` timeout = **up to 200s against `maxDuration` 150**,
-  and unlike the events cron **this one is INTERACTIVE** — a host clicks Sync, gets a **504**,
-  with the counter unit already spent. **`d254df9` is now the pattern to copy** (start-deadline +
-  a deferred bucket + an alarm condition scoped to what was attempted). ~~Queued after the city
-  cache~~ — **the city cache is DONE, so this is now next in that queue.**
+- **~~OPEN 2 — `cron-sync-ical` 504s an interactive host~~ — ALREADY FIXED, verified in source
+  12 Aug 2026.** `api/sync-ical.ts:68` sets `SYNC_FETCH_BUDGET_MS = 115_000` as an absolute
+  deadline against `maxDuration` 150, passed as `deadlineAt` at `:126`; `api/_lib/ical.ts:161`
+  enforces it MID-LOOP and **falls through to reconciliation** — a deadline is a partial sync, not
+  a failed one. Vercel runtime errors over the last 7 days show two groups, neither iCal. The
+  `d254df9` pattern was already applied here; the entry described the pre-fix state.
 - **OPEN 3 — `cron-refresh-guides.ts` is sequential with NO deadline guard** and iterates **ALL
   visible apartments**, so it carries the same silent-truncation exposure: killed mid-flight, no
   summary, no alarm. Separate item from the two above.
@@ -704,58 +726,66 @@ Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live
 > HEAD 9fa4b7b)". Its two OPEN DECISIONS, the tierCopy watch and the self-qualifying-claim rule
 > were HOISTED first — into OPEN ITEMS and Lessons.
 
-## Session — 11-12 Aug 2026 (the Share panel, HEAD 5153bc4)
+> Moved to docs/history.md — "Session — 11-12 Aug 2026 (the Share panel, HEAD 5153bc4)". Its
+> picks-vs-message coupling was HOISTED into OPEN ITEMS first; the COMMENT-ONLY EXEMPTION it
+> invented was already in Agent policy, and its `anon=m` correction is in docs/schema.md.
 
-**SHIPPED:** `8ff40e5` the Share panel · `5153bc4` its residual fixes. Both gates PASS on both.
-Two migrations applied chat-side: `apartments.welcome_message` + its CHECK, and
-`revoke insert, update, delete on public.apartments from anon`.
+## Session — 12 Aug 2026 (tier names, contrast, scroll — HEAD a34af78)
 
-**THE DEFECT CLOSED.** `/w/:code` had been live and rendering since 28 Jul and **no host
-component referenced `welcome_code` or `/w/` anywhere**. The pre-arrival surface shipped without
-the one control that made it usable, which is why it kept feeling unsolved. `QRCodePanel` became
-`SharePanel`; `/dashboard/qr` became `/dashboard/share` with the old path kept as a redirect.
+**SHIPPED:** `7d69fa6` one set of tier names · `95a5fd4` PlanCard descriptor as its own prop ·
+`1064a1e` descriptor contrast · `a34af78` route scroll-reset + property name in the setup header.
+Both gates PASS on every commit. No migration.
 
-**THE SHAPE OF THE SCREEN IS THE POINT.** Step 1 SEND THIS is a copyable share message with the
-welcome URL inside it — one button copies the WHOLE message, because a bare link is not what a
-host pastes into Airbnb. Step 2 PRINT THIS carries an explicit "don't send this one to guests".
-The two artefacts open DIFFERENT pages and confusing them is the failure the screen exists to
-prevent. The old guest-page copy button is demoted to a collapsed disclosure.
+**TIER NAMES ARE NOW ONE SET: Starter / Growth / Portfolio / Pro.** `Landing.tsx` was the only
+diverging source ("Host", "Full booking"), so a host met one set on the marketing page and a
+different set after signing in. **The site a name-only sweep misses is a SENTENCE, not a label** —
+the tier-3 bullet "Everything in Host" referenced a tier about to stop existing. Tier 4 shows
+"Pro (full booking)" on plan-selection surfaces via a `descriptor` FIELD, never folded into
+`name`, because `name` is what billing emails and webhook alerts mirror and those stay plain
+"Pro". **Names live in SEVEN maps** (tierCopy, Landing TIER_META, BillingPanel TIER_NAMES_LOCAL,
+api/_lib/email, api/stripe-webhook, api/change-plan, plans.label); two were outside the enumerated
+surface and were VERIFIED rather than edited. **No gate anywhere keys off a tier NAME** — grep for
+a name string in any conditional returns zero, entitlement is numeric everywhere.
 
-**THE CHARACTER LIMIT TOOK TWO PASSES, AND THE SECOND IS THE LESSON.** Reserving `url.length + 2`
-up front looked right and was not: **`maxLength` constrains TYPING, not a programmatic
-assignment**, so a message saved at the reduced bound came back ~39 chars longer, and re-editing
-showed **"1995 / 1958" in neutral grey while the textarea silently swallowed every keystroke** —
-the same "the counter lies about the bound" defect, one step downstream. Fixed by pinning
-`maxLength` to the DB ceiling and DERIVING the displayed bound from the draft (full 2000 when the
-link is present, reduced when it is not, since only a draft missing the link pays for the append).
-That made the over-limit state reachable for the first time instead of dead code.
+**I SHIPPED A FIX THAT FIXED NOTHING, AND THE REASON GENERALISES.** The route scroll-reset first
+targeted the `overflow-auto` `<main>` on a premise handed to me as verified. It was false: the root
+is `flex min-h-screen` — a MINIMUM — so `<main>` stretches and its `scrollTop` is permanently 0.
+**Checking that `overflow-auto` was PRESENT is not checking WHO SCROLLS.** I verified the half that
+was easy and inherited the rest. The tell sat in the same file: a sibling sidebar with
+`md:sticky md:top-0` only pins if the DOCUMENT scrolls. Now a rule under Lessons.
 
-**TWO GATE WARNINGS WERE PROMOTED TO MUST-FIX, DELIBERATELY.** Both round-1 gates returned PASS
-with zero must-fix, and the GATE STOPPING CONDITION says stop there. Two warnings were fixed
-anyway, on the ground that they were **the requested scope not landing, not optional extras** —
-the counter still lied, and a FOURTH discarded `error` still collapsed failure into the
-"No properties yet." empty state that the brief had explicitly forbidden. **That distinction is
-the operative one: a warning that says "your fix does not do what it says" is not a residual.**
-The other four warnings were left as residuals and are in the `5153bc4` message.
+**THAT WAS THE SECOND INHERITED PREMISE THIS SESSION.** The first was `anon=m` on `apartments`
+read as "SELECT only" — `m` is MAINTAIN; anon has no read either. Both were plausible, both were
+asserted by someone else, both were checkable in a minute, and both propagated through my own
+writing and into two gate agents' briefs before the catalog was queried.
 
-**THE COMMENT-ONLY EXEMPTION WAS BORN HERE** (now a standing rule in Agent policy). Round 2's
-single must-fix was a comment that this session's own edit had FALSIFIED — it claimed a
-draft-derived limit was deliberately rejected, which is exactly what the code now does. Deleted
-rather than revised. Sending a five-line comment deletion back through two gates is the churn the
-stopping condition exists to prevent, so it was not re-gated; the build was green after it.
+**THE QUEUE WAS WRONG THREE WAYS OUT OF FOUR (verified 12 Aug).** The guide cron "has never run
+and is structurally unable to" — it is scheduled `0 10 1 * *`, monthly; not overdue, just
+unproven, and the real risk is an untested 10-property fan-out. The iCal 504 — already fixed;
+`SYNC_FETCH_BUDGET_MS` is enforced mid-loop and falls through to reconciliation. Commit B, the
+events staleness gate — already shipped, with zero cached rows older than 7 days. **Only the
+guest-chat brake survived, and it was DOWNGRADED**: the number cannot be sized without traffic to
+size it against, and there is none. Now a standing rule: **verify a queue item before building for
+it.**
 
-**MEASURED FROM THE LIVE CATALOG, and one reading corrected:** `apartments` ACL is now
-`anon=m`. **`m` is MAINTAIN, not SELECT** — `has_table_privilege` confirms anon holds NO read on
-`apartments` either. Recorded in docs/schema.md so "anon has SELECT only" is not restated.
+**CONTRAST WAS MEASURED, NOT ESTIMATED, AND I GOT IT WRONG ONCE.** The PlanCard descriptor moved
+`#8a8276` → `#6b6354` (3.73:1 → 5.84:1). I had written 3.76 and ~5.6; the reviewer recomputed and
+I verified — I had dropped the `/1.055` divisor. A framing error mattered more than the digits:
+12.5px was never "large text" either, so `valueProp` is equally sub-AA and the size was never what
+made the difference. **Four failures are now scoped as ONE Phase H item in docs/design-backlog.md**
+— the app has **2,006 hardcoded hex occurrences across 143 colours** and **no token layer at all**
+(`theme.extend` empty, `index.css` three directives), so fixing colours one at a time was
+considered and REJECTED. Token layer first, corrections on top. **`UpgradeWall.tsx:21` is a known
+exception** — `#a79e8e` there is disabled-button text, exempt from WCAG, and raising it would make
+a disabled button read as enabled.
 
-**FOUND STALE, NOT ASKED FOR:** the anon-read lockdown for `guide_recommendations` + `host_picks`
-was carried in docs/design-backlog.md as PARKED with `USING(true)` policies. **Both policies were
-dropped 28 Jul and the reader migration is complete** — verified from `pg_policies` and from the
-absence of any read under `src/components/guest/`. The entry described work already done.
+**GATE ARITHMETIC THIS SESSION:** four code commits, seven gate rounds, three must-fixes — and
+**every one was a COMMENT that a commit's own edit had falsified**, not a defect in behaviour. The
+COMMENT-ONLY EXEMPTION was used twice and earned its place; the pattern it does NOT cover is a
+comment that becomes false because the code around it changed, which is what keeps recurring.
 
-**NEXT ACTION: the picks-vs-message coupling, then Step 6.** The share message promises "our own
-favourite places"; the panel nags when a property has zero `host_picks`, which is the first time
-those two facts have met in the UI. Everything else stands as recorded in OPEN ITEMS.
+**NEXT ACTION: Step 6 (guest-chat router + host-picks).** Nothing precedes it any more — the
+restructuring, Commit B and the brake question are all closed or downgraded.
 
 ## ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026) — CANONICAL, supersedes the pre-billing checklist
 
@@ -833,10 +863,11 @@ is provider-independent and survives the pilot.
 HEAD == Vercel READY verified after.
 - **Step 6 — unblocked but NO LONGER NEXT (Aug 10 2026)** (the B3.5 smoke and the cron concurrency
   fix are both done, `d254df9`) — guest-chat router + host-picks. Acceptance test = the 20-question
-  benchmark set recorded under "PILOT STEP 2". **THREE THINGS COME FIRST, in order: the CLAUDE.md
-  restructuring session; the guest-chat 40/h brake re-sizing against TPD (its OWN commit — folding
-  it into this migration would breach the rule that a migration never changes who may ask or how
-  often); and Commit B, the events staleness gate.**
+  benchmark set recorded under "PILOT STEP 2". **NOTHING NOW PRECEDES IT (re-verified 12 Aug
+  2026):** the restructuring session is done, Commit B (events staleness) is done, and the
+  guest-chat brake is downgraded to "leave until real usage exists" rather than a blocker. If the
+  brake is ever re-sized it still goes in its OWN commit — a migration must not change who may ask
+  or how often.
 - **Step 7** — alarm-text sweep + **SELF-ATTACK DRILL** (burst chat past 40, hammer
   `city-events-public`, booking flood; verify the brakes trip and the ntfy wording is right).
   **The drill is a graduation PREREQUISITE.**
