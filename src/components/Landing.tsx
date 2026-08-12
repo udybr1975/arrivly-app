@@ -900,7 +900,12 @@ export default function Landing() {
                     <h3 className={`font-['Fraunces'] text-[20px] font-normal ${meta.comingSoon ? 'text-[#f0ede6]/70' : 'text-[#f0ede6]'}`}>
                       {meta.name}
                       {meta.descriptor && (
-                        <span className={`ml-1.5 font-['Inter'] text-[13px] font-normal ${meta.comingSoon ? 'text-[#f0ede6]/45' : 'text-[#f0ede6]/60'}`}>
+                        // Opacity is unconditional: tier 4 is the only entry carrying a
+                        // descriptor and the only comingSoon one, so the branch this had
+                        // for the non-comingSoon case was unreachable. If a live tier ever
+                        // gains a descriptor, re-derive the value against its /100 name
+                        // rather than assuming this one still reads.
+                        <span className="ml-1.5 font-['Inter'] text-[13px] font-normal text-[#f0ede6]/45">
                           ({meta.descriptor})
                         </span>
                       )}

@@ -101,6 +101,7 @@ export default function UpgradeWall({ onKeep, onSignOut }: { onKeep: (tier: numb
               <PlanCard
                 key={plan.tier}
                 tierName={copy.name}
+                descriptor={copy.descriptor}
                 price={price}
                 valueProp={copy.tagline}
                 capacityLabel={capacity}

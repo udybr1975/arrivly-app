@@ -217,7 +217,8 @@ export default function ChoosePlan() {
                 onMouseEnter={() => { if (!isDisabled) setFocusedTier(plan.tier) }}
               >
                 <PlanCard
-                  tierName={copy.descriptor ? `${copy.name} (${copy.descriptor})` : copy.name}
+                  tierName={copy.name}
+                  descriptor={copy.descriptor}
                   price={price}
                   valueProp={copy.tagline}
                   capacityLabel={capacity}

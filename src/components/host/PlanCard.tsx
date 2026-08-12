@@ -2,6 +2,14 @@ import type { ReactNode } from 'react'
 
 interface PlanCardProps {
   tierName: string
+  // Subordinate qualifier shown beside the tier label — e.g. Pro "(full booking)".
+  // THE RULE, in one sentence: `PlanCard.tierName` gets the descriptor via THIS prop;
+  // nothing else does. It must never be concatenated into `tierName`, which renders as an
+  // uppercase wide-tracked eyebrow and would shout it at the same weight as the name, and
+  // it must never reach `name` in TIER_COPY — that is what billing emails
+  // (`api/_lib/email.ts` TIER_NAMES) and webhook alerts (`api/stripe-webhook.ts`
+  // TIER_NAMES_W) mirror, and they stay plain "Pro".
+  descriptor?: string
   price: string
   priceSuffix?: string
   valueProp: string
@@ -17,6 +25,7 @@ interface PlanCardProps {
 // parents pass display strings + a ready-rendered CTA node into the slot.
 export default function PlanCard({
   tierName,
+  descriptor,
   price,
   priceSuffix = '/mo',
   valueProp,
@@ -43,18 +52,42 @@ export default function PlanCard({
         </span>
       )}
 
-      {/* Tier label + optional pill */}
+      {/* Tier label + optional descriptor + optional pill.
+          Crowding order at the xl 4-column width is deliberate: the name and the pill both
+          hold their size, and the DESCRIPTOR is the only element allowed to shrink or
+          truncate. Longest real combination is NON-FEATURED tier 4 on the cream card —
+          "PRO" + "(full booking)" + the "At launch" pill — which measures ~168px inside a
+          ~204px column, so truncate is a safety net rather than the shipped state.
+          Re-measure for any descriptor longer than ~14 characters. `featured` is
+          `!!copy.mostPopular`, which is tier 2 ONLY, so the dark-card colour below is
+          defensive and unreachable today. */}
       <div className="flex items-center gap-2 mb-3">
         <span
-          className={`text-[11px] font-semibold tracking-[.14em] uppercase ${
+          className={`shrink-0 text-[11px] font-semibold tracking-[.14em] uppercase ${
             featured ? 'text-[#e7d6ad]' : 'text-[#a8842f]'
           }`}
         >
           {tierName}
         </span>
+        {descriptor && (
+          // Subordinate to the eyebrow on every axis — lowercase, lighter, no wide
+          // tracking, muted — so it reads as a qualifier rather than part of the name.
+          // `lowercase` is a guard, which means DESCRIPTORS MUST BE LOWERCASE-SAFE COMMON
+          // NOUNS: a proper noun ("GetYourGuide sync") would render wrong here and look
+          // right at the source. `-ml-0.5` is an optical correction, not a stray margin —
+          // the name's `tracking-[.14em]` emits a trailing letter-space, so a raw `gap-2`
+          // reads ~9.5px before the descriptor against a true 8px before the pill.
+          <span
+            className={`min-w-0 truncate -ml-0.5 text-[10.5px] font-normal lowercase ${
+              featured ? 'text-[#c8a24e]' : 'text-[#8a8276]'
+            }`}
+          >
+            ({descriptor})
+          </span>
+        )}
         {tag && (
           <span
-            className={`text-[9px] font-semibold uppercase tracking-[.08em] px-2 py-0.5 rounded-full border ${
+            className={`shrink-0 whitespace-nowrap text-[9px] font-semibold uppercase tracking-[.08em] px-2 py-0.5 rounded-full border ${
               featured ? 'text-[#e7d6ad] border-[#e7d6ad]/40' : 'text-[#a8842f] border-[#e7d6ad]'
             }`}
           >
