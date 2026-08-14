@@ -11,8 +11,8 @@ context automatically every session, which is exactly what splitting this file a
 >
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
-> **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars.
-> **Current HEAD (code) — `a34af78`** (12 Aug 2026), route scroll-reset + property name in the setup header. Docs-only commits land on top of it; a docs tip is not a mismatch. Full commit ancestry is in git — do not restate it here.
+> **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
+> **Current HEAD (code) — `ec66829`** (14 Aug 2026), the guide cron bounded by a deadline + freshness gate + oldest-first. Docs-only commits land on top of it; a docs tip is not a mismatch. Full commit ancestry is in git — do not restate it here.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -203,6 +203,54 @@ DATE-REFRESHING, never by exemption** — an exemption makes the privacy notice 
 ---
 
 ## Lessons / learnings
+
+- **SECURITY DEFINER MAKES `current_user` THE FUNCTION OWNER, SO ANY GATE THAT INSPECTS ITS CALLER
+  MUST BE INVOKER RIGHTS (Aug 14 2026).** The first version of `enforce_property_address_swap()`
+  was SECURITY DEFINER and carried a `service_role` exemption. Under DEFINER, `current_user` is the
+  OWNER on every call, so that exemption matched **EVERY** call and **the gate was completely
+  inert** — it looked correct, it ran without error, and it blocked nothing. **READING THE FUNCTION
+  DID NOT CATCH IT; only a behaviour test did** — one that tried a blocked swap as an ordinary host
+  and observed that it succeeded. **Rule: DEFINER is for functions that need to ACT beyond the
+  caller's rights; INVOKER is for functions that need to JUDGE the caller.** A function doing both
+  is a design error. Any exemption keyed on `current_user`, `session_user`, `auth.uid()` or a role
+  check must be proved by a behaviour test from each side of the boundary — never by inspection.
+
+- **REVOKE ... FROM PUBLIC IS A SILENT NO-OP WHEN THE GRANT IS HELD BY NAME — AND THE CONVERSE IS
+  ALSO TRUE. BOTH DIRECTIONS HAVE NOW BITTEN (Aug 14 2026).** This file already recorded that
+  `REVOKE ... FROM PUBLIC` cannot remove a grant `anon`/`authenticated` hold BY NAME (the entry
+  below), and separately that `REVOKE ... FROM anon, authenticated` cannot remove one inherited via
+  PUBLIC. **They are one rule: a REVOKE only removes the grant at the level it was made, and you
+  cannot tell which level that was without looking.** Neither the statement succeeding nor the
+  wording looking right is evidence. **ALWAYS verify from `pg_proc.proacl` / `relacl` /
+  `has_function_privilege` AFTER the revoke**, and diff against a known-good object.
+
+- **TEST FIXTURES THAT COMMIT MID-SESSION INVERT LATER TEST RESULTS (Aug 14 2026).** Behaviour-
+  testing the address-swap gate MUTATED the fixtures it was testing with, so a later case ran
+  against state an earlier case had written and produced the opposite verdict — the gate looked
+  broken when it was the baseline that had moved. **Restore from a known baseline before re-running
+  a case, and RE-MEASURE rather than reusing a number from earlier in the same session.** This is
+  the same failure as the recorded re-measure rule, one layer down: there the stale thing was a
+  count, here it was the fixture the count described.
+
+- **`CRON_SECRET` IS FLAGGED SENSITIVE IN VERCEL, SO MANUAL CRON INVOCATION IS IMPOSSIBLE — STOP
+  PLANNING IT (Aug 14 2026).** Its value cannot be read back: not in the dashboard, and
+  `vercel env pull` writes `CRON_SECRET=""`. The `Authorization: Bearer <CRON_SECRET>` header a
+  cron guard requires therefore **cannot be reconstructed without rotating the secret**, which
+  invalidates the running crons until the redeploy lands. **TWO SESSIONS HAVE NOW PLANNED "trigger
+  it by hand" AS A VERIFICATION STEP** — for the guide cron and for `api/backfill-canonical-city` —
+  and it was never available either time. **Either stop proposing manual invocation and verify
+  crons from their RUNTIME LOGS, or take the deliberate decision to unset Sensitive on this one
+  variable.** Both are defensible; drifting into planning it a third time is not.
+
+- **THE REPO IS PUBLIC, AND HAS BEEN SINCE IT WAS CREATED ON 5 JUNE 2026 — VERIFIED AT SOURCE,
+  NOT BELIEVED (Aug 14 2026).** GitHub API: `"private": false`, `"visibility": "public"`,
+  `created_at 2026-06-05`. **Nothing is exposed** — no secret has ever been committed, server-side
+  keys have no `VITE_` prefix and live only in Vercel, and `.gitignore` carries five `.env` ignore
+  patterns. **The lesson is about the CLASS of claim:** repo visibility is an environment fact that
+  no build, test or gate ever checks, so a wrong belief about it can persist indefinitely and
+  silently mis-price every decision about what may be written down. **Check it at the API when it
+  matters; never carry it forward from a note.** Same class as "the guide cron has never run and is
+  structurally unable to" — plausible, load-bearing, and wrong for want of one lookup.
 
 - **A REVOKE MUST NAME THE ROLES THAT HOLD THE GRANT, AND THE CATALOG MUST CONFIRM IT.** Supabase default privileges grant EXECUTE to `anon` and `authenticated` BY NAME on every new function in `public`, so `REVOKE ... FROM PUBLIC` is a SILENT NO-OP against them. Four new SECURITY DEFINER retention functions shipped with `anon` holding EXECUTE — and SECURITY DEFINER bypasses RLS, so any holder of the public anon key could have called `cleanup_guest_identities(0)` and erased every guest name. Caught only by querying `pg_proc.proacl` afterwards. **Same class as the column-vs-table REVOKE trap already recorded here, and that record did not prevent it.** Always revoke from `anon, authenticated` explicitly and diff the ACL against a known-good function.
 
@@ -518,13 +566,12 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 
 ### OPEN ITEMS — PRIORITY CHANGES (Aug 4 2026)
 
-- **OPEN DECISION — `ExperiencesSheet.tsx:197` NAMES THE WRONG BENEFICIARY, and it is the only CONSUMER-facing disclosure in the set.** It says "Your host may earn a commission." For **Viator that is never true at any tier**, and below Tier 3 it is never true for **any** provider — **Bemgu** earns. **The defect is beneficiary identity, NOT tier scope**, so the fix is naming who earns, not adding "on Portfolio". Suggested: "Your host or Bemgu may earn a commission…". Deliberately excluded from the eight-pass earnings sweep; needs Udy's wording call.
-- **OPEN DECISION — TIER NAMES DIVERGE, AND "PORTFOLIO" IS LOAD-BEARING BY ACCIDENT.** The landing page says **Host** and **Full booking**; `tierCopy.ts` and `BillingPanel` say **Growth** and **Pro**. **Portfolio is the only tier name that matches on all three surfaces** — which is the sole reason every "on Portfolio" earnings qualifier survives from landing to dashboard. **Rename it on one surface and they all decouple at once.** One set of names or two: Udy's call.
+- **~~OPEN DECISION — TIER NAMES DIVERGE~~ — DECIDED AND SHIPPED `7d69fa6` (12 Aug 2026): ONE set of names, Starter / Growth / Portfolio / Pro.** `Landing.tsx` was the sole diverging source. Tier 4 shows "Pro (full booking)" on plan-selection surfaces via a `descriptor` FIELD, never folded into `name`, because `name` is what billing emails and webhook alerts mirror. Kept as the record of the decision, not as a to-do.
 - **WATCH `src/lib/tierCopy.ts` — it feeds `/choose-plan`, the actual point of payment, and today carries NO earnings claim.** Any earnings bullet added there lands directly on the payment page and would need the tier qualifier in the string itself. The precise form to copy is `Landing.tsx:64` — "Keep 100% of GetYourGuide &amp; Tiqets commissions — paid to you directly" (both axes scoped in one string). Related residual: `EarningsPanel.tsx ~301` is unqualified but sits in `confirmedCard`, which renders only when `confirmedCount > 0` — never in production today.
 - **VIATOR TIER-3 REMOVAL — the only item with a written compliance finding behind it.** Five verified sites: `api/_lib/affiliate-links.ts` (the `usingHostId` branch sets a host `pid` and strips `mcid` — Viator must NEVER take a host PID; leave GYG/Tiqets untouched pending their answers); `api/_lib/affiliate-links.test.mjs` line ~48, whose test ASSERTS the prohibited behaviour and must be inverted; `EarningsConnect.tsx` (Viator card + `viator_partner_id` input + line ~146 copy); `EarningsPanel.tsx` line ~379; `Landing.tsx` line ~63. **STAY UNCHANGED and are still true:** `Landing.tsx` ~245 (three-marketplace comparison) and ~289 ("live on every guest page"), and the Viator clicks column in EarningsPanel — those describe coverage and click reporting, not host attribution.
-- **HOST ADDRESS CHANGES ARE UNRESTRICTED, and that defeats the property cap.** A Tier-1 host capped at 2 can edit property B's address to a third flat — and the QR encodes the apartment UUID and never changes, so the printed code in the new flat just works. The cap counts ROWS, nothing counts addresses. **Do NOT blanket-lock:** typo fixes, onboarding mistakes and genuine relocations are all legitimate. **Proposed rule — defend the cap, not the edit:** a change staying within a few km AND the same `canonical_city_key` is a correction, allow it; a change beyond that is a SWAP and gets gated. **Better than a hard wall: "this is a new property — upgrade to add it",** which turns an abuse route into an upgrade prompt. **Also unverified: whether an address change currently invalidates the guide, the geocoded host picks, the events cache city key and the weather coordinates** — a legitimate move leaving the old city's guide attached is its own bug. Mockup-first.
-- **WELCOME SHARE PANEL — makes a shipped feature reachable.** "Step 1, you send it" (welcome link) vs "Step 2, you print it" (QR), with an explicit "do not send this one" on the QR card. This also settles the queued welcome-vs-QR placement question. Mockup-first.
-- **RUN `api/backfill-canonical-city` BY HAND** — GET with `Authorization: Bearer <CRON_SECRET>`. Idempotent. On no schedule. Watch `resolvedNoKey`: a city that resolves with no valid country code stays on the per-apartment path. **HALF DONE as of 11 Aug 2026:** 4 of 10 apartments carry a `canonical_city_key` (all resolved 7 Aug); the other 6 have `canonical_resolved_at` NULL = never attempted. Re-running takes the events cron from 9 units to ~7.
+- **~~HOST ADDRESS CHANGES ARE UNRESTRICTED~~ — SHIPPED 14 Aug 2026 (`34e79c3` + a live migration).** The proposed rule was built as designed: defend the CAP, not the edit. **DB half —** trigger `apartments_enforce_address_swap` runs `enforce_property_address_swap()`, which blocks a **>1km coordinate move OR a city/country TEXT change**, but **ONLY for a host who is AT their property cap**; `service_role`, `is_exempt` and `is_demo` hosts are exempt. **The function is INVOKER rights, and that is load-bearing** — see the SECURITY DEFINER lesson below. **Client half —** `PropertySetup.tsx` surfaces a block as an **upgrade panel** ("this is a new property — upgrade to add it"), and an ALLOWED >1km move as a **staleness notice** flagging that the guide, geocoded picks, events city key and weather coordinates now describe the old location. Behaviour-tested live across **8 cases**. **DECLARED LIMITATION, not an oversight:** a swap to another flat in the SAME city under 1km is not stopped — the gate defends the cap against city-scale swaps, and tightening it further would block genuine corrections.
+- **~~WELCOME SHARE PANEL~~ — SHIPPED `8ff40e5` (11-12 Aug 2026), and it also SETTLED the queued welcome-vs-QR placement question.** `/dashboard/share` (`SharePanel.tsx`, replacing `QRCodePanel`; `/dashboard/qr` redirects) carries "Step 1 — send this" (the welcome link inside a copyable message) above "Step 2 — print this" (the QR, with an explicit "Don't send this one to guests"). **Still open from Part 2:** the stay timeline was NOT built — see docs/design-backlog.md.
+- **RUN `api/backfill-canonical-city` BY HAND** — GET with `Authorization: Bearer <CRON_SECRET>`. Idempotent. On no schedule. Watch `resolvedNoKey`: a city that resolves with no valid country code stays on the per-apartment path. **HALF DONE as of 11 Aug 2026:** 4 of 10 apartments carry a `canonical_city_key` (all resolved 7 Aug); the other 6 have `canonical_resolved_at` NULL = never attempted. Re-running takes the events cron from 9 units to ~7. **⚠ BUT THIS IS NOT CURRENTLY DOABLE:** `CRON_SECRET` is flagged **Sensitive** in Vercel, so its value cannot be read back and the Bearer header cannot be reconstructed — see the CRON_SECRET lesson below. This item is blocked on that decision, not on effort.
 - **PRE-LIVE — OBTAIN WRITTEN CONFIRMATION FROM GYG AND TIQETS ON MULTI-TENANT HOST-OWN-ID.** Udy's own terms review (11 Aug 2026) cleared BOTH to keep host-own-partner-ID on Tier 3, and the code ships that way. **But note the EVIDENCE CLASS: that is a self-assessment, not a provider ruling.** For Viator we hold a written answer from Partner Support; for GYG and Tiqets we hold our own reading. **Viator is the proof that the two differ** — the terms were read carefully, the risk was spotted, the question was asked anyway, and the answer came back NO. Send the same question to both **before the Stripe live flip**, so a paying Tier-3 host is never sold a connection a provider later refuses. **Tiqets first — it uses the same partner-ID substitution shape (`partner=`) that Viator prohibited.** Contacts parked in PHASE I. If either answers no, Tier 3 needs repositioning, not just a code change.
 - **⏰ DATED — EARLY SEPT 2026 (6-9 Sept). THE ONLY ITEM IN THIS FILE WITH A REAL DEADLINE, and it
   sends REAL EMAIL TO REAL PEOPLE.** All five remaining sandbox subscriptions hit Stripe's 90-day
@@ -532,11 +579,13 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   including to **anna.humalainen@gmail.com** and **yiftach@xn--gnai-8qa.com**. Decide before then
   whether test fixtures should carry real addresses at all. Doing nothing is a decision that mails
   those people.
-- **NEXT ACTION — the queue ahead of Step 6 is now EMPTY (re-verified 12 Aug 2026).** The
-  restructuring session is done; **Commit B, the events staleness gate, is DONE** — `city-events.ts`
-  stamps `generated_at` on both caches, carries `last_attempted_at`, and holds the OPEN-1 fix from
-  `d254df9`; live, `city_events_by_city` refreshed 11 and 12 Aug with **zero rows older than 7
-  days**. The guest-chat brake is downgraded (below), not a blocker. **Step 6 is next.**
+- **NEXT ACTION — the queue ahead of Step 6 is EMPTY (re-verified 14 Aug 2026).** It was already
+  empty on 12 Aug; the three commits since were the address-swap gate, the commission disclosure
+  and the guide-cron bound, none of which precede Step 6. **Commit B, the events staleness gate, is
+  DONE** — `city-events.ts` stamps `generated_at` on both caches, carries `last_attempted_at`, and
+  holds the OPEN-1 fix from `d254df9`. The guest-chat brake is downgraded (below), not a blocker.
+  **Step 6 is next.**
+
 - **EVENTS RECALL IS CORPUS-LIMITED, NOT WINDOW-LIMITED — the untouched lever is SEARCH.** Measured
   10 Aug: the first 30-day run returned **TWO** events where `874c26d` predicted 5-8, and candidate
   counts across runs were **8, 10, 7 — FLAT regardless of window width**. The binding constraint is
@@ -581,15 +630,17 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   an SPA is self-inflicted only. `fixAvailable: true` for every one — but **`npm audit fix` was
   NOT run**, because that touches the lockfile and this was a docs-only commit. **Triage before
   the pentest gate.**
-- **TEST THE MONTHLY GUIDE CRON BY HAND BEFORE 1 SEPT — it is not overdue, it is UNPROVEN.**
-  Corrected 12 Aug 2026: the previous entry read "has never run and is structurally unable to",
-  which misread the schedule. `vercel.json` schedules `cron-refresh-guides` **`0 10 1 * *`** —
-  monthly, on the 1st. It has simply not had many chances. **The real risk is unchanged and
-  unmeasured:** it loops apartments **sequentially** with no deadline guard, and a guide call can
-  cost **~99s**, so a 10-property fan-out against `maxDuration` 150 is untested. Trigger it manually
-  and watch the outcome before the 1 Sept run. Batching + staggering stays the fix if it truncates;
-  staggering needs **no new column** ("refresh guides older than N days" — `generated_at` already
-  staggers). Also skip expired hosts, and log outcomes.
+- **~~TEST THE MONTHLY GUIDE CRON BY HAND BEFORE 1 SEPT~~ — RESOLVED 14 Aug 2026 (`ec66829`), and
+  THE 1 SEPT DEADLINE IS GONE.** The risk was never the date, it was the unbounded fan-out, and
+  that is now bounded in code rather than watched by hand — which is just as well, because
+  "trigger it manually" was never possible (`CRON_SECRET` is Sensitive; see the lesson below).
+  Shipped: `GUIDE_START_BUDGET_MS` (45s absolute start deadline, 150 − 100s in-flight worst case
+  − 5s overhead, captured at handler entry), `GUIDE_MAX_AGE_DAYS` (25) freshness gate, and
+  oldest-first ordering with never-generated apartments first — the staggering this entry
+  predicted would need no new column, exactly as predicted, on `generated_at`. Schedule is now
+  **daily `0 10 * * *`** (was `0 10 1 * *`); a deadline stop returns 200 with
+  `stopped_early`/`remaining`, so successive runs work through the fleet. **Still open from this
+  entry:** skip expired hosts, and log outcomes — see the residuals below.
 - A `demo-create` cooldown was NOT built (secondary surface: Turnstile + one-demo gated).
   Fail-closed reconsideration remains a recorded non-blocking option.
 - **CLAUDE.md size — RESTRUCTURED 10 Aug 2026.** The one-record rule caps the RATE of growth, not the DIRECTION, so archiving alone could never get back under the 150,000 working limit; ~22% of the file was strikethrough supersede narrative, which no archive move ever touches. Fixed by splitting on LIFETIME rather than topic: invariants and live work stay, reasoning trails moved to purpose-named files under `docs/`. **Standing rules: (a) delete a superseded claim rather than striking it through and explaining it — git holds the correction; (b) one pointer per moved BLOCK, never per item, or the pointer costs half the saving; (c) when this file passes ~140,000, restructure again rather than trimming.**
@@ -673,10 +724,52 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   (ii) STILL OPEN: no cross-endpoint view — a host at 49% on all seven endpoints at once is
   invisible.
 - STILL OPEN on the detector: **NO CRON HEARTBEAT — "never ran" remains undetectable**, the exact
-  shape of the monthly guide cron that has never run. The failure ntfy covers "ran and failed",
+  shape of the guide cron, which has still never run (and is DAILY since `ec66829`, so a silent
+  "never ran" now costs a refresh every day rather than every month). The failure ntfy covers "ran and failed",
   not "never ran". Also `city-events-host` (9) and `sync-ical` (15) WILL false-positive on a
   legitimate Tier 3/4 multi-property setup sweep (12 properties > 9), firing a high-priority
   "block this host" alert at a paying customer — revisit when a real portfolio host exists.
+
+### RESIDUALS FROM 14 Aug 2026 — recorded with enough detail to fix in ONE pass
+
+- **STARVATION IN `cron-refresh-guides` — BOTH GATES FOUND IT INDEPENDENTLY, and it is NOT a
+  one-line migration.** `guide_recommendations.generated_at` advances **only on a successful
+  upsert**, and `_lib/guide.ts` deliberately skips the upsert on `placeCount === 0`, on
+  `no centre`, and on the `described === 0 && matchable > 0` keep-existing guard. So a
+  consistently-failing apartment never advances its ordering key, is always stale, **sorts first
+  every run** and pins one of ~2 daily slots forever. `refreshed++` also counts the keep-existing
+  path, which wrote nothing — so the response reports a refresh that did not happen. The events
+  cron solved the identical defect with `last_attempted_at`. **WHY THE OBVIOUS FIX IS WRONG HERE:**
+  a never-generated apartment has **NO `guide_recommendations` row to stamp**, and a stub row
+  would be read by the guest page's `.maybeSingle()` — so the column probably belongs on
+  `apartments`, not on `guide_recommendations`. **Deferred deliberately: no apartment is currently
+  failing.** Decide the column's home before writing the migration.
+- **The guide cron bypasses `generate-guide.ts`'s 6h atomic claim and its `bump_api_counter`**, so
+  cron guide spend is invisible to `cron-spend-audit` and a cron run can race a host's manual
+  regenerate on the same apartment. Pre-existing and documented at `generate-guide.ts:114` — but
+  the monthly→daily move multiplies its weight **~30x**.
+- **`cron-refresh-guides` has NO failure alarm and NO `console.*` at all** — an all-failed run, or
+  one whose pre-loop queries eat the budget so `processed === 0`, is completely silent.
+  `cron-refresh-events` has the ntfy shape to copy, including its argued
+  `attempted = units - deferred` denominator so a deadline-bounded run cannot claim wholesale
+  failure. This is also the one detector that would reveal the "never ran" condition this file
+  records as undetectable.
+- **Guide-cron capacity implied by the two constants: ~2 apartments/run x 25 days ≈ 50 apartments**
+  before the freshness gate can never be satisfied and the fleet enters permanent backlog.
+  Comfortable at 9. **Re-derive BOTH constants beyond that**, not one of them.
+- **The commission disclosure in `ExperiencesSheet.tsx` is unconditional BY DESIGN, and nothing in
+  the code says so.** Every neighbouring earnings surface IS tier-qualified (`EarningsPanel`,
+  `Landing`), so the pattern a future editor pattern-matches against is the conditional one —
+  and making this one conditional would reintroduce the exact defect `736a715` fixed. A one-line
+  comment above it would make a regression visible in a diff.
+- **`PropertySetup.tsx`'s load effect has no cancellation guard** — same class as the recorded
+  `BookingManager.tsx` `arrivly:messages-read` note: a tiny stale-overwrite race on rapid
+  apartment switching. Fold into the next change to that file.
+- **The `code-reviewer` subagent wrote `.claude/agent-memory/` files on its own initiative
+  (14 Aug 2026), and they are NOT adopted.** They are gitignored, so they are invisible to
+  everyone but the machine that wrote them, which is precisely why they must not become a second
+  source of truth. **Project memory lives in CLAUDE.md + docs/history.md, nowhere else.** Do not
+  read from, cite, or maintain those files.
 
 > ✓ Plan values confirmed (hard gate CLOSED): T1 €10/cap 2, T2 €15/cap 7, T3 €25/cap 12, T4 €49/unlimited; trial_days = 14.
 > **DECISION (S16, amended S19 cont.): flip-to-live is the LAST step. Build order reordered S19 cont. to G → H → I → F (Phase F / Tier-4 booking moved to the end).**
@@ -730,62 +823,76 @@ Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live
 > picks-vs-message coupling was HOISTED into OPEN ITEMS first; the COMMENT-ONLY EXEMPTION it
 > invented was already in Agent policy, and its `anon=m` correction is in docs/schema.md.
 
-## Session — 12 Aug 2026 (tier names, contrast, scroll — HEAD a34af78)
+> Moved to docs/history.md — "Session — 12 Aug 2026 (tier names, contrast, scroll — HEAD a34af78)".
+> NOTHING needed hoisting: its verify-a-queue-item rule and COMMENT-ONLY exemption were already in
+> Agent policy, the `overflow-auto` lesson already in Lessons, and its Phase H scoping already in
+> docs/design-backlog.md. Its tier-name decision is recorded as CLOSED in OPEN ITEMS.
 
-**SHIPPED:** `7d69fa6` one set of tier names · `95a5fd4` PlanCard descriptor as its own prop ·
-`1064a1e` descriptor contrast · `a34af78` route scroll-reset + property name in the setup header.
-Both gates PASS on every commit. No migration.
+## Session — 14 Aug 2026 (address-swap gate, beneficiary, the guide cron — HEAD ec66829)
 
-**TIER NAMES ARE NOW ONE SET: Starter / Growth / Portfolio / Pro.** `Landing.tsx` was the only
-diverging source ("Host", "Full booking"), so a host met one set on the marketing page and a
-different set after signing in. **The site a name-only sweep misses is a SENTENCE, not a label** —
-the tier-3 bullet "Everything in Host" referenced a tier about to stop existing. Tier 4 shows
-"Pro (full booking)" on plan-selection surfaces via a `descriptor` FIELD, never folded into
-`name`, because `name` is what billing emails and webhook alerts mirror and those stay plain
-"Pro". **Names live in SEVEN maps** (tierCopy, Landing TIER_META, BillingPanel TIER_NAMES_LOCAL,
-api/_lib/email, api/stripe-webhook, api/change-plan, plans.label); two were outside the enumerated
-surface and were VERIFIED rather than edited. **No gate anywhere keys off a tier NAME** — grep for
-a name string in any conditional returns zero, entitlement is numeric everywhere.
+**SHIPPED:** `34e79c3` address-swap block as an upgrade panel + stale-content flag · `736a715` the
+guest commission disclosure names the right beneficiary · `ec66829` the guide cron bounded by a
+deadline, a freshness gate and oldest-first. **Four migrations applied chat-side and LIVE**,
+including the `enforce_property_address_swap()` trigger. Gates PASS on every commit.
 
-**I SHIPPED A FIX THAT FIXED NOTHING, AND THE REASON GENERALISES.** The route scroll-reset first
-targeted the `overflow-auto` `<main>` on a premise handed to me as verified. It was false: the root
-is `flex min-h-screen` — a MINIMUM — so `<main>` stretches and its `scrollTop` is permanently 0.
-**Checking that `overflow-auto` was PRESENT is not checking WHO SCROLLS.** I verified the half that
-was easy and inherited the rest. The tell sat in the same file: a sibling sidebar with
-`md:sticky md:top-0` only pins if the DOCUMENT scrolls. Now a rule under Lessons.
+**A GATE THAT READS CORRECTLY AND BLOCKS NOTHING.** The first `enforce_property_address_swap()`
+was SECURITY DEFINER with a `service_role` exemption. Under DEFINER `current_user` is the OWNER on
+every call, so **the exemption matched every call and the gate was inert** — it ran without error,
+it read correctly, and it stopped no swap at all. **Reading the function did not catch it; a
+behaviour test did.** The rule now in Lessons is the general form: **DEFINER is for functions that
+ACT beyond the caller's rights, INVOKER is for functions that JUDGE the caller**, and any
+exemption keyed on the caller must be proved from both sides of the boundary. The shipped gate is
+INVOKER: it blocks a >1km coordinate move or a city/country text change, but **only for a host at
+their property cap**, exempting `service_role`, `is_exempt` and `is_demo`. **Declared limitation:
+a swap under 1km inside the same city is not stopped** — it defends the cap against city-scale
+swaps, and tightening further would block genuine corrections.
 
-**THAT WAS THE SECOND INHERITED PREMISE THIS SESSION.** The first was `anon=m` on `apartments`
-read as "SELECT only" — `m` is MAINTAIN; anon has no read either. Both were plausible, both were
-asserted by someone else, both were checkable in a minute, and both propagated through my own
-writing and into two gate agents' briefs before the catalog was queried.
+**THE DESIGN CALL WORTH KEEPING: a block is an UPGRADE PANEL, not a wall.** "This is a new
+property — upgrade to add it" is the only place in the product where hitting a limit is framed as
+a purchase rather than a refusal. The allowed >1km move gets a staleness notice instead, because a
+legitimate relocation leaving the old city's guide, picks, events key and weather attached is its
+own bug. Eight cases behaviour-tested live — and **the fixtures those tests COMMITTED then
+inverted later results**, which is a new rule: restore from a baseline before re-running, and
+re-measure rather than reusing a number from earlier in the same session.
 
-**THE QUEUE WAS WRONG THREE WAYS OUT OF FOUR (verified 12 Aug).** The guide cron "has never run
-and is structurally unable to" — it is scheduled `0 10 1 * *`, monthly; not overdue, just
-unproven, and the real risk is an untested 10-property fan-out. The iCal 504 — already fixed;
-`SYNC_FETCH_BUDGET_MS` is enforced mid-loop and falls through to reconciliation. Commit B, the
-events staleness gate — already shipped, with zero cached rows older than 7 days. **Only the
-guest-chat brake survived, and it was DOWNGRADED**: the number cannot be sized without traffic to
-size it against, and there is none. Now a standing rule: **verify a queue item before building for
-it.**
+**THE DISCLOSURE NAMED THE WRONG PARTY, AND BENEFICIARY IDENTITY IS THE STATUTORY PART.** "Your
+host may earn a commission" is false below the tier gate for every provider and false for Viator
+at every tier — **Bemgu** earns. Finnish consumer law requires marketing to make clear its
+commercial purpose **and on whose behalf it is done**, so this was never a tier-scope question.
+Now "Your host or Bemgu may earn a commission…", via a new `ARRIVLY_CONFIG.platformName` —
+deliberately not `brandName`, which already means the HOST's brand on that same screen.
+**Unconditional by design:** it must be true for every tier and provider, which is the opposite of
+every neighbouring earnings surface, and nothing in the code says so (residual). The reviewer
+verified the surface rather than assuming it: `rel="nofollow sponsored"` occurs at exactly two
+sites, both inside this sheet, so the single-site fix is complete.
 
-**CONTRAST WAS MEASURED, NOT ESTIMATED, AND I GOT IT WRONG ONCE.** The PlanCard descriptor moved
-`#8a8276` → `#6b6354` (3.73:1 → 5.84:1). I had written 3.76 and ~5.6; the reviewer recomputed and
-I verified — I had dropped the `/1.055` divisor. A framing error mattered more than the digits:
-12.5px was never "large text" either, so `valueProp` is equally sub-AA and the size was never what
-made the difference. **Four failures are now scoped as ONE Phase H item in docs/design-backlog.md**
-— the app has **2,006 hardcoded hex occurrences across 143 colours** and **no token layer at all**
-(`theme.extend` empty, `index.css` three directives), so fixing colours one at a time was
-considered and REJECTED. Token layer first, corrections on top. **`UpgradeWall.tsx:21` is a known
-exception** — `#a79e8e` there is disabled-button text, exempt from WCAG, and raising it would make
-a disabled button read as enabled.
+**THE 1 SEPT GUIDE-CRON DEADLINE IS GONE, AND THE PLAN THAT CREATED IT WAS NEVER POSSIBLE.** The
+queued action was "trigger it by hand before 1 Sept" — but `CRON_SECRET` is flagged **Sensitive**
+in Vercel, so its value cannot be read back (`vercel env pull` writes `CRON_SECRET=""`) and the
+Bearer header cannot be reconstructed without rotating it. **Two sessions have now planned manual
+invocation as a verification step, for this cron and for `backfill-canonical-city`, and it was
+never available either time.** Bounded in code instead: a 45s absolute START deadline (150 − 100s
+in-flight worst case − 5s overhead, captured at handler entry), a 25-day freshness gate, and
+oldest-first ordering with never-generated apartments first — so a deadline is a partial run, the
+response carries `stopped_early`/`remaining`, and successive DAILY runs work through the fleet.
+Nine apartments could never have fit in 150s, so a deadline alone would have fixed the timeout and
+starved apartments 4-9 permanently; the three parts only work together.
 
-**GATE ARITHMETIC THIS SESSION:** four code commits, seven gate rounds, three must-fixes — and
-**every one was a COMMENT that a commit's own edit had falsified**, not a defect in behaviour. The
-COMMENT-ONLY EXEMPTION was used twice and earned its place; the pattern it does NOT cover is a
-comment that becomes false because the code around it changed, which is what keeps recurring.
+**BOTH GATES INDEPENDENTLY FOUND THE SAME STARVATION DEFECT, AND THE OBVIOUS MIGRATION IS WRONG.**
+`guide_recommendations.generated_at` advances only on a successful upsert, and `_lib/guide.ts`
+deliberately skips the upsert on three paths — so a consistently-failing apartment never advances
+its ordering key, sorts first every run and pins one of ~2 daily slots forever. The events cron
+solved this with `last_attempted_at`, but **a never-generated apartment has no row to stamp, and a
+stub row would be read by the guest page's `.maybeSingle()`** — so the column probably belongs on
+`apartments`. Deferred deliberately: no apartment is currently failing. Full detail in RESIDUALS.
 
-**NEXT ACTION: Step 6 (guest-chat router + host-picks).** Nothing precedes it any more — the
-restructuring, Commit B and the brake question are all closed or downgraded.
+**THE REPO HAS BEEN PUBLIC SINCE 5 JUNE 2026 — verified at the GitHub API** (`"private": false`),
+not believed. Nothing is exposed. The lesson is the class of claim: repo visibility is an
+environment fact no build, test or gate ever checks, so a wrong belief about it survives
+indefinitely and mis-prices every decision about what may be written down.
+
+**NEXT ACTION: Step 6 (guest-chat router + host-picks).** The queue ahead of it is empty; none of
+this session's three commits precedes it.
 
 ## ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026) — CANONICAL, supersedes the pre-billing checklist
 
@@ -1010,6 +1117,17 @@ billing (SDK: client-only). Size Google per-project spend caps at ~2x the limits
 - **ALL DATABASE CONTENT IS TEST DATA created by the operator. There are no real users.**
   Decide before the Stripe flip whether to wipe or flag it — **this interacts with the
   retention gaps in the legal workstream below.**
+- **NEW (Aug 14 2026) — READ ALL THREE AFFILIATE AGREEMENTS FOR THEIR OWN CONTRACTUAL DISCLOSURE
+  REQUIREMENTS, SEPARATELY FROM STATUTE.** `736a715` fixed the commission disclosure against
+  **Finnish consumer law** — which requires marketing to make clear its commercial purpose AND on
+  whose behalf it is done, hence naming the beneficiary. **That is the statutory floor, not the
+  contractual one.** Viator, GetYourGuide and Tiqets each impose their own affiliate-disclosure
+  wording, placement and prominence terms, and a clause can demand MORE than the law does — none
+  of the three has been read with this specific question in mind. **Pairs with the parked
+  multi-tenant confirmation emails** (same threads, same recipients, so ask both questions at
+  once). **Tiqets and GYG remain PARKED until go-live per Udy** — this is a pre-live checklist
+  item, not a now item. Note the asymmetry already recorded: for Viator we hold a written ruling,
+  for the other two only our own reading.
 
 > Full workstream, all ten gaps and the document status: docs/legal-workstream.md.
 

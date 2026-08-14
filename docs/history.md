@@ -1976,12 +1976,17 @@ change. Prefer this. Also: fixing the shared `AUTH_POINTS` default covered all F
 render surfaces; a per-caller fix would have left four stale.
 
 **OPEN DECISIONS FOR UDY — recorded, not decided:**
-- **`ExperiencesSheet.tsx:197` — the guest-facing disclosure names the WRONG BENEFICIARY.** It
-  says "Your host may earn a commission." For Viator that is never true, and below Tier 3 it is
-  never true for any provider — **Bemgu** earns. This is the only consumer-facing disclosure in
-  the set and the highest-stakes one. **The defect is beneficiary identity, not tier scope**, so
-  the fix is naming the beneficiary, not adding "on Portfolio". Suggested: "Your host or Bemgu
-  may earn a commission…"
+- **~~`ExperiencesSheet.tsx:197` — the guest-facing disclosure names the WRONG BENEFICIARY.~~
+  DECIDED AND SHIPPED 14 Aug 2026 (`736a715`), exactly as suggested here.** It said "Your host may
+  earn a commission." For Viator that is never true, and below Tier 3 it is never true for any
+  provider — **Bemgu** earns. This is the only consumer-facing disclosure in the set and the
+  highest-stakes one. **The defect was beneficiary identity, not tier scope**, so the fix was
+  naming the beneficiary, not adding "on Portfolio". Now reads **"Your host or Bemgu may earn a
+  commission when you book through these links."**, via a new `ARRIVLY_CONFIG.platformName`
+  (deliberately NOT `brandName`, which already means the HOST's brand on that same screen).
+  **Recorded reason: Finnish consumer law requires marketing to make clear its commercial purpose
+  AND on whose behalf it is done — so beneficiary identity is the statutory part.** The disclosure
+  is unconditional by design; see the 14 Aug session record.
 - **Tier names: one set or two?** See above.
 
 **RESIDUALS:** `EarningsPanel.tsx ~301` is unqualified but sits in `confirmedCard`, which renders
@@ -2045,3 +2050,60 @@ absence of any read under `src/components/guest/`. The entry described work alre
 **NEXT ACTION: the picks-vs-message coupling, then Step 6.** The share message promises "our own
 favourite places"; the panel nags when a property has zero `host_picks`, which is the first time
 those two facts have met in the UI. Everything else stands as recorded in OPEN ITEMS.
+
+## Session — 12 Aug 2026 (tier names, contrast, scroll — HEAD a34af78)
+
+**SHIPPED:** `7d69fa6` one set of tier names · `95a5fd4` PlanCard descriptor as its own prop ·
+`1064a1e` descriptor contrast · `a34af78` route scroll-reset + property name in the setup header.
+Both gates PASS on every commit. No migration.
+
+**TIER NAMES ARE NOW ONE SET: Starter / Growth / Portfolio / Pro.** `Landing.tsx` was the only
+diverging source ("Host", "Full booking"), so a host met one set on the marketing page and a
+different set after signing in. **The site a name-only sweep misses is a SENTENCE, not a label** —
+the tier-3 bullet "Everything in Host" referenced a tier about to stop existing. Tier 4 shows
+"Pro (full booking)" on plan-selection surfaces via a `descriptor` FIELD, never folded into
+`name`, because `name` is what billing emails and webhook alerts mirror and those stay plain
+"Pro". **Names live in SEVEN maps** (tierCopy, Landing TIER_META, BillingPanel TIER_NAMES_LOCAL,
+api/_lib/email, api/stripe-webhook, api/change-plan, plans.label); two were outside the enumerated
+surface and were VERIFIED rather than edited. **No gate anywhere keys off a tier NAME** — grep for
+a name string in any conditional returns zero, entitlement is numeric everywhere.
+
+**I SHIPPED A FIX THAT FIXED NOTHING, AND THE REASON GENERALISES.** The route scroll-reset first
+targeted the `overflow-auto` `<main>` on a premise handed to me as verified. It was false: the root
+is `flex min-h-screen` — a MINIMUM — so `<main>` stretches and its `scrollTop` is permanently 0.
+**Checking that `overflow-auto` was PRESENT is not checking WHO SCROLLS.** I verified the half that
+was easy and inherited the rest. The tell sat in the same file: a sibling sidebar with
+`md:sticky md:top-0` only pins if the DOCUMENT scrolls. Now a rule under Lessons.
+
+**THAT WAS THE SECOND INHERITED PREMISE THIS SESSION.** The first was `anon=m` on `apartments`
+read as "SELECT only" — `m` is MAINTAIN; anon has no read either. Both were plausible, both were
+asserted by someone else, both were checkable in a minute, and both propagated through my own
+writing and into two gate agents' briefs before the catalog was queried.
+
+**THE QUEUE WAS WRONG THREE WAYS OUT OF FOUR (verified 12 Aug).** The guide cron "has never run
+and is structurally unable to" — it is scheduled `0 10 1 * *`, monthly; not overdue, just
+unproven, and the real risk is an untested 10-property fan-out. The iCal 504 — already fixed;
+`SYNC_FETCH_BUDGET_MS` is enforced mid-loop and falls through to reconciliation. Commit B, the
+events staleness gate — already shipped, with zero cached rows older than 7 days. **Only the
+guest-chat brake survived, and it was DOWNGRADED**: the number cannot be sized without traffic to
+size it against, and there is none. Now a standing rule: **verify a queue item before building for
+it.**
+
+**CONTRAST WAS MEASURED, NOT ESTIMATED, AND I GOT IT WRONG ONCE.** The PlanCard descriptor moved
+`#8a8276` → `#6b6354` (3.73:1 → 5.84:1). I had written 3.76 and ~5.6; the reviewer recomputed and
+I verified — I had dropped the `/1.055` divisor. A framing error mattered more than the digits:
+12.5px was never "large text" either, so `valueProp` is equally sub-AA and the size was never what
+made the difference. **Four failures are now scoped as ONE Phase H item in docs/design-backlog.md**
+— the app has **2,006 hardcoded hex occurrences across 143 colours** and **no token layer at all**
+(`theme.extend` empty, `index.css` three directives), so fixing colours one at a time was
+considered and REJECTED. Token layer first, corrections on top. **`UpgradeWall.tsx:21` is a known
+exception** — `#a79e8e` there is disabled-button text, exempt from WCAG, and raising it would make
+a disabled button read as enabled.
+
+**GATE ARITHMETIC THIS SESSION:** four code commits, seven gate rounds, three must-fixes — and
+**every one was a COMMENT that a commit's own edit had falsified**, not a defect in behaviour. The
+COMMENT-ONLY EXEMPTION was used twice and earned its place; the pattern it does NOT cover is a
+comment that becomes false because the code around it changed, which is what keeps recurring.
+
+**NEXT ACTION: Step 6 (guest-chat router + host-picks).** Nothing precedes it any more — the
+restructuring, Commit B and the brake question are all closed or downgraded.

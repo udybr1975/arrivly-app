@@ -2,6 +2,24 @@
 
 Moved out of CLAUDE.md, which keeps the live rules and points here.
 
+### RECONCILED 14 Aug 2026 — what moved, and what did NOT
+
+- **ADDRESS-SWAP UI — SHIPPED (`34e79c3`), and it was a mockup-first item that never got a
+  mockup.** It went straight to build because the DB gate defined the two states exactly: a BLOCK
+  renders as an **upgrade panel** ("this is a new property — upgrade to add it"), and an ALLOWED
+  >1km move renders as a **staleness notice** flagging that the guide, geocoded picks, events city
+  key and weather coordinates still describe the old location. Both live in `PropertySetup.tsx`.
+  **The design decision worth keeping: an abuse route was turned into an upgrade prompt rather
+  than a wall** — the block is the only place in the product where hitting a limit is framed as a
+  purchase rather than a refusal. Behaviour-tested live across 8 cases.
+- **GUEST COMMISSION DISCLOSURE — SHIPPED (`736a715`)**, guest-facing copy: "Your host or Bemgu may
+  earn a commission…". **Design constraint attached to it: it is UNCONDITIONAL by design** — it
+  must render identically for every tier and provider, which is the opposite of every neighbouring
+  earnings surface. Do not "tidy" it into a tier-conditional string.
+- **NOT MOVED, still exactly as scoped below:** Phase H (colour tokens then contrast — no token
+  work has shipped), the welcome-page Part 2 remainder (stay timeline, AI-drafted note, message
+  variants, view counts, the dead neutral state), and pre-arrival guest reachability.
+
 ### UX — NEEDS A DESIGN CONVERSATION FIRST (discussion list, NOT the build list — Jul 29 2026)
 
 Three items raised this session. **Do not write a prompt for any of them until discussed.**
