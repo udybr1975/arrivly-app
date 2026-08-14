@@ -194,8 +194,8 @@ export default function ExperiencesSheet({
             )}
 
             <p className="text-[10px] text-[#9a958c] leading-relaxed pt-4 text-center">
-              Your host may earn a commission when you book through these links. Prices shown are set by the
-              booking partner.
+              Your host or {ARRIVLY_CONFIG.platformName} may earn a commission when you book through these
+              links. Prices shown are set by the booking partner.
             </p>
             <p className="text-[10px] text-[#9a958c] uppercase tracking-widest text-center pt-1">
               {isOnTrial ? ARRIVLY_CONFIG.poweredByText : `Curated for ${brandName}`}

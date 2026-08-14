@@ -4,6 +4,10 @@ export const ARRIVLY_CONFIG = {
 
   // Branding
   poweredByText: 'Powered by Bemgu',
+  // The PLATFORM's public brand — deliberately NOT called brandName, which everywhere
+  // else in the guest UI means the HOST's brand. Used where a disclosure has to name
+  // the platform itself as a party (e.g. the commission disclosure in ExperiencesSheet).
+  platformName: 'Bemgu',
 
   // Colour presets for host branding
   colourPresets: [
