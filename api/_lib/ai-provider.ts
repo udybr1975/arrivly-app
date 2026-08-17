@@ -77,6 +77,11 @@ export interface AiGenerateOpts {
   // model calls to ~150. One counter unit must cost the same number of calls on both paths.
   retries?: number
   timeoutMs?: number
+  // Reasoning-model thinking depth. Defaults to 'low' — see DEFAULT_REASONING_EFFORT.
+  // SILENTLY IGNORED unless the resolved GROQ_MODEL is a gpt-oss model: the field is sent only
+  // behind the model-id guard below, because other Groq models take a different value set and
+  // would 400 on it. Passing it here is therefore a request, never a guarantee.
+  reasoningEffort?: 'low' | 'medium' | 'high'
 }
 
 export function isAiConfigError(e: unknown): boolean {
@@ -84,9 +89,27 @@ export function isAiConfigError(e: unknown): boolean {
 }
 
 const GROQ_URL = 'https://api.groq.com/openai/v1/chat/completions'
-const DEFAULT_GROQ_MODEL = 'llama-3.3-70b-versatile'
+// Groq DECOMMISSIONED llama-3.3-70b-versatile on 16 Aug 2026 — every surface returned
+// `404 model_not_found` until GROQ_MODEL was repointed. This fallback exists for the case where
+// GROQ_MODEL is unset or empty, so it must never name a retired model.
+const DEFAULT_GROQ_MODEL = 'openai/gpt-oss-120b'
 const DEFAULT_TIMEOUT_MS = 30_000
 const DEFAULT_RETRIES = 2
+
+// ALWAYS SENT (see body construction below), never conditional. Groq debits TPM as a
+// RESERVATION of promptTokens + max_tokens, so omitting the field hands Groq an unknown — and
+// plausibly the model's 65,536 ceiling, eight times the entire per-minute allowance. Making
+// omission impossible is cheaper than discovering what Groq reserves by default.
+//
+// 1,024 rather than the largest audited need (3,500): every existing call site passes maxTokens
+// explicitly, so this value only ever governs a NEW or mis-written site. For that case a
+// conservative reservation fails visibly (a short or EMPTY answer — on a reasoning model the
+// trace is emitted first and billed from the same allowance, so an under-budgeted call returns
+// no content at all) instead of silently throttling every other surface in the org for a minute.
+const DEFAULT_MAX_TOKENS = 1024
+
+// Sent only on models that accept it — see the guard at the body construction below.
+const DEFAULT_REASONING_EFFORT = 'low'
 
 // ── Rate-limit / token observability ──────────────────────────────────────────────────────
 //
@@ -96,9 +119,16 @@ const DEFAULT_RETRIES = 2
 // violation, not an improvement.
 //
 // WHY IT EXISTS: Groq returns rate-limit state on EVERY response and nothing ever read it, so
-// CLAUDE.md carried "6K TPM org-wide" — which is the llama-3.1-8b-instant row, not ours. The
-// model actually used here (llama-3.3-70b-versatile) is 12K TPM / 1K RPD / 100K TPD. An
+// CLAUDE.md carried "6K TPM org-wide" — which is the llama-3.1-8b-instant row, not ours. An
 // assumed ceiling survived because the real one was never observed. This closes that for good.
+//
+// CURRENT CEILINGS — read from live response headers on `openai/gpt-oss-120b` against the
+// production free-tier key, 17 Aug 2026:
+//     requests per DAY  (RPD) = 1,000
+//     tokens per MINUTE (TPM) = 8,000
+// TPD is NOT returned as a header at all and cannot be observed here. TPM DROPPED from the
+// retired llama-3.3-70b-versatile's 12,000 to 8,000, and TPM is the binding constraint: Groq
+// debits it as promptTokens + max_tokens RESERVED, never the completion actually generated.
 //
 // Emitted once per HTTP ATTEMPT, so a retried call produces more than one line — deliberate,
 // since each attempt carries its own headers and the retried one is usually the interesting one.
@@ -120,7 +150,12 @@ function logGroqUsage(
   surface: AiSurface,
   model: string,
   res: Response,
-  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | null,
+  usage?: {
+    prompt_tokens?: number
+    completion_tokens?: number
+    total_tokens?: number
+    completion_tokens_details?: { reasoning_tokens?: number } | null
+  } | null,
 ): void {
   try {
     // `model` is an env VALUE (GROQ_MODEL) echoed on EVERY call, so it gets the same treatment
@@ -137,6 +172,13 @@ function logGroqUsage(
     if (typeof usage?.prompt_tokens === 'number') out.promptTokens = usage.prompt_tokens
     if (typeof usage?.completion_tokens === 'number') out.completionTokens = usage.completion_tokens
     if (typeof usage?.total_tokens === 'number') out.totalTokens = usage.total_tokens
+    // Reasoning tokens are billed INSIDE completion_tokens, so they are spent out of the same
+    // max_tokens allowance as the answer — which makes them the new cost driver and the reason a
+    // budget sized for a non-reasoning model can now come back truncated. Logged so that is
+    // observed rather than assumed, on the same "only when present and numeric" rule as above.
+    if (typeof usage?.completion_tokens_details?.reasoning_tokens === 'number') {
+      out.reasoningTokens = usage.completion_tokens_details.reasoning_tokens
+    }
     // NOTE: `x-ratelimit-limit-requests` is REQUESTS PER **DAY** (RPD), not per minute. Groq's
     // naming is genuinely misleading here — do not read it as RPM.
     addHeader(out, 'rpdLimit', res, 'x-ratelimit-limit-requests')
@@ -189,8 +231,23 @@ async function groqGenerate(surface: AiSurface, opts: AiGenerateOpts): Promise<s
   }
 
   const body: Record<string, unknown> = { model, messages }
-  if (opts.maxTokens != null) body.max_tokens = opts.maxTokens
+  // UNCONDITIONAL — never `if (opts.maxTokens != null)`. See DEFAULT_MAX_TOKENS: an absent
+  // max_tokens leaves the TPM reservation up to Groq, and the reservation is what is billed.
+  body.max_tokens = opts.maxTokens ?? DEFAULT_MAX_TOKENS
   if (opts.temperature != null) body.temperature = opts.temperature
+  // gpt-oss models are REASONING models: Groq returns the trace in a separate
+  // `message.reasoning` field (so the extractor below, which reads `message.content` only, needs
+  // no stripping), but bills those tokens INSIDE completion_tokens — i.e. out of the SAME
+  // max_tokens allowance as the answer. Unbounded thinking therefore silently eats the answer
+  // budget and can truncate or empty a response. Same reasoning, and the same conclusion, as the
+  // recorded `gemini-2.5-flash` `thinkingConfig: { thinkingBudget: 0 }` decision.
+  //
+  // GUARDED BY MODEL ID, because GROQ_MODEL is operator-settable and the accepted value set is
+  // model-specific (qwen3 takes 'none'/'default'); sending an unsupported value risks a 400, so
+  // a model swap must not hard-fail on a field it never asked for.
+  if (model.startsWith('openai/gpt-oss')) {
+    body.reasoning_effort = opts.reasoningEffort ?? DEFAULT_REASONING_EFFORT
+  }
   // Groq requires the word "JSON" to appear in the prompt when json mode is on; every call
   // site that passes json:true already instructs JSON output explicitly.
   if (opts.json) body.response_format = { type: 'json_object' }
@@ -228,7 +285,13 @@ async function groqGenerate(surface: AiSurface, opts: AiGenerateOpts): Promise<s
       const data = (await res.json()) as {
         choices?: { message?: { content?: string } }[]
         // OpenAI-compatible, and OPTIONAL — treated as absent rather than assumed present.
-        usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number }
+        // `completion_tokens_details.reasoning_tokens` appears only on reasoning models.
+        usage?: {
+          prompt_tokens?: number
+          completion_tokens?: number
+          total_tokens?: number
+          completion_tokens_details?: { reasoning_tokens?: number } | null
+        }
       }
       logGroqUsage(surface, model, res, data.usage)
       return data
