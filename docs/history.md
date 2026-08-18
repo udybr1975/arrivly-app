@@ -2173,3 +2173,125 @@ indefinitely and mis-prices every decision about what may be written down.
 
 **NEXT ACTION: Step 6 (guest-chat router + host-picks).** The queue ahead of it is empty; none of
 this session's three commits precedes it.
+
+## Test Data (in DB) — full enumeration as of 18 Aug 2026, archived
+
+## Test Data (in DB)
+
+**Host: Anna Banana** (udy.bar.yosef@gmail.com) — is_exempt (admin account, hidden from the host list by default, excluded from MRR). Owns:
+- **Sweet home** — id: `d9614d11-d573-4ff0-961a-54c5ea37c2bd`, Etu Töölö Helsinki, token: `ARR-SWEET1`. House rules AI-polished. Also has a permanent manual active booking token `ARR-EVT777` (check_in current_date−1 → +3) for testing the live active guest page (Explore/events/chat). Street address Runeberginkatu 17 — now surfaced by the chatbot for verified guests. **`ARR-EVT777` dates were rolled forward this session (Jun 29 2026) to check_in 2026-06-28 → check_out 2026-07-04 (it had lapsed at its 29 Jun cutoff) — KEEP-PERMANENTLY fixture; re-roll the dates if it lapses again.** **Its Airbnb reservations are now NAMED via the CSV import (Jun 27 2026): Carla 26–28 Jun (live) / Max 1–2 Sep / Momone 15–17 Sep / Rachel 29–30 Sep / Nina 2–3 Oct / Hannah 22–23 Nov — KEEP.** **Their references are now `ARR-` tokens, not raw UIDs (token backfill, Jun 27 2026): Carla = `ARR-BB4E3E`; Max/Momone/Rachel/Nina/Hannah likewise re-keyed — guest NAMES preserved, only the reference changed from `…@airbnb.com` to `ARR-`. KEEP.** PAST Airbnb rows were **restored to `status='confirmed'`** by the cancel-guard one-off restore (only the one genuine 26–28 Jun ghost stays `cancelled`) — KEEP, do NOT delete.
+- **Test Apartment 1** — id: `aaaaaaaa-0000-0000-0000-000000000001`, Kallio Helsinki, accent #5a1a2a (Wine)
+- **Casa Marco** — `d81e4e89-385a-4886-b461-ba952c78e7f8`, El Born Barcelona, token `ARR-BCN777` (booking 1–5 Jun 2026 ended → thank-you state, guest "Marco").
+- **Maison Lumiere** — `d7f47672-fde5-4da1-91ae-0f9f774732fd`, Le Marais Paris, token `ARR-PAR777` (booking 3–12 Jun 2026 ongoing → active page, guest "Sophie"; has WiFi + rules + private check-in door code 4521).
+
+**Host: Udyni** (udy.baryosef@jchelsinki.fi) — host id `11b5b459…` (billing-test host). Owns:
+- **Penthouse in the sky** — id: `9b03a763-3ca6-4d1f-946c-d4e1f977d614`, is_visible=true; extras + guide + polished rules present. Current test booking `ARR-CHAT01` (2026-06-21→2026-06-25, active, guest_id null). (Earlier `ARR-PHTEST`/3 bookings deleted in S17.)
+
+**Host: Anna** (anna.humalainen@gmail.com) — new test host added S11. Owns:
+- **Anna Stays** — id: `eab1e358-…`, Vantaa/Hakunila, is_visible=true.
+(Earlier test host `eed9860a` fully deleted from DB in S11.)
+
+**Host: TLV properties** (udy@tlv.capital) — id `1d5a3b9c-0a41-4585-898f-5095ed6f2350`, 2 apartments. Live state (verified S19 cont.): subscription_status `active`, no `stripe_subscription_id`. (NOTE: because the sidebar trial widget only renders for status `trial`, TLV is NOT a valid "Add card"/"Manage plan" test row — use a trial host for that. Clean "Add card" row: Yiftach, trial + no sub.)
+
+**Live plan values (confirmed S12, hard gate CLOSED):** Tier 1 €10/cap 2, Tier 2 €15/cap 7, Tier 3 €25/cap 12, Tier 4 €49/unlimited; `app_settings.trial_days` = 14. These are the official base values — do not change without explicit decision.
+
+**Test guest URL (Test Apartment 1):** `/guest?apt=aaaaaaaa-0000-0000-0000-000000000001&token=ARR-TEST01`
+
+**Pending badge test-data cleanup:**
+- 2 seeded unread guest messages — DELETE after badge testing:
+  - `7cabced9-4c1e-4607-a00d-3deb755ccdb4` (ARR-TEST01, booking cccccccc-…-0001)
+  - `3cfa4dc7-b72c-4a39-976c-669355fc14f0` (ARR-SWEET1, booking f803d95e-…)
+- Date reverts pending: ARR-SWEET1 check_out → 2026-06-02; ARR-TEST01 → original 27–31 May (or delete).
+- 3 guest push subs on ARR-SWEET1 (booking f803d95e) from push testing — old phone `fxoFeLto…`, new-phone tab `dPjCzkTFG…`, new-phone installed app `emdrm-rTQYM…`; decide whether to prune.
+
+**FIXTURE STATE AS OF 18 Aug 2026 (seeded by the 79-test campaign — dates go stale fast):**
+- **Ten `ARR-***001` manual bookings seeded 18 Aug across all ten apartments, dates 17-21 Aug.**
+  **STALE AFTER 21 Aug 2026 — refresh the dates before reusing them**, per the standing
+  refresh-don't-exempt rule.
+- **Sweet home:** Elena `ARR-SWE001` moved to the PAST (13-17 Aug). Noa `ARR-NOA001` 17-21 Aug is
+  **CANCELLED** — it is the C8 test subject and the fixture for the cancelled-conversation rule, so
+  do not "clean it up". `ARR-BV2CVB` is cancelled; `ARR-3NV432` is the `airbnb_block` 16-21 Aug.
+- **Casa Marco:** Futura `ARR-FUT001` 23-26 Aug = the **pre-arrival fixture** (future-dated valid
+  token → public tier).
+- **Test Apartment 1 is DELIBERATELY geocoded to Vantaa** — a side effect of running D9 from the
+  exempt admin account, KEPT AS A FIXTURE. **This is not drift; do not "correct" it.**
+- **Roy's `property_cap_override` was set to 2 for D8 and REVERTED to null** — verified reverted.
+- **Welcome codes:** Sweet home `XJ8SSKFH`, Casa Marco `962SM37Y`, Penthouse `3RV23Y2C`.
+
+**Billing-test host rows rot fast — VERIFY AGAINST LIVE DB, never trust this list.** Checked
+11 Aug 2026: Roy `3b11235b`, Yaron `06eb554e`, Udyn `11b5b459` and Yiftach `6dbfbda4` are ALL
+`active` with live subscriptions — four of five prior descriptions were wrong, and Yiftach was
+named here as the clean "no subscription / Add card" row when he now has one. Also undocumented:
+host **Shay** (`udy.bar.yosef+demo@gmail.com`, demo, trial). **Fixtures survive retention by
+DATE-REFRESHING, never by exemption** — an exemption makes the privacy notice false. Refreshed
+11 Aug: `ARR-EVT777` and `ARR-PAR777` to current-1/current+3, `ARR-BCN777` to current-6/current-2
+(thank-you state).
+
+---
+
+## Session — 17-18 Aug 2026 (Groq migration closed with production proof; BookingManager — HEAD fc35d69)
+
+**SHIPPED, four commits:** `c4981b2` repoint the dead Groq model + bound the reasoning budget ·
+`8619c5f` bound the events corpus by a token budget derived from the real ceiling · `1a2ed59` size
+the greeting budgets for a reasoning model + stop theme starvation · `fc35d69` reject overlapping
+manual bookings, allow cancelling them. Plus `GROQ_MODEL=openai/gpt-oss-120b` set in all three
+Vercel environments. Gates PASS on every commit; the last needed THREE rounds and six must-fixes.
+
+**THE OUTAGE, AND THE PROOF IT IS OVER.** Groq decommissioned `llama-3.3-70b-versatile` on
+16 Aug 2026 and **every Groq surface returned 404 `model_not_found`.** There was no "pick another
+Llama" — the whole family is gone from the catalogue. **PRODUCTION-VERIFIED 18 Aug 2026, not
+assumed:** `/api/daily-greeting` returned **200** on `openai/gpt-oss-120b` with
+**`reasoningTokens` 156**, and the 09:00 UTC `cron-refresh-events` run was clean — **7 snippets,
+`corpusTokensEst` 2,220 of the 2,300 budget, theme spread 2/2/1/2, reservation 5,571 of 8,000,
+4 events extracted.** The theme spread is the specific number worth keeping: it is the round-robin
+backfill working, which is the fix that a measurement — not a review — forced.
+
+**THE MEASUREMENT THAT CHANGED THE DESIGN TWICE.** The events corpus was bounded by a fixed
+snippet count, which cannot bound a worst case (14 slots measured 11,921 chars typical but
+~19,600 at all-fields-at-cap). Replacing it with a derived token budget was the easy half. The
+hard half only appeared under simulation: fair-sharing tokens in pass 1 was **not enough**, because
+at 575 tokens per query pass 1 fits only ONE typical snippet, so the order-greedy backfill did the
+real selecting and produced `calendar:4 / whats-on:1 / music:1 / culture:1`, with a CJK corpus
+collapsing to calendar-only. **The rule: a budget that replaces a count must be re-simulated
+against the ORDERING it inherits, or it silently becomes a producer filter.**
+
+**THE 156 THAT SHOULD HAVE BEEN 128.** See the new Lessons rule — budget parity covers retries and
+timeouts, never token counts. The greeting cap was inherited from a Gemini branch running
+`thinkingBudget: 0`; the number survived, the condition did not, and the first production run
+measured 156 reasoning tokens against a 128 ceiling. **It would have failed SILENTLY** — a
+reasoning-starved call returns `''` on a 200 with no throw — which is why the empty path gained a
+`console.error` in the same commit. Without that log there is no way to tell whether the fix worked.
+
+**A FIX FOR AN ALARM SILENTLY DELETED THE ALARM'S REMEDIATION.** The reviewer was right that
+`create-booking`'s ntfy said "ACTION: block this host" for someone who might have created zero
+bookings (rejected 409s bump the counter too). Correcting the wording took the body to **633 chars
+against `sendNtfy`'s silent 500-char slice**, truncating away the entire ACTION line and the key
+names. Rebudgeted to **483 with 17 spare, ACTION moved SECOND** so truncation can never reach it,
+with the measured number and a RE-MEASURE instruction in a comment. **The reviewer's own suggested
+replacement measured 564 and was not adopted** — re-measure at the moment you state a number
+applies to a gate's suggestion exactly as it applies to your own.
+
+**TWO DB CHECKS TURNED HYPOTHESES INTO FACTS, AND BOTH WOULD HAVE SHIPPED SILENTLY.** A nullable
+`bookings.status` would have made PostgREST's `.neq` skip the row while `cancel-booking` returned
+success — **the guest token would have kept working.** A CHECK constraint on `admin_audit.action`
+would have made every `cancel_booking` audit insert fail, and being best-effort, **fail silently
+forever** — so the traceability justifying the whole endpoint would never have existed. Both
+verified clean; both dependencies now in docs/schema.md, along with the `bookings` RLS predicate,
+which was the entire boundary for a query this session widened and was **written down nowhere**
+through two consecutive audits.
+
+**79/79 PASSED, ZERO BLOCKERS (17-18 Aug 2026).** Full guest/host/seams/edge-case checklist plus
+staged D6 (previous-guest protection: a past-token device gets the thank-you page, never the new
+guest's page), the pre-arrival token path (a future-dated valid token resolves to PUBLIC tier —
+`guest-access.ts` ~line 52), four `/w/` welcome-link states, and the six-step BookingManager
+retest in production. **The anti-swap trigger was verified on BOTH layers as a non-exempt host:
+the panel fired AND the DB kept the original address. D9's first "failure" was the exempt admin
+account** — the trigger exempts `is_exempt` by design. **Rule: test a protection from a
+non-exempt account, or you are testing the exemption.**
+
+**BOOKINGMANAGER (`fc35d69`, deployed `dpl_4hsNgTV6…`).** Server-side overlap guard (half-open
+intervals so same-day turnover passes by construction; blocks count as unavailable; 409 names the
+conflict) + soft cancel for **manual-source only**, audit-logged, feed-owned rejected server-side +
+the orphan rule: **a conversation with messages survives its booking's cancellation.** Residuals
+are in the commit message; the notable one is cosmetic and queued — a cancelled conversation still
+renders a live-looking temporal chip and a dead guest-page link.

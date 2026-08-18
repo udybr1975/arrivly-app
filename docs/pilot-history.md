@@ -997,3 +997,180 @@ and the aggregator-url check live only on the Tavily path.
   Tavily search + Groq extraction. Details in "PILOT STEP 5 — SHIPPED" below plus the B3.1-B3.5
   subsections (moved to docs/pilot-history.md). **FULLY SMOKE-VERIFIED: B3.4 on Aug 6, B3.5 on
   Aug 7 (PASSED). Step 5 is closed — B3.5 stands as the last events round.**
+
+## ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026) — CANONICAL, supersedes the pre-billing checklist
+
+**STATUS.** Approved by Udy, Aug 5 2026. The Bemgu Google Cloud billing account
+**01EC0F-C6FE15-32E552 is CLOSED with zero linked projects** (screenshots verified in-session).
+All five Gemini projects are back on **no-card free tier**, and **no payment instrument exists
+anywhere in Bemgu's AI stack**. The guides project `gen-lang-client-0816353550` was the only one
+ever billed (~€0.80 accrued Aug 4; a trailing sub-€1 invoice may still arrive — that is history,
+not exposure). The €10 spend cap is moot. **The "PRE-BILLING CHECKLIST" in the spend-hardening
+summary below is SUPERSEDED by this plan: there is no billing flip.** Instead, surfaces graduate
+one at a time (below). Anna's Stays billing is a separate account and is untouched.
+
+**DECISION.** Run production with **ZERO Google AI keys and no postpaid meter until 50 hosts** —
+the graduation milestone, a number Udy set on Aug 5.
+> **⚠ RECONCILED Aug 6 2026 — THE FREE STACK DOES NOT REACH 50 HOSTS, whichever vendor.** Measured:
+> **Tavily free = 1,000 credits/month FLEET-WIDE** = ~250 runs at 4 credits/run = **~8 booked
+> apartments refreshed daily**; **Groq free = 1,000 RPD and 8,000 TPM ORG-WIDE (VERIFIED 17-18 Aug 2026 from live x-ratelimit headers, on BOTH gpt-oss-120b and gpt-oss-20b — switching model buys no TPM; a per-day token ceiling is not returned as a header at all); TPM debits prompt+maxTokens** across all eight
+> surfaces. **Real free runway is ~10-20 hosts, not 50.** And the escape hatch below is narrower
+> than it reads: **Groq's own Developer tier REQUIRES A CARD**, so "paid Groq with a hard spend
+> limit" does **not** preserve the no-card state either. **The card question is therefore DEFERRED,
+> NOT RESOLVED** (Udy, Aug 6) — vendors stay unpaid until graduation, and the 50-host milestone will
+> need revisiting against these numbers before it is reached, not at it.
+- **WALLET POLICY:** every AI / search / POI provider must be **no-card free tier or prepaid**.
+  Providers that require an **uncapped card on file are BANNED** (Brave-class).
+- **LLM PROVIDER ORDER:** Groq if its EEA/commercial terms + DPA pass **the same Aug 4 standard
+  applied to Google**; else Mistral; or Groq paid **with a hard spend limit set BEFORE the first
+  call** — **but note the card requirement above: that third option is not a no-card option.**
+> Settled pilot history — vendor risk on Groq, the xAI pricing, the no-card bridge state, the no-rollback decision and the Step 0-5 status — is in docs/pilot-history.md. Steps 6-9 remain below.
+
+**HARD CONSTRAINT — unchanged from the spend-hardening work.** Every brake, counter key, limit,
+fail-open/fail-closed choice, the rolling + Sybil audit, retention/prune, and the
+victim-vs-caller alarm rule stay **100% intact**. When a surface changes provider **its brake
+moves WITH it: one counter bump = one FULL pipeline run**, search/POI and LLM legs included. The
+**only** permitted alarm change is remediation **TEXT** (Google-project advice → pilot-provider
+key revoke/rotate), preserving the `fa8fa32` victim-vs-caller wording rule. `cron-spend-audit`
+needs **no logic change** — the endpoint keys do not move.
+
+**TARGET STACK (9 surfaces).**
+1. **guest-chat** — a router: ungrounded leg on a cheap LLM; "nearby X" → Geoapify/LocationIQ POI
+   query; open-web → Tavily + cheap LLM. Brake unchanged (40/h, victim-keyed, fail-closed).
+2. / 3. **city-events public + host refresh** — Tavily + cheap LLM, same DB cache. Counters
+   unchanged (`city-events-public` 7/h, `city-events-host` 3/h).
+4. **guide** — rebuilt on POI DATA: Geoapify (or LocationIQ, if the current plan covers
+   Nearby/POI) categories around the apartment coords → cheap LLM writes the prose. **Coordinates
+   come from the POI data, which structurally kills BOTH the fabricated-business problem and the
+   geocoding weakness.** 6h atomic claim + 10/h alarm counter unchanged. Existing cached guides
+   are untouched.
+5. **daily-greeting**, 7. **rewrite-rules**, 8. **bulk-import**, 9. **guide-assistant +
+   welcome-chat** (last) — cheap LLM, quality indistinguishable. Greeting brake 50/h unchanged.
+6. **host-picks** — cheap LLM (host-reviewed; LocationIQ geocoding untouched).
+- **create-booking and sync-ical brakes: untouched** — they were never AI.
+
+**MECHANISM.** A new thin `api/_lib/ai-provider.ts` abstraction plus **per-surface env vars**
+(`AI_PROVIDER_CHAT=groq|gemini`, `AI_PROVIDER_GUIDE=poi|gemini`, …). **The Gemini code paths are
+KEPT as the `gemini` branch and never deleted.** Graduation is then an env-var flip + redeploy,
+per surface.
+
+**GEMINI KEY MAP — the single copy. Five keys, five projects, each with its own free-tier daily
+quota. Still live: Step 8 (deleting these vars from Vercel) has NOT run, and the `gemini` branch
+stays dormant in code. Alarms name the env var and the project ID, never a key value.**
+
+| Env var | Project | Surfaces | Note |
+|---|---|---|---|
+| `GEMINI_API_KEY` (shared) | gen-lang-client-0819525902 | `_lib/greeting` / `daily-greeting`, `_lib/host-picks`, `bulk-import`, `rewrite-rules`, `guide-assistant` | the only ones competing with each other — **disabling it is blunt** |
+| `GEMINI_API_KEY_GUIDES` | gen-lang-client-0816353550 | `_lib/guide` | |
+| `GEMINI_API_KEY_CHAT` | gen-lang-client-0221179352 | `guest-chat` | was GROUNDED |
+| `GEMINI_API_KEY_EVENTS` | gen-lang-client-0131909896 | `_lib/city-events` (guest lazy-fill, `cron-refresh-events`, host `refresh-events`) | was GROUNDED |
+| `GEMINI_API_KEY_PUBLIC` | (separate project, no card) | `welcome-chat` | `gemini-3.1-flash-lite`, NO grounding |
+
+Every dedicated key reads `<KEY> || GEMINI_API_KEY`, so behaviour is unchanged when the dedicated
+var is absent. Keep each high-volume or public AI surface on its own key/project — that isolation
+is provider-independent and survives the pilot.
+
+**WORK PLAN.** Every code step: single-block prompt, code-reviewer + security-auditor blocking,
+HEAD == Vercel READY verified after.
+- **⚠ Step 6 IS NOW THE ONLY THING THAT CLEARS A DATED DEADLINE, AND IT IS NOT IN THE QUEUE
+  (18 Aug 2026).** guest-chat still runs `gemini-2.5-flash`, which SHUTS DOWN 16 Oct 2026 — so
+  either Step 6 lands, or `groq/compound` replaces the grounding, or guest-chat breaks on that
+  date. The agreed queue (Founding-Hosts UI → category migration → importer → pentest gate) does
+  not schedule either one, and `groq/compound` is parked and untested. **This tension is recorded,
+  not resolved: it needs a decision about WHEN, not more analysis.** The entry below is kept for
+  its acceptance criteria.
+- **Step 6 — unblocked but NO LONGER NEXT (Aug 10 2026)** (the B3.5 smoke and the cron concurrency
+  fix are both done, `d254df9`) — guest-chat router + host-picks. Acceptance test = the 20-question
+  benchmark set recorded under "PILOT STEP 2". **NOTHING NOW PRECEDES IT (re-verified 12 Aug
+  2026):** the restructuring session is done, Commit B (events staleness) is done, and the
+  guest-chat brake is downgraded to "leave until real usage exists" rather than a blocker. If the
+  brake is ever re-sized it still goes in its OWN commit — a migration must not change who may ask
+  or how often.
+- **Step 7** — alarm-text sweep + **SELF-ATTACK DRILL** (burst chat past 40, hammer
+  `city-events-public`, booking flood; verify the brakes trip and the ntfy wording is right).
+  **The drill is a graduation PREREQUISITE.**
+- **Step 8** — Udy deletes the five `GEMINI_API_KEY*` vars from Vercel Production (the `gemini`
+  branch stays dormant in code).
+- **Step 9** — learning phase. **Iteration 2** (automated responses, victim-vs-caller-aware) and
+  **Iteration 3** (superadmin attack dashboard) are built DURING this phase.
+
+**GRADUATION.** At 50 hosts + Step 7 drill passed + alarms observed on real traffic + dashboard
+live: per surface, **guest-chat first, events second**; **guide only if the POI version
+underperforms** (it may never return — and after B2/B2.1 it looks unlikely to); the cheap four
+likely never return. Each return = reopen the closed Bemgu billing account, set a fresh
+**enforcement** spend cap sized by the **2x ceiling rule**, then flip the env var.
+> **⚠ THE 50-HOST TRIGGER IS NOT REACHABLE ON THE FREE STACK (measured Aug 6 2026 — see the
+> RECONCILED note under DECISION above).** Tavily's fleet-wide monthly pool caps the fleet at
+> **~8 booked apartments refreshed daily**, so the binding constraint arrives at roughly **10-20
+> hosts**, well before 50. **Consequence: a vendor decision is forced EARLIER than graduation, and
+> the "reopen Google billing" path is only one of the options** — the others are a paid Groq/xAI tier
+> (both card-gated) or the **city-level events cache**, which cuts the per-run cost for every vendor
+> including the free one and is the only lever that needs no card. **Do not treat 50 hosts as the
+> next decision point; treat the Tavily pool as it.**
+
+
+- **OPEN — TAVILY'S FREE ALLOWANCE IS A FLEET-WIDE MONTHLY POOL (1000 credits), and NO brake
+  bounds it.** Every existing counter is per-host-per-UTC-hour, which cannot bound a monthly
+  fleet pool. **REVISED BY B3.3 — one pipeline run = 4 credits (was 3). Ceilings: public 7/h x 4 =
+  28 credits/host/hour; host refresh 3/h x 4 = 12; `demo-create` unbraked at 4/demo; and the
+  unbraked `cron-refresh-events` is the dominant consumer — ~8 candidate apartments (was ~11) would
+  consume the entire monthly allowance on the cron alone**, so B3.3 made this item MORE pressing,
+  not less. **ESCALATED Aug 6 2026: this is now the BINDING CONSTRAINT ON FLEET SIZE, not just a
+  spend item — ~8 booked apartments refreshed daily exhausts the month, which puts the free runway at
+  roughly 10-20 hosts and makes a vendor decision arrive BEFORE the 50-host graduation milestone.
+  The CITY-LEVEL EVENTS CACHE (scoped below) is the only lever that relieves it without a card.**
+  This is a genuinely NEW spend dimension the Step 3
+  budget-parity rule (time/attempts) does not cover. Exhaustion degrades rather than bills (PAYG
+  is prohibited by policy), and recovery is **monthly**, not daily as Gemini's quota was. Belongs
+  in the Step 7 self-attack drill.
+
+### PILOT STEP 2 — BENCHMARK CLOSED, APPROVED BY UDY (Aug 6 2026)
+
+**The gate is passed and the POI approach is proven on real data, not assumed.** An
+OSM/Overpass query around Sweet home (Runeberginkatu 17) returned **423 named POIs within 800 m**
+— 172 restaurants, 64 cafés, 59 bars/pubs, 8 supermarkets, 4 pharmacies with opening hours,
+7 museums. Metadata coverage: **73% carry `opening_hours`, 67% a website, 80% a street address.**
+**11 of the live Google guide's 15 picks were found directly**, and the four misses were radius
+artifacts rather than data gaps. **Udy judged the POI-built guide draft "even better than
+Google".**
+
+**THREE BINDING DESIGN RULES for the remaining migrations — each came from measurement, not
+taste. Do not rediscover them:**
+- **(a) CATEGORY MAPPING must include `place_of_worship` / `historic` / `memorial` tags**, or
+  Temppeliaukio-class sights are silently missed.
+- **(b) THE ROUTER'S UNGROUNDED LEG MUST NOT EMBED THE GUIDE.** `guest-chat`'s system prompt is
+  currently **~1,600 tokens because it embeds the full guide JSON (~960 tok)**. Retrieve the
+  relevant category on demand instead; floor is ~700 tok. **Context that makes this binding:
+  Groq free tier is 8,000 TPM and 1,000 RPD ORG-WIDE (VERIFIED 17-18 Aug 2026), and TPM debits
+  prompt+maxTokens** — with the old 12K figure corrected DOWN, TPM is now the tighter binder of
+  the two, not the day pool: at ~2.3k tok/turn one host at the 40/h brake still burns the request
+  allowance fast, but a single oversized call breaches the minute ceiling first.
+- **(c) CHAT HISTORY MUST BE TRUNCATED SERVER-SIDE.**
+
+**Geoapify Free is capped at 5 req/s**, so guide POI queries must run **SEQUENTIALLY with a
+small gap** — reuse the LocationIQ ≥550 ms module-level gate pattern rather than fanning out.
+
+**THE 20-QUESTION GUEST-CHAT BENCHMARK SET — agreed and recorded now, for B4 acceptance
+testing:** 8 apartment-context questions (WiFi, checkout, door code and similar — **these must
+come back identical in quality**, they are the regression guard); 6 POI-answerable (pharmacy
+open Sunday, closest supermarket, café within walking distance, sushi tonight, something for
+kids nearby, best bar); 6 live-web (events this weekend, is Temppeliaukio open now, airport
+route, concerts tonight, weather tomorrow, tram status).
+
+**TEST FIXTURE:** `ARR-EVT777` dates refreshed Aug 6 2026 via MCP — check_in Aug 5, check_out
+Aug 9. (Standing rule: re-roll before any guest-page test.)
+
+**~~NEXT ACTION — B2 / Step 4~~ — DONE Aug 6 2026** (`6baafe8` + `085ff2f`), and **B3 events on
+Tavily is DONE too** (`5f15005` through `fc5c97e`, five rounds). **REMAINING in this plan: B4 /
+Step 6** the chat router + host-picks — the 20-question benchmark above is its acceptance test —
+then **Step 7** the self-attack drill (**remember the recorded stale-alarm residual list**) and
+**Step 8** delete the `GEMINI_*` vars. **NOTE (Aug 10 2026): Step 6 is not the next action.** The
+restructuring session, the guest-chat brake re-sizing and Commit B all precede it — see the top of
+"OPEN ITEMS — PRIORITY CHANGES".
+
+> Moved to docs/pilot-history.md — "PILOT STEP 5 — SHIPPED: city events on Tavily search + Groq extraction".
+> Moved to docs/pilot-history.md — "B3.5 — THE LAST EVENTS ROUND: the prompt rebalanced for RECALL".
+> Moved to docs/pilot-history.md — "B3.4 — the wrong-url blocker, theme diversity, the date window in code".
+> Moved to docs/pilot-history.md — "B3.3 — RETRIEVAL quality fixed: the corpus was the problem".
+> Moved to docs/pilot-history.md — "PILOT STEP 4 — SHIPPED: guide on Geoapify POI data + Groq prose".
+> Moved to docs/pilot-history.md — "PILOT STEP 3 — SHIPPED + VERIFIED: provider abstraction + four surfaces on Groq".
