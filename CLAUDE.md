@@ -12,7 +12,7 @@ context automatically every session, which is exactly what splitting this file a
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Current HEAD (code) — `fc35d69`** (18 Aug 2026), the BookingManager overlap guard + soft cancel. The three commits before it (`c4981b2`, `8619c5f`, `1a2ed59`) are the Groq migration. Docs-only commits land on top of it; a docs tip is not a mismatch. Full commit ancestry is in git — do not restate it here.
+> **Current HEAD (code) — `fc35d69`** (18 Aug 2026), the BookingManager overlap guard + soft cancel. The three commits before it (`c4981b2`, `8619c5f`, `1a2ed59`) are the Groq migration. **Two DOCS-ONLY commits sit on top — `057da82` and `eb13715` — both verified to touch zero files under `src/` or `api/`, both PUSHED and ancestors of the remote tip (measured, not recalled). They are listed for DRIFT DETECTION, not as outstanding work:** a docs tip above the code HEAD is the normal state here, never a mismatch. Docs-only commits land on top of it; a docs tip is not a mismatch. Full commit ancestry is in git — do not restate it here.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -477,6 +477,16 @@ hoists copied instead of moved).
 Claude in chat NEVER pushes to GitHub. All code changes are delivered as Claude Code prompts pasted by Udy (run with `--dangerously-skip-permissions`). Claude uses GitHub/Supabase/Vercel MCPs proactively and reads the current file from GitHub before proposing edits.
 
 ### Agent policy
+- **PUSH STATE IS MEASURED, NEVER RECALLED.** Do NOT infer what is pushed from commit SHAs quoted
+  in a brief, in this file, or earlier in a conversation. **The only valid source is
+  `git log --oneline origin/master..HEAD` after `git fetch origin`** — empty output means
+  everything is pushed. **Why this exists:** `eb13715`'s closing summary claimed "six commits
+  stacked and unpushed" while `git status -sb` said `ahead 1` and `origin/master` was already
+  current; a later `git fetch` moved nothing, so the correct answer was **on disk the whole time**.
+  The five SHAs it listed were simply the ones printed in its own brief. **NOTE WHERE THIS
+  SLIPPED:** that commit's eight read-back checks each ran a command and reported real output —
+  the closing summary ran nothing. **GATES INSPECT THE DIFF; NOTHING INSPECTS THE NARRATION.**
+  **Any count, size or state claim in a summary must name the command that produced it.**
 - Append the **code-reviewer** subagent to EVERY code-changing Claude Code prompt — read-only review before commit.
 - Run **security-auditor** for any change touching secrets, auth, RLS, or API routes, and before every production deploy.
 - **DEPLOY GATE (hard, default = ship):** Claude Code COMMITS AND PUSHES to `origin/master` (which triggers the Vercel deploy) once ALL of: BOTH code-reviewer and security-auditor have completed and PASSED, every must-fix they raise has been applied, AND `npm run build` (tsc -b && vite build) is green. This is a GATE, not a stop — when the gate is satisfied, pushing is the expected default; do not park a clean, reviewed, green change waiting for further permission. Reviewers must complete BEFORE the push (never run them background-non-blocking before pushing). HOLD the push only when: a gate fails / the build is red, OR the prompt EXPLICITLY says "do not deploy" / "hold the push" (used for ordered DB-vs-code changes — e.g. reader-first 2a sequencing where a migration must land before the code that depends on it).
