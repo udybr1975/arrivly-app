@@ -2295,3 +2295,53 @@ conflict) + soft cancel for **manual-source only**, audit-logged, feed-owned rej
 the orphan rule: **a conversation with messages survives its booking's cancellation.** Residuals
 are in the commit message; the notable one is cosmetic and queued — a cancelled conversation still
 renders a live-looking temporal chip and a dead guest-page link.
+
+## Session — 18 Aug 2026 (CLAUDE.md restructure #2; option A decided — HEAD 057da82 + docs)
+
+**Docs only. No source file touched, no migration, no gates** (they do not run on docs).
+
+**THE FILE WENT 138,525 → ~115,800 CHARS by splitting on LIFETIME, not on topic** — the second
+restructure, and the rule that predicted it is the one that made it necessary: the one-record rule
+caps the RATE of growth, never the DIRECTION. Three blocks moved out behind ONE pointer each
+(the ZERO-GOOGLE pilot plan + its benchmark → docs/pilot-history.md; the spend-hardening summary →
+docs/spend-hardening.md; the Test Data enumeration + the outgoing session record → docs/history.md),
+**each proved by conservation arithmetic in both directions.** Ten OPEN ITEMS bullets were DELETED
+rather than struck through, per rule (a) — but **three of them carried live content with no other
+home, and those were HOISTED FIRST**: the dependency runtime-reachability triage into queue item 4,
+the address-swap declared limitation into Known notes, and "skip expired hosts + log outcomes" into
+RESIDUALS.
+
+**A MIXED MOVE-AND-COMPRESS GETS NEITHER PROOF HONESTLY, SO IT WAS SPLIT.** Test Data had to be
+both archived and rewritten. Doing it as one edit would have made the conservation check
+meaningless, so it ran as two phases: a verbatim move of all 5,499 chars into history.md (provable
+against sentinels), then a forward-verified 2,645-char replacement holding only the durable rules.
+That is the standing MATCH-THE-PROOF rule applied rather than quoted.
+
+**FOUR CLAIMS IN THIS FILE WERE FALSE AGAINST LIVE STATE, and one of them was a self-contradiction
+the file had already recorded the fix for.** The bullet saying `cron-refresh-guides` has "NO
+deadline guard" was false — `GUIDE_START_BUDGET_MS = 45_000` sits at `:46`, and the bullet four
+above it recorded `ec66829` shipping exactly that. **The file argued with itself and neither side
+noticed.** Also corrected: the guide cron **HAS run** (three apartments, 15 Aug 10:00:18-10:00:29
+UTC, then correctly idle inside the 25-day gate — but it COMPLETED ITS QUEUE, so 3/run is a lower
+bound and the ~50-apartment capacity figure stays an ESTIMATE); the fleet is **NINE visible
+apartments, not ten**; and the September sandbox window was **eleven days late**.
+
+**THE SEPTEMBER DATES WERE THE WORST OF THEM, BECAUSE THEY MAIL REAL PEOPLE.** The recorded "6-9
+Sept" covered two of five subscriptions. Live `hosts` shows **24 Aug** for TWO hosts — one a real
+external address — then 5, 7 and 9 Sept. **The first date is days away, not weeks.** Recorded with
+its open uncertainty intact rather than smoothed: `current_period_end` is the next RENEWAL, which
+may or may not be the same clock as the Stripe sandbox 90-day auto-cancel the entry originally
+described. **Both can generate mail; the distinction is UNVERIFIED against Stripe.** That
+verification is a decision outside this commit.
+
+**OPTION A DECIDED, and `057da82`'s "unresolved tension" is now resolved at all four sites it
+asserted** — enumerated, not grepped, because the four sites use four different phrasings.
+Repoint guest-chat to a current Gemini model **and make the model ENV-CONFIGURABLE**, so the next
+retirement is a dashboard change rather than a code change and a gate cycle. `api/guest-chat.ts:9`
+is today a hardcoded `const MODEL`. **The 16 Oct 2026 shutdown STILL BINDS — it acquired a decided
+route, it did not go away.** Option B (`groq/compound`, Google-to-zero) is parked WITHOUT a
+deadline; option A buys the time.
+
+**Lessons (29.6k) STAYS — it is permanent-lifetime content.** It gained six `###` subheads and
+nothing else: 58 bullets in, 58 out, every text asserted identical, none reworded, merged or
+dropped. Grouping a flat list is navigation, not editing.

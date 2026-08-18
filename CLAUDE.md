@@ -12,7 +12,7 @@ context automatically every session, which is exactly what splitting this file a
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Current HEAD (code) — `fc35d69`** (18 Aug 2026), the BookingManager overlap guard + soft cancel. The three commits before it (`c4981b2`, `8619c5f`, `1a2ed59`) are the Groq migration. **Two DOCS-ONLY commits sit on top — `057da82` and `eb13715` — both verified to touch zero files under `src/` or `api/`, both PUSHED and ancestors of the remote tip (measured, not recalled). They are listed for DRIFT DETECTION, not as outstanding work:** a docs tip above the code HEAD is the normal state here, never a mismatch. Docs-only commits land on top of it; a docs tip is not a mismatch. Full commit ancestry is in git — do not restate it here.
+> **Current HEAD (code) — `60a4c2b`** (19 Aug 2026), the four UI items — availability picker, cancel from the calendar view, generic policy-block toast, cancelled-conversation chip. **PUSHED and verified live** (`dpl_FG7LrLidcSRwsaW4738YTWoDkfQu`). `fc35d69` before it is the BookingManager overlap guard + soft cancel; `c4981b2`/`8619c5f`/`1a2ed59` the Groq migration. **Two DOCS-ONLY commits sit on top — `057da82` and `eb13715` — both verified to touch zero files under `src/` or `api/`, both PUSHED and ancestors of the remote tip (measured, not recalled). They are listed for DRIFT DETECTION, not as outstanding work:** a docs tip above the code HEAD is the normal state here, never a mismatch. Docs-only commits land on top of it; a docs tip is not a mismatch. Full commit ancestry is in git — do not restate it here.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -195,6 +195,30 @@ as the clean "no subscription" test case that had since acquired one.
   `is_demo` exempt). **It defends the CAP against city-scale swaps; tightening it further
   would block genuine address corrections.** The function is INVOKER rights and that is
   load-bearing — see the SECURITY DEFINER lesson.
+- **RESIDUALS FROM `60a4c2b` (the four UI items) — recorded here so they outlive the commit message:**
+  - **`Messages.tsx` still carries its own `isBlockSource` / `sourceColor` / `sourceLabel`** now
+    that `bookingChrome.ts` exists, and its `sourceLabel` DIVERGES (no `*_block` variants, so it
+    would render `airbnb_block` as "Airbnb"). Unreachable today because Messages filters blocks out
+    before building conversations — **one import from fixed, and a latent trap until it is.**
+  - **The `ARR-` token now renders VISIBLY on hover** in the availability picker. It previously sat
+    only in the accessibility tree, because a disabled button swallows its own `title`. Same trust
+    boundary and the same data the list view shows openly; the added risk is shoulder-surfing or
+    screen-sharing only.
+  - **Neither calendar has `role="grid"` / roving tabindex / arrow-key movement.** Every cell is a
+    real button with a visible focus ring and a full `aria-label`, so the accessibility floor is
+    met — grid semantics would be an improvement, not a fix.
+  - **`fmt()` parses `new Date('YYYY-MM-DD')` as UTC and formats locally** — correct for the
+    positive-UTC market, off by one day for a negative-UTC viewer. Pre-existing and shared by three
+    surfaces; changing a formatter's parse semantics inside a UI commit is the coupling that
+    produces a defect nobody attributes to that diff.
+  - **The picker's `nightMap` caps each booking's expansion at 800 nights**, so a genuine
+    multi-year block is truncated exactly like a malformed iCal `check_out` and its later nights
+    draw free. Degrades to a 409, never to a double booking — the server range-tests
+    `check_in`/`check_out` directly and never re-walks days. **There is NO server-side maximum stay
+    length, which is what makes the cap reachable at all.**
+  - **`void loadBookings()` on the 409 is unsignalled**, so a host who hits it and immediately
+    switches apartments could see A's rows land after B's. Same shape as the existing `await` calls
+    in the success and cancel paths.
 - `api/public-pricing.ts` cache is `s-maxage=60` — admin trial/price edits show on the landing within ~1 min.
 - **npm vulnerabilities — SUPERSEDED COUNT, kept only as history: 8 (2 moderate, 6 high). The CURRENT figure is GitHub's 16 (8 high, 8 moderate), 18 Aug 2026 — see the queue.** `npm audit fix` NOT run, because it touches the lockfile and every commit it could have ridden on was scoped elsewhere. **Triage before the pentest gate.** (Supersedes the earlier 7-total measurement; the counting difference between `npm audit` and GitHub's alert list is already recorded under DEPENDENCY VULNS.)
 - **Redundant root `as any` in `api/stripe-webhook.ts` blunts a compile-error canary.** `types/Subscriptions.d.ts` declares `current_period_end` on the root, so that read compiles uncast; the cast's only effect is to SUPPRESS the error a Basil-typed SDK bump would raise there — the exact migration signal `api/_lib/stripe.ts` preserves and tells you not to cast away. **One-token removal, no runtime effect** — take it on the next non-comment edit to that block.
@@ -402,6 +426,25 @@ as the clean "no subscription" test case that had since acquired one.
 
 ### Method & process
 
+- **FIXTURE DATA INVENTED FOR A MOCKUP IS NOT EVIDENCE ABOUT PRODUCTION (Aug 18 2026).** A comp's
+  sample bookings were described to Udy as "the real Sweet home calendar". **They were invented.**
+  No booking named Maria has ever existed, and Sweet home's 21 Aug is FULLY booked rather than the
+  half-day the claim implied. **The comp itself was fine — a mockup needs fixtures.** The defect was
+  the SENTENCE around it, which made a checkable claim about live data that was never checked, and
+  which a reader would reasonably act on. **LABEL COMP FIXTURES AS FIXTURES, and derive any "try
+  this on <apartment>" instruction from a QUERY, never from the picture.** Same class as the
+  address-is-not-a-human error closed the same day: both dressed an assumption as an observation.
+
+- **A MIRROR'S EXISTENCE IS EVIDENCE THAT THE GATE GUARDING IT PASSED (Aug 18 2026).** The
+  stripe-webhook ignores any subscription whose `metadata.app !== 'arrivly'`, and that metadata
+  could not be read — every Stripe var is Sensitive-flagged in Vercel and pulls EMPTY, the
+  `CRON_SECRET` trap again. But `hosts.current_period_end`, `tier` and `subscription_status` are
+  written ONLY by that webhook, and all five sandbox rows carry them — **so the gate passed for all
+  five, proved without ever reading the field it tests.** **Generalise: when an upstream check is
+  unreadable, look for a downstream artefact that only exists if it passed.** Weaker than reading
+  the source, and it must be stated as inference — but it is a real answer where "unverifiable"
+  would otherwise stand.
+
 - **TEST FIXTURES THAT COMMIT MID-SESSION INVERT LATER TEST RESULTS (Aug 14 2026).** Behaviour-
   testing the address-swap gate MUTATED the fixtures it was testing with, so a later case ran
   against state an earlier case had written and produced the opposite verdict — the gate looked
@@ -600,7 +643,7 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 2. **Legal review — the only external dependency, so start it earliest.** Four documents DRAFTED and committed under `docs/`, NOT published, NOT in force; **eight of ten inventory gaps open**; a Finnish lawyer must review. Every `[CONFIRM]`/`[BUILD]` marker in those files IS the to-do list — never resolve, tidy, renumber or remove one. Roles are THREE-WAY: Bemgu controller for host data, PROCESSOR for guest data, controller in its own right for logs and anti-abuse.
 3. **Dependency triage — the current figure is GitHub's 16 (8 high, 8 moderate) as of the 18 Aug push**, unreviewed; the runtime-reachability analysis is in queue item 4. **Older counts in this file (Known notes' 8, and a since-deleted 7 on `d254df9`) are SUPERSEDED, and the gap between them was never drift** — GitHub counts one alert per advisory per manifest path while `npm audit` dedupes per package, so the two tools measure different things. Precedes the pentest gate.
 4. **Pentest / "hacker" agent gate** — runs once on the Tiers 1-3 surface. Phase F needs its own second pass before Tier 4 is sold.
-5. **⏰ FROM 24 AUG 2026 — dated, and it mails real people.** Five hosts carry sandbox subscriptions. **The "6-9 Sept" window recorded here was WRONG and is corrected in OPEN ITEMS against live `hosts` data (18 Aug 2026): the first two fall on 24 AUGUST**, one of them a real external address, then 5, 7 and 9 Sept. Doing nothing is a decision that mails them. **Whether the trigger is the renewal or the Stripe 90-day auto-cancel is UNVERIFIED — both can generate mail.**
+5. **~~Sandbox subscriptions mail real people~~ — NOT A BLOCKER. CLOSED 18 Aug 2026:** none of the five addresses belongs to a real person (confirmed by Udy), so there is no one to mail. The measured dates are kept in OPEN ITEMS as fact; the exposure they described does not exist. **It was carried for weeks on the strength of an address LOOKING personal.** With it closed, the **16 Oct 2026 `gemini-2.5-flash` shutdown is now the file's only live dated deadline** — and unlike this one it has a decided route (option A).
 6. **Written multi-tenant confirmation from GetYourGuide and Tiqets.** Tier 3 sells "connect your own account" for both. That clearance is currently OUR terms reading, not theirs. Viator ruled NO on the identical question on 4 Aug 2026 after the same self-assessment said probably yes. Selling a tier on an unconfirmed permission is the risk; asking costs one email each.
 7. **Stripe LIVE flip — LAST.** Also then: enable Supabase leaked-password protection.
 
@@ -612,40 +655,38 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 
 - **Tier names DECIDED and shipped (`7d69fa6`, 12 Aug 2026): Starter / Growth / Portfolio / Pro.**
   Tier 4 shows "Pro (full booking)" via a `descriptor` FIELD, never folded into `name` — `name` is
-  what billing emails and webhook alerts mirror.- **WATCH `src/lib/tierCopy.ts` — it feeds `/choose-plan`, the actual point of payment, and today carries NO earnings claim.** Any earnings bullet added there lands directly on the payment page and would need the tier qualifier in the string itself. The precise form to copy is `Landing.tsx:64` — "Keep 100% of GetYourGuide &amp; Tiqets commissions — paid to you directly" (both axes scoped in one string). Related residual: `EarningsPanel.tsx ~301` is unqualified but sits in `confirmedCard`, which renders only when `confirmedCount > 0` — never in production today.
+  what billing emails and webhook alerts mirror.
+- **WATCH `src/lib/tierCopy.ts` — it feeds `/choose-plan`, the actual point of payment, and today carries NO earnings claim.** Any earnings bullet added there lands directly on the payment page and would need the tier qualifier in the string itself. The precise form to copy is `Landing.tsx:64` — "Keep 100% of GetYourGuide &amp; Tiqets commissions — paid to you directly" (both axes scoped in one string). Related residual: `EarningsPanel.tsx ~301` is unqualified but sits in `confirmedCard`, which renders only when `confirmedCount > 0` — never in production today.
 - **Welcome share panel shipped (`8ff40e5`); Part 2's STAY TIMELINE was not built** — see
-  docs/design-backlog.md.- **RUN `api/backfill-canonical-city` BY HAND** — GET with `Authorization: Bearer <CRON_SECRET>`. Idempotent. On no schedule. Watch `resolvedNoKey`: a city that resolves with no valid country code stays on the per-apartment path. **HALF DONE — RE-COUNTED AGAINST THE LIVE DB 18 Aug 2026: the fleet is NINE visible apartments, not ten.** 4 of 9 carry a `canonical_city_key` and 4 have been attempted, across 8 distinct cities; the rest have `canonical_resolved_at` NULL = never attempted. **⚠ BUT THIS IS NOT CURRENTLY DOABLE:** `CRON_SECRET` is flagged **Sensitive** in Vercel, so its value cannot be read back and the Bearer header cannot be reconstructed — see the CRON_SECRET lesson below. This item is blocked on that decision, not on effort.
+  docs/design-backlog.md.
+- **RUN `api/backfill-canonical-city` BY HAND** — GET with `Authorization: Bearer <CRON_SECRET>`. Idempotent. On no schedule. Watch `resolvedNoKey`: a city that resolves with no valid country code stays on the per-apartment path. **HALF DONE — RE-COUNTED AGAINST THE LIVE DB 18 Aug 2026: the fleet is NINE visible apartments, not ten.** 4 of 9 carry a `canonical_city_key` and 4 have been attempted, across 8 distinct cities; the rest have `canonical_resolved_at` NULL = never attempted. **⚠ BUT THIS IS NOT CURRENTLY DOABLE:** `CRON_SECRET` is flagged **Sensitive** in Vercel, so its value cannot be read back and the Bearer header cannot be reconstructed — see the CRON_SECRET lesson below. This item is blocked on that decision, not on effort.
 - **PRE-LIVE — OBTAIN WRITTEN CONFIRMATION FROM GYG AND TIQETS ON MULTI-TENANT HOST-OWN-ID.** Udy's own terms review (11 Aug 2026) cleared BOTH to keep host-own-partner-ID on Tier 3, and the code ships that way. **But note the EVIDENCE CLASS: that is a self-assessment, not a provider ruling.** For Viator we hold a written answer from Partner Support; for GYG and Tiqets we hold our own reading. **Viator is the proof that the two differ** — the terms were read carefully, the risk was spotted, the question was asked anyway, and the answer came back NO. Send the same question to both **before the Stripe live flip**, so a paying Tier-3 host is never sold a connection a provider later refuses. **Tiqets first — it uses the same partner-ID substitution shape (`partner=`) that Viator prohibited.** Contacts parked in PHASE I. If either answers no, Tier 3 needs repositioning, not just a code change.
-- **⏰ DATED AND IT SENDS REAL EMAIL TO REAL PEOPLE. THE RECORDED "6-9 SEPT" WINDOW WAS WRONG —
-  REWRITTEN FROM LIVE `hosts` DATA, 18 Aug 2026.** The old window covered only two of the five
-  subscriptions and was **ELEVEN DAYS LATE on the first pair**, one of which is a real external
-  address. Per-host `current_period_end`, `cancel_at_period_end` FALSE on all five:
-  | Date | Host |
+- **~~SANDBOX SUBSCRIPTIONS MAIL REAL PEOPLE~~ — CLOSED 18 Aug 2026. THE DATES WERE RIGHT AND THE
+  EXPOSURE NEVER EXISTED.** Udy confirmed **none of the five addresses belongs to a real person**,
+  so nothing here can reach anyone. The item is closed on that ground, not on the dates.
+  **THE DATES ARE KEPT AS MEASURED FACT** (live `hosts`, 18 Aug 2026, `cancel_at_period_end` FALSE
+  on all five) because they are the only accurate record and the earlier "6-9 Sept" was both wrong
+  and eleven days late on the first pair:
+  | `current_period_end` | Host |
   |---|---|
-  | **24 Aug 2026** | udy.bar.yosef@sterlights.com **AND anna.humalainen@gmail.com** |
+  | **24 Aug 2026** | udy.bar.yosef@sterlights.com AND anna.humalainen@gmail.com |
   | 5 Sept 2026 | yiftach@xn--gnai-8qa.com |
   | 7 Sept 2026 | udy@1234.com |
   | 9 Sept 2026 | udy.baryosef@jchelsinki.fi |
-  **THE FIRST DATE IS DAYS AWAY, NOT WEEKS.** Decide whether test fixtures should carry real
-  addresses at all — doing nothing is a decision that mails those people.
-  **OPEN UNCERTAINTY, STATED RATHER THAN GLOSSED:** `current_period_end` is the next RENEWAL, which
-  **may or may not be the same clock** as the Stripe sandbox 90-day auto-cancel this entry
-  originally described. Both touch these subscriptions and **both can generate mail**, and the
-  distinction has **NOT been verified against Stripe**. That verification is the actual next
-  action here, and it is a decision outside the restructure that recorded it.
-- **THE QUEUE (replaces the previous one, 18 Aug 2026). In order:**
-  1. **ONE DESIGN SESSION, ONE COMMIT — four related UI items.** **UX-1 blocked-save toast:
-     mockup APPROVED 18 Aug** — a red toast at Save on ANY policy-blocked save, clicking it scrolls
-     to the amber decision panel, both dismiss together; **built GENERIC so tier caps use it too**,
-     not special-cased to the address gate. **UX-2 custom date picker: mockup OWED** — booked dates
-     greyed, changeover days HALF-available (that half-state is the whole point: it is what makes
-     same-day turnover visible, and it is the client-side face of the half-open interval the server
-     already enforces). Plus **cancel-in-calendar-view** (impossible today — `CalendarView` is a
-     grid of coloured cells with no click handler, no selection state, and multiple bookings can
-     cover one cell, so a per-booking affordance needs a day-detail interaction first) and **the
-     cancelled-conversation chip** (`Conversation.status` is already populated and read nowhere, so
-     the chip plus gating the dead guest-page link is one render change).
-  2. **Category naming cleanup migration** — prerequisite for the importer.
+  **WHY THIS WAS CARRIED FOR WEEKS AS THE FILE'S ONLY REAL DEADLINE — AN ADDRESS IS NOT EVIDENCE OF
+  A HUMAN.** `anna.humalainen@gmail.com` READS like a person, so it was treated as one and nobody
+  asked. The whole entry rested on that inference. **Before recording an exposure that turns on who
+  is on the other end, ask who is on the other end.**
+  Still true and still unverified, but now academic: whether the trigger would be the RENEWAL or
+  the Stripe sandbox 90-day auto-cancel was never established against Stripe. It stops mattering
+  when no recipient is real — and it would need re-answering only if a real address is ever
+  introduced as a fixture.
+- **THE QUEUE (updated 19 Aug 2026). In order:**
+  1. **~~One design session, four UI items~~ — DONE, `60a4c2b`, pushed and verified live.** The
+     availability picker (half-open intervals, changeover days half-available, illegal targets
+     disabled at the cell), cancel from the calendar view via a new day-detail step, the GENERIC
+     policy-block toast, and the cancelled-conversation chip. Residuals are in Known notes.
+  2. **NEXT — Category naming cleanup migration**, the importer's prerequisite.
   3. **Listing importer.**
   4. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
      dependency vulnerabilities (8 high, 8 moderate) as of the 18 Aug push, UNREVIEWED.** Read the
@@ -933,55 +974,63 @@ drill) remains a graduation prerequisite.**
 > class of claim) were already in Lessons; the guide-cron starvation defect is in
 > RESIDUALS and the address-swap/disclosure entries are in OPEN ITEMS.
 
-## Session — 18 Aug 2026 (CLAUDE.md restructure #2; option A decided — HEAD 057da82 + docs)
+## Session — 18-19 Aug 2026 (restructure, the push-state rule, four UI items — HEAD 60a4c2b)
 
-**Docs only. No source file touched, no migration, no gates** (they do not run on docs).
+**SHIPPED:** `eb13715` the CLAUDE.md restructure (138,525 → 120,004 chars) · `39d0a9c` the
+push-state rule · `60a4c2b` four UI items — the availability picker, cancel from the calendar
+view, the generic policy-block toast and the cancelled-conversation chip. **`60a4c2b` is PUSHED
+AND VERIFIED LIVE** (`dpl_FG7LrLidcSRwsaW4738YTWoDkfQu` READY, deployed SHA matches) and
+**confirmed working by Udy**. Three gate rounds, two must-fix, both mine, both contrast.
 
-**THE FILE WENT 138,525 → ~115,800 CHARS by splitting on LIFETIME, not on topic** — the second
-restructure, and the rule that predicted it is the one that made it necessary: the one-record rule
-caps the RATE of growth, never the DIRECTION. Three blocks moved out behind ONE pointer each
-(the ZERO-GOOGLE pilot plan + its benchmark → docs/pilot-history.md; the spend-hardening summary →
-docs/spend-hardening.md; the Test Data enumeration + the outgoing session record → docs/history.md),
-**each proved by conservation arithmetic in both directions.** Ten OPEN ITEMS bullets were DELETED
-rather than struck through, per rule (a) — but **three of them carried live content with no other
-home, and those were HOISTED FIRST**: the dependency runtime-reachability triage into queue item 4,
-the address-swap declared limitation into Known notes, and "skip expired hosts + log outcomes" into
-RESIDUALS.
+**THE TWO CELL STATES THAT CARRY THE POINT OF THE COMPONENT WERE THE TWO THAT FAILED CONTRAST.**
+FULL cells are always disabled, so their white-on-colour text is WCAG-exempt — but DEPARTURE and
+ARRIVAL are the ENABLED ones (departure is a legal check-in; arrival at `maxCheckout` is the last
+legal check-out), and their digit sat on the source-colour wedge at **1.45:1** against a 4.5:1
+floor. Now a solid cream chip at **16.41:1**. The second must-fix was the only explanation a host
+gets for why Cancel is absent on a feed row, at 2.46:1. **Both fixes were verified by COMPUTING
+the ratios, not by eyeballing them.**
 
-**A MIXED MOVE-AND-COMPRESS GETS NEITHER PROOF HONESTLY, SO IT WAS SPLIT.** Test Data had to be
-both archived and rewritten. Doing it as one edit would have made the conservation check
-meaningless, so it ran as two phases: a verbatim move of all 5,499 chars into history.md (provable
-against sentinels), then a forward-verified 2,645-char replacement holding only the durable rules.
-That is the standing MATCH-THE-PROOF rule applied rather than quoted.
+**A FIX I SHIPPED DID NOT WORK, AND A JUSTIFICATION I WROTE WAS WRONG — the same failure mode
+twice, two files apart.** The tooltip explaining an illegal cell never rendered: a disabled button
+receives no pointer events, so `title` never fires and Tab skips it, meaning "hovering explains
+why" was silently dead for every cell that needed it. Separately, I justified extracting
+`bookingChrome.ts` with a temporal-dead-zone claim that would not actually occur under ESM live
+bindings — the extraction is right for a different reason (three consumers sharing a contract
+about what a colour MEANS) and the comment now argues only that. **Then round 3 caught that my FIX
+for the tooltip was itself an assertion:** `display:contents` gives the wrapper no box, and
+resolving `title` through a boxless ancestor is UA behaviour, not spec. Taken rather than
+recorded, because having just corrected one "probably works" claim, shipping another two files
+over would have been incoherent. The wrapper now generates a box.
 
-**FOUR CLAIMS IN THIS FILE WERE FALSE AGAINST LIVE STATE, and one of them was a self-contradiction
-the file had already recorded the fix for.** The bullet saying `cron-refresh-guides` has "NO
-deadline guard" was false — `GUIDE_START_BUDGET_MS = 45_000` sits at `:46`, and the bullet four
-above it recorded `ec66829` shipping exactly that. **The file argued with itself and neither side
-noticed.** Also corrected: the guide cron **HAS run** (three apartments, 15 Aug 10:00:18-10:00:29
-UTC, then correctly idle inside the 25-day gate — but it COMPLETED ITS QUEUE, so 3/run is a lower
-bound and the ~50-apartment capacity figure stays an ESTIMATE); the fleet is **NINE visible
-apartments, not ten**; and the September sandbox window was **eleven days late**.
+**I HAD WRITTEN A DENYLIST.** `status !== 'cancelled'` on the guest-page link renders a
+live-looking link for every OTHER status the resolver also rejects — the same defect the chip
+exists to fix, one value over. Now an allowlist mirroring `guest-access.ts` and `guest-state.ts`.
+**Rule: gate on the values the server ACCEPTS, never on the one you happen to be thinking about.**
 
-**THE SEPTEMBER DATES WERE THE WORST OF THEM, BECAUSE THEY MAIL REAL PEOPLE.** The recorded "6-9
-Sept" covered two of five subscriptions. Live `hosts` shows **24 Aug** for TWO hosts — one a real
-external address — then 5, 7 and 9 Sept. **The first date is days away, not weeks.** Recorded with
-its open uncertainty intact rather than smoothed: `current_period_end` is the next RENEWAL, which
-may or may not be the same clock as the Stripe sandbox 90-day auto-cancel the entry originally
-described. **Both can generate mail; the distinction is UNVERIFIED against Stripe.** That
-verification is a decision outside this commit.
+**THE PICKER'S INTERVAL LOGIC WAS PROVED, NOT ASSERTED.** Every `(checkIn, checkOut)` pair across
+a 60-day window against fixtures including a same-day turnover and a block, cross-checked with the
+server predicate: **0 pairs offered that the server would reject** (sound) and **0 safe pairs
+wrongly blocked** (complete — an over-restrictive picker silently costs bookings, the failure
+nobody reports). code-reviewer re-derived it independently rather than trusting the sweep.
 
-**OPTION A DECIDED, and `057da82`'s "unresolved tension" is now resolved at all four sites it
-asserted** — enumerated, not grepped, because the four sites use four different phrasings.
-Repoint guest-chat to a current Gemini model **and make the model ENV-CONFIGURABLE**, so the next
-retirement is a dashboard change rather than a code change and a gate cycle. `api/guest-chat.ts:9`
-is today a hardcoded `const MODEL`. **The 16 Oct 2026 shutdown STILL BINDS — it acquired a decided
-route, it did not go away.** Option B (`groq/compound`, Google-to-zero) is parked WITHOUT a
-deadline; option A buys the time.
+**THE SEPTEMBER SANDBOX ITEM IS CLOSED, AND THE REASON MATTERS MORE THAN THE DATES.** The measured
+dates were right and the exposure was not: **none of the five addresses belongs to a real person**
+(Udy, 18 Aug 2026). **The entry had been carried for weeks as what was then believed to be the file's only real deadline, on the
+strength of an address LOOKING personal** — `anna.humalainen@gmail.com` reads like a person, so it
+was treated as one, and no one asked. **An address is not evidence of a human.**
 
-**Lessons (29.6k) STAYS — it is permanent-lifetime content.** It gained six `###` subheads and
-nothing else: 58 bullets in, 58 out, every text asserted identical, none reworded, merged or
-dropped. Grouping a flat list is navigation, not editing.
+**A MIRROR'S EXISTENCE IS EVIDENCE THE GATE GUARDING IT PASSED.** The webhook ignores any
+subscription whose `metadata.app !== 'arrivly'`, and that metadata cannot be read without the
+Stripe key (all five Stripe vars are Sensitive-flagged and pull EMPTY — the `CRON_SECRET` trap
+again). But `hosts.current_period_end`, `tier` and `subscription_status` are written ONLY by that
+webhook, and all five rows carry them — so the gate passed for all five. **Reach for the
+downstream artefact when the upstream check is unreadable.**
+
+**A SCRIPT THAT MUTATES IN MEMORY AND WRITES AT THE END LOSES EVERYTHING IF A LATER ASSERTION
+THROWS.** `eb13715` left two run-together bullets because the script carrying their fix aborted on
+an unrelated assertion before its single write. The assertion did its job; the write pattern
+defeated it. Repaired here. **Write after each independent edit, or accept that one failure
+discards the batch.**
 
 ## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
 
