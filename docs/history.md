@@ -2107,3 +2107,69 @@ comment that becomes false because the code around it changed, which is what kee
 
 **NEXT ACTION: Step 6 (guest-chat router + host-picks).** Nothing precedes it any more — the
 restructuring, Commit B and the brake question are all closed or downgraded.
+
+## Session — 14 Aug 2026 (address-swap gate, beneficiary, the guide cron — HEAD ec66829)
+
+**SHIPPED:** `34e79c3` address-swap block as an upgrade panel + stale-content flag · `736a715` the
+guest commission disclosure names the right beneficiary · `ec66829` the guide cron bounded by a
+deadline, a freshness gate and oldest-first. **Four migrations applied chat-side and LIVE**,
+including the `enforce_property_address_swap()` trigger. Gates PASS on every commit.
+
+**A GATE THAT READS CORRECTLY AND BLOCKS NOTHING.** The first `enforce_property_address_swap()`
+was SECURITY DEFINER with a `service_role` exemption. Under DEFINER `current_user` is the OWNER on
+every call, so **the exemption matched every call and the gate was inert** — it ran without error,
+it read correctly, and it stopped no swap at all. **Reading the function did not catch it; a
+behaviour test did.** The rule now in Lessons is the general form: **DEFINER is for functions that
+ACT beyond the caller's rights, INVOKER is for functions that JUDGE the caller**, and any
+exemption keyed on the caller must be proved from both sides of the boundary. The shipped gate is
+INVOKER: it blocks a >1km coordinate move or a city/country text change, but **only for a host at
+their property cap**, exempting `service_role`, `is_exempt` and `is_demo`. **Declared limitation:
+a swap under 1km inside the same city is not stopped** — it defends the cap against city-scale
+swaps, and tightening further would block genuine corrections.
+
+**THE DESIGN CALL WORTH KEEPING: a block is an UPGRADE PANEL, not a wall.** "This is a new
+property — upgrade to add it" is the only place in the product where hitting a limit is framed as
+a purchase rather than a refusal. The allowed >1km move gets a staleness notice instead, because a
+legitimate relocation leaving the old city's guide, picks, events key and weather attached is its
+own bug. Eight cases behaviour-tested live — and **the fixtures those tests COMMITTED then
+inverted later results**, which is a new rule: restore from a baseline before re-running, and
+re-measure rather than reusing a number from earlier in the same session.
+
+**THE DISCLOSURE NAMED THE WRONG PARTY, AND BENEFICIARY IDENTITY IS THE STATUTORY PART.** "Your
+host may earn a commission" is false below the tier gate for every provider and false for Viator
+at every tier — **Bemgu** earns. Finnish consumer law requires marketing to make clear its
+commercial purpose **and on whose behalf it is done**, so this was never a tier-scope question.
+Now "Your host or Bemgu may earn a commission…", via a new `ARRIVLY_CONFIG.platformName` —
+deliberately not `brandName`, which already means the HOST's brand on that same screen.
+**Unconditional by design:** it must be true for every tier and provider, which is the opposite of
+every neighbouring earnings surface, and nothing in the code says so (residual). The reviewer
+verified the surface rather than assuming it: `rel="nofollow sponsored"` occurs at exactly two
+sites, both inside this sheet, so the single-site fix is complete.
+
+**THE 1 SEPT GUIDE-CRON DEADLINE IS GONE, AND THE PLAN THAT CREATED IT WAS NEVER POSSIBLE.** The
+queued action was "trigger it by hand before 1 Sept" — but `CRON_SECRET` is flagged **Sensitive**
+in Vercel, so its value cannot be read back (`vercel env pull` writes `CRON_SECRET=""`) and the
+Bearer header cannot be reconstructed without rotating it. **Two sessions have now planned manual
+invocation as a verification step, for this cron and for `backfill-canonical-city`, and it was
+never available either time.** Bounded in code instead: a 45s absolute START deadline (150 − 100s
+in-flight worst case − 5s overhead, captured at handler entry), a 25-day freshness gate, and
+oldest-first ordering with never-generated apartments first — so a deadline is a partial run, the
+response carries `stopped_early`/`remaining`, and successive DAILY runs work through the fleet.
+Nine apartments could never have fit in 150s, so a deadline alone would have fixed the timeout and
+starved apartments 4-9 permanently; the three parts only work together.
+
+**BOTH GATES INDEPENDENTLY FOUND THE SAME STARVATION DEFECT, AND THE OBVIOUS MIGRATION IS WRONG.**
+`guide_recommendations.generated_at` advances only on a successful upsert, and `_lib/guide.ts`
+deliberately skips the upsert on three paths — so a consistently-failing apartment never advances
+its ordering key, sorts first every run and pins one of ~2 daily slots forever. The events cron
+solved this with `last_attempted_at`, but **a never-generated apartment has no row to stamp, and a
+stub row would be read by the guest page's `.maybeSingle()`** — so the column probably belongs on
+`apartments`. Deferred deliberately: no apartment is currently failing. Full detail in RESIDUALS.
+
+**THE REPO HAS BEEN PUBLIC SINCE 5 JUNE 2026 — verified at the GitHub API** (`"private": false`),
+not believed. Nothing is exposed. The lesson is the class of claim: repo visibility is an
+environment fact no build, test or gate ever checks, so a wrong belief about it survives
+indefinitely and mis-prices every decision about what may be written down.
+
+**NEXT ACTION: Step 6 (guest-chat router + host-picks).** The queue ahead of it is empty; none of
+this session's three commits precedes it.

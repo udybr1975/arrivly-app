@@ -12,14 +12,14 @@ context automatically every session, which is exactly what splitting this file a
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Current HEAD (code) — `ec66829`** (14 Aug 2026), the guide cron bounded by a deadline + freshness gate + oldest-first. Docs-only commits land on top of it; a docs tip is not a mismatch. Full commit ancestry is in git — do not restate it here.
+> **Current HEAD (code) — `fc35d69`** (18 Aug 2026), the BookingManager overlap guard + soft cancel. The three commits before it (`c4981b2`, `8619c5f`, `1a2ed59`) are the Groq migration. Docs-only commits land on top of it; a docs tip is not a mismatch. Full commit ancestry is in git — do not restate it here.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
 > — so the pentest gate runs on the Tiers 1–3 surface, and Phase F needs its own second
 > security pass before Tier 4 is sold.
 >
-> **THE FOUR THINGS BLOCKING LAUNCH:** (1) ~~Gemini billing~~ — dissolved by the ZERO-GOOGLE AI PILOT; Google is leaving the stack, there is no billing flip. (2) the legal/compliance workstream — inventory DONE, **eight gaps open**, documents 3/4/5 DRAFTED but unpublished, (the retention crons that gated publication SHIPPED 11 Aug 2026). (3) the `gemini-2.5-flash` **16 Oct 2026** shutdown — binds only if a surface graduates back to Google. (4) the pentest gate. Also open but smaller: welcome-page Part 2 and the pre-live additions.
+> **THE FOUR THINGS BLOCKING LAUNCH:** (1) ~~Gemini billing~~ — dissolved by the ZERO-GOOGLE AI PILOT; Google is leaving the stack, there is no billing flip. (2) the legal/compliance workstream — inventory DONE, **eight gaps open**, documents 3/4/5 DRAFTED but unpublished, (the retention crons that gated publication SHIPPED 11 Aug 2026). (3) the `gemini-2.5-flash` **16 Oct 2026** shutdown — **THIS NOW BINDS. It is no longer conditional.** `api/guest-chat.ts:9` is `MODEL = 'gemini-2.5-flash'` on `GEMINI_API_KEY_CHAT` (project `gen-lang-client-0221179352`), VERIFIED IN SOURCE AND CONFIRMED FREE-TIER BY UDY 18 Aug 2026 — no card, so it cannot bill. Guest-chat is the SOLE remaining Google dependency and it has a hard shutdown date. (4) the pentest gate. Also open but smaller: welcome-page Part 2 and the pre-live additions.
 >
 > Full session-by-session history — including the long HEAD chain this line replaced — is in
 > docs/history.md.
@@ -160,6 +160,20 @@ Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`
 - Date reverts pending: ARR-SWEET1 check_out → 2026-06-02; ARR-TEST01 → original 27–31 May (or delete).
 - 3 guest push subs on ARR-SWEET1 (booking f803d95e) from push testing — old phone `fxoFeLto…`, new-phone tab `dPjCzkTFG…`, new-phone installed app `emdrm-rTQYM…`; decide whether to prune.
 
+**FIXTURE STATE AS OF 18 Aug 2026 (seeded by the 79-test campaign — dates go stale fast):**
+- **Ten `ARR-***001` manual bookings seeded 18 Aug across all ten apartments, dates 17-21 Aug.**
+  **STALE AFTER 21 Aug 2026 — refresh the dates before reusing them**, per the standing
+  refresh-don't-exempt rule.
+- **Sweet home:** Elena `ARR-SWE001` moved to the PAST (13-17 Aug). Noa `ARR-NOA001` 17-21 Aug is
+  **CANCELLED** — it is the C8 test subject and the fixture for the cancelled-conversation rule, so
+  do not "clean it up". `ARR-BV2CVB` is cancelled; `ARR-3NV432` is the `airbnb_block` 16-21 Aug.
+- **Casa Marco:** Futura `ARR-FUT001` 23-26 Aug = the **pre-arrival fixture** (future-dated valid
+  token → public tier).
+- **Test Apartment 1 is DELIBERATELY geocoded to Vantaa** — a side effect of running D9 from the
+  exempt admin account, KEPT AS A FIXTURE. **This is not drift; do not "correct" it.**
+- **Roy's `property_cap_override` was set to 2 for D8 and REVERTED to null** — verified reverted.
+- **Welcome codes:** Sweet home `XJ8SSKFH`, Casa Marco `962SM37Y`, Penthouse `3RV23Y2C`.
+
 **Billing-test host rows rot fast — VERIFY AGAINST LIVE DB, never trust this list.** Checked
 11 Aug 2026: Roy `3b11235b`, Yaron `06eb554e`, Udyn `11b5b459` and Yiftach `6dbfbda4` are ALL
 `active` with live subscriptions — four of five prior descriptions were wrong, and Yiftach was
@@ -172,7 +186,7 @@ DATE-REFRESHING, never by exemption** — an exemption makes the privacy notice 
 ---
 
 ## Known notes / minor debt
-- Cron sequential loops in `cron-sync-ical` AND `cron-refresh-events` share the "batch at scale / maxDuration" debt — fine at current apartment counts; batch before many booked apartments. (Phase G cron-batching item.) **⚠ NO LONGER "fine at current counts" FOR `cron-refresh-events` (Aug 6 2026): at B3.3+ prompt sizes its `mapPool` concurrency of 2 EXCEEDS the 12K TPM Groq org ceiling deterministically (2 x ~7.6k debit, measured Aug 10), so a multi-candidate run is expected to 429 AND starves guest-chat / guide / daily-greeting across every tenant while it runs. Fix is `concurrency: 1`, and it is the top of this debt — see "SESSION CLOSE Aug 6 2026" open item 1.**
+- Cron sequential loops in `cron-sync-ical` AND `cron-refresh-events` share the "batch at scale / maxDuration" debt — fine at current apartment counts; batch before many booked apartments. (Phase G cron-batching item.) **⚠ NO LONGER "fine at current counts" FOR `cron-refresh-events` (Aug 6 2026): at B3.3+ prompt sizes its `mapPool` concurrency of 2 EXCEEDS the Groq org TPM ceiling deterministically (2 x ~7.6k debit, measured Aug 10, against what was then 12K TPM — **the ceiling is now 8,000 TPM, VERIFIED 17-18 Aug 2026, so the margin is TIGHTER not looser and concurrency 1 is the only width that fits**), so a multi-candidate run is expected to 429 AND starves guest-chat / guide / daily-greeting across every tenant while it runs. Fix is `concurrency: 1`, and it is the top of this debt — see "SESSION CLOSE Aug 6 2026" open item 1.**
 - `city-events` lazy-fill: the FIRST guest to view an uncached apartment waits ~the generation time (one-off); the cron pre-warms apartments with current/upcoming bookings so most are already warm.
 - **`cron-refresh-events` schedule vs Gemini quota-day — CLOSED (`dbfc034`, Jul 28 2026).** Both Gemini crons rescheduled off the tail of the free-tier quota day: `cron-refresh-events` `0 4 * * *` → **`0 9 * * *`**; `cron-refresh-guides` `0 3 1 * *` → **`0 10 1 * *`** (verified via source that it calls Gemini through `generateGuideForApartment` → `api/_lib/guide.ts`). Key isolation confirmed at the same time: events reads `GEMINI_API_KEY_EVENTS || GEMINI_API_KEY`, guides reads `GEMINI_API_KEY_GUIDES || GEMINI_API_KEY` — each a separate AI Studio project with its own daily quota, so neither reschedule is neutralised by key-sharing. **HONEST FRAMING:** the Jun 25 incident was already mitigated a month earlier by the dedicated events key (`acd16f4`); this reschedule is defence-in-depth for events, and the FIRST timing protection for guides. code-reviewer PASS (0 must-fix); vercel.json only, 2 changed lines, both schedule strings. Original entry follows for history: The events cron runs `0 4 * * *` (04:00 UTC ≈ 21:00 Pacific) — the TAIL of Gemini's free-tier quota-day (free-tier daily limits reset ~midnight Pacific ≈ 07:00–08:00 UTC). On 2026-06-25 this run 429'd every candidate apartment and fired the ntfy "all event refreshes failed" alert because city-events was still on the SHARED `GEMINI_API_KEY`, whose daily quota was exhausted. Mitigated by the dedicated `GEMINI_API_KEY_EVENTS` (`acd16f4`) giving the events surface its own daily quota. **Not yet done (Udy deferred):** reschedule `cron-refresh-events` from `0 4 * * *` → `0 9 * * *` in `vercel.json` so the run lands just AFTER the Pacific reset — the dedicated key lowers recurrence risk, the reschedule mostly removes it. NOTE: the cron itself behaved correctly that day (returned 200, left cache rows intact / stale-safe; the alert only fires when `refreshed === 0`). VERIFICATION PENDING: the next 04:00 UTC run is the passive test — no ntfy alert = the dedicated key worked.
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
@@ -203,6 +217,19 @@ DATE-REFRESHING, never by exemption** — an exemption makes the privacy notice 
 ---
 
 ## Lessons / learnings
+
+- **BUDGET PARITY COVERS RETRIES AND TIMEOUTS. IT NEVER COVERS TOKEN COUNTS (Aug 18 2026).**
+  `_lib/greeting.ts` passed `maxTokens: 128` to Groq because the Gemini branch beside it used
+  `maxOutputTokens: 128` — but that branch also sets `thinkingConfig: { thinkingBudget: 0 }`. **THE
+  NUMBER WAS INHERITED AND THE CONDITION WAS NOT.** On gpt-oss, reasoning is billed INSIDE
+  `completion_tokens`, so thinking and answering share one allowance; the first production run
+  measured **156 reasoning tokens**, which alone exceeds 128. **A token budget is sized per
+  provider from that provider's token semantics — parity applies only to attempt count and
+  per-attempt timeout, which is what makes one counter unit cost the same on both paths.**
+  **AND THE FAILURE IS SILENT:** `groqGenerate` returns `content ?? ''` on a **200**, so a
+  reasoning-starved call yields an empty string with **no throw** — `withRetry` never fires and
+  retries cannot help. Only the budget can, and only a log can reveal it (which is why the empty
+  path had to gain a `console.error` in the same commit).
 
 - **SECURITY DEFINER MAKES `current_user` THE FUNCTION OWNER, SO ANY GATE THAT INSPECTS ITS CALLER
   MUST BE INVOKER RIGHTS (Aug 14 2026).** The first version of `enforce_property_address_swap()`
@@ -579,12 +606,38 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   including to **anna.humalainen@gmail.com** and **yiftach@xn--gnai-8qa.com**. Decide before then
   whether test fixtures should carry real addresses at all. Doing nothing is a decision that mails
   those people.
-- **NEXT ACTION — the queue ahead of Step 6 is EMPTY (re-verified 14 Aug 2026).** It was already
-  empty on 12 Aug; the three commits since were the address-swap gate, the commission disclosure
-  and the guide-cron bound, none of which precede Step 6. **Commit B, the events staleness gate, is
-  DONE** — `city-events.ts` stamps `generated_at` on both caches, carries `last_attempted_at`, and
-  holds the OPEN-1 fix from `d254df9`. The guest-chat brake is downgraded (below), not a blocker.
-  **Step 6 is next.**
+- **THE QUEUE (replaces the previous one, 18 Aug 2026). In order:**
+  1. **ONE DESIGN SESSION, ONE COMMIT — four related UI items.** **UX-1 blocked-save toast:
+     mockup APPROVED 18 Aug** — a red toast at Save on ANY policy-blocked save, clicking it scrolls
+     to the amber decision panel, both dismiss together; **built GENERIC so tier caps use it too**,
+     not special-cased to the address gate. **UX-2 custom date picker: mockup OWED** — booked dates
+     greyed, changeover days HALF-available (that half-state is the whole point: it is what makes
+     same-day turnover visible, and it is the client-side face of the half-open interval the server
+     already enforces). Plus **cancel-in-calendar-view** (impossible today — `CalendarView` is a
+     grid of coloured cells with no click handler, no selection state, and multiple bookings can
+     cover one cell, so a per-booking affordance needs a day-detail interaction first) and **the
+     cancelled-conversation chip** (`Conversation.status` is already populated and read nowhere, so
+     the chip plus gating the dead guest-page link is one render change).
+  2. **Category naming cleanup migration** — prerequisite for the importer.
+  3. **Listing importer.**
+  4. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
+     dependency vulnerabilities (8 high, 8 moderate) as of the 18 Aug push, UNREVIEWED.** Read the
+     list before the gate — **earlier if any high is runtime-reachable**. NOTE this supersedes the
+     earlier "7 total / 5 high / 2 moderate" `npm audit` measurement: those two tools count
+     differently (GitHub counts one alert per advisory per manifest path, `npm audit` dedupes per
+     package), so the gap is NOT drift and must not be re-litigated as such — but 16 is the number
+     to review against.
+
+  **STILL PARKED, unchanged:** block-source message fix (before Founding Hosts) · pre-arrival
+  messaging gap · **`groq/compound` evaluation — now load-bearing, since guest-chat's Gemini
+  grounding carries the 16 Oct 2026 shutdown** · **the `api/` typecheck gap** (`api/` is outside
+  every tsconfig AND `@vercel/node` is not installed locally, so `npm run build` type-checks NONE
+  of it; **an isolated strict `tsc` per change is the working compensation** and was used on every
+  api/ commit this session) · **`cron-refresh-events` refill pacing at fleet scale** (~49s of
+  refill needed against a ~20s unit, so concurrency 1 bounds simultaneity but NOT rate) ·
+  **`guide.ts`'s POI list is unbounded** — the same structural gap the events corpus just closed,
+  fits today · **`MAX_EVENTS` 15 vs the "aim for 20-30" prompt** — events 16-30 are reservation
+  waste, now competing with the reasoning trace for the same allowance.
 
 - **EVENTS RECALL IS CORPUS-LIMITED, NOT WINDOW-LIMITED — the untouched lever is SEARCH.** Measured
   10 Aug: the first 30-day run returned **TWO** events where `874c26d` predicted 5-8, and candidate
@@ -659,9 +712,12 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   when the card decision should be taken**, not at the 50-host milestone.
 - **OPEN — THE LEAN-CONTEXT RULE IS NOW A MEASURED CONSTRAINT, not a design preference.** The
   Aug 8 measured **`corpusChars` 15,102**; the Aug 9 run BILLED **7,079 tok** (prompt 5,031 +
-  maxTokens 2,048 RESERVED) against Groq's **12K TPM** — HALF of it, not nearly all. **Step 6 adds
-  guest chat to the SAME pool**, so PILOT STEP 2's rule (b) — the router's ungrounded leg must not
-  embed the guide — still binds, but on **100K TPD**, not on TPM.
+  maxTokens 2,048 RESERVED) — which was HALF of the then-12K TPM ceiling. **THAT HEADROOM IS GONE:
+  the ceiling is 8,000 TPM (VERIFIED 17-18 Aug 2026), so the same run would have been 88% of it.**
+  The events corpus is now bounded by a derived token budget rather than a snippet count
+  (`CORPUS_TOKEN_BUDGET`, `8fbb`-era commit `8619c5f`), which is what brought it back inside.
+  PILOT STEP 2's rule (b) — the router's ungrounded leg must not embed the guide — still binds,
+  and now binds on TPM as well as on the day pool.
 - **OPEN — THE SHARE MESSAGE AND `host_picks` ARE NOW COUPLED, and nothing enforces it.** The
   default welcome message promises "our own favourite places to eat and drink nearby", and
   `SharePanel` nags when a property has **zero `host_picks`** — the first time those two facts have
@@ -798,7 +854,7 @@ Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live
 > Moved to docs/history.md — "SECURITY — cross-tenant anon leak FOUND AND CLOSED (Jul 28 2026)".
 
 ## AI MODELS — the one fact that still binds
-`gemini-2.5-flash` shuts down **16 Oct 2026** and is already refused to new Google Cloud projects. Under the ZERO-GOOGLE AI PILOT no surface depends on it, so the deadline binds ONLY if a surface graduates back to Google. Grounding is 1,500 RPD free on the 2.5 line and **ZERO on Gemini 3** — that is what made graduation-to-Google expensive. Quota measurements, the per-project model and the migration analysis are in docs/pilot-history.md.
+`gemini-2.5-flash` shuts down **16 Oct 2026** and is already refused to new Google Cloud projects. **ONE SURFACE STILL DEPENDS ON IT, so the deadline is REAL and dated, not conditional** — the earlier "no surface depends on it" claim was FALSE and is corrected here (18 Aug 2026). `api/guest-chat.ts` runs `gemini-2.5-flash` on `GEMINI_API_KEY_CHAT`, verified in source; it is the only Google dependency left in the stack, it is on the AI Studio FREE tier with no card, and pilot Step 6 (the chat router) was never built. **Either Step 6 lands or guest-chat breaks on 16 Oct 2026.** `groq/compound` ships built-in web search and is the obvious candidate to replace the grounding this surface depends on — parked and UNTESTED (see the queue). Grounding is 1,500 RPD free on the 2.5 line and **ZERO on Gemini 3** — that is what made graduation-to-Google expensive. Quota measurements, the per-project model and the migration analysis are in docs/pilot-history.md.
 
 > Moved to docs/history.md — "SESSION Aug 4 2026 — Gemini terms verified at source; the 30 Jul session recorded".
 > Moved to docs/history.md — "SESSION Aug 4 2026 (2) — pre-billing security: scrubErr + atomic per-host guide cooldown SHIPPED".
@@ -828,71 +884,112 @@ Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live
 > Agent policy, the `overflow-auto` lesson already in Lessons, and its Phase H scoping already in
 > docs/design-backlog.md. Its tier-name decision is recorded as CLOSED in OPEN ITEMS.
 
-## Session — 14 Aug 2026 (address-swap gate, beneficiary, the guide cron — HEAD ec66829)
+> Moved to docs/history.md — "Session — 14 Aug 2026 (address-swap gate, beneficiary, the
+> guide cron)". NOTHING needed hoisting: its four rules (SECURITY DEFINER vs INVOKER,
+> fixtures that commit mid-session, CRON_SECRET being unreadable, repo visibility as a
+> class of claim) were already in Lessons; the guide-cron starvation defect is in
+> RESIDUALS and the address-swap/disclosure entries are in OPEN ITEMS.
 
-**SHIPPED:** `34e79c3` address-swap block as an upgrade panel + stale-content flag · `736a715` the
-guest commission disclosure names the right beneficiary · `ec66829` the guide cron bounded by a
-deadline, a freshness gate and oldest-first. **Four migrations applied chat-side and LIVE**,
-including the `enforce_property_address_swap()` trigger. Gates PASS on every commit.
+## Session — 17-18 Aug 2026 (Groq migration closed with production proof; BookingManager — HEAD fc35d69)
 
-**A GATE THAT READS CORRECTLY AND BLOCKS NOTHING.** The first `enforce_property_address_swap()`
-was SECURITY DEFINER with a `service_role` exemption. Under DEFINER `current_user` is the OWNER on
-every call, so **the exemption matched every call and the gate was inert** — it ran without error,
-it read correctly, and it stopped no swap at all. **Reading the function did not catch it; a
-behaviour test did.** The rule now in Lessons is the general form: **DEFINER is for functions that
-ACT beyond the caller's rights, INVOKER is for functions that JUDGE the caller**, and any
-exemption keyed on the caller must be proved from both sides of the boundary. The shipped gate is
-INVOKER: it blocks a >1km coordinate move or a city/country text change, but **only for a host at
-their property cap**, exempting `service_role`, `is_exempt` and `is_demo`. **Declared limitation:
-a swap under 1km inside the same city is not stopped** — it defends the cap against city-scale
-swaps, and tightening further would block genuine corrections.
+**SHIPPED, four commits:** `c4981b2` repoint the dead Groq model + bound the reasoning budget ·
+`8619c5f` bound the events corpus by a token budget derived from the real ceiling · `1a2ed59` size
+the greeting budgets for a reasoning model + stop theme starvation · `fc35d69` reject overlapping
+manual bookings, allow cancelling them. Plus `GROQ_MODEL=openai/gpt-oss-120b` set in all three
+Vercel environments. Gates PASS on every commit; the last needed THREE rounds and six must-fixes.
 
-**THE DESIGN CALL WORTH KEEPING: a block is an UPGRADE PANEL, not a wall.** "This is a new
-property — upgrade to add it" is the only place in the product where hitting a limit is framed as
-a purchase rather than a refusal. The allowed >1km move gets a staleness notice instead, because a
-legitimate relocation leaving the old city's guide, picks, events key and weather attached is its
-own bug. Eight cases behaviour-tested live — and **the fixtures those tests COMMITTED then
-inverted later results**, which is a new rule: restore from a baseline before re-running, and
-re-measure rather than reusing a number from earlier in the same session.
+**THE OUTAGE, AND THE PROOF IT IS OVER.** Groq decommissioned `llama-3.3-70b-versatile` on
+16 Aug 2026 and **every Groq surface returned 404 `model_not_found`.** There was no "pick another
+Llama" — the whole family is gone from the catalogue. **PRODUCTION-VERIFIED 18 Aug 2026, not
+assumed:** `/api/daily-greeting` returned **200** on `openai/gpt-oss-120b` with
+**`reasoningTokens` 156**, and the 09:00 UTC `cron-refresh-events` run was clean — **7 snippets,
+`corpusTokensEst` 2,220 of the 2,300 budget, theme spread 2/2/1/2, reservation 5,571 of 8,000,
+4 events extracted.** The theme spread is the specific number worth keeping: it is the round-robin
+backfill working, which is the fix that a measurement — not a review — forced.
 
-**THE DISCLOSURE NAMED THE WRONG PARTY, AND BENEFICIARY IDENTITY IS THE STATUTORY PART.** "Your
-host may earn a commission" is false below the tier gate for every provider and false for Viator
-at every tier — **Bemgu** earns. Finnish consumer law requires marketing to make clear its
-commercial purpose **and on whose behalf it is done**, so this was never a tier-scope question.
-Now "Your host or Bemgu may earn a commission…", via a new `ARRIVLY_CONFIG.platformName` —
-deliberately not `brandName`, which already means the HOST's brand on that same screen.
-**Unconditional by design:** it must be true for every tier and provider, which is the opposite of
-every neighbouring earnings surface, and nothing in the code says so (residual). The reviewer
-verified the surface rather than assuming it: `rel="nofollow sponsored"` occurs at exactly two
-sites, both inside this sheet, so the single-site fix is complete.
+**THE MEASUREMENT THAT CHANGED THE DESIGN TWICE.** The events corpus was bounded by a fixed
+snippet count, which cannot bound a worst case (14 slots measured 11,921 chars typical but
+~19,600 at all-fields-at-cap). Replacing it with a derived token budget was the easy half. The
+hard half only appeared under simulation: fair-sharing tokens in pass 1 was **not enough**, because
+at 575 tokens per query pass 1 fits only ONE typical snippet, so the order-greedy backfill did the
+real selecting and produced `calendar:4 / whats-on:1 / music:1 / culture:1`, with a CJK corpus
+collapsing to calendar-only. **The rule: a budget that replaces a count must be re-simulated
+against the ORDERING it inherits, or it silently becomes a producer filter.**
 
-**THE 1 SEPT GUIDE-CRON DEADLINE IS GONE, AND THE PLAN THAT CREATED IT WAS NEVER POSSIBLE.** The
-queued action was "trigger it by hand before 1 Sept" — but `CRON_SECRET` is flagged **Sensitive**
-in Vercel, so its value cannot be read back (`vercel env pull` writes `CRON_SECRET=""`) and the
-Bearer header cannot be reconstructed without rotating it. **Two sessions have now planned manual
-invocation as a verification step, for this cron and for `backfill-canonical-city`, and it was
-never available either time.** Bounded in code instead: a 45s absolute START deadline (150 − 100s
-in-flight worst case − 5s overhead, captured at handler entry), a 25-day freshness gate, and
-oldest-first ordering with never-generated apartments first — so a deadline is a partial run, the
-response carries `stopped_early`/`remaining`, and successive DAILY runs work through the fleet.
-Nine apartments could never have fit in 150s, so a deadline alone would have fixed the timeout and
-starved apartments 4-9 permanently; the three parts only work together.
+**THE 156 THAT SHOULD HAVE BEEN 128.** See the new Lessons rule — budget parity covers retries and
+timeouts, never token counts. The greeting cap was inherited from a Gemini branch running
+`thinkingBudget: 0`; the number survived, the condition did not, and the first production run
+measured 156 reasoning tokens against a 128 ceiling. **It would have failed SILENTLY** — a
+reasoning-starved call returns `''` on a 200 with no throw — which is why the empty path gained a
+`console.error` in the same commit. Without that log there is no way to tell whether the fix worked.
 
-**BOTH GATES INDEPENDENTLY FOUND THE SAME STARVATION DEFECT, AND THE OBVIOUS MIGRATION IS WRONG.**
-`guide_recommendations.generated_at` advances only on a successful upsert, and `_lib/guide.ts`
-deliberately skips the upsert on three paths — so a consistently-failing apartment never advances
-its ordering key, sorts first every run and pins one of ~2 daily slots forever. The events cron
-solved this with `last_attempted_at`, but **a never-generated apartment has no row to stamp, and a
-stub row would be read by the guest page's `.maybeSingle()`** — so the column probably belongs on
-`apartments`. Deferred deliberately: no apartment is currently failing. Full detail in RESIDUALS.
+**A FIX FOR AN ALARM SILENTLY DELETED THE ALARM'S REMEDIATION.** The reviewer was right that
+`create-booking`'s ntfy said "ACTION: block this host" for someone who might have created zero
+bookings (rejected 409s bump the counter too). Correcting the wording took the body to **633 chars
+against `sendNtfy`'s silent 500-char slice**, truncating away the entire ACTION line and the key
+names. Rebudgeted to **483 with 17 spare, ACTION moved SECOND** so truncation can never reach it,
+with the measured number and a RE-MEASURE instruction in a comment. **The reviewer's own suggested
+replacement measured 564 and was not adopted** — re-measure at the moment you state a number
+applies to a gate's suggestion exactly as it applies to your own.
 
-**THE REPO HAS BEEN PUBLIC SINCE 5 JUNE 2026 — verified at the GitHub API** (`"private": false`),
-not believed. Nothing is exposed. The lesson is the class of claim: repo visibility is an
-environment fact no build, test or gate ever checks, so a wrong belief about it survives
-indefinitely and mis-prices every decision about what may be written down.
+**TWO DB CHECKS TURNED HYPOTHESES INTO FACTS, AND BOTH WOULD HAVE SHIPPED SILENTLY.** A nullable
+`bookings.status` would have made PostgREST's `.neq` skip the row while `cancel-booking` returned
+success — **the guest token would have kept working.** A CHECK constraint on `admin_audit.action`
+would have made every `cancel_booking` audit insert fail, and being best-effort, **fail silently
+forever** — so the traceability justifying the whole endpoint would never have existed. Both
+verified clean; both dependencies now in docs/schema.md, along with the `bookings` RLS predicate,
+which was the entire boundary for a query this session widened and was **written down nowhere**
+through two consecutive audits.
 
-**NEXT ACTION: Step 6 (guest-chat router + host-picks).** The queue ahead of it is empty; none of
-this session's three commits precedes it.
+**79/79 PASSED, ZERO BLOCKERS (17-18 Aug 2026).** Full guest/host/seams/edge-case checklist plus
+staged D6 (previous-guest protection: a past-token device gets the thank-you page, never the new
+guest's page), the pre-arrival token path (a future-dated valid token resolves to PUBLIC tier —
+`guest-access.ts` ~line 52), four `/w/` welcome-link states, and the six-step BookingManager
+retest in production. **The anti-swap trigger was verified on BOTH layers as a non-exempt host:
+the panel fired AND the DB kept the original address. D9's first "failure" was the exempt admin
+account** — the trigger exempts `is_exempt` by design. **Rule: test a protection from a
+non-exempt account, or you are testing the exemption.**
+
+**BOOKINGMANAGER (`fc35d69`, deployed `dpl_4hsNgTV6…`).** Server-side overlap guard (half-open
+intervals so same-day turnover passes by construction; blocks count as unavailable; 409 names the
+conflict) + soft cancel for **manual-source only**, audit-logged, feed-owned rejected server-side +
+the orphan rule: **a conversation with messages survives its booking's cancellation.** Residuals
+are in the commit message; the notable one is cosmetic and queued — a cancelled conversation still
+renders a live-looking temporal chip and a dead guest-page link.
+
+## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
+
+Read from LIVE `x-ratelimit-*` response headers against the production free-tier key, not from
+documentation and not carried forward from a note. Every older number in this file has been
+corrected against these; two sites keep the old figure deliberately, phrased as history ("what
+was then 12K TPM") with the correction adjacent.
+
+| Fact | Value |
+|---|---|
+| Tokens per MINUTE (TPM) | **8,000** — the binding constraint |
+| Requests per DAY (RPD) | **1,000** |
+| Tokens per day | **not returned as a header at all** — unobservable here |
+| Model sensitivity | **IDENTICAL on `openai/gpt-oss-120b` AND `openai/gpt-oss-20b`** — switching model buys NO extra TPM and is not a lever |
+
+- **HEADER NAMING TRAP:** `x-ratelimit-limit-requests` is per **DAY**, `x-ratelimit-limit-tokens`
+  is per **MINUTE**. Groq's naming genuinely misleads; do not read either as per-RPM.
+- **THE RESERVATION RULE, confirmed to the token THREE separate times:** the debit is
+  `promptTokens + max_tokens` — the RESERVATION, **never the actual completion**. Measured
+  exactly: prompt 78 + max_tokens 300 = 378 debited for 19 generated. **Consequence: an unused
+  output cap is pure waste, and a reservation larger than 8,000 can NEVER be satisfied on any
+  bucket state — that is a PERMANENT failure, not a transient throttle, and no retry clears it.**
+- **REASONING IS SEPARATE IN THE RESPONSE, SHARED IN THE BUDGET.** Groq returns the trace in
+  `message.reasoning`; `message.content` stays clean, so JSON parsing at every call site is safe
+  and **no stripping logic should ever be added**. But `reasoning_tokens` is billed INSIDE
+  `completion_tokens`, i.e. out of the same `max_tokens` allowance as the answer. `reasoning_effort`
+  is `'low'` globally, sent only when the model id starts with `openai/gpt-oss`.
+
+**THE CATALOGUE AS OF 18 Aug 2026 — this is why there was no "pick another Llama" option:**
+`gpt-oss-120b` and `gpt-oss-20b` are the **ONLY production text models**. The **entire Llama family
+is gone.** `qwen3.6-27b` is **preview — evaluation only, do not ship on it.** **`groq/compound` has
+BUILT-IN WEB SEARCH and is the potential replacement for guest-chat's Gemini grounding dependency
+— PARKED AND UNTESTED**, which matters because that dependency now carries the 16 Oct 2026
+shutdown date (see AI MODELS).
 
 ## ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026) — CANONICAL, supersedes the pre-billing checklist
 
@@ -909,7 +1006,7 @@ one at a time (below). Anna's Stays billing is a separate account and is untouch
 the graduation milestone, a number Udy set on Aug 5.
 > **⚠ RECONCILED Aug 6 2026 — THE FREE STACK DOES NOT REACH 50 HOSTS, whichever vendor.** Measured:
 > **Tavily free = 1,000 credits/month FLEET-WIDE** = ~250 runs at 4 credits/run = **~8 booked
-> apartments refreshed daily**; **Groq free = 1K RPD, 12K TPM, 100K TPD ORG-WIDE; TPM debits prompt+maxTokens** across all eight
+> apartments refreshed daily**; **Groq free = 1,000 RPD and 8,000 TPM ORG-WIDE (VERIFIED 17-18 Aug 2026 from live x-ratelimit headers, on BOTH gpt-oss-120b and gpt-oss-20b — switching model buys no TPM; a per-day token ceiling is not returned as a header at all); TPM debits prompt+maxTokens** across all eight
 > surfaces. **Real free runway is ~10-20 hosts, not 50.** And the escape hatch below is narrower
 > than it reads: **Groq's own Developer tier REQUIRES A CARD**, so "paid Groq with a hard spend
 > limit" does **not** preserve the no-card state either. **The card question is therefore DEFERRED,
@@ -968,6 +1065,13 @@ is provider-independent and survives the pilot.
 
 **WORK PLAN.** Every code step: single-block prompt, code-reviewer + security-auditor blocking,
 HEAD == Vercel READY verified after.
+- **⚠ Step 6 IS NOW THE ONLY THING THAT CLEARS A DATED DEADLINE, AND IT IS NOT IN THE QUEUE
+  (18 Aug 2026).** guest-chat still runs `gemini-2.5-flash`, which SHUTS DOWN 16 Oct 2026 — so
+  either Step 6 lands, or `groq/compound` replaces the grounding, or guest-chat breaks on that
+  date. The agreed queue (Founding-Hosts UI → category migration → importer → pentest gate) does
+  not schedule either one, and `groq/compound` is parked and untested. **This tension is recorded,
+  not resolved: it needs a decision about WHEN, not more analysis.** The entry below is kept for
+  its acceptance criteria.
 - **Step 6 — unblocked but NO LONGER NEXT (Aug 10 2026)** (the B3.5 smoke and the cron concurrency
   fix are both done, `d254df9`) — guest-chat router + host-picks. Acceptance test = the 20-question
   benchmark set recorded under "PILOT STEP 2". **NOTHING NOW PRECEDES IT (re-verified 12 Aug
@@ -1030,8 +1134,10 @@ taste. Do not rediscover them:**
 - **(b) THE ROUTER'S UNGROUNDED LEG MUST NOT EMBED THE GUIDE.** `guest-chat`'s system prompt is
   currently **~1,600 tokens because it embeds the full guide JSON (~960 tok)**. Retrieve the
   relevant category on demand instead; floor is ~700 tok. **Context that makes this binding:
-  Groq free tier is 12K TPM but only 100K TPD ORG-WIDE, and TPM debits prompt+maxTokens** — TPD
-  is the binder: at ~2.3k tok/turn one host at the 40/h brake burns ~92k in ONE hour.
+  Groq free tier is 8,000 TPM and 1,000 RPD ORG-WIDE (VERIFIED 17-18 Aug 2026), and TPM debits
+  prompt+maxTokens** — with the old 12K figure corrected DOWN, TPM is now the tighter binder of
+  the two, not the day pool: at ~2.3k tok/turn one host at the 40/h brake still burns the request
+  allowance fast, but a single oversized call breaches the minute ceiling first.
 - **(c) CHAT HISTORY MUST BE TRUNCATED SERVER-SIDE.**
 
 **Geoapify Free is capped at 5 req/s**, so guide POI queries must run **SEQUENTIALLY with a
