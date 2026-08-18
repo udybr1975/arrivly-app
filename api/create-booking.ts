@@ -90,11 +90,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           await sendNtfy({
             title: 'Bemgu abuse alert: booking flood',
             message:
+              // BODY BUDGET: sendNtfy slices `message` to 500 chars (api/_lib/ntfy.ts).
+              // MEASURED 483 with a 36-char host UUID = 17 spare. RE-MEASURE ON EVERY EDIT —
+              // adding the ATTEMPTS caveat took this to 633 and silently truncated the entire
+              // ACTION line, which is the one sentence that tells the operator what to do.
+              // ACTION IS SECOND, DELIBERATELY, so truncation can never eat the actionable part
+              // (the same ordering rule cron-spend-audit.ts already documents).
               `Feature: Booking creation (/api/create-booking)\n` +
-              `Host ${userId} tripped the rate limit (over ${BOOKING_HOURLY_LIMIT}/hour) - now blocked this hour.\n` +
-              `This is the AMPLIFIER: mass bookings mint guest passes that unlock the paid AI features.\n` +
-              `Watch/curb spend on: guest-chat (GEMINI_API_KEY_CHAT) and daily-greeting (GEMINI_API_KEY).\n` +
-              `ACTION: block this host in Supabase. This endpoint itself spends nothing. Vercel logs: /api/create-booking`,
+              `Host ${userId} tripped the rate limit (over ${BOOKING_HOURLY_LIMIT} ATTEMPTS/hour) - now blocked this hour.\n` +
+              `ACTION: block this host in Supabase. Logs: /api/create-booking\n` +
+              `NOTE: rejected 409s bump the counter too - can trip with few or no bookings created.\n` +
+              `AMPLIFIER: bookings mint guest passes that unlock the paid AI (this endpoint spends nothing).\n` +
+              `Watch spend: guest-chat (GEMINI_API_KEY_CHAT), daily-greeting (GEMINI_API_KEY).`,
             priority: 'high',
           })
         } catch (e) {
@@ -103,6 +110,81 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       return res.status(429).json({ error: 'rate_limited' })
     }
+  }
+
+  // ── OVERLAP GUARD (B10) ─────────────────────────────────────────────────────────
+  // The server is the source of truth for availability. The client had no check at all,
+  // and two overlapping confirmed bookings on one property were created without
+  // complaint in live testing.
+  //
+  // HALF-OPEN INTERVALS [check_in, check_out). Two stays conflict iff
+  //     new.check_in < existing.check_out AND new.check_out > existing.check_in
+  // which is expressed below as existing.check_in < new.check_out (lt) AND
+  // existing.check_out > new.check_in (gt).
+  //
+  // SAME-DAY TURNOVER PASSES BY CONSTRUCTION, and that is the point of half-open rather
+  // than closed intervals: guest A leaves on the 20th, guest B arrives on the 20th, so
+  // A = [10, 20) and B = [20, 25). Testing B: 20 < 20 is FALSE, no conflict. Testing A
+  // against B: 20 > 20 is FALSE, no conflict. Neither ordering reports one. Turnover is
+  // normal STR operation and must never be blocked.
+  //
+  // SCOPE: ALL non-cancelled bookings on this apartment, INCLUDING block-sourced rows —
+  // blocked dates are unavailable dates. Cancelled rows are free again by definition.
+  // Read with the admin client so the answer is RLS-independent, and scoped to the one
+  // apartment whose ownership was just proven above.
+  //
+  // Dates are YYYY-MM-DD `date` columns; string and chronological order coincide, so the
+  // comparison is correct whether Postgres compares them as dates or the strings are
+  // compared directly.
+  //
+  // PLACED AFTER THE BRAKE DELIBERATELY: the counter IS the brake, so every attempt must
+  // cost a unit. Rejecting a conflict before the bump would turn this into an unbraked
+  // probe. (The probe would be of the host's OWN occupancy, which they can already read
+  // through RLS - so the load-bearing reason is simply that the counter must count attempts,
+  // and the ntfy wording above now says so.)
+  //
+  // THIS SCAN IS NOT AUTHORITATIVE AND MUST NOT BE READ AS ONE. Two known gaps, accepted
+  // here rather than hidden:
+  //   1. TOCTOU - two concurrent adds can both pass the scan and both insert. There is no DB
+  //      exclusion constraint (that needs a migration). The window is one round-trip and the
+  //      actor is one authenticated host with the button disabled while saving.
+  //   2. OVERLAP-FREEDOM IS NOT AN INVARIANT OF THIS TABLE AT ALL: reconcile_ical_bookings
+  //      writes feed rows with no overlap awareness, so a sync can introduce an overlap a
+  //      second after any manual add.
+  // Read this guard as "stop the host fat-fingering a double booking" - the defect it was
+  // built for - never as "the calendar can never overlap". An exclusion constraint is the
+  // real fix for that.
+  const { data: conflict, error: conflictErr } = await admin
+    .from('bookings')
+    .select('reference_number, check_in, check_out, source')
+    .eq('apartment_id', apartmentId)
+    .neq('status', 'cancelled')
+    .lt('check_in', checkOut)
+    .gt('check_out', checkIn)
+    .order('check_in', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  if (conflictErr) {
+    // FAIL CLOSED. Unlike the counter above (which fails open so an infra blip cannot lock
+    // a host out), an unreadable calendar must not be treated as an empty one — that would
+    // silently permit the double booking this guard exists to prevent.
+    console.error('[create-booking] overlap check failed —', conflictErr.message?.slice(0, 120))
+    return res.status(500).json({ error: 'Could not add booking' })
+  }
+
+  if (conflict) {
+    // Name the conflict so the client can say WHICH booking is in the way. Only the host's
+    // own booking on their own apartment is described, so this discloses nothing new.
+    return res.status(409).json({
+      error: 'dates_unavailable',
+      conflict: {
+        reference_number: conflict.reference_number,
+        check_in: conflict.check_in,
+        check_out: conflict.check_out,
+        source: conflict.source,
+      },
+    })
   }
 
   // Fresh guest row per booking — no cross-host dedup.

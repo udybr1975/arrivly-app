@@ -41,6 +41,18 @@ const ROLLING_LIMITS: Record<string, number> = {
   // pacing at 20/h would cross the daily pool while every one of them stayed under limit+1 and
   // nothing alarmed. This is also the only counter here whose vendor is NOT an AI provider.
   'resolve-canonical-city': 60,
+  // 3x the 30/hour cap in api/cancel-booking.ts. Registered for the reason the block above
+  // exists: a brake is UNFINISHED until its key is in this allowlist, because unlisted
+  // endpoints are ignored by BOTH detectors and the 429 would fire while nothing alarmed.
+  // CLASSIFIED CALLER-KEYED — the bump follows a proven ownership check on
+  // apartments.host_id, so blocking the named host is the correct remediation. NOTE this
+  // file emits ONE SHARED alarm string for every endpoint (it leads with "INVESTIGATE BEFORE
+  // BLOCKING" and names the three victim-keyed endpoints as the exception), so the
+  // classification does not change the rendered text today — it is recorded here so a future
+  // per-endpoint wording pass puts this one on the right side. No KEY_HINT: this endpoint
+  // spends nothing with any vendor, so there is no key to revoke; the builders fall back to
+  // 'see the endpoint owner'. Registered for the cross-endpoint view.
+  'cancel-booking': 90,
 }
 const KEY_HINT: Record<string, string> = {
   'guest-chat': 'GEMINI_API_KEY_CHAT = gen-lang-client-0221179352',

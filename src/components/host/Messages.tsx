@@ -175,13 +175,16 @@ export default function Messages() {
   const loadConversations = useCallback(async (signal?: { cancelled: boolean }, opts?: { silent?: boolean }) => {
     const todayHel = new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Helsinki' })
 
-    // 1. Load messageable bookings (RLS scopes to host's own apartments). Hide
-    //    soft-cancelled feed ghosts the same way BookingManager does.
+    // 1. Load messageable bookings (RLS scopes to host's own apartments).
+    //    CANCELLED ROWS ARE NOT EXCLUDED AT THE QUERY — that is deliberate and load-bearing.
+    //    They used to be, and the effect was that cancelling a booking made its whole
+    //    conversation VANISH, taking any messages with it. The hide rule is applied after
+    //    the message map is built instead, so it can spare a conversation that has history:
+    //    a soft-cancelled feed ghost with no messages is still hidden exactly as before.
     const { data: bookingRows, error: bookingsError } = await supabase
       .from('bookings')
       .select('id, reference_number, check_in, check_out, status, source, apartment_id, guests(first_name)')
       .not('reference_number', 'is', null)
-      .neq('status', 'cancelled')
       .order('check_in', { ascending: false })
       .limit(200)
 
@@ -221,8 +224,14 @@ export default function Messages() {
       }
     }
 
+    // 2b. NOW apply the cancelled rule, with message history in hand. A cancelled booking
+    //     survives iff it has at least one message: the conversation stays reachable and the
+    //     messages stay readable. Everything else cancelled — reconcile ghosts, host-cancelled
+    //     bookings nobody ever wrote to — is hidden as before.
+    const visibleBookings = bookings.filter(b => b.status !== 'cancelled' || msgMap.has(b.id))
+
     // 3. Load apartment names.
-    const aptIds = [...new Set(bookings.map(b => b.apartment_id))]
+    const aptIds = [...new Set(visibleBookings.map(b => b.apartment_id))]
     const { data: aptRows } = aptIds.length > 0
       ? await supabase.from('apartments').select('id, name').in('id', aptIds)
       : { data: [] as { id: string; name: string }[] }
@@ -232,7 +241,7 @@ export default function Messages() {
 
     // 4. Build conversations from every messageable booking (visibility is decided per
     //    tab at render time; the full set also powers the hidden-upcoming count).
-    const convs: Conversation[] = bookings.map(booking => {
+    const convs: Conversation[] = visibleBookings.map(booking => {
       const g = msgMap.get(booking.id)
       return {
         bookingId: booking.id,

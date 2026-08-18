@@ -16,6 +16,14 @@ interface Booking {
   guests: { first_name: string; last_name: string } | null
 }
 
+// Shape of the 409 body from api/create-booking's overlap guard.
+interface BookingConflict {
+  reference_number: string | null
+  check_in: string
+  check_out: string
+  source: string | null
+}
+
 interface AddForm {
   firstName: string
   checkIn: string
@@ -46,6 +54,13 @@ function fmt(d: string) {
 
 function isBlockSource(source: string | null): boolean {
   return source?.includes('block') ?? false
+}
+
+// Manual bookings are the only ones a host may cancel. A legacy NULL source is manual —
+// the same assumption sourceLabel() already makes when it renders NULL as 'Manual'.
+// MUST stay in step with isFeedOwned() in api/cancel-booking.ts, which is the enforcing copy.
+function isManualSource(source: string | null): boolean {
+  return !source || source.toLowerCase() === 'manual'
 }
 
 function sourceColor(source: string | null): string {
@@ -209,6 +224,11 @@ export default function BookingManager() {
   const [aptId, setAptId] = useState<string | null>(null)
   const [showAddForm, setShowAddForm] = useState(false)
   const [form, setForm] = useState<AddForm>({ firstName: '', checkIn: '', checkOut: '' })
+  // Inline form error. A date clash is a property of the FORM, not a transient event, so it
+  // belongs on the form until the host changes the dates — a toast would vanish while the
+  // offending dates were still sitting in the inputs.
+  const [addError, setAddError] = useState<string | null>(null)
+  const [cancellingId, setCancellingId] = useState<string | null>(null)
   const [unreadByBooking, setUnreadByBooking] = useState<Record<string, number>>({})
 
   // Load all host apartments once on mount; set default selection to first
@@ -286,10 +306,11 @@ export default function BookingManager() {
   async function addBooking() {
     if (!aptId || !form.firstName.trim() || !form.checkIn || !form.checkOut) return
     if (form.checkOut <= form.checkIn) {
-      toast('Check-out must be after check-in', 'error')
+      setAddError('Check-out must be after check-in.')
       return
     }
     setSaving(true)
+    setAddError(null)
     try {
       // Booking + guest creation runs server-side (api/create-booking) under the
       // service role, so the client no longer reads/inserts the guests table.
@@ -305,9 +326,65 @@ export default function BookingManager() {
       setShowAddForm(false)
       await loadBookings()
     } catch (e: unknown) {
-      toast(e instanceof Error ? e.message : 'Could not add booking', 'error')
+      // api.post throws `new Error(rawResponseText)`, so a typed error code is only
+      // reachable by parsing the message — and the body may not be JSON at all (network
+      // error, Vercel 5xx HTML), hence the guarded parse.
+      const raw = e instanceof Error ? e.message : ''
+      let parsed: { error?: string; conflict?: BookingConflict } | null = null
+      try { parsed = JSON.parse(raw) } catch { parsed = null }
+
+      if (parsed?.error === 'dates_unavailable' && parsed.conflict) {
+        const c = parsed.conflict
+        // Name the blocking booking. A block has no ARR- reference, so it is described by
+        // what it is rather than by an id the host cannot look up.
+        const who = c.reference_number?.startsWith('ARR-')
+          ? c.reference_number
+          : isBlockSource(c.source) ? 'a blocked period' : sourceLabel(c.source)
+        setAddError(`Those dates overlap ${who} (${fmt(c.check_in)} – ${fmt(c.check_out)}). Pick dates that don't clash.`)
+      } else if (parsed?.error === 'rate_limited') {
+        // "attempts", not "added": a rejected 409 also consumes a unit of the hourly
+        // counter, so a host can hit this having created nothing.
+        setAddError('Too many booking attempts this hour. Try again shortly.')
+      } else {
+        // NEVER render `raw` — api.post throws with the raw response TEXT, so this branch
+        // would print `{"error":"Unauthorized"}` verbatim into the form for an expired
+        // session, and the JSON bodies this endpoint returns are all short enough to slip
+        // past any length guard. Fixed copy only; the raw body is visible in the network panel.
+        setAddError('Could not add booking. Please try again.')
+      }
     } finally {
       setSaving(false)
+    }
+  }
+
+  // SOFT cancel, manual-source bookings only — the server enforces the same rule, this is
+  // only the affordance. Feed-sourced rows belong to the reconcile sync.
+  async function cancelBooking(b: Booking) {
+    const ref = b.reference_number?.startsWith('ARR-') ? `
+
+Reference ${b.reference_number}` : ''
+    if (!window.confirm(
+      `Cancel this booking? The guest's page link will stop working.${ref}`
+    )) return
+    setCancellingId(b.id)
+    try {
+      await api.post('/cancel-booking', { booking_id: b.id })
+      toast('Booking cancelled', 'success')
+      await loadBookings()
+    } catch (e: unknown) {
+      const raw = e instanceof Error ? e.message : ''
+      let parsed: { error?: string } | null = null
+      try { parsed = JSON.parse(raw) } catch { parsed = null }
+      toast(
+        parsed?.error === 'feed_owned'
+          ? 'This booking comes from a connected calendar — cancel it there instead.'
+          : parsed?.error === 'already_cancelled'
+            ? 'That booking was already cancelled.'
+            : 'Could not cancel booking',
+        'error',
+      )
+    } finally {
+      setCancellingId(null)
     }
   }
 
@@ -405,16 +482,30 @@ export default function BookingManager() {
               )}
             </div>
           </div>
-          {isActiveToday(b) && b.reference_number && (
-            <a
-              href={guestPageUrl(b.reference_number)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="shrink-0 text-[10px] bg-[#eaf0dd] text-[#5d7c34] px-2.5 py-1 rounded-[8px] font-medium no-underline hover:bg-[#dde7c8] transition-colors"
-            >
-              👁 Guest page
-            </a>
-          )}
+          <div className="flex items-center gap-1.5 shrink-0">
+            {isActiveToday(b) && b.reference_number && (
+              <a
+                href={guestPageUrl(b.reference_number)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[10px] bg-[#eaf0dd] text-[#5d7c34] px-2.5 py-1 rounded-[8px] font-medium no-underline hover:bg-[#dde7c8] transition-colors"
+              >
+                👁 Guest page
+              </a>
+            )}
+            {/* MANUAL SOURCE ONLY. A feed-sourced booking is owned by the channel and the
+                reconcile sync would revert anything we wrote, so the affordance is not
+                offered — and api/cancel-booking rejects it server-side regardless. */}
+            {isManualSource(b.source) && b.status !== 'cancelled' && (
+              <button
+                onClick={() => cancelBooking(b)}
+                disabled={cancellingId === b.id}
+                className="text-[10px] border border-[#e4ddd0] text-[#8a8276] px-2.5 py-1 rounded-[8px] font-medium hover:border-[#8a1a1a] hover:text-[#8a1a1a] transition-colors disabled:opacity-50"
+              >
+                {cancellingId === b.id ? 'Cancelling…' : 'Cancel'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     )
@@ -444,7 +535,7 @@ export default function BookingManager() {
           <button onClick={() => setView('list')} className={pill(view === 'list')}>List</button>
           <button onClick={() => setView('cal')} className={pill(view === 'cal')}>Cal</button>
           <button
-            onClick={() => setShowAddForm(v => !v)}
+            onClick={() => { setShowAddForm(v => !v); setAddError(null) }}
             className={showAddForm ? BTN_OUTLINE : BTN_SAVE}
           >
             {showAddForm ? '✕ Cancel' : '+ Add booking'}
@@ -488,6 +579,11 @@ export default function BookingManager() {
           <div className="bg-[#eaf0dd] rounded-[10px] px-3.5 py-2.5 text-[11px] text-[#4a6128] mb-3 leading-[1.6]">
             A booking reference (ARR-XXXXXX) is generated automatically and becomes the guest's QR token.
           </div>
+          {addError && (
+            <div className="bg-[#fde4e4] rounded-[10px] px-3.5 py-2.5 text-[11px] text-[#8a1a1a] mb-3 leading-[1.6]">
+              {addError}
+            </div>
+          )}
           <button
             onClick={addBooking}
             disabled={saving || !form.firstName.trim() || !form.checkIn || !form.checkOut}
