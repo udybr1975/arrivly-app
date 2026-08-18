@@ -7,6 +7,7 @@ import { ARRIVLY_CONFIG } from '../../config'
 import Loader from '../shared/Loader'
 import { resolveImageUrl, uploadImage, deleteImage } from '../../lib/imageUtils'
 import { useToast } from '../shared/Toast'
+import PolicyBlockToast from '../shared/PolicyBlockToast'
 
 // The move distance that counts as "a different place". THE DATABASE OWNS THE OTHER COPY of
 // this number: `public.enforce_property_address_swap()` blocks a move beyond it for a host at
@@ -1056,8 +1057,29 @@ export default function PropertySetup() {
           tier NAME or PRICE appears here — neither is loaded on this page, so any figure would
           be a hardcoded number free to go stale. The cap comes from the trigger's hint or is
           omitted entirely. */}
+      {/* ITEM 2 — THE TOAST AND THIS PANEL ARE ONE STATE (`swapBlocked`), which is what makes
+          "both dismiss together" true by construction rather than by two handlers agreeing. The
+          toast is the acknowledgement that Save was pressed and refused; the panel is the answer,
+          and it can sit below the fold on a long form, which is the gap the toast closes.
+          PolicyBlockToast is deliberately generic — it takes a message and a panel id and knows
+          nothing about addresses, so a tier cap can reuse it unchanged. */}
+      <PolicyBlockToast
+        open={!!swapBlocked}
+        message="We couldn't save that address change."
+        panelId="policy-block-panel"
+        onDismiss={() => {
+          // Same restore as the panel's own dismiss: the trigger rejected the WHOLE row write, so
+          // leaving the edited fields on screen would show values that were never stored.
+          if (savedBasicRef.current) setBasic(savedBasicRef.current)
+          setSwapBlocked(null)
+        }}
+      />
+      {/* NO role="alert" on the panel below: PolicyBlockToast above already announces
+          assertively on the same state flip, and two live regions firing together make a screen
+          reader read the refusal twice. The toast is the announcement; the panel is where it
+          sends you. */}
       {swapBlocked && (
-        <div role="alert" className="mb-3 rounded-[12px] border border-[#e8d5a8] bg-[#faf3e2] px-4 py-3.5">
+        <div id="policy-block-panel" tabIndex={-1} className="mb-3 rounded-[12px] border border-[#e8d5a8] bg-[#faf3e2] px-4 py-3.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]">
           <h2 className="text-[14px] font-['Fraunces'] font-normal text-[#231d17]">
             That looks like a different property
           </h2>

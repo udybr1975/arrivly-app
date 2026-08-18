@@ -5,6 +5,10 @@ import { useToast } from '../shared/Toast'
 import { api } from '../../lib/api'
 import Loader from '../shared/Loader'
 import { ARRIVLY_CONFIG } from '../../config'
+import AvailabilityPicker from './AvailabilityPicker'
+// Chrome moved to its own module so AvailabilityPicker can share it without a circular
+// import — see the note at the top of bookingChrome.ts. Definitions are unchanged.
+import { BLOCK_GREY, calLegendLabel, isBlockSource, isManualSource, sourceColor, sourceLabel } from './bookingChrome'
 
 interface Booking {
   id: string
@@ -46,61 +50,8 @@ function pill(active: boolean) {
   return `${PILL_BASE} ${active ? 'bg-[#1c1c1a] text-[#f0ede6] border-[#1c1c1a]' : 'bg-transparent border-[#e4ddd0] text-[#8a8276] hover:bg-[#f0ede6]'}`
 }
 
-const BLOCK_GREY = '#b8b0a2'
-
 function fmt(d: string) {
   return new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })
-}
-
-function isBlockSource(source: string | null): boolean {
-  return source?.includes('block') ?? false
-}
-
-// Manual bookings are the only ones a host may cancel. A legacy NULL source is manual —
-// the same assumption sourceLabel() already makes when it renders NULL as 'Manual'.
-// MUST stay in step with isFeedOwned() in api/cancel-booking.ts, which is the enforcing copy.
-function isManualSource(source: string | null): boolean {
-  return !source || source.toLowerCase() === 'manual'
-}
-
-function sourceColor(source: string | null): string {
-  if (!source) return '#c97c14'
-  const s = source.toLowerCase()
-  if (s.includes('airbnb')) return '#3b6d11'
-  if (s.includes('vrbo')) return '#185fa5'
-  if (s.includes('booking')) return '#003580'
-  if (s.includes('tripadvisor')) return '#00aa6c'
-  if (s.includes('guesty') || s.includes('hostaway') || s.includes('lodgify')) return '#7c3aed'
-  return '#c97c14'
-}
-
-function sourceLabel(source: string | null): string {
-  if (!source) return 'Manual'
-  const s = source.toLowerCase()
-  if (s === 'manual') return 'Manual'
-  if (s.includes('airbnb') && s.includes('block')) return 'Airbnb block'
-  if (s.includes('airbnb')) return 'Airbnb'
-  if (s.includes('vrbo') && s.includes('block')) return 'VRBO block'
-  if (s.includes('vrbo')) return 'VRBO'
-  if (s.includes('booking') && s.includes('block')) return 'Booking block'
-  if (s.includes('booking')) return 'Booking.com'
-  if (s.includes('tripadvisor')) return 'TripAdvisor'
-  if (s.includes('guesty')) return 'Guesty'
-  if (s.includes('hostaway')) return 'Hostaway'
-  if (s.includes('lodgify')) return 'Lodgify'
-  if (s.includes('block')) return 'Blocked'
-  return 'iCal'
-}
-
-// Compact legend category for the calendar (groups all reservation channels).
-function calLegendLabel(source: string | null): string {
-  if (!source) return 'Manual'
-  const s = source.toLowerCase()
-  if (s === 'manual') return 'Manual'
-  if (s.includes('airbnb')) return 'Airbnb'
-  if (s.includes('vrbo')) return 'VRBO'
-  if (s.includes('booking')) return 'Booking.com'
-  return 'Other'
 }
 
 function statusPill(status: string) {
@@ -112,7 +63,26 @@ function statusPill(status: string) {
   return `text-[10px] px-2 py-0.5 rounded-full font-medium ${map[status] ?? 'bg-[#f0e8ff] text-[#4a0e8f]'}`
 }
 
-function CalendarView({ bookings }: { bookings: Booking[] }) {
+// ITEM 3 — A PER-BOOKING AFFORDANCE NEEDS A DAY-DETAIL STEP FIRST, and that is why this
+// component gained selection state rather than a cancel button. The grid draws ONE cell per day,
+// but MULTIPLE bookings can cover that day (dayColor() already resolves the ambiguity by
+// precedence), so a cancel control attached to a cell would have no defined target. Clicking a
+// day now opens a panel listing every booking covering it; the affordance lives on the row, where
+// the target is unambiguous.
+function CalendarView({
+  bookings, onCancel, cancellingId,
+}: {
+  bookings: Booking[]
+  onCancel: (b: Booking) => void
+  cancellingId: string | null
+}) {
+  const [selectedDay, setSelectedDay] = useState<string | null>(null)
+  // Drop a selection whose day no longer has any booking — e.g. after cancelling the last one.
+  useEffect(() => {
+    if (!selectedDay) return
+    const still = bookings.some(b => selectedDay >= b.check_in && selectedDay < b.check_out)
+    if (!still) setSelectedDay(null)
+  }, [bookings, selectedDay])
   const [cursor, setCursor] = useState(() => {
     const n = new Date()
     return new Date(n.getFullYear(), n.getMonth(), 1)
@@ -159,7 +129,7 @@ function CalendarView({ bookings }: { bookings: Booking[] }) {
       <div className="flex items-center justify-between mb-3">
         <button
           onClick={() => setCursor(c => new Date(c.getFullYear(), c.getMonth() - 1, 1))}
-          className="w-7 h-7 flex items-center justify-center rounded-[8px] border border-[#e4ddd0] text-[#231d17] hover:bg-[#f0ede6] transition-colors"
+          className="w-7 h-7 flex items-center justify-center rounded-[8px] border border-[#e4ddd0] text-[#231d17] hover:bg-[#f0ede6] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
           aria-label="Previous month"
         >‹</button>
         <div className="text-[13px] font-semibold text-[#231d17]">
@@ -167,7 +137,7 @@ function CalendarView({ bookings }: { bookings: Booking[] }) {
         </div>
         <button
           onClick={() => setCursor(c => new Date(c.getFullYear(), c.getMonth() + 1, 1))}
-          className="w-7 h-7 flex items-center justify-center rounded-[8px] border border-[#e4ddd0] text-[#231d17] hover:bg-[#f0ede6] transition-colors"
+          className="w-7 h-7 flex items-center justify-center rounded-[8px] border border-[#e4ddd0] text-[#231d17] hover:bg-[#f0ede6] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
           aria-label="Next month"
         >›</button>
       </div>
@@ -181,10 +151,20 @@ function CalendarView({ bookings }: { bookings: Booking[] }) {
           if (day === null) return <div key={i} className="aspect-square" />
           const color = dayColor(day)
           const isToday = isCurrentMonth && day === todayDay
+          const iso = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+          const covering = bookings.filter(b => iso >= b.check_in && iso < b.check_out)
+          const isSel = selectedDay === iso
           return (
-            <div
+            <button
               key={i}
-              className={`aspect-square flex items-center justify-center rounded-[5px] text-[11px] ${
+              type="button"
+              onClick={() => setSelectedDay(covering.length === 0 ? null : isSel ? null : iso)}
+              disabled={covering.length === 0}
+              aria-expanded={isSel}
+              aria-label={`${new Date(year, month, day).toLocaleDateString('en-GB', { day: 'numeric', month: 'long' })}${covering.length ? ` — ${covering.length} booking${covering.length === 1 ? '' : 's'}` : ' — no bookings'}`}
+              className={`aspect-square flex items-center justify-center rounded-[5px] text-[11px] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e] focus-visible:ring-offset-1 ${
+                covering.length > 0 ? 'cursor-pointer' : 'cursor-default'
+              } ${isSel ? 'ring-2 ring-[#1c1c1a]' : ''} ${
                 color
                   ? 'text-white font-semibold'
                   : isToday
@@ -194,10 +174,76 @@ function CalendarView({ bookings }: { bookings: Booking[] }) {
               style={color ? { backgroundColor: color } : undefined}
             >
               {day}
-            </div>
+            </button>
           )
         })}
       </div>
+      {selectedDay && (() => {
+        const covering = bookings.filter(b => selectedDay >= b.check_in && selectedDay < b.check_out)
+        // Cancelling the last booking on this day empties the panel; without clearing the
+        // selection the cell keeps its ring and becomes disabled, which reads as a stuck UI.
+        if (covering.length === 0) return null
+        const [sy, sm, sd] = selectedDay.split('-').map(Number)
+        return (
+          <div className="mt-3 pt-3 border-t border-[#f0ede6]">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-[11px] font-semibold text-[#231d17]">
+                {new Date(sy, sm - 1, sd).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedDay(null)}
+                aria-label="Close day details"
+                className="text-[11px] text-[#8a8276] hover:text-[#231d17] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e] rounded px-1"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-1.5">
+              {covering.map(b => (
+                <div
+                  key={b.id}
+                  className="flex items-center gap-2 flex-wrap bg-[#f8f6f2] border border-[#e4ddd0] rounded-[10px] px-3 py-2"
+                  style={{ borderLeft: `3px solid ${isBlockSource(b.source) ? BLOCK_GREY : sourceColor(b.source)}` }}
+                >
+                  <span className="text-[12px] font-semibold text-[#231d17]">
+                    {isBlockSource(b.source) ? 'Blocked' : b.guests?.first_name ?? 'Guest'}
+                  </span>
+                  <span className="text-[11px] text-[#8a8276]">{fmt(b.check_in)} → {fmt(b.check_out)}</span>
+                  <span className="text-[10px] text-[#8a8276] bg-[#f4f1ea] border border-[#e4ddd0] px-2 py-0.5 rounded-full">
+                    {sourceLabel(b.source)}
+                  </span>
+                  {b.reference_number?.startsWith('ARR-') && (
+                    <span className="text-[10px] font-mono text-[#a79e8e]">{b.reference_number}</span>
+                  )}
+                  {/* SAME RULE AS THE LIST VIEW, enforced independently by the server: manual
+                      source only. A feed-owned row belongs to the reconcile sync, which would
+                      revert anything written here — so it gets an explanation, never a disabled
+                      button, which would read as a temporary condition. */}
+                  <span className="ml-auto shrink-0">
+                    {/* BOTH CONDITIONS, matching the list row exactly. The status check is
+                        redundant while loadBookings() filters cancelled at the query — but
+                        Messages.tsx has already stopped doing that in its own load path, so the
+                        two surfaces must not state the same rule differently. */}
+                    {isManualSource(b.source) && b.status !== 'cancelled' ? (
+                      <button
+                        type="button"
+                        onClick={() => onCancel(b)}
+                        disabled={cancellingId === b.id}
+                        className="text-[10px] border border-[#e4ddd0] text-[#8a8276] px-2.5 py-1 rounded-[8px] font-medium hover:border-[#8a1a1a] hover:text-[#8a1a1a] transition-colors motion-reduce:transition-none disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8a1a1a]"
+                      >
+                        {cancellingId === b.id ? 'Cancelling…' : 'Cancel'}
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-[#6b6354]">From a connected calendar</span>
+                    )}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
       {legend.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3 pt-3 border-t border-[#f0ede6]">
           {legend.map(({ label, color }) => (
@@ -341,6 +387,10 @@ export default function BookingManager() {
           ? c.reference_number
           : isBlockSource(c.source) ? 'a blocked period' : sourceLabel(c.source)
         setAddError(`Those dates overlap ${who} (${fmt(c.check_in)} – ${fmt(c.check_out)}). Pick dates that don't clash.`)
+        // THE 409 IS PROOF THE CLIENT WAS STALE — a sync landed while the form was open. Without
+        // this the picker keeps offering the very cell the server just refused, and the host has
+        // no way to see the booking that blocked them.
+        void loadBookings()
       } else if (parsed?.error === 'rate_limited') {
         // "attempts", not "added": a rejected 409 also consumes a unit of the hourly
         // counter, so a host can hit this having created nothing.
@@ -557,22 +607,22 @@ Reference ${b.reference_number}` : ''
                 placeholder="Maria"
               />
             </div>
-            <div>
-              <label className={LABEL}>Check-in <span className="text-[#8a1a1a] normal-case">*</span></label>
-              <input
-                type="date"
-                value={form.checkIn}
-                onChange={e => setForm(p => ({ ...p, checkIn: e.target.value }))}
-                className={INPUT}
-              />
-            </div>
-            <div>
-              <label className={LABEL}>Check-out <span className="text-[#8a1a1a] normal-case">*</span></label>
-              <input
-                type="date"
-                value={form.checkOut}
-                onChange={e => setForm(p => ({ ...p, checkOut: e.target.value }))}
-                className={INPUT}
+            <div className="col-span-2">
+              <label className={LABEL}>Dates <span className="text-[#8a1a1a] normal-case">*</span></label>
+              {/* Replaces two native date inputs, which could offer any date and left the host to
+                  discover a clash only on Save. The picker disables illegal targets AT THE CELL and
+                  explains why on hover. It is a COURTESY, NOT A GATE: the 409 overlap guard in
+                  api/create-booking.ts stays the source of truth, and its error path below is
+                  untouched, because a calendar sync can land while this form is open. */}
+              <AvailabilityPicker
+                bookings={bookings}
+                checkIn={form.checkIn}
+                checkOut={form.checkOut}
+                onChange={next => {
+                  setForm(p => ({ ...p, ...next }))
+                  // A date change is the host answering the clash, so the stale message goes.
+                  setAddError(null)
+                }}
               />
             </div>
           </div>
@@ -607,7 +657,7 @@ Reference ${b.reference_number}` : ''
         </Link>
       </div>
 
-      {view === 'cal' && <CalendarView bookings={bookings} />}
+      {view === 'cal' && <CalendarView bookings={bookings} onCancel={cancelBooking} cancellingId={cancellingId} />}
 
       {view === 'list' && (
         <>

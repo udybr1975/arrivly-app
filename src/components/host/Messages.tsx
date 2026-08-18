@@ -126,7 +126,15 @@ function needsAttention(c: Conversation): boolean {
   return c.unread > 0 || (c.hasMessages && c.lastSenderRole === 'guest')
 }
 
-function StatusChip({ temporal }: { temporal: Temporal }) {
+// `status` OUTRANKS `temporal` and that ordering is the whole point of this change. A cancelled
+// booking whose dates are current would otherwise render the green "In-house" chip and read as a
+// live stay — the conversation is deliberately kept visible when it has messages (see the load
+// path), so it MUST be labelled or the host cannot tell it was cancelled. Styling reuses the
+// existing cancelled pill from BookingManager's statusPill() rather than inventing one.
+function StatusChip({ temporal, status }: { temporal: Temporal; status?: string }) {
+  if (status === 'cancelled') {
+    return <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#fde4e4] text-[#8a1a1a]">Cancelled</span>
+  }
   if (temporal === 'in-house') {
     return <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#e4f0da] text-[#2a5c0a]">In-house</span>
   }
@@ -557,7 +565,7 @@ export default function Messages() {
                       </div>
 
                       <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                        <StatusChip temporal={c.temporal} />
+                        <StatusChip temporal={c.temporal} status={c.status} />
                         {attention && (
                           <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#f7eccf] text-[#7a5a14]">
                             Awaiting reply
@@ -622,7 +630,7 @@ export default function Messages() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[16px] font-['Fraunces'] font-light text-[#231d17] truncate">{selected.guestName}</span>
-                    <StatusChip temporal={selected.temporal} />
+                    <StatusChip temporal={selected.temporal} status={selected.status} />
                   </div>
                   <div className="text-[10px] text-[#a79e8e] truncate mt-0.5">
                     {selected.aptName} · {fmtDate(selected.checkIn)} – {fmtDate(selected.checkOut)}
@@ -630,7 +638,15 @@ export default function Messages() {
                   </div>
                 </div>
               )}
-              {selected && selected.temporal === 'in-house' && selected.reference && (
+              {/* ALLOWLIST, NOT DENYLIST — `status === confirmed || completed`, mirroring the
+                  server resolvers (guest-access.ts, guest-state.ts) and the sibling checks in
+                  Dashboard and BookingManager. A `!== 'cancelled'` test would render a
+                  live-looking link for any OTHER status the resolver also rejects, which is the
+                  same defect one value over. For a cancelled booking this link is DEAD. Every guest
+                  resolver filters status in ('confirmed','completed'), so the token now lands on
+                  the neutral page — which reads to the host as a broken link rather than as a
+                  consequence of their own cancellation. Hiding it is the honest signal. */}
+              {selected && (selected.status === 'confirmed' || selected.status === 'completed') && selected.temporal === 'in-house' && selected.reference && (
                 <a
                   href={`${ARRIVLY_CONFIG.appUrl}/guest?apt=${selected.aptId}&token=${selected.reference}`}
                   target="_blank"
