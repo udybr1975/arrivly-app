@@ -414,7 +414,10 @@ const INSTRUCTION_TOKENS_EST = 700
 
 // HEADROOM FOR ONE COINCIDENT HOST-TRIGGERED GROQ CALL. The pool is org-wide per minute, so a
 // host hitting rewrite-rules, bulk-import or guide-assistant in the same minute competes with
-// this extraction. 1,500 covers a TYPICAL such call (rewrite-rules at ~1,875, guide-assistant at
+// this extraction — as do the two greeting surfaces, which are the SMALLEST competitors and are
+// listed so this enumeration stays complete: the daily suggestion reserves ~450 prompt + 320 and
+// the place blurb ~150 + 352, both comfortably inside this headroom.
+// 1,500 covers a TYPICAL such call (rewrite-rules at ~1,875, guide-assistant at
 // ~3,100 reserved), NOT the worst case: a bulk-import at its 8,000-char input cap reserves
 // ~4,100, and reserving for that would leave a NEGATIVE corpus budget. So the honest statement is
 // that a coincident bulk-import at cap can still 429 one of the two calls — which is transient
@@ -1062,26 +1065,35 @@ async function generateCityEventsTavily(
       // Costed as the snippet is actually SERIALISED into the prompt (JSON.stringify below), so
       // keys, quotes and escaping are all paid for rather than approximated away.
       const cost = estimateTokens(JSON.stringify(cand))
-      // BREAK, not continue: skipping an over-large result to fit a smaller later one would bias
-      // selection toward short snippets, and a calendar page — the densest, highest-signal source
-      // — is precisely the long one. Stop at the budget instead.
+      // SKIP A CANDIDATE THAT DOES NOT FIT; NEVER ABANDON THE QUERY. This was a `break`, and the
+      // `break` silently deleted whole themes.
       //
-      // ⚠ THIS JUSTIFICATION IS COMPLETE ONLY FOR PASS 1. In pass 1 the skipped url survives for
-      // the backfill, which is why the anti-short-bias argument is free there. In pass 2 there is
-      // no later pass and the global budget only shrinks, so the url is NOT reconsidered, and the
-      // short-snippet bias the break exists to prevent reappears one level up: a query whose head
-      // candidate is long loses every remaining round while queries with short candidates spend
-      // the budget. The behaviour is still the CONSERVATIVE direction and cannot breach the
-      // ceiling, so this is a quality bound, not a safety one.
-      // KNOWN RESIDUAL, deliberately not fixed here (both gates saw it, neither called it
-      // must-fix): a candidate whose cost ALONE exceeds CORPUS_TOKEN_BUDGET is re-encountered at
-      // index 0 every round and breaks again, so that query contributes ZERO snippets forever.
-      // Unreachable on ordinary input — the worst single snippet under tavily.ts's 140/300/900
-      // caps is ~560 tok all-Latin and ~1,190 all-non-ASCII, both well under 2,300 — but JSON
-      // escaping expands control characters ~6x, and `.trim()` does not strip interior ones. The
-      // fix is a `continue` for a candidate that can never fit even an empty corpus, keeping
-      // `break` for the partially-consumed case the anti-bias argument actually covers.
-      if (corpusTokens + cost > CORPUS_TOKEN_BUDGET || takenTokens + cost > tokenLimit) break
+      // THE FAILURE: pass 2 re-iterates each query's list from index 0 on every round, so a query
+      // whose HEAD candidate does not fit broke at index 0 again and again and contributed ZERO
+      // snippets — for the entire selection, not just that round. Its remaining results were never
+      // examined. MEASURED, not argued: with one oversized result at the top of the `calendar`
+      // query, `break` yields themes {whats-on:3, music:2, culture:2} — calendar ABSENT — while
+      // skipping yields {calendar:2, whats-on:2, music:2, culture:1} at the identical corpus size
+      // of 7 snippets and 2,210 tokens. Same budget, same count, one whole theme recovered.
+      //
+      // WHY IT MATTERS MORE THAN THE BIAS IT COSTS: the corpus is untrusted third-party web text
+      // and the row is SHARED city-wide, so one pathological result — a page padded with control
+      // characters, which JSON escaping expands ~6x and `.trim()` does not strip when interior —
+      // could suppress an entire theme for every apartment in that city. A single bad snippet must
+      // degrade one candidate, never a theme.
+      //
+      // THE COST, STATED HONESTLY: skipping does bias selection toward shorter snippets near
+      // budget exhaustion, and a calendar page — the densest, highest-signal source — is precisely
+      // the long one. That bias is real but SUBORDINATE: it applies only once the budget is nearly
+      // spent, where the alternative is taking nothing at all, and results arrive in relevance
+      // order so the earliest affordable candidate is still preferred. Dropping a theme is the
+      // worse failure, and it is the one this file's quota invariant exists to prevent.
+      // SUBSUMED BY THE NEXT LINE (corpusTokens is never negative, so this can never be the only
+      // check that rejects). Kept solely to NAME the never-fits case the comment above describes.
+      // If you touch either line, touch both — they must stay `continue` together, or a query
+      // whose head candidate is unaffordable silently loses its whole theme again.
+      if (cost > CORPUS_TOKEN_BUDGET) continue
+      if (corpusTokens + cost > CORPUS_TOKEN_BUDGET || takenTokens + cost > tokenLimit) continue
       seenUrls.add(r.url)
       snippets.push(cand)
       corpusTokens += cost
@@ -1184,16 +1196,23 @@ async function generateCityEventsTavily(
     // partially re-armed the burden that paragraph deliberately released.
     //
     // `desc` IS LENGTH-CAPPED IN THE PROMPT, and that is an AVAILABILITY control, not style: `desc`
-    // is the largest per-event output field (server cap 300 chars), and `maxTokens: 2048` was sized
-    // in B3.3 against a CORPUS, not against B3.5's 10-15 event target. At 10-15 events expected
-    // output rises from ~250 tokens to ~1.2-2k, and the ceiling is reached at ~136 tokens/event —
-    // reachable, not remote. Truncation is WORSE than a 429 because it is DETERMINISTIC: JSON.parse
-    // fails → payload null → on the public path with no cached row the guest gets an error and
-    // EventsPage retries 3x, spending 3 of the 7 hourly units and 12 Tavily credits on a failure
-    // that retrying cannot fix. Bounding desc is the cheapest lever and costs no input budget.
+    // is the largest per-event output field (server cap 300 chars), and the output allowance was
+    // originally sized in B3.3 against a CORPUS, not against a per-event target. It is now
+    // EXTRACTION_MAX_TOKENS (3,500), and the live ask is the 20-30 target with a floor of 15 —
+    // NOT the 10-15 an earlier generation of this comment assumed. Truncation is WORSE than a 429
+    // because it is DETERMINISTIC: JSON.parse fails → payload null → on the public path with no
+    // cached row the guest gets an error and EventsPage retries 3x, spending 3 of the 7 hourly
+    // units and 12 Tavily credits on a failure that retrying cannot fix. Bounding desc is the
+    // cheapest lever and costs no input budget.
+    //
+    // ⚠ THE ALLOWANCE IS NOW SHARED WITH THE REASONING TRACE (gpt-oss bills reasoning inside
+    // completion_tokens), so the effective per-event room is LESS than 3,500/target implies.
+    // Note also that MAX_EVENTS = 15 discards everything past the 15th, so asking for 20-30 buys
+    // recall headroom at the cost of generating events that are parsed and thrown away.
     // DETECTION: `[city-events] extraction parse failed` logs `rawLen` — ~6-8k chars means
-    // truncation, not malformed JSON. Then, in cost order: tighten desc, drop the target to 10-12,
-    // or raise maxTokens (which must come OUT of the input budget, never on top of it).
+    // truncation, not malformed JSON; read it beside `reasoningTokens` in the
+    // `[ai-provider] groq usage` line. Then, in cost order: tighten desc, lower the target, or
+    // raise maxTokens (which must come OUT of the input budget, never on top of it).
     `Each event: title (name), venue (place), date (as stated in the snippet), ` +
     `desc (one short sentence, max ~100 characters), ` +
     `price (very short, e.g. "Free" or "€20" — max ~12 characters, no parentheses or notes), ` +
@@ -1218,9 +1237,12 @@ async function generateCityEventsTavily(
     `Each snippet has a "theme" field we assigned from the search that found it ` +
     // "has EVENTS in", not "is present in": a theme whose snippets yield no extractable events would
     // make a presence-conditioned floor UNSATISFIABLE, and a literal reading then stops at 2 per
-    // theme = 6 — under the floor of 8 two clauses above. That is precisely the clause-stacking
-    // failure B3.5 exists to undo, so it must not be reintroduced in the one clause that got
-    // STRENGTHENED. Note `themeCounts` cannot detect this: it counts SNIPPETS, not per-theme events.
+    // theme = 8 across four themes, or 6 with one theme empty — far under the "fewer than 15 only
+    // if the snippets genuinely contain fewer" floor stated earlier in this prompt.
+    // THE GAP THIS COMMENT DESCRIBES IS THEREFORE WIDER NOW, NOT NARROWER.
+    // That is precisely the clause-stacking failure B3.5 exists to undo, so it must not be
+    // reintroduced in the one clause that got STRENGTHENED. Note `themeCounts` cannot detect this:
+    // it counts SNIPPETS, not per-theme events.
     `(calendar, whats-on, music, culture). If a theme has events in the snippets, include AT LEAST ` +
     `TWO events from it before taking a third event from any single other theme. ` +
     `A list of only concerts is a FAILURE if the snippets also ` +

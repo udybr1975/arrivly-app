@@ -46,10 +46,25 @@ export async function generateGreetingBlurb(
   let text = ''
   try {
     if (provider !== 'gemini') {
-      // Budget parity with the gemini branch below: 1 retry (2 attempts) x 12s.
+      // BUDGET PARITY APPLIES TO `retries` AND `timeoutMs` ONLY — 1 retry (2 attempts) x 12s,
+      // matching the gemini branch below so one counter unit costs the same number of attempts on
+      // either path. IT DOES NOT APPLY TO THE TOKEN BUDGET, and reading it that way was the bug:
+      // the gemini branch sets `thinkingConfig: { thinkingBudget: 0 }`, so its 256 was sized
+      // against a model with thinking OFF. The groq branch inherited the NUMBER but not the
+      // CONDITION — gpt-oss bills reasoning tokens INSIDE completion_tokens, so thinking and
+      // answering share this one allowance and a trace could consume the whole 256, returning
+      // empty. Token budgets are therefore sized independently per provider, from that provider's
+      // token semantics.
+      //
+      // DERIVATION (352): the prompt asks for ~45 words; capped generously at ~70 words for
+      // overshoot, 70 x ~1.35 tok/word = ~95, so 96 for the ANSWER. Plus 256 of explicit
+      // REASONING headroom at reasoning_effort 'low'. 96 + 256 = 352. NOT rounded up beyond that
+      // — Groq reserves prompt + max_tokens against a verified 8,000 TPM ceiling, so an unused cap
+      // is pure waste even on a call this small. The 256 is an estimate: validate it against
+      // `reasoningTokens` in the `[ai-provider] groq usage` line and tighten if it is generous.
       text = (await aiGenerate('guide', {
         prompt,
-        maxTokens: 256,
+        maxTokens: 352,
         retries: 1,
         timeoutMs: 12000,
       })).trim()
@@ -204,10 +219,24 @@ export async function generateDailySuggestion(
   let text = ''
   try {
     if (provider === 'groq') {
-      // Budget parity with the gemini branch below: 1 retry (2 attempts) x 12s.
+      // BUDGET PARITY APPLIES TO `retries` AND `timeoutMs` ONLY — 1 retry (2 attempts) x 12s,
+      // matching the gemini branch below so one counter unit costs the same number of attempts on
+      // either path. IT DOES NOT APPLY TO THE TOKEN BUDGET: the gemini branch sets
+      // `thinkingConfig: { thinkingBudget: 0 }`, so its 128 was sized against a model with
+      // thinking OFF, and the groq branch inherited the NUMBER but not the CONDITION. gpt-oss
+      // bills reasoning INSIDE completion_tokens, so 128 was the most exposed budget in the
+      // codebase — a trace alone could plausibly consume all of it and return empty.
+      //
+      // DERIVATION (320): the prompt caps the answer at 30 words; allowing ~45 for overshoot,
+      // 45 x ~1.35 tok/word = ~61, so 64 for the ANSWER. Plus 256 of explicit REASONING headroom
+      // at reasoning_effort 'low' — the same allowance as the blurb even though the answer is
+      // shorter, because this prompt is the more complex of the two to reason over (day part,
+      // weather, stay day, recent picks, nearby places). 64 + 256 = 320. Groq reserves
+      // prompt + max_tokens against a verified 8,000 TPM ceiling, so this is sized, not rounded
+      // up; validate the 256 against `reasoningTokens` in the `[ai-provider] groq usage` line.
       text = (await aiGenerate('greeting', {
         prompt,
-        maxTokens: 128,
+        maxTokens: 320,
         retries: 1,
         timeoutMs: 12000,
       })).trim()
@@ -245,6 +274,14 @@ export async function generateDailySuggestion(
     return { suggestion: null }
   }
 
-  if (!text) return { suggestion: null }
+  // MATCHES '[greeting] blurb empty' ABOVE. Until now this path returned null silently, so an
+  // empty completion was UNDETECTABLE in production — which is exactly the failure mode a
+  // reasoning model introduces when the trace eats the answer allowance, and it is the failure
+  // this call's raised maxTokens is meant to prevent. Without the log there is no way to measure
+  // whether that worked. Return shape is deliberately unchanged.
+  if (!text) {
+    console.error('[greeting] suggestion empty', { aptId: args.apartmentId })
+    return { suggestion: null }
+  }
   return { suggestion: text }
 }
