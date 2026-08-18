@@ -33,15 +33,18 @@ const MAX_TITLE_LEN = 140 // 140 (B3.3, was 200): titles are short; the tail was
 // this cap was the most expensive unused budget in the corpus. Enforced by DROPPING an over-long
 // result, never truncating it — see the ingest loop.
 const MAX_URL_LEN = 300
-// 900 (B3.3, was 500). Groq's free tier is 6K TPM ORG-WIDE and shared by every AI surface, so an
-// oversized extraction prompt does not merely fail itself — it can 429 guest-chat, the guide and
-// daily-greeting across every tenant. At 1200 with no dedupe a full 24-result corpus was ~11-12k
-// tokens, about 2x the whole org ceiling in ONE call. But 500 was too tight in the other
-// direction: a city events CALENDAR page lists twenty events in the space a single-venue page
-// uses for one, so the cap was discarding exactly the signal the extractor needs. The raise is
-// PAID FOR — extraction maxTokens 3072 → 2048, plus the title and url trims above, which together
-// recover roughly what the raise costs. Input and output share ONE ceiling, so more input must
-// come OUT of the rest of the budget, never on top of it.
+// 900 (B3.3, was 500). This caps ONE snippet; it no longer bounds the corpus. Since 17 Aug 2026
+// the corpus is bounded by CORPUS_TOKEN_BUDGET in city-events.ts, derived from the verified
+// 8,000 TPM ceiling — a fixed count x a char cap could not bound the worst case, because a
+// non-Latin-script city breaches before any char cap bites. Do not re-derive a corpus total from
+// this constant; it is a per-snippet bound only.
+//
+// WHY 900 AND NOT LESS: 500 was too tight — a city events CALENDAR page lists twenty events in
+// the space a single-venue page uses for one, so the cap was discarding exactly the signal the
+// extractor needs. WHY NOT MORE: an oversized extraction prompt does not merely fail itself, it
+// can 429 the guide and daily-greeting across every tenant on the shared org-wide per-minute
+// pool. Input and output share ONE ceiling, so more input must come OUT of the rest of the
+// budget, never on top of it.
 const MAX_CONTENT_LEN = 900
 
 let gateChain: Promise<void> = Promise.resolve()

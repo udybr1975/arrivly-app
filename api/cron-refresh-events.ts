@@ -253,11 +253,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // CONCURRENCY 1, and this is a correctness limit rather than a politeness one. Each iteration is
   // FOUR Tavily searches + a GROQ extraction on the default path (pilot Step 5 — the `gemini`
   // branch is still selectable via AI_PROVIDER_EVENTS, but rolling back to it is forbidden per
-  // CLAUDE.md, and it is the cheaper of the two here anyway). Groq's free tier is 6K TPM ORG-WIDE,
-  // shared by every AI surface across every tenant. At B3.3+
-  // prompt sizes one extraction is ~3.5-5.5k tokens, so TWO in flight breach that ceiling
-  // deterministically: the cron 429s itself AND starves guest-chat, the guide and daily-greeting
+  // CLAUDE.md, and it is the cheaper of the two here anyway). Groq's free tier is 8,000 TPM
+  // ORG-WIDE (VERIFIED 17 Aug 2026 from live response headers on both gpt-oss models — down from
+  // the retired llama-3.3-70b-versatile's 12,000), shared by every AI surface across every tenant.
+  // One extraction now reserves ~6,500 of that under CORPUS_TOKEN_BUDGET, so TWO in flight breach
+  // the ceiling deterministically: the cron 429s itself AND starves the guide and daily-greeting
   // for every host while it runs. Serialising costs almost nothing here (daily, booking-filtered).
+  // The margin got TIGHTER, not looser, when the ceiling dropped — concurrency 1 is now the only
+  // width that fits at all.
+  //
+  // BUT CONCURRENCY 1 BOUNDS SIMULTANEITY, NOT RATE, AND THE CONSTRAINT HAS MOVED TO RATE. At
+  // ~6,500 reserved against an 8,000-per-MINUTE bucket, the bucket needs ~45-50s of refill before
+  // the next unit can be admitted. A unit finishing in ~20s (four fast searches + a fast
+  // extraction) will therefore 429 on the very next apartment, and that retry re-reserves another
+  // ~6,500. This is PROPORTIONALLY PRE-EXISTING (8,531/12,000 was 71%; 6,500/8,000 is 81%) and is
+  // NOT introduced by the token-budget change — recorded here only so the next reader does not
+  // conclude from "serialising" that the per-minute rate is bounded by the pool width. It is
+  // bounded by the refill.
   //
   // Serialising is why the start-deadline exists: at ~75s worst case per apartment, run 3+ would
   // otherwise be killed mid-flight — silently, with no JSON summary and no wholesale-failure ntfy.

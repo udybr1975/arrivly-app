@@ -376,10 +376,94 @@ function eventWindow(apt: { city: string | null; country: string | null }) {
 // asking high against a firm cap is what stops the model settling at the floor. Reaching 15 here
 // is the SUCCESS condition, not truncation of a failure: measured recall before this change was 1.
 const MAX_EVENTS = 15
-// Corpus cap fed to the extractor — see the token arithmetic at the dedupe site. 14 (B3.3, was
-// 12): denser calendar snippets are worth more slots, and the extra input is paid for out of the
-// extraction maxTokens, not added on top of it.
+// ABSOLUTE upper bound on corpus slots. NO LONGER THE BINDING CONSTRAINT — CORPUS_TOKEN_BUDGET
+// below binds first in the typical case. Kept because a fixed count is a cheap backstop against a
+// pathological many-tiny-snippets corpus, and because the per-query quota arithmetic is expressed
+// in slots. 14 (B3.3, was 12): denser calendar snippets are worth more slots.
 const MAX_SNIPPETS = 14
+
+// ── TPM BUDGET — ONE CEILING, EVERYTHING BELOW DERIVED FROM IT ──────────────────────────────
+//
+// VERIFIED 17 Aug 2026 from live `x-ratelimit-limit-tokens` response headers on the production
+// free-tier key, on BOTH `openai/gpt-oss-120b` and `openai/gpt-oss-20b` — the two return
+// IDENTICAL limits (1,000 requests/DAY, 8,000 tokens/MINUTE), so switching model buys no extra
+// TPM and is not a lever. TPD is not returned as a header at all.
+//
+// WHY THIS EXISTS AT ALL: Groq debits TPM as a RESERVATION of promptTokens + max_tokens, never
+// the completion actually generated. A reservation larger than the ceiling can therefore NEVER be
+// satisfied on any bucket state — it is a PERMANENT failure, not a transient throttle, and no
+// retry or backoff can clear it. That is the difference that makes this a correctness bug rather
+// than a spend concern.
+//
+// THIS CONSTANT IS A MIRROR, AND IT IS MODEL-SCOPED. `GROQ_MODEL` is operator-settable and can be
+// repointed without touching this file, while the live value is returned on EVERY response as
+// `x-ratelimit-limit-tokens` and already logged as `tpmLimit` by ai-provider.ts. The two gpt-oss
+// models were verified identical, so the mirror is safe today — but if `GROQ_MODEL` changes,
+// RE-READ THE HEADER before trusting this number. Getting it wrong in the downward direction
+// reintroduces exactly the permanent failure this whole budget exists to prevent.
+const GROQ_TPM_CEILING = 8000
+
+// The extraction's output reservation. DELIBERATELY NOT REDUCED to make room — see the aiGenerate
+// site for the two reasons. The budget comes off the INPUT side instead; that is the whole point.
+const EXTRACTION_MAX_TOKENS = 3500
+
+// Instruction block, MEASURED at 583 tokens (2,330 chars, B3.5, Helsinki-shaped). Rounded UP to
+// 700 because that measurement is a point estimate that moves with `place` length and a
+// month-crossing `weekLabel`.
+const INSTRUCTION_TOKENS_EST = 700
+
+// HEADROOM FOR ONE COINCIDENT HOST-TRIGGERED GROQ CALL. The pool is org-wide per minute, so a
+// host hitting rewrite-rules, bulk-import or guide-assistant in the same minute competes with
+// this extraction. 1,500 covers a TYPICAL such call (rewrite-rules at ~1,875, guide-assistant at
+// ~3,100 reserved), NOT the worst case: a bulk-import at its 8,000-char input cap reserves
+// ~4,100, and reserving for that would leave a NEGATIVE corpus budget. So the honest statement is
+// that a coincident bulk-import at cap can still 429 one of the two calls — which is transient
+// and retried, unlike the permanent over-ceiling failure this constant exists to prevent.
+//
+// DO NOT SIZE HEADROOM FROM THAT LIST ALONE — THE LARGEST COMPETITOR IS THIS CALL'S OWN RETRY.
+// `retries: 1` means a transient failure re-reserves the FULL ~6,500 about 600ms later, inside
+// the same minute. That is four times this headroom and is NOT covered by it. It is not an
+// argument for changing the retry count (budget parity is load-bearing — see ai-provider.ts);
+// it is the reason a reader must not conclude that 1,500 makes the minute safe.
+// NOTE: guest-chat does NOT compete for this pool — it is still on Gemini (pilot Step 6 unbuilt).
+const COINCIDENT_CALL_HEADROOM_TOKENS = 1500
+
+// DERIVED, never hand-tuned. Edit an input above; do not edit this line.
+//   8,000 - 3,500 - 700 - 1,500 = 2,300
+//
+// HARD FLOOR ON ANY FUTURE EDIT: this must stay above ~1,200, the all-non-ASCII cost of ONE
+// snippet at the tavily.ts caps. Below that every candidate fails the first budget check, the
+// corpus is empty, and the endpoint returns null while logging `[city-events] no search results`
+// with a NON-ZERO `tavilyResults` — i.e. four Tavily credits burned per run and a log line naming
+// retrieval when the real cause was selection. Fail-closed, but misdiagnosable.
+const CORPUS_TOKEN_BUDGET =
+  GROQ_TPM_CEILING - EXTRACTION_MAX_TOKENS - INSTRUCTION_TOKENS_EST - COINCIDENT_CALL_HEADROOM_TOKENS
+
+// DERIVED FROM THIS FILE'S OWN MEASURED RUN, not from a generic rule of thumb: the B3.3 smoke run
+// logged corpusChars 11,921, and the measured prompt was 5,031 tokens against a 583-token
+// instruction block — so the corpus itself was 4,448 tokens for 11,921 chars = 2.68 chars/token.
+// (Well under the ~4 chars/token prose rule, because urls tokenize at ~3 and JSON scaffolding
+// worse.) 2.5 is used rather than 2.68 so the estimate OVER-states tokens by ~7%: the error
+// direction must be a smaller corpus, never a 429.
+//
+// KNOW THE FAILURE MODE, NOT JUST THE MARGIN: 2.68 is a measured AVERAGE, and the residual risk
+// is asymmetric — punctuation-dense or opaque-identifier ASCII (long tracking query strings,
+// base64-ish slugs) tokenises nearer 1.5-2 chars/token, so a corpus of those is UNDER-estimated.
+// Quantified: the estimate would have to be ~65% wrong (2,300 est → ~3,800 actual) before the
+// total breaches 8,000 with no coincident call, which the 1,500 headroom absorbs. The true ratio
+// is free to measure on the first production run — compare the logged `corpusTokensEst` against
+// `promptTokens` in the `[ai-provider] groq usage` line for the same request.
+const CHARS_PER_TOKEN_LATIN = 2.5
+
+// Non-ASCII chars are counted at 1 token/char — the CJK worst case. This is what makes the budget
+// bound the non-Latin-script city BY CONSTRUCTION rather than by a char cap that assumes Latin
+// text; see the note at the dedupe site. Accented Latin and emoji are over-counted by the same
+// rule, which is the safe direction.
+function estimateTokens(s: string): number {
+  let nonAscii = 0
+  for (let i = 0; i < s.length; i++) if (s.charCodeAt(i) > 127) nonAscii++
+  return Math.ceil((s.length - nonAscii) / CHARS_PER_TOKEN_LATIN) + nonAscii
+}
 const capStr = (v: unknown, n: number): string => (typeof v === 'string' ? v.trim().slice(0, n) : '')
 const SAFE_SCHEME = /^https?:\/\//i
 
@@ -884,56 +968,59 @@ async function generateCityEventsTavily(
     perQuery.push(results)
   }
 
-  // DEDUPE BY URL + cap. The queries are all about the same city and overlap heavily, so a page
-  // ranking for all of them was counted once per query. That matters for more than tidiness:
-  // Groq's free tier is 6K TPM ORG-WIDE and shared by every AI surface, and the undeduped
-  // full-length corpus was ~11-12k tokens — about 2x the entire org ceiling in ONE call, which
-  // would 429 this extraction AND starve guest-chat / guide / daily-greeting across every tenant.
+  // DEDUPE BY URL, then SELECT TO A TOKEN BUDGET. The queries are all about the same city and
+  // overlap heavily, so a page ranking for all of them was counted once per query. That matters
+  // for more than tidiness: the corpus is the single largest input to a call whose reservation
+  // must fit under an org-wide per-minute ceiling shared by every AI surface and every tenant.
   //
-  // TOKEN ARITHMETIC (B3.3, CORRECTED — both review gates caught the first version sizing this
-  // off MAX_SNIPPETS x MAX_CONTENT_LEN and omitting title + url; RE-DERIVED for the B3.4 theme
-  // tag). A snippet costs the SUM of EVERY capped field plus JSON scaffolding, so per snippet:
+  // ── THE ARITHMETIC IS NOW DERIVED, NOT WRITTEN DOWN HERE ────────────────────────────────────
+  // CORPUS_TOKEN_BUDGET at the top of this file is the authority, and it is COMPUTED from the
+  // verified 8,000 TPM ceiling. Do not re-derive a number in this comment; change an input there.
+  // Superseded generations of this arithmetic have been DELETED rather than struck through — git
+  // holds them, and two stacked corrections ("6K is the wrong model's row", "the real ceiling is
+  // 12,000") were themselves obsolete within days. What follows is the reasoning that is still
+  // true, not the numbers that were.
+  //
+  // WHY A TOKEN BUDGET REPLACED A FIXED SNIPPET COUNT (17 Aug 2026). MAX_SNIPPETS could never
+  // bound the worst case, because a slot's cost is not fixed: the same 14 slots measured 11,921
+  // chars typical but ~19,600 at all-fields-at-cap, and a non-Latin-script city breached before
+  // any char cap bit. Counting slots bounds the wrong quantity. The fix this file's own comment
+  // named — "a token-aware corpus budget rather than a bigger/smaller number" — is now built.
+  //
+  // PER-SNIPPET COST (B3.3, RE-DERIVED for the B3.4 theme tag — both review gates caught the
+  // first version sizing this off MAX_SNIPPETS x MAX_CONTENT_LEN and omitting title + url). A
+  // snippet costs the SUM of EVERY capped field plus JSON scaffolding:
   //   worst case  140 title + 300 url + 900 content + 40 scaffolding + 20 theme = ~1400 chars
   //   typical     ~60 title + ~80 url + ~600 content + 40 + 20 = ~800 chars
-  // ⚠ EVERY "6K TPM" FIGURE BELOW IS SIZED AGAINST THE WRONG MODEL'S ROW — CORRECTED at the
-  // `maxTokens` site further down, which is now the authority for this arithmetic. The real
-  // ceiling for `llama-3.3-70b-versatile` is 12,000 TPM (6K is the `llama-3.1-8b-instant` row),
-  // and Groq debits `promptTokens + maxTokens` — the RESERVATION, not the completion. The lines
-  // below are LEFT AS WRITTEN so the B3.3/B3.4/B3.5 reasoning stays traceable; read them as
-  // "against a ceiling half the real size", which makes every conclusion here CONSERVATIVE.
-  // Two specific conclusions below are FALSE at 12,000 TPM: the "ALL-CAPS ... OVER the ceiling"
-  // line, and "an all-fields-at-cap run can self-429" — at 3,500 reserved that case is ~9.4k of
-  // 12,000. Do not re-derive from these numbers; re-derive from the `maxTokens` block.
+  // VERIFIED against the real B3.3 smoke run: corpusChars 11,921 for 14 snippets = ~850/snippet
+  // actual, so the typical estimate is honest rather than optimistic. This is now COSTED PER
+  // CANDIDATE at selection time instead of being asserted in a comment, so the caps above bound
+  // an individual snippet while the budget bounds the corpus.
   //
-  // Against the 6K TPM ORG-WIDE Groq ceiling, which counts INPUT PLUS OUTPUT:
-  //   TYPICAL  14 x 800 = ~11.2k chars ~= 2.8k in + ~585 prompt + ~1.2-2k real output ~= 4.6-5.4k.
-  //   ALL-CAPS 14 x 1400 = ~19.6k chars ~= 5.3k in + ~585 + 2048 out ~= 7.9k — OVER the ceiling.
-  // PROMPT OVERHEAD IS NOW MEASURED, NOT ESTIMATED (B3.5): the instruction block expands to 2330
-  // chars ~= 583 tokens for a Helsinki-shaped window (a point estimate — it moves with `place`
-  // length and a month-crossing `weekLabel`), DOWN 19 chars from B3.4 — the rebalance REPLACED
-  // clauses rather than stacking them, so it cost no input budget, and `themeCounts` is a log field
-  // that never enters the prompt. The earlier ~750 figure was a conservative guess.
-  // NOTE THE OUTPUT SIDE MOVED, THOUGH: B3.5's 10-15 event target raises real output from ~250
-  // tokens to ~1.2-2k, so the TYPICAL total rises even as the prompt shrinks. That is why `desc` is
-  // now length-capped in the prompt — see the field spec below.
-  // The theme tag costs ~280 chars (~70 tokens) across the whole corpus — inside the rounding of
-  // the figures above, so nothing was taken out of another field to pay for it. VERIFIED against
-  // the real B3.3 smoke run: corpusChars 11921 for 14 snippets, i.e. ~850/snippet actual, so the
-  // typical estimate is honest rather than optimistic. `corpusChars` keeps measuring it.
-  // TYPICAL IS FINE IN ISOLATION ONLY: 6K TPM is org-wide PER MINUTE, so one coincident
-  // guest-chat turn can still breach it (see CLAUDE.md).
-  // STATE IT HONESTLY: an all-fields-at-cap run can self-429. That was ALSO true before B3.3
-  // (~7.5k on the old 12 x 500 corpus with maxTokens 3072) — it is a pre-existing bound, and the
-  // title/url trims plus maxTokens 3072 → 2048 were sized to recover roughly what the denser
-  // content costs, so B3.3 does not meaningfully raise it while improving the typical case.
-  // A 429 is transient in retry.ts, so the cost of hitting it is a retried unit, not a wrong
-  // payload — and on failure the callers keep the previous cached week (B3.1).
-  // KNOWN AND NOT SOLVED HERE: a NON-LATIN-SCRIPT city (CJK tokenizes near 1 token/char) breaches
-  // the ceiling well before these caps bite. Pre-existing, unbounded by any char cap, and the fix
-  // is a token-aware corpus budget rather than a bigger/smaller number — see CLAUDE.md.
+  // PROMPT OVERHEAD IS MEASURED, NOT ESTIMATED (B3.5): the instruction block expands to 2,330
+  // chars ~= 583 tokens for a Helsinki-shaped window, DOWN 19 chars from B3.4 — the rebalance
+  // REPLACED clauses rather than stacking them, so it cost no input budget, and `themeCounts` is a
+  // log field that never enters the prompt. The theme tag costs ~280 chars (~70 tokens) across the
+  // whole corpus, so nothing was taken out of another field to pay for it.
+  //
+  // THE OUTPUT SIDE MOVED TOO, and it moved AGAIN: B3.5's event target raised real output from
+  // ~250 tokens to ~1.2-2k, which is why `desc` is length-capped in the prompt (see the field
+  // spec). On gpt-oss models reasoning tokens are billed INSIDE that same output allowance, so it
+  // needs MORE room than before, not less — which is why the budget came off the INPUT side.
+  //
+  // NON-LATIN-SCRIPT CITIES — PREVIOUSLY KNOWN AND NOT SOLVED, NOW CLOSED, and the distinction
+  // matters. It is closed by CONSTRUCTION, not by a bigger margin: `estimateTokens` counts
+  // non-ASCII chars at 1 token/char, the CJK worst case, so a CJK corpus is admitted at roughly
+  // 2.5x fewer chars than a Latin one and lands on the same token budget. What is NOT claimed:
+  // that the estimate is exact. It is a deliberate over-estimate in both scripts, so the residual
+  // risk is a corpus smaller than it needed to be — never a reservation over the ceiling.
+  //
+  // A 429 remains transient in retry.ts, and on failure the callers keep the previous cached week
+  // (B3.1). AN OVER-CEILING RESERVATION IS NOT IN THAT CATEGORY: it can never be satisfied on any
+  // bucket state, so it is permanent and no retry clears it. That is what this budget prevents.
+  //
   // CONSEQUENCE FOR FUTURE CHANGES: input and output share ONE ceiling. Anything that needs more
-  // input must take it OUT of the rest of the budget, never add it on top — and must re-derive the
-  // total from EVERY capped field.
+  // input must take it OUT of the rest of the budget, never add it on top.
   //
   // SELECTION IS PER-QUERY-QUOTA THEN BACKFILL, not greedy in query order. A corpus cap applied
   // in producer order silently becomes a producer FILTER: at maxResults 8 x 4 queries against a
@@ -946,26 +1033,86 @@ async function generateCityEventsTavily(
   // over-allocates (ceil(14/4)=4, 4x4=16 > 14) and lets pass 1 alone re-acquire the tail bias
   // this fair-share pass exists to remove.
   // `theme` is OUR field, set from the query index — a snippet can never influence its own tag.
+  // THE TOKEN BUDGET IS QUOTA'D THE SAME WAY THE SLOTS ARE, AND THAT IS THE LOAD-BEARING PART.
+  // A single global token budget consumed in query order would have re-introduced exactly the
+  // producer-order bias the slot quota exists to remove — worse, in fact: at ~340 tokens/snippet
+  // the first two queries alone exhaust 2,300, so `culture` (the last query) would reach the
+  // extractor NEVER, while still spending its Tavily credit. So pass 1 fair-shares TOKENS as well
+  // as slots, and the budget cuts the TAIL of that fair-share ordering rather than its head.
+  // Pass 2 backfills against the GLOBAL budget, so tokens a thin query does not use still flow to
+  // the others — the same role it already played for unused slots.
   const snippets: Array<WebResult & { theme: string }> = []
   const seenUrls = new Set<string>()
   const base = Math.floor(MAX_SNIPPETS / queries.length)
   const extra = MAX_SNIPPETS % queries.length // first `extra` queries get one slot more
-  const take = (list: WebResult[], limit: number, theme: string): void => {
+  // Same remainder-distribution shape as the slot quota, for the same reason: the per-query token
+  // quotas sum to EXACTLY CORPUS_TOKEN_BUDGET for any query count.
+  const tokenBase = Math.floor(CORPUS_TOKEN_BUDGET / queries.length)
+  const tokenExtra = CORPUS_TOKEN_BUDGET % queries.length
+  let corpusTokens = 0
+  const take = (list: WebResult[], limit: number, theme: string, tokenLimit: number): void => {
     let taken = 0
+    let takenTokens = 0
     for (const r of list) {
       if (snippets.length >= MAX_SNIPPETS || taken >= limit) break
       if (seenUrls.has(r.url)) continue
-      seenUrls.add(r.url)
       // Explicit field list, not a spread: it guarantees `theme` is ours and that no unexpected
       // key from a future WebResult shape can reach the prompt.
-      snippets.push({ theme, title: r.title, url: r.url, content: r.content })
+      const cand = { theme, title: r.title, url: r.url, content: r.content }
+      // Costed as the snippet is actually SERIALISED into the prompt (JSON.stringify below), so
+      // keys, quotes and escaping are all paid for rather than approximated away.
+      const cost = estimateTokens(JSON.stringify(cand))
+      // BREAK, not continue: skipping an over-large result to fit a smaller later one would bias
+      // selection toward short snippets, and a calendar page — the densest, highest-signal source
+      // — is precisely the long one. Stop at the budget instead.
+      //
+      // ⚠ THIS JUSTIFICATION IS COMPLETE ONLY FOR PASS 1. In pass 1 the skipped url survives for
+      // the backfill, which is why the anti-short-bias argument is free there. In pass 2 there is
+      // no later pass and the global budget only shrinks, so the url is NOT reconsidered, and the
+      // short-snippet bias the break exists to prevent reappears one level up: a query whose head
+      // candidate is long loses every remaining round while queries with short candidates spend
+      // the budget. The behaviour is still the CONSERVATIVE direction and cannot breach the
+      // ceiling, so this is a quality bound, not a safety one.
+      // KNOWN RESIDUAL, deliberately not fixed here (both gates saw it, neither called it
+      // must-fix): a candidate whose cost ALONE exceeds CORPUS_TOKEN_BUDGET is re-encountered at
+      // index 0 every round and breaks again, so that query contributes ZERO snippets forever.
+      // Unreachable on ordinary input — the worst single snippet under tavily.ts's 140/300/900
+      // caps is ~560 tok all-Latin and ~1,190 all-non-ASCII, both well under 2,300 — but JSON
+      // escaping expands control characters ~6x, and `.trim()` does not strip interior ones. The
+      // fix is a `continue` for a candidate that can never fit even an empty corpus, keeping
+      // `break` for the partially-consumed case the anti-bias argument actually covers.
+      if (corpusTokens + cost > CORPUS_TOKEN_BUDGET || takenTokens + cost > tokenLimit) break
+      seenUrls.add(r.url)
+      snippets.push(cand)
+      corpusTokens += cost
+      takenTokens += cost
       taken++
     }
   }
-  // pass 1: fair share each (quotas sum to exactly MAX_SNIPPETS)
-  perQuery.forEach((list, i) => take(list, base + (i < extra ? 1 : 0), queries[i].theme))
-  // pass 2: backfill any slots left unused by a thin query
-  perQuery.forEach((list, i) => take(list, MAX_SNIPPETS, queries[i].theme))
+  // pass 1: fair share each, of BOTH slots and tokens (each set of quotas sums to exactly its total)
+  perQuery.forEach((list, i) =>
+    take(list, base + (i < extra ? 1 : 0), queries[i].theme, tokenBase + (i < tokenExtra ? 1 : 0)),
+  )
+  // PASS 2 IS ROUND-ROBIN, ONE SNIPPET PER QUERY PER ROUND — not "let each query take everything
+  // it can, in order", which is what it used to be. That change is REQUIRED by the token budget,
+  // not a tidy-up. Under the old slot-only regime pass 1 handed each query 3-4 slots, so diversity
+  // was already settled and the backfill rarely fired. At 575 tokens per query, pass 1 now fits
+  // only ONE typical snippet each, so the backfill does most of the selecting — and in query order
+  // it handed `calendar` 4 of 7 slots while `culture` kept 1, with a CJK corpus degenerating to
+  // calendar-only. Same producer-order bias as a greedy cap, arriving one pass later.
+  // Round-robin keeps the tail fair: the budget cuts how MANY rounds happen, never which themes
+  // get to participate. Terminates when a full round adds nothing.
+  let progressed = true
+  while (progressed && snippets.length < MAX_SNIPPETS) {
+    progressed = false
+    for (let i = 0; i < perQuery.length; i++) {
+      const before = snippets.length
+      // limit 1: one slot per query per round. The global budget check inside `take` is the real
+      // bound here, so the per-query token limit is deliberately the whole budget.
+      take(perQuery[i], 1, queries[i].theme, CORPUS_TOKEN_BUDGET)
+      if (snippets.length > before) progressed = true
+    }
+  }
 
   if (snippets.length === 0) {
     // No corpus — calling the extractor would spend a Groq unit to extract from nothing.
@@ -1090,35 +1237,32 @@ async function generateCityEventsTavily(
     raw = await aiGenerate('events', {
       prompt,
       json: true,
-      // 3500 (was 2048). TWO corrections are folded in here, and the first is why this value was
-      // ever constrained:
+      // 3,500, and DELIBERATELY NOT REDUCED to fit the 8,000 ceiling. The obvious move when a
+      // ceiling drops is to shrink the output reservation; it is the wrong one here, twice over:
       //
-      // 1. THE 6K TPM FIGURE THE OLD COMMENT CITED WAS THE WRONG MODEL'S ROW. Verified today
-      //    against the production key and a live response header:
-      //      llama-3.3-70b-versatile = 12,000 TPM, 1,000 RPD, 100,000 TPD (org-wide).
-      //    6K TPM is the llama-3.1-8b-instant row. Every "6K TPM ORG-WIDE" arithmetic comment in
-      //    this file was sized against a ceiling twice as tight as the real one.
+      // (a) TRUNCATION IS WORSE THAN A 429, and this call is where that bites hardest. With
+      //     json:true a truncated response is INVALID JSON that fails the parse outright — no
+      //     partial payload, no degraded result — and it fails DETERMINISTICALLY, whereas a 429 is
+      //     transient in retry.ts and leaves the previous cached week intact (B3.1).
+      // (b) REASONING TOKENS ARE BILLED INSIDE completion_tokens on gpt-oss models, so this
+      //     allowance is now SHARED between thinking and answering. It needs more room than it did
+      //     on a non-reasoning model, not less.
       //
-      // 2. GROQ DEBITS TPM AS promptTokens + maxTokens — THE RESERVATION, NEVER THE ACTUAL
-      //    COMPLETION. Measured: 5,031 prompt + 2,048 reserved = 7,079, and the response's
-      //    tpmRemaining was exactly 12,000 - 7,079. That run GENERATED 492 tokens and was BILLED
-      //    2,048. Consequence that must survive every future edit to this line: AN UNUSED OUTPUT
-      //    CAP IS PURE WASTE, and an oversized one throttles the whole org for nothing. Size it to
-      //    what the target output actually needs — never "round up for safety".
+      // So the budget came off the INPUT side instead — see CORPUS_TOKEN_BUDGET at the top of this
+      // file, which is derived from this very constant. That is the entire shape of the 17 Aug
+      // 2026 change: the corpus yields, the output allowance does not.
       //
-      // ARITHMETIC: ~5,031 prompt + 3,500 reserved = ~8,531 of 12,000. Fits, with the remainder
-      // left for a coincident guest-chat turn on the shared org pool. An all-fields-at-cap corpus
-      // is ~5.9k + 3,500 = ~9.4k of 12,000 — still inside, unlike under the old 6K assumption.
+      // GROQ DEBITS TPM AS promptTokens + maxTokens — THE RESERVATION, NEVER THE ACTUAL
+      // COMPLETION. Measured twice with exact arithmetic. Consequence that must survive every
+      // future edit to this line: AN UNUSED OUTPUT CAP IS PURE WASTE, and an oversized one
+      // throttles the whole org for nothing. Size it to what the target output actually needs —
+      // never "round up for safety".
       //
-      // THIS ARITHMETIC IS INVALIDATED BY AN ENV FLIP: `GROQ_MODEL` (ai-provider.ts) overrides the
-      // model, and pointing it at `llama-3.1-8b-instant` restores a REAL 6K ceiling, at which
-      // ~8.5k does not fit. Re-derive before changing that variable.
-      //
-      // TRUNCATION DETECTION IS NOW MORE IMPORTANT, NOT LESS: at a 20-30 event target the output
-      // side is where this call gets tight. `[city-events] extraction parse failed` logs `rawLen`
-      // — ~6-8k chars means TRUNCATION, not malformed JSON, and truncation is worse than a 429
-      // because it is deterministic (see the note at the desc field spec above).
-      maxTokens: 3500,
+      // TRUNCATION DETECTION IS THEREFORE LOAD-BEARING: `[city-events] extraction parse failed`
+      // logs `rawLen` — ~6-8k chars means TRUNCATION, not malformed JSON (see the desc field
+      // spec above). With reasoning sharing the allowance, watch `reasoningTokens` in the
+      // `[ai-provider] groq usage` line alongside it.
+      maxTokens: EXTRACTION_MAX_TOKENS,
       retries: 1,
       timeoutMs: 20000,
     })
@@ -1249,6 +1393,13 @@ async function generateCityEventsTavily(
     // and is the only way to tell whether the 900-char content cap is actually being reached or
     // whether `basic` snippets fall well short of it (in which case the raise bought nothing).
     corpusChars: JSON.stringify(snippets).length,
+    // THE NUMBER THE BUDGET ACTUALLY ACTS ON. corpusChars stays because it is the raw measurement
+    // and the only way to see whether the 900-char content cap is being reached; but chars are no
+    // longer what bounds the corpus, so tuning this again from corpusChars alone would be tuning
+    // the wrong quantity — the two diverge by ~2.5x between a Latin and a CJK city. Compare
+    // against CORPUS_TOKEN_BUDGET: at parity the budget is binding, well under it means the
+    // queries returned thin and MAX_SNIPPETS or Tavily recall is the constraint instead.
+    corpusTokensEst: corpusTokens,
     // THEME SPREAD OF THE SELECTED SNIPPETS (B3.5) — counts only, keys are our own four literals.
     // This exists to ANSWER a question rather than to guess at it: B3.4's diversity instruction did
     // not work, and "culture snippets reach the extractor and are ignored" (an EXTRACTION problem)
