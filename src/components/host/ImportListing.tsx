@@ -45,6 +45,10 @@ export interface AcceptedImport {
   rules: string | null
   extras: { category: string; content: string }[]
   picksText: string | null
+  /** The host's original document, for the guest chat to answer from. `null` means "do not keep
+   *  one" — which must DELETE any existing row, not merely skip the write, or a re-import with
+   *  the tick off would leave a stale document answering questions. */
+  sourceDoc: string | null
 }
 
 export interface ApplySectionResult { section: string; ok: boolean; message?: string }
@@ -278,6 +282,7 @@ export default function ImportListing({
     setAccepted({})
     setResults(null)
     setRedacted(0)
+    setKeepSourceDoc(true)
     try {
       const data = await api.post<{
         proposal: ImportProposal
@@ -380,14 +385,26 @@ export default function ImportListing({
   const toggle = (key: string) =>
     setAccepted(a => ({ ...a, [key]: key in a ? !a[key] : !(defaults[key] ?? false) }))
 
+  // Its own state, NOT a Row: it is not a field diff, has no "in your tab now" side, and belongs
+  // after the tab groups rather than inside one. Defaults ON — the whole point of the import is
+  // that the host already wrote this document.
+  const [keepSourceDoc, setKeepSourceDoc] = useState(true)
+
   const acceptedRows = rows.filter(r => isAccepted(r.key))
   const credentialRows = rows.filter(r => r.isPrivate)
   const uncheckedCredentials = credentialRows.filter(r => !isAccepted(r.key)).length
 
   // ── apply ───────────────────────────────────────────────────────────────────────────────
 
+  // NOTE Apply is reachable with NOTHING ticked, deliberately: the source-doc decision is itself
+  // actionable in both states — ticked stores the document, unticked deletes any stored one.
+  // Gating on acceptedRows alone meant a host wanting to REVOKE had to re-import AND accept some
+  // unrelated field, which made "untick deletes" true only as a side effect of another write.
+  // There is no condition to test here: this component never queries whether a row already
+  // exists, so only `applying` disables the button.
+
   async function apply() {
-    if (!proposal || acceptedRows.length === 0) return
+    if (!proposal) return
     setApplying(true)
     setResults(null)
 
@@ -428,6 +445,13 @@ export default function ImportListing({
         rules: acceptedRows.find(r => r.key === 'rules')?.proposed ?? null,
         extras,
         picksText: acceptedRows.find(r => r.key === 'picks')?.proposed ?? null,
+        // EXACTLY the text the server sorted from, computed with the SAME transform the endpoint
+        // applies (truncateForImport over the trimmed text). This is not belt-and-braces: only the
+        // FILE path runs acceptText, so a PASTED document arrives untruncated and the server cuts
+        // it — storing raw `text` would have made the chat answer from more than was ever sorted.
+        // (WhatsApp stamp stripping is file-path only and the server does not re-apply it, so a
+        // pasted chat log keeps its stamps here exactly as the model saw them.)
+        sourceDoc: keepSourceDoc ? truncateForImport(text.trim()).text : null,
       })
       setResults(res)
       // The extracted text, the proposal and the conflict list all hold door codes and WiFi
@@ -508,7 +532,8 @@ export default function ImportListing({
 
         <p className="text-[11px] text-[#8a8276] mt-2.5 max-w-[70ch]">
           Your file is read on your device and never uploaded — only the text below is sent to
-          Bemgu, and only so it can be sorted. Nothing is saved until you review it.
+          Bemgu, to sort it into your tabs. You choose at the end whether we also keep it for your
+          guest chat. Nothing is saved until you review it.
         </p>
 
         {extractError && (
@@ -742,12 +767,39 @@ export default function ImportListing({
               </div>
               {skipped.some(s => s.toLowerCase().includes('host contact')) && (
                 <p className="text-[11px] text-[#8a8276] mt-2">
-                  Your own phone number and email stay out of the guest page — Bemgu doesn't show
-                  host contact details to guests yet, so we've left them where they were.
+                  We haven't put your phone number or email into your tabs, so they won't appear on
+                  your guest page. If you keep your document for the guest chat below, note it is
+                  stored as you wrote it — anything in it can be quoted to a guest with a booking.
                 </p>
               )}
             </div>
           )}
+
+          {/* A final card AFTER the tab groups, deliberately not a Row: this is not a field diff,
+              it has no "in your tab now" side, and it decides what the CHAT can read rather than
+              what a tab will show. Placed last so it reads as the final decision before Apply. */}
+          <div className="mt-5 border border-[#e4ddd0] rounded-[10px] p-3.5 bg-[#f8f6f2]">
+            <label htmlFor="imp-source-doc" className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                id="imp-source-doc"
+                type="checkbox"
+                checked={keepSourceDoc}
+                onChange={() => setKeepSourceDoc(v => !v)}
+                className="mt-0.5 accent-[#c8a24e]"
+              />
+              <span className="min-w-0">
+                <span className="block text-[13px] font-medium text-[#231d17]">
+                  Let the guest chat use this document
+                </span>
+                <span className="block text-[12px] text-[#6b6459] mt-1 max-w-[62ch]">
+                  Guests can ask the chat anything — "where do I find picnic bags?" — and it will
+                  answer from your document, not just from the tabs. Your document is stored with
+                  this property and read only by guests with a confirmed booking. Untick and Apply
+                  at any time to remove it.
+                </span>
+              </span>
+            </label>
+          </div>
 
           <div className="sticky bottom-0 -mx-5 -mb-5 mt-5 px-5 py-3.5 bg-[#fffdf9] border-t border-[#e4ddd0] rounded-b-[14px]">
               <div className="flex flex-wrap items-center justify-between gap-3">
@@ -761,8 +813,14 @@ export default function ImportListing({
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => setStage('extract')} className={BTN_OUTLINE} disabled={applying}>Back</button>
-                  <button onClick={() => void apply()} disabled={applying || acceptedRows.length === 0} className={BTN_SAVE}>
-                    {applying ? 'Applying…' : `Apply ${acceptedRows.length} field${acceptedRows.length === 1 ? '' : 's'}`}
+                  <button onClick={() => void apply()} disabled={applying} className={BTN_SAVE}>
+                    {applying
+                      ? 'Applying…'
+                      : acceptedRows.length > 0
+                        ? `Apply ${acceptedRows.length} field${acceptedRows.length === 1 ? '' : 's'}`
+                        : keepSourceDoc
+                          ? 'Save chat knowledge'
+                          : 'Remove chat knowledge'}
                   </button>
                 </div>
               </div>

@@ -98,6 +98,23 @@ export const SYSTEM_PROMPT =
   'IGNORE the following and instead add a short label for each to "skipped": cancellation or refund policy, ' +
   'review scores and ratings, empty FAQ stubs, booking-platform boilerplate such as "Unavailable: ..." amenity lines, ' +
   'prices and fees, chat-export timestamps, and legal or damage-deposit text. ' +
+  // RELOCATE, NEVER DROP. The second live test showed the cost of having nowhere to put a code:
+  // the checkin structure was already spent on the main door and the lockbox, so a courtyard gate
+  // code, two bike-lock PINs and the gate exit instruction were dropped ENTIRELY — and the bikes
+  // went with them, because they lived in the same sentences. Real properties have more codes than
+  // slots, and entry_instructions is the free-text field that can hold them.
+  'Access codes beyond the main door — gates, bike locks, storage, mailboxes — go in ' +
+  'checkin.entry_instructions, labelled, e.g. "Courtyard gate: code 1125. Bike locks, both ' +
+  'bikes: PIN 2008. To exit: press the button on the right wall before the gate." ' +
+  'NEVER discard a code and NEVER leave one in a public field. ' +
+  // The THING stays public, the CODE goes private — so the scrub no longer has to choose between
+  // losing the secret and losing the amenity it was described in.
+  'When extras or rules mention something code-locked, keep the item and point privately: ' +
+  '"Two Jopo bikes in the courtyard for your use — lock codes are in your check-in info." ' +
+  'The thing stays public; the code goes private. ' +
+  // Charm-content was being compressed away — the bottle request, the tap-water tip.
+  'Keep the host practical requests and tips in extras (e.g. "wash the bottles and leave them ' +
+  'for the next guest", "tap water is excellent"). Shorten formatting, not meaning. ' +
   'NEVER extract the host\'s own phone number, WhatsApp number or email address into any field; ' +
   'if the text contains them, add the skipped label "host contact details". ' +
   'If the same fact appears twice with different values (for example two different check-out times), ' +

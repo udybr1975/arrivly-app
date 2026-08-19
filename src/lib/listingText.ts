@@ -22,16 +22,30 @@
 export const MAX_IMPORT_CHARS = 12_000
 
 /**
+ * Ceiling for the stored source document, MIRRORING the DB CHECK on
+ * `apartment_source_docs.content` (length <= 20000, verified at source 19 Aug 2026). Deliberately
+ * a SEPARATE constant from MAX_IMPORT_CHARS: that one is derived from the Groq TPM reservation and
+ * can move, this one is a database constraint and cannot.
+ * CURRENTLY UNREACHABLE, and the REASON is the part worth writing down — an earlier version of
+ * this comment gave the wrong one. It is not that MAX_IMPORT_CHARS is 12,000; it is that
+ * truncateForImport caps by TOKENS, and CONTENT_TOKEN_BUDGET (3,300) x the estimator's 3
+ * chars/token for ASCII bounds any stored document at 9,900 characters — fewer in any other
+ * script. So the slice is defence against a future change to the token budget or to the caller,
+ * not against today's input. Measured, not reasoned from the constant names.
+ */
+export const SOURCE_DOC_MAX_CHARS = 20_000
+
+/**
  * The real cap: estimated PROMPT tokens for the document text.
  *
  * DERIVED FROM THE TPM CEILING. Groq debits promptTokens + max_tokens as a RESERVATION, and a
  * reservation above the verified 8,000 TPM ceiling can NEVER be satisfied on any bucket state —
  * a PERMANENT failure no retry clears. Measured, not assumed:
  *
- *   system    SYSTEM_PROMPT, 2,519 chars, measured with estimateTokens =   841
+ *   system    SYSTEM_PROMPT, 3,221 chars, measured with estimateTokens = 1,077
  *   content   CONTENT_TOKEN_BUDGET                                     = 3,300
  *   output    max_tokens in api/import-listing.ts                      = 2,800
- *   reservation                                                        = 6,941 < 8,000
+ *   reservation                                                        = 7,177 < 8,000
  *
  * A CHARACTER cap alone CANNOT be safe here, and this is the trap the first version fell into.
  * SYSTEM_PROMPT tells the model to preserve the document's language, and nothing restricts the
@@ -128,6 +142,12 @@ export function truncateForImport(text: string): { text: string; truncated: bool
     }
     truncated = true
   }
+
+  // A UTF-16 slice can cut an astral character in half and leave a LONE HIGH SURROGATE at the
+  // end. Harmless for a model call, but the importer now WRITES this text to Postgres, which
+  // rejects an unpaired surrogate — surfacing as an opaque driver message on the "Chat
+  // knowledge" section. Dropping one trailing orphan is exact; a well-formed pair is untouched.
+  if (/[\uD800-\uDBFF]$/.test(out)) out = out.slice(0, -1)
 
   return { text: out, truncated }
 }

@@ -123,10 +123,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // BUDGET ARITHMETIC — the reservation must fit under the verified 8,000 TPM ceiling, because
     // Groq debits promptTokens + max_tokens RESERVED (never the completion actually generated),
     // and a reservation above the ceiling is a PERMANENT failure that NO retry clears:
-    //   system    SYSTEM_PROMPT, measured with estimateTokens =   841
+    //   system    SYSTEM_PROMPT, measured with estimateTokens = 1,077
     //   content   CONTENT_TOKEN_BUDGET (see listingText.ts)   = 3,300
     //   output    maxTokens below                             = 2,800
-    //   reservation                                           = 6,941 < 8,000  ✓  (~1,059 spare)
+    //   reservation                                           = 7,177 < 8,000  ✓  (~823 spare)
+    //   THE MARGIN IS NOW THIN — 823 against the test's own >= 800 floor. The relocate/
+    //   cross-reference/anti-compression rules cost ~236 tokens and were already tightened
+    //   once to clear it. The NEXT prompt growth trips the test, which is the test working.
     // The content half is capped in TOKENS, not characters, because SYSTEM_PROMPT tells the model
     // to preserve the document's language and nothing restricts the script a host may upload —
     // 12,000 chars is ~4,000 tokens of Latin but ~7,600 of Greek, and the character-only cap this

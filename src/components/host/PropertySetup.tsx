@@ -9,6 +9,7 @@ import { resolveImageUrl, uploadImage, deleteImage } from '../../lib/imageUtils'
 import { useToast } from '../shared/Toast'
 import PolicyBlockToast from '../shared/PolicyBlockToast'
 import ImportListing, { type AcceptedImport, type ApplySectionResult } from './ImportListing'
+import { SOURCE_DOC_MAX_CHARS } from '../../lib/listingText'
 import {
   EXTRAS_CATEGORIES,
   DETAIL_CATEGORY,
@@ -835,9 +836,10 @@ export default function PropertySetup() {
   // writes through the SAME paths the tabs use — deleteMatchingDetails with the shared matchers
   // for WiFi and Check-in, the canonical DETAIL_CATEGORY labels, saveRules for the rules flow,
   // and /generate-host-picks for picks. No second write path exists for imported content, so
-  // nothing can drift from what a manual save does. THE ONE EXCEPTION is extras, which uses a
-  // category-scoped .in() delete (see the comment at that section) because it must touch ONLY
-  // the accepted categories — deleteMatchingDetails has no notion of a category subset.
+  // nothing can drift from what a manual save does. TWO EXCEPTIONS, both direct table writes with
+  // no tab equivalent: extras uses a category-scoped .in() delete (see that section) because it
+  // must touch ONLY the accepted categories, and chat knowledge writes apartment_source_docs,
+  // which no tab edits at all.
   //
   // ORDER IS LOAD-BEARING: basics first, because a blocked address swap must abort the rest and
   // hand the host the policy panel. Sections after that are INDEPENDENT and are never rolled
@@ -991,7 +993,48 @@ export default function PropertySetup() {
       }
     }
 
-    // 6. Picks LAST — hands the text to the EXISTING /generate-host-picks and drops the host into
+    // 6. Chat knowledge — the host's ORIGINAL document, so the guest chat can answer the
+    // specifics the structured tabs compress away. Written with the host's OWN authenticated
+    // client: apartment_source_docs is RLS'd to `apartment_id IN (host's apartments)` and anon
+    // holds zero grants, so this needs no serverless hop — the host is writing their own row.
+    //
+    // UNTICKED MUST DELETE, NOT SKIP. A re-import with the box off has to remove an existing
+    // document, or a stale snapshot keeps answering questions the host thought they had revoked.
+    if (accepted.sourceDoc !== null) {
+      // Sliced to the DB CHECK (length <= 20000). Unreachable TODAY, for a measured reason:
+      // the caller applies truncateForImport, whose token budget bounds any stored document at
+      // 9,900 chars of ASCII (3,300 tokens x 3 chars/token) and fewer in any other script. The
+      // slice exists so a future rise in that budget cannot turn this write into a constraint
+      // violation — the two limits answer to different owners.
+      const content = accepted.sourceDoc.slice(0, SOURCE_DOC_MAX_CHARS)
+      const { error } = await supabase
+        .from('apartment_source_docs')
+        // imported_at is set explicitly: the column defaults on INSERT only, so without this a
+        // re-import would keep the ORIGINAL timestamp and any future "stored on <date>" UI would
+        // describe the wrong document.
+        .upsert(
+          { apartment_id: apartmentId, content, chat_enabled: true, imported_at: new Date().toISOString() },
+          { onConflict: 'apartment_id' },
+        )
+      if (error) out.push({ section: 'Chat knowledge', ok: false, message: error.message })
+      else out.push({ section: 'Chat knowledge', ok: true, message: 'saved' })
+    } else {
+      // .select() so the result distinguishes "removed one" from "there was none" — reporting
+      // "removed" to a host who never stored a document is a claim the code cannot support.
+      const { data: deleted, error } = await supabase
+        .from('apartment_source_docs')
+        .delete()
+        .eq('apartment_id', apartmentId)
+        .select('apartment_id')
+      if (error) out.push({ section: 'Chat knowledge', ok: false, message: error.message })
+      else out.push({
+        section: 'Chat knowledge',
+        ok: true,
+        message: (deleted?.length ?? 0) > 0 ? 'removed' : 'none stored',
+      })
+    }
+
+    // 7. Picks LAST — hands the text to the EXISTING /generate-host-picks and drops the host into
     // the EXISTING candidates review. Zero new picks code, and the host still confirms every
     // place before anything is written to host_picks.
     if (accepted.picksText) {

@@ -27,6 +27,7 @@ import {
   CONTENT_TOKEN_BUDGET,
   OUTPUT_TOKEN_BUDGET,
   TPM_CEILING,
+  SOURCE_DOC_MAX_CHARS,
   looksLikeCredentialText,
 } from '../../src/lib/listingText.ts'
 
@@ -626,4 +627,154 @@ test('a multi-word non-Latin fragment is not treated as an orphan value', () => 
   const s = 'Ο κωδικός\nΔιαμέρισμα 412'
   assert.equal(scrubCredentialSentences(s).text, s)
   assert.equal(scrubCredentialSentences(s).redacted, 0)
+})
+
+// ── the bike-guide fixture (second live test, commit 993fa3d) ─────────────────────────────
+//
+// The scrub correctly killed the public sentences carrying codes — and the model had nowhere to
+// PUT them, because the checkin structure was already spent on the main door and the lockbox. So
+// a courtyard gate code, two bike-lock PINs and the gate exit instruction were dropped ENTIRELY,
+// and the bikes went with them, because they lived in the same sentences.
+//
+// WHAT THIS TEST CAN AND CANNOT PROVE. The relocation itself is a PROMPT behaviour — whether the
+// model actually moves a code into entry_instructions is not unit-testable and gets the live
+// re-run. What the pure layer guarantees, and what is asserted here, is the half that must hold
+// no matter what the model does: whatever lands in a PUBLIC field carries no code, and whatever
+// lands in checkin is passed through untouched so a relocated code SURVIVES.
+const BIKE_GUIDE_FIXTURE = `Your Helsinki Adventure: Bicycle & Picnic Guide
+To make your stay extra special, you have two Jopo bikes (one Orange and one
+Light Blue) ready for you in the courtyard. The Locks: Both bikes use code
+locks. The PIN for both is 2008. Exiting the Property: To open the courtyard
+gate from the inside, press the button on the right wall. Coming Back: use
+code 1125 at the gate keypad, or simply use your apartment key.
+Picnic Ready? In the studio: 2 Reusable Water Bottles (Please wash and leave
+for the next guest). 2 Picnic Bags for you to borrow. Tip: Fill your bottles
+with Finnish tap water — it's some of the cleanest in the world!`
+
+// A hand-built response in the shape the NEW prompt asks for: codes relocated into
+// entry_instructions, the bikes kept publicly with a private pointer, the tips kept verbatim.
+const RELOCATED_RESPONSE = {
+  checkin: {
+    entry_instructions:
+      'Courtyard gate: code 1125 at the keypad, or use your apartment key. ' +
+      'Bike locks, both bikes: PIN 2008. ' +
+      'To exit the courtyard: press the button on the right wall.',
+  },
+  extras: [
+    {
+      category: 'Amenities',
+      content:
+        'Two Jopo bikes (orange and light blue) in the courtyard for your use — lock codes are in your check-in info.\n' +
+        '2 reusable water bottles in the studio. Please wash them and leave them for the next guest.\n' +
+        '2 picnic bags to borrow.',
+    },
+    { category: 'Good to know', content: 'Fill your bottles with Finnish tap water — some of the cleanest in the world.' },
+  ],
+}
+
+test('FIXTURE: no digit run reaches a public field, and relocated codes survive in checkin', () => {
+  const { proposal, redacted } = validateImport(RELOCATED_RESPONSE)
+
+  // (1) Nothing public carries a code. Asserted against a proposal that DOES contain a digit run
+  // in a public field, so the assertion can fail — the relocated response alone has no digits in
+  // its public text and would have passed no matter what validateImport did.
+  const withCode = validateImport({
+    ...RELOCATED_RESPONSE,
+    extras: [...RELOCATED_RESPONSE.extras, { category: 'Safety', content: 'Gate code 1125.' }],
+  })
+  assert.ok(!/\d{3,8}/.test(withCode.proposal.extras.map(e => e.content).join(' ')))
+  assert.equal(withCode.redacted, 1)
+
+  const publicText = [
+    ...proposal.extras.map(e => e.content),
+    proposal.rules ?? '',
+    proposal.basics.description ?? '',
+    proposal.basics.floor_note ?? '',
+  ].join('\n')
+  assert.ok(!/\d{3,8}/.test(publicText), `a digit run reached a public field: ${JSON.stringify(publicText)}`)
+
+  // (2) checkin is passed through UNSCRUBBED — otherwise relocation would be pointless, because
+  // the belt would delete the codes the prompt just moved somewhere safe.
+  assert.match(proposal.checkin.entry_instructions, /1125/)
+  assert.match(proposal.checkin.entry_instructions, /2008/)
+  assert.equal(proposal.checkin.entry_instructions, RELOCATED_RESPONSE.checkin.entry_instructions)
+
+  // (3) The amenity and the host's requests SURVIVE the scrub — the second live finding was that
+  // the bikes disappeared with their codes, and the charm content was compressed away.
+  const amenities = proposal.extras.find(e => e.category === 'Amenities')
+  assert.ok(amenities, 'the bikes must still be there')
+  assert.match(amenities.content, /Jopo bikes/)
+  assert.match(amenities.content, /lock codes are in your check-in info/)
+  assert.match(amenities.content, /wash them and leave them for the next guest/)
+  assert.match(proposal.extras.find(e => e.category === 'Good to know').content, /tap water/)
+
+  // Nothing needed removing, because the model put nothing public that carried a value.
+  assert.equal(redacted, 0)
+})
+
+test('FIXTURE: the UNRELOCATED shape is what the belt has to catch', () => {
+  // The failure mode from the live test: the model leaves the codes in the public prose. The
+  // scrub must remove the values and keep the amenity, so the host loses a sentence, not the bikes.
+  const { proposal, redacted } = validateImport({
+    extras: [{
+      category: 'Amenities',
+      content:
+        'Two Jopo bikes in the courtyard for your use.\n' +
+        'Both bikes use code locks. The PIN for both is 2008.\n' +
+        'Coming back: use code 1125 at the gate keypad.',
+    }],
+  })
+  assert.equal(redacted, 2)
+  // The two VALUE sentences die; "Both bikes use code locks." SURVIVES — it names a credential but
+  // carries no value, which is the conjunction working exactly as designed. The host keeps the
+  // bikes and the fact that they are locked, and loses only the two secrets.
+  assert.equal(
+    proposal.extras[0].content,
+    'Two Jopo bikes in the courtyard for your use.\nBoth bikes use code locks.',
+  )
+})
+
+test('FIXTURE: the raw source document is never itself a proposal field', () => {
+  // The fixture is what gets STORED for the chat, not what gets sorted into tabs — the pure layer
+  // never sees it as a value, so this only pins that the fixture text is code-bearing and would
+  // therefore be scrubbed if it ever were routed into a public field by mistake.
+  assert.ok(/\d{3,8}/.test(BIKE_GUIDE_FIXTURE))
+  const asExtras = validateImport({ extras: [{ category: 'Good to know', content: BIKE_GUIDE_FIXTURE }] })
+  const survived = asExtras.proposal.extras[0]?.content ?? ''
+  assert.ok(!/2008|1125/.test(survived), 'the fixture routed publicly must lose both codes')
+})
+
+// ── the stored source document ────────────────────────────────────────────────────────────
+
+test('SOURCE_DOC_MAX_CHARS mirrors the apartment_source_docs CHECK', () => {
+  // The DB is the real bound: `CHECK (length(content) <= 20000)`, verified at source 19 Aug 2026.
+  // This constant is the client-side slice that keeps a write from ever reaching it. Drift fails
+  // loudly at the write rather than silently, so this is cheap insurance — but the two numbers
+  // answer to different owners and nothing else pins them together.
+  assert.equal(SOURCE_DOC_MAX_CHARS, 20_000)
+})
+
+test('what the importer would STORE can never breach the DB CHECK', () => {
+  // The stored text is truncateForImport(text.trim()).text — the same transform the endpoint
+  // applies — so the token budget bounds it long before the character CHECK does.
+  for (const sample of ['a '.repeat(40_000), 'x'.repeat(40_000), 'α'.repeat(40_000)]) {
+    const stored = truncateForImport(sample.trim()).text
+    assert.ok(stored.length <= SOURCE_DOC_MAX_CHARS, `stored ${stored.length} > CHECK`)
+    // And the measured reason the slice is unreachable today: ASCII caps at budget x 3 chars.
+    assert.ok(stored.length <= CONTENT_TOKEN_BUDGET * 3)
+  }
+})
+
+// == UTF-16 safety of the STORED document ==================================================
+//
+// truncateForImport slices by UTF-16 index, so a cut can land inside a surrogate pair. Harmless
+// for a model call; the importer now WRITES this text to Postgres, which rejects an unpaired
+// surrogate and would surface an opaque driver error on the Chat knowledge section.
+
+test('truncation never emits a trailing lone surrogate', () => {
+  const { text } = truncateForImport('\u{1F600}'.repeat(20000))
+  const last = text.charCodeAt(text.length - 1)
+  assert.ok(!(last >= 0xd800 && last <= 0xdbff), 'stored text ends in a lone high surrogate')
+  // Well-formed input is untouched - the guard drops at most one orphan.
+  assert.equal(truncateForImport('hello world').text, 'hello world')
 })
