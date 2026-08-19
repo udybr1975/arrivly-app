@@ -17,6 +17,7 @@ import { ARRIVLY_CONFIG } from '../../config'
 import { iosNeedsHomeScreen, isStandalone, subscribeGuestToPush, checkPermission, isSubscribed } from '../../lib/webpush'
 import { api } from '../../lib/api'
 import { EXTRAS_CATEGORIES, isRulesCategory, isWifiCategory, isCheckinCategory } from '../../lib/detailCategories'
+import { extractDoorCode } from '../../lib/listingText'
 
 interface Host {
   brand_name: string | null
@@ -797,11 +798,23 @@ export default function GuestPage() {
   }
 
   // First door/entry code found in the private check-in rows — surfaced as a one-tap
-  // copy cell in the home quick-access strip (same regex the check-in card uses).
+  // copy cell in the home quick-access strip (same pattern the check-in card uses).
+  //
+  // MATCHES A CODE-SHAPED VALUE, not "the rest of the line after a keyword". The old pattern
+  // accepted the bare word `door` and captured to the end of the line, so
+  // against the two-block prose the importer now writes — "…the first door on your right. The key
+  // is in the lockbox…" — the FIRST match was `door`, and the button copied "on your right. The
+  // key is in the lockbox left of the door. Lockbox code: 0000." That was always possible on a
+  // multi-sentence row; the new prose shape makes it the EXPECTED case, because "introduce a
+  // thing before giving its code" guarantees a non-code noun precedes the code.
+  // Requiring `code`/`pin` plus a short alphanumeric token is the same narrowing CODE_VALUE_RE
+  // already uses server-side. Verified against every stored shape: "Door code: 2049#" -> 2049#,
+  // "Lockbox code: 0000." -> 0000, "Both locks open with PIN 9999." -> 9999,
+  // "Check-in from: 15:00" -> no match (correct: not a code).
   const quickDoorCode: string | null = (() => {
     for (const d of checkinDetails) {
-      const m = d.content.match(/(?:code|door|entry)[:\s]+([^\n\r]+)/i)
-      if (m) return m[1].trim()
+      const m = extractDoorCode(d.content)
+      if (m) return m
     }
     return null
   })()
@@ -1026,13 +1039,17 @@ export default function GuestPage() {
                 <p className="text-[10px] tracking-widest uppercase text-[#9a958c] mb-4">Check-in info</p>
                 <div className="space-y-3">
                   {checkinDetails.map(d => {
-                    const doorCodeMatch = d.content.match(/(?:code|door|entry)[:\s]+([^\n\r]+)/i)
-                    const doorCode = doorCodeMatch ? doorCodeMatch[1].trim() : null
+                    const doorCode = extractDoorCode(d.content)
                     return (
                       <div key={d.id}>
                         <p className="text-[10px] uppercase tracking-widest text-[#9a958c] mb-1">{d.category}</p>
                         <div className="flex items-start justify-between gap-3">
-                          <p className="text-[#1c1c1a] text-sm leading-relaxed">{d.content}</p>
+                          {/* whitespace-pre-line: the importer now writes entry_instructions as
+                              TWO labelled blocks separated by a blank line, and without this the
+                              browser collapses them into one run-on paragraph — which is the
+                              unreadable output the third live test found. House rules and extras
+                              already had this; check-in was the one private block that did not. */}
+                          <p className="text-[#1c1c1a] text-sm leading-relaxed whitespace-pre-line">{d.content}</p>
                           {doorCode && (
                             <button
                               onClick={() => copyText(doorCode, setCopiedDoor)}

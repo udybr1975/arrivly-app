@@ -29,6 +29,7 @@ import {
   TPM_CEILING,
   SOURCE_DOC_MAX_CHARS,
   looksLikeCredentialText,
+  extractDoorCode,
 } from '../../src/lib/listingText.ts'
 
 // ── validation: categories ────────────────────────────────────────────────────────────────
@@ -641,6 +642,15 @@ test('a multi-word non-Latin fragment is not treated as an orphan value', () => 
 // re-run. What the pure layer guarantees, and what is asserted here, is the half that must hold
 // no matter what the model does: whatever lands in a PUBLIC field carries no code, and whatever
 // lands in checkin is passed through untouched so a relocated code SURVIVES.
+//
+// THE CODES IN THIS FILE (0321, 1125, 1125A, 2008) ARE FAKE — confirmed by Udy, 19 Aug 2026.
+// Three separate audit rounds flagged them as possible live values for an occupied property,
+// which was the right question to ask given a repo public since creation. It is now ANSWERED:
+// no rotation is needed and these strings may stay. They are kept BECAUSE they are the exact
+// shapes the scrub must survive — 1125A defeats a trailing \b, the cross-line "Building code" /
+// "1125A" pair defeated a single-pass scrub — and re-basing them would weaken the regression
+// surface for no gain. DO NOT re-raise this, and DO NOT introduce a REAL code as a fixture:
+// synthetic or nothing.
 const BIKE_GUIDE_FIXTURE = `Your Helsinki Adventure: Bicycle & Picnic Guide
 To make your stay extra special, you have two Jopo bikes (one Orange and one
 Light Blue) ready for you in the courtyard. The Locks: Both bikes use code
@@ -777,4 +787,138 @@ test('truncation never emits a trailing lone surrogate', () => {
   assert.ok(!(last >= 0xd800 && last <= 0xdbff), 'stored text ends in a lone high surrogate')
   // Well-formed input is untouched - the guard drops at most one orphan.
   assert.equal(truncateForImport('hello world').text, 'hello world')
+})
+
+// == the two-block prose shape (third live test) ===========================================
+//
+// Relocation worked and produced an unreadable run-on: five unrelated thoughts, no structure,
+// codes stapled to the end. The prompt now asks for two labelled blocks separated by a blank
+// line. Whether the MODEL obeys is prompt behaviour and gets the live re-run; what the pure
+// layer must guarantee is that the shape SURVIVES it — checkin untouched, blank line intact,
+// and the public cross-reference sentence kept while carrying no digit run.
+
+const PROSE_ENTRY =
+  'Getting in: Enter through entrance B, one floor up - the studio is the first door on your right. ' +
+  'The key is in the lockbox left of the door. Lockbox code: 0321.\n\n' +
+  'During your stay: Keep the key with you when you go out. In the courtyard you will find two Jopo ' +
+  'bikes - one orange, one light blue - free for you to use. Both locks open with PIN 2008.'
+
+test('PROSE: entry_instructions passes through unscrubbed, blank line and codes intact', () => {
+  const { proposal, redacted } = validateImport({
+    checkin: { entry_instructions: PROSE_ENTRY },
+    extras: [{
+      category: 'Amenities',
+      content: 'Two Jopo bikes (orange and light blue) wait in the courtyard for you - lock codes are in your check-in info.',
+    }],
+  })
+  // Byte-identical: checkin is NEVER scrubbed, which is the whole reason relocation is safe.
+  assert.equal(proposal.checkin.entry_instructions, PROSE_ENTRY)
+  assert.match(proposal.checkin.entry_instructions, /0321/)
+  assert.match(proposal.checkin.entry_instructions, /2008/)
+  // The blank line is what the guest page's whitespace-pre-line renders as two blocks.
+  assert.ok(proposal.checkin.entry_instructions.includes('\n\n'), 'blank line between the two blocks was lost')
+  // Both labels survive.
+  assert.match(proposal.checkin.entry_instructions, /^Getting in:/)
+  assert.match(proposal.checkin.entry_instructions, /During your stay:/)
+
+  // The public cross-reference SURVIVES the scrub and carries no digit run - the thing is
+  // public, the code is not.
+  assert.equal(redacted, 0)
+  assert.match(proposal.extras[0].content, /Two Jopo bikes/)
+  assert.match(proposal.extras[0].content, /lock codes are in your check-in info/)
+  assert.ok(!/\d{3,8}/.test(proposal.extras[0].content))
+})
+
+test('PROSE: a cross-reference that leaks the code still loses only the code', () => {
+  // If the model writes the pointer AND the value, the belt takes the value sentence and keeps
+  // the introduction - the host loses a sentence, never the bikes.
+  const { proposal, redacted } = validateImport({
+    extras: [{
+      category: 'Amenities',
+      content: 'Two Jopo bikes wait in the courtyard for you. Both locks open with PIN 2008.',
+    }],
+  })
+  assert.equal(redacted, 1)
+  assert.equal(proposal.extras[0].content, 'Two Jopo bikes wait in the courtyard for you.')
+})
+
+// == the guest page's door-code extraction ==================================================
+//
+// GuestPage surfaces the first code in the private check-in rows as a one-tap copy cell. Tested
+// through the SHIPPED helper, not a copy of its pattern: there were three uncoordinated copies of
+// the old regex and the test declared a fourth, so it pinned something nothing shipped and
+// editing one call site was invisible here.
+//
+// Its predecessor accepted the bare word `door` and captured to end of line, so against the
+// two-block prose this commit mandates it copied a sentence fragment instead of the code.
+
+test('the copy cell extracts a CODE, not the rest of the line', () => {
+  const firstBlock = 'Getting in: Enter through entrance B, one floor up - the studio is the first ' +
+    'door on your right. The key is in the lockbox left of the door. Lockbox code: 0000.'
+  assert.equal(extractDoorCode(firstBlock), '0000', 'the bare word door must not win')
+
+  // Every shape saveCheckin and the importer actually store.
+  assert.equal(extractDoorCode('Door code: 2049#'), '2049#')
+  assert.equal(extractDoorCode('Both locks open with PIN 9999.'), '9999')
+  // Proximity, not adjacency - hosts write words between the label and the value.
+  assert.equal(extractDoorCode('The door code is 1234'), '1234')
+})
+
+test('a code longer than the cap yields NOTHING, never a truncated code', () => {
+  // The dangerous failure: a greedy {3,12} with no right boundary captured the first twelve
+  // characters and the cell DISPLAYED them. A guest would stand at the door with a plausible
+  // value that cannot work. Failing closed sends them to the full text instead.
+  assert.equal(extractDoorCode('Door code: ABCD1234EFGH56'), null)
+  assert.equal(extractDoorCode('Door code: 1234567890123'), null)
+})
+
+test('a value must contain a digit, and a non-code is not a code', () => {
+  assert.equal(extractDoorCode('Door code: see the WhatsApp message'), null)
+  assert.equal(extractDoorCode('the code changes weekly'), null)
+  assert.equal(extractDoorCode('Check-in from: 15:00'), null)
+  assert.equal(extractDoorCode('the first door on your right'), null)
+  assert.equal(extractDoorCode('Quiet hours 22:00 to 08:00.'), null)
+})
+
+test('the market languages are covered, not just English', () => {
+  // SYSTEM_PROMPT preserves the document's language, so a Finnish import stores ovikoodi and a
+  // Spanish one codigo. An English-only pattern stored a code this cell could never surface.
+  assert.equal(extractDoorCode('Porttikoodi 1125.'), '1125')
+  assert.equal(extractDoorCode('Ovikoodi 2049#'), '2049#')
+  assert.equal(extractDoorCode('El código de la puerta es 1125.'), '1125')
+})
+
+test('BOTH gates found this: a value is never returned TRUNCATED', () => {
+  // Round 3 found three ways the previous fix still emitted a wrong value, all the same family.
+  // A character class admitting '-', '#' and '*' invalidates every \b used as its boundary, because
+  // \b is defined against [A-Za-z0-9_] — so those characters created fresh legal starts INSIDE a
+  // code and the scan slid to them.
+  assert.equal(extractDoorCode('Door code: 1234-5678-9012'), null, 'over-cap: fail closed, never trim')
+  assert.equal(extractDoorCode('Door code: ABCD1234EFGH56'), null)
+  assert.equal(extractDoorCode('Door code, please use the 12345678901234'), null)
+  // Punctuation inside a code is kept INTACT rather than shaved off the front.
+  assert.equal(extractDoorCode('Door code: *1234#'), '*1234#')
+  assert.equal(extractDoorCode('Door code: 1234-5678'), '1234-5678')
+  // Slicing the line to the window made the window a TERMINATOR as well as a distance, so a code
+  // straddling the cut was trimmed. Tokens are now matched whole and judged by length.
+  assert.equal(extractDoorCode('Door code (main entrance): 447198271'), '447198271')
+})
+
+test('benign compounds do not win over the real code, on either side', () => {
+  // English puts the qualifier first, French and Spanish put it after — without both checks the
+  // postcode wins over the code later in the same sentence. Mirrors BENIGN_CODE_PHRASES_RE.
+  assert.equal(extractDoorCode('postal code 00100 is ours'), null)
+  assert.equal(
+    extractDoorCode('Entree: 12 rue X, code postal 75003. Le digicode est 1125A.'),
+    '1125A',
+  )
+})
+
+test('a keyword must not match inside an unrelated word', () => {
+  // \bpins? and \bclaves? are anchored; code/koodi/codigo are deliberately NOT, because Finnish
+  // compounds and French digicode must match inside a word.
+  assert.equal(extractDoorCode('Chopin 1885'), null)
+  assert.equal(extractDoorCode('the spin class, 3 min walk, room 214'), null)
+  assert.equal(extractDoorCode('Porttikoodi 1125.'), '1125')
+  assert.equal(extractDoorCode('Door codes: 1125'), '1125')
 })

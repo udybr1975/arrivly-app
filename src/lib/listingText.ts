@@ -42,10 +42,10 @@ export const SOURCE_DOC_MAX_CHARS = 20_000
  * reservation above the verified 8,000 TPM ceiling can NEVER be satisfied on any bucket state —
  * a PERMANENT failure no retry clears. Measured, not assumed:
  *
- *   system    SYSTEM_PROMPT, 3,221 chars, measured with estimateTokens = 1,077
+ *   system    SYSTEM_PROMPT, 3,284 chars, measured with estimateTokens = 1,099
  *   content   CONTENT_TOKEN_BUDGET                                     = 3,300
  *   output    max_tokens in api/import-listing.ts                      = 2,800
- *   reservation                                                        = 7,177 < 8,000
+ *   reservation                                                        = 7,199 < 8,000
  *
  * A CHARACTER cap alone CANNOT be safe here, and this is the trap the first version fell into.
  * SYSTEM_PROMPT tells the model to preserve the document's language, and nothing restricts the
@@ -186,4 +186,81 @@ export function looksLikeCredentialText(
   // ImportListing, and the cry-wolf argument recorded there.
   if (opts.digitRun === false) return false
   return new RegExp(DIGIT_RUN_RE.source).test(text)
+}
+
+/**
+ * Find the access code inside a private check-in row, for the guest page's one-tap copy cell.
+ *
+ * ONE IMPLEMENTATION, EXPORTED. There were three uncoordinated copies of the old pattern — the
+ * quick-access strip, the check-in card, and a fourth declared inside the test — so the test
+ * pinned something nothing shipped and editing one call site was invisible to the suite.
+ *
+ * TOKENISE, THEN FILTER. Not a regex that tries to express the whole rule. Two earlier attempts
+ * failed here in ways worth recording, because both produced a WRONG VALUE rather than none, and
+ * a wrong code is far worse than no code: the guest stands at the door with something plausible
+ * that cannot work, where an absent button would have sent them to the full text.
+ *
+ *   1. `([A-Za-z0-9#*-]{3,12})` bounded by \b and a negative lookahead LOOKED fail-closed and was
+ *      not. `\b` is defined against [A-Za-z0-9_], but the class admits `-`, `#` and `*` — every
+ *      one of which creates a fresh legal boundary INSIDE a code. So "1234-5678-9012" slid the
+ *      window and returned "-5678-9012", and "*1234#" returned "1234#", silently dropping a
+ *      leading character. A CHARACTER CLASS THAT ADMITS NON-WORD CHARACTERS INVALIDATES EVERY \b
+ *      USED AS ITS BOUNDARY.
+ *   2. Slicing the line to the window before matching made the window a TERMINATOR as well as a
+ *      distance: the lookahead then saw end-of-window instead of the next character, so a code
+ *      straddling the cut was truncated rather than rejected.
+ *
+ * Matching whole tokens and testing their LENGTH fixes both: an over-long code is seen entire and
+ * rejected, and a code containing punctuation is returned intact. The window is now only a
+ * distance test on where the token starts.
+ *
+ * A VALUE MUST CONTAIN A DIGIT, as a FILTER over every candidate in the window rather than a veto
+ * on the first — "El código de la puerta es 1125" puts two words between the label and the value,
+ * and a lazy single-regex version matched "puerta", found no digit and gave up.
+ *
+ * BENIGN COMPOUNDS ARE EXCLUDED ON BOTH SIDES, mirroring BENIGN_CODE_PHRASES_RE server-side.
+ * English puts the qualifier first ("postal code 00100"), French and Spanish put it after ("code
+ * postal 75003", "código postal"), and without both checks the postcode wins over the real code
+ * later in the sentence.
+ *
+ * KEYWORDS COVER THE LIVE MARKET, with leading \b only on the English words: Finnish compounds
+ * ("porttikoodi", "ovikoodi") and French "digicode" must match INSIDE a word, while `\bpins?`
+ * must not fire on "Chopin".
+ *
+ * Every failure direction is safe: no match means no copy cell, and the full row text is shown to
+ * the same viewer on the same page regardless.
+ */
+export const DOOR_CODE_KEYWORD_RE = /(?:\bcodes?|digicode|\bpins?|koodi|c[oó]digos?|\bclaves?)\b/i
+
+/** Distance only — how far after the keyword a value may START. Never crosses a line. */
+export const DOOR_CODE_WINDOW = 26
+
+/** A whole run of code-ish characters. Length is checked in code, not by the regex, so an
+ *  over-long token is REJECTED rather than trimmed. */
+export const DOOR_CODE_TOKEN_RE = /[A-Za-z0-9#*-]+/
+
+const BENIGN_BEFORE_RE = /(?:postal|post|zip|area|dialling|dialing|dress|country|qr|bar|error)\s*$/i
+const BENIGN_AFTER_RE = /^\s*(?:postal|postale|zip|area|de\s+barras)\b/i
+
+export function extractDoorCode(text: string): string | null {
+  // Fresh regexes per call: /g is stateful via lastIndex, and a shared instance would make results
+  // depend on call order.
+  const keyword = new RegExp(DOOR_CODE_KEYWORD_RE.source, 'gi')
+  let k: RegExpExecArray | null
+  while ((k = keyword.exec(text)) !== null) {
+    // Bounded slice, not the whole tail: slicing the remainder on every keyword hit is O(n*k).
+    // WINDOW + 16 is enough to see a token that STARTS inside the window and runs past it, which
+    // is what lets an over-long code be rejected WHOLE instead of trimmed.
+    const line = text
+      .slice(keyword.lastIndex, keyword.lastIndex + DOOR_CODE_WINDOW + 16)
+      .split(/[\n\r]/)[0]
+    if (BENIGN_BEFORE_RE.test(text.slice(Math.max(0, k.index - 14), k.index))) continue
+    if (BENIGN_AFTER_RE.test(line.slice(0, 14))) continue
+    for (const m of line.matchAll(new RegExp(DOOR_CODE_TOKEN_RE.source, 'g'))) {
+      if ((m.index ?? 0) >= DOOR_CODE_WINDOW) break
+      const token = m[0]
+      if (token.length >= 3 && token.length <= 12 && /\d/.test(token)) return token
+    }
+  }
+  return null
 }

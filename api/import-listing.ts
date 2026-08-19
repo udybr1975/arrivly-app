@@ -123,13 +123,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // BUDGET ARITHMETIC — the reservation must fit under the verified 8,000 TPM ceiling, because
     // Groq debits promptTokens + max_tokens RESERVED (never the completion actually generated),
     // and a reservation above the ceiling is a PERMANENT failure that NO retry clears:
-    //   system    SYSTEM_PROMPT, measured with estimateTokens = 1,077
+    //   system    SYSTEM_PROMPT, measured with estimateTokens = 1,099
     //   content   CONTENT_TOKEN_BUDGET (see listingText.ts)   = 3,300
     //   output    maxTokens below                             = 2,800
-    //   reservation                                           = 7,177 < 8,000  ✓  (~823 spare)
-    //   THE MARGIN IS NOW THIN — 823 against the test's own >= 800 floor. The relocate/
-    //   cross-reference/anti-compression rules cost ~236 tokens and were already tightened
-    //   once to clear it. The NEXT prompt growth trips the test, which is the test working.
+    //   reservation                                           = 7,199 < 8,000  ✓  (~801 spare)
+    //   THE MARGIN IS AT THE WALL — 801 against the test's own >= 800 floor. ONE token.
+    //   Precisely: +5 ASCII characters, or +2 non-ASCII, fails the test. The prose rules were
+    //   afforded by CONSOLIDATING three older passages, not by adding budget, and there is no
+    //   fat left to reclaim without losing a behaviour. NOTE EXTRAS_CATEGORIES is interpolated
+    //   into SYSTEM_PROMPT, so the queued category-naming migration will trip this test on a
+    //   commit that has nothing to do with the prompt — that is the test working, and it now
+    //   carries a prompt-tightening sub-task.
     // The content half is capped in TOKENS, not characters, because SYSTEM_PROMPT tells the model
     // to preserve the document's language and nothing restricts the script a host may upload —
     // 12,000 chars is ~4,000 tokens of Latin but ~7,600 of Greek, and the character-only cap this
