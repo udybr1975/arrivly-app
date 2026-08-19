@@ -16,17 +16,18 @@ import {
   MAX_EXTRAS_ITEMS,
   MAX_CONFLICT_VALUES,
   SYSTEM_PROMPT,
+  scrubCredentialSentences,
 } from './import-listing.ts'
 import {
   MAX_IMPORT_CHARS,
   MIN_EXTRACTED_CHARS,
   truncateForImport,
   stripWhatsAppStamps,
-  looksLikeCredentialText,
   estimateTokens,
   CONTENT_TOKEN_BUDGET,
   OUTPUT_TOKEN_BUDGET,
   TPM_CEILING,
+  looksLikeCredentialText,
 } from '../../src/lib/listingText.ts'
 
 // ── validation: categories ────────────────────────────────────────────────────────────────
@@ -383,4 +384,246 @@ test('the digit-run half can be switched off for number-bearing address fields',
   assert.equal(looksLikeCredentialText('Helsinki 00100', { digitRun: false }), false)
   // Words still apply with the digit run off — switching it off must not disarm the control.
   assert.equal(looksLikeCredentialText('wifi password hunter2', { digitRun: false }), true)
+})
+
+// ── credential scrub on PUBLIC fields ─────────────────────────────────────────────────────
+//
+// FROM A LIVE INCIDENT (commit a57102e): the model filed door codes correctly into the private
+// checkin fields AND repeated the values inside public extras prose. The review badge caught it,
+// but the badge is the last line of defence — these strings are the regression test for the belt
+// that stops the sort producing that content at all.
+
+test('the exact strings from the live incident are removed', () => {
+  for (const s of [
+    'lockbox with building code 1125A, lockbox code 0321',
+    'courtyard gate code 1125',
+    'The courtyard gate code is 1125 and the PIN is 2008.',
+    // BOTH of these escaped a first attempt, and both are the shapes the incident actually had:
+    // 'barrier' is not in the badge's enumerated noun list, and '1125A' has no trailing word
+    // boundary after the digits. The scrub-side word set and the boundary-free digit run exist
+    // for exactly these two.
+    'The barrier code is 4432.',
+    'The building code is 1125A.',
+    'Keypad combination 5567.',
+  ]) {
+    const r = scrubCredentialSentences(s)
+    assert.equal(r.text, '', `should have been fully scrubbed: ${s}`)
+    assert.ok(r.redacted >= 1)
+  }
+})
+
+test('the FACT survives when the VALUE is absent — the conjunction is the point', () => {
+  for (const s of [
+    'The courtyard gate is code-locked.',
+    'The door code is given at check-in.',
+    'There is a lockbox by the entrance.',
+    'Bins are emptied on Tuesday.',
+    'Tram 6 stops outside.',
+    // A time and a small number must not reach the 3-digit run, or ordinary prose would be gutted.
+    'Check-in is from 15:00.',
+    'Quiet hours 22:00 to 08:00.',
+    'Space 14 in the garage.',
+  ]) {
+    const r = scrubCredentialSentences(s)
+    assert.equal(r.text, s, `should have survived: ${s}`)
+    assert.equal(r.redacted, 0)
+  }
+})
+
+test('a rules string loses ONLY the offending sentence', () => {
+  const rules = 'No smoking anywhere. The gate code is 1125. Quiet hours after 22:00.'
+  const r = scrubCredentialSentences(rules)
+  assert.equal(r.redacted, 1)
+  assert.equal(r.text, 'No smoking anywhere. Quiet hours after 22:00.')
+})
+
+test('an extras item whose every sentence carries a code is DROPPED entirely', () => {
+  const { proposal, redacted } = validateImport({
+    extras: [
+      { category: 'Safety', content: 'lockbox with building code 1125A, lockbox code 0321' },
+      { category: 'Good to know', content: 'Courtyard gate code 1125. Recycling is downstairs.' },
+    ],
+  })
+  // Safety had nothing left, so the row is gone rather than rendered empty.
+  assert.equal(proposal.extras.length, 1)
+  assert.equal(proposal.extras[0].category, 'Good to know')
+  assert.equal(proposal.extras[0].content, 'Recycling is downstairs.')
+  assert.equal(redacted, 2)
+})
+
+test('rules are scrubbed through validateImport, and redacted is cumulative', () => {
+  const { proposal, redacted } = validateImport({
+    rules: 'No smoking. Gate code 1125. Be considerate.',
+    // 'barrier code' is NOT in the badge's noun list — it dies here only because the scrub-side
+    // word set is deliberately broader than the badge's.
+    extras: [{ category: 'Parking', content: 'Space 14. The barrier code is 4432.' }],
+  })
+  assert.equal(proposal.rules, 'No smoking. Be considerate.')
+  assert.equal(proposal.extras[0].content, 'Space 14.')
+  assert.equal(redacted, 2)
+})
+
+test('WIFI AND CHECKIN PASS THROUGH UNSCRUBBED — those fields are where codes belong', () => {
+  const { proposal, redacted } = validateImport({
+    wifi: { ssid: 'BemguStay', password: 'hunter2 code 1125' },
+    checkin: {
+      door_code: '2049#',
+      entry_instructions: 'Use the lockbox by the door, code 0321. The gate code is 1125.',
+    },
+  })
+  assert.equal(proposal.wifi.password, 'hunter2 code 1125')
+  assert.equal(proposal.checkin.door_code, '2049#')
+  assert.equal(proposal.checkin.entry_instructions, 'Use the lockbox by the door, code 0321. The gate code is 1125.')
+  assert.equal(redacted, 0)
+})
+
+test('picks_text is not scrubbed — recommendations, never a details row', () => {
+  const { proposal, redacted } = validateImport({ picks_text: 'Cafe Regatta, open until 20:00. Ravintola 1900 is nearby.' })
+  assert.equal(proposal.picks_text, 'Cafe Regatta, open until 20:00. Ravintola 1900 is nearby.')
+  assert.equal(redacted, 0)
+})
+
+test('redacted is 0 on clean input and never undefined', () => {
+  assert.equal(validateImport({}).redacted, 0)
+  assert.equal(validateImport(null).redacted, 0)
+  assert.equal(validateImport({ rules: 'No smoking.' }).redacted, 0)
+})
+
+// ── the line-break bypass (found by the security gate, round 1 of this commit) ─────────────
+//
+// A label and its value split across a newline arrive as two fragments, NEITHER carrying both
+// signals — so a single pass kept both and then rejoined them into exactly the string it was
+// meant to remove. All three layers passed a "Building code" / "1125A" pair across a line
+// break: prompt ignored, scrub silent, badge blind. This is that regression.
+
+test('a label/value pair split across a line break is caught by the orphan merge', () => {
+  for (const s of ['Building code\n1125A', 'Gate code\n1125', 'Lockbox\n0321']) {
+    const r = scrubCredentialSentences(s)
+    assert.equal(r.text, '', `line-break bypass survived: ${JSON.stringify(s)}`)
+    assert.ok(r.redacted >= 1)
+  }
+})
+
+test('the badge can now see an alphanumeric code, which is the incident shape', () => {
+  // \b\d{4,8}\b could not match the 1125 in 1125A because A kills the trailing boundary.
+  assert.equal(looksLikeCredentialText('Building code 1125A'), true)
+  // Leading boundary retained, so it still does not match mid-token.
+  assert.equal(looksLikeCredentialText('reference a12345'), false)
+})
+
+test('LINE BREAKS SURVIVE when nothing is redacted — every import depends on this', () => {
+  const bullets = 'Fuse box in the hall cupboard.\nSmoke alarm in every room.\nWater shut-off under the sink.'
+  const r = scrubCredentialSentences(bullets)
+  assert.equal(r.redacted, 0)
+  assert.equal(r.text, bullets, 'a clean multi-line list must come back byte-identical')
+})
+
+test('benign "code" compounds survive — postal codes are routine in this market', () => {
+  for (const s of ['The postal code is 00100.', 'El código postal es 08001.', 'The area code is 358.']) {
+    assert.equal(scrubCredentialSentences(s).text, s, `over-scrubbed: ${s}`)
+  }
+})
+
+test('the scrub reaches beyond the market languages the badge covers', () => {
+  assert.equal(scrubCredentialSentences('Ο κωδικός είναι 1125.').text, '')
+  assert.equal(scrubCredentialSentences('Der Zugangscode ist 1125.').text, '')
+})
+
+test('free-prose basics are scrubbed; single-value basics are not', () => {
+  const { proposal, redacted } = validateImport({
+    basics: {
+      description: 'Lovely flat. The gate code is 1125.',
+      floor_note: 'Third floor, keypad 5567.',
+      city: 'Helsinki',
+      street_number: '12',
+    },
+  })
+  assert.equal(proposal.basics.description, 'Lovely flat.')
+  assert.equal(proposal.basics.floor_note, undefined, 'nothing survived, so the field is dropped')
+  assert.equal(proposal.basics.city, 'Helsinki')
+  assert.equal(proposal.basics.street_number, '12')
+  assert.equal(redacted, 2)
+})
+
+// ── the orphan merge (round 2: the fixed point's own regression) ──────────────────────────
+//
+// The first fix for the split-value hole re-scrubbed the REJOINED text. That worked for the
+// newline case and then deleted a whole bulleted Safety section: bullets carry no terminators, so
+// pass 1 flattened four unrelated lines into one sentence and pass 2 dropped all of them for one
+// code — while the banner still said "1 sentence". Merging only the ADJACENT ORPHAN fixes both.
+
+test('a bulleted section loses ONLY the code pair, and the count stays truthful', () => {
+  const bullets = 'Fuse box in the hall\nGate code\n1125\nSmoke alarm in every room'
+  const r = scrubCredentialSentences(bullets)
+  assert.equal(r.redacted, 1, 'the banner count must describe what was actually removed')
+  assert.equal(r.text, 'Fuse box in the hall\nSmoke alarm in every room')
+})
+
+test('the TERMINATOR variant of the split-value hole is closed', () => {
+  // The fixed point could never close these — the split is idempotent across a full stop — so it
+  // is the orphan merge doing the work. Asserted as EXACT emptiness: an earlier version of this
+  // test used a substring probe that was silently a no-op (a newline followed by three literal
+  // d's, not a digit class) and therefore passed vacuously while hiding a sample that does not
+  // close. A test that cannot fail is worse than no test.
+  for (const s of ['Gate code.\n1125', 'Lockbox no. 1125']) {
+    assert.equal(scrubCredentialSentences(s).text, '', `survived: ${JSON.stringify(s)}`)
+  }
+})
+
+test('DECLARED BOUNDARY: a heading plus a multi-token value line is NOT closed', () => {
+  // 'Access codes.' names a credential but carries no value; 'Front door 1125' carries a value
+  // but names none ('door' alone is not 'door code') and is multi-token, so it is not an orphan.
+  // The merge closes label + BARE value, not heading + labelled value line. Pinned as a KNOWN
+  // BOUNDARY so it is a decision rather than a gap someone assumes is covered — and it is not a
+  // leak: the badge fires on the digit run, so the row arrives unticked and warned.
+  const s = 'Access codes.\n\nFront door 1125'
+  assert.equal(scrubCredentialSentences(s).text, s)
+  assert.equal(looksLikeCredentialText(s), true, 'the badge must still catch what the scrub declines')
+})
+
+test('plurals and accents inside the CLAIMED market languages are covered', () => {
+  // Each of these was a real miss inside a language the list says it covers — worse than the
+  // declared out-of-market limitation, because the comment implied coverage.
+  for (const s of ['Codes: 1125 and 4432.', 'El código de la puerta es 1125.', 'Portin koodi on 1125.']) {
+    assert.equal(scrubCredentialSentences(s).text, '', `survived: ${s}`)
+  }
+})
+
+test('a QR or bar code sentence is not a secret', () => {
+  const s = 'Scan the QR code by the door, apartment 412.'
+  assert.equal(scrubCredentialSentences(s).text, s)
+})
+
+test('the orphan merge cannot drag in an unrelated neighbour', () => {
+  // '2024' is value-only but the fragment before it names no credential, so nothing merges.
+  const s = 'Fuse box in the hall.\nInstalled 2024.'
+  assert.equal(scrubCredentialSentences(s).text, s)
+  assert.equal(scrubCredentialSentences(s).redacted, 0)
+})
+
+// ── round-3 word-set corrections ──────────────────────────────────────────────────────────
+
+test('Finnish COMPOUNDS are covered — anchoring undid the primary market', () => {
+  // An anchored stem matched only the bare word. Finnish builds compounds, and `ovikoodi` sitting
+  // in the list was itself the proof that compounds are the expected shape.
+  for (const s of ['Porttikoodi 1125.', 'Rappukoodi 4432.', 'Ovikoodi 2049.', 'Avainkoodi 8891.']) {
+    assert.equal(scrubCredentialSentences(s).text, '', `survived: ${s}`)
+  }
+})
+
+test('an ordinary Croatian sentence is NOT deleted', () => {
+  // `kod` is "at/by" — one of the commonest words in Croatian/Serbian/Bosnian. Paired with a
+  // 3-digit run it silently deleted ordinary prose, in a language this file promises NOT to scrub
+  // at all. The stem was removed rather than unanchored.
+  const s = 'Autobusna stanica je kod zgrade, linija 205.'
+  assert.equal(scrubCredentialSentences(s).text, s)
+})
+
+test('a multi-word non-Latin fragment is not treated as an orphan value', () => {
+  // ASCII-only padding classes count Greek letters as punctuation, so a multi-word fragment once
+  // qualified as "nothing but a value" and could be merged onto its neighbour. 412 is an
+  // apartment number, not a code.
+  const s = 'Ο κωδικός\nΔιαμέρισμα 412'
+  assert.equal(scrubCredentialSentences(s).text, s)
+  assert.equal(scrubCredentialSentences(s).redacted, 0)
 })

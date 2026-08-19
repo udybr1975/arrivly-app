@@ -1,6 +1,12 @@
 // Listing-importer TEXT rules — the parts that must agree between the browser (which extracts
 // and truncates) and api/import-listing.ts (which re-checks what actually arrived).
 //
+// BROWSER-BUNDLED. This module reaches the client through ImportListing -> PropertySetup, so
+// NOTHING here may use syntax an older browser cannot PARSE — a parse error takes the whole module
+// down, not just the offending function. Specifically: no lookbehind (`(?<=`), unsupported before
+// Safari 16.4. The importer's sentence scrub uses one, which is why it lives server-side in
+// api/_lib/import-listing.ts and not here.
+//
 // DEPENDENCY-FREE ON PURPOSE (zero imports). It is consumed from an api/ serverless function
 // running as native Node ESM, so anything browser-only or env-dependent would break it at Lambda
 // startup. Same precedent as src/guide/content.ts and src/lib/detailCategories.ts.
@@ -22,10 +28,10 @@ export const MAX_IMPORT_CHARS = 12_000
  * reservation above the verified 8,000 TPM ceiling can NEVER be satisfied on any bucket state —
  * a PERMANENT failure no retry clears. Measured, not assumed:
  *
- *   system    SYSTEM_PROMPT, 2,209 chars, measured with estimateTokens =   738
+ *   system    SYSTEM_PROMPT, 2,519 chars, measured with estimateTokens =   841
  *   content   CONTENT_TOKEN_BUDGET                                     = 3,300
  *   output    max_tokens in api/import-listing.ts                      = 2,800
- *   reservation                                                        = 6,838 < 8,000
+ *   reservation                                                        = 6,941 < 8,000
  *
  * A CHARACTER cap alone CANNOT be safe here, and this is the trap the first version fell into.
  * SYSTEM_PROMPT tells the model to preserve the document's language, and nothing restricts the
@@ -126,19 +132,27 @@ export function truncateForImport(text: string): { text: string; truncated: bool
   return { text: out, truncated }
 }
 
-// Language-agnostic first: a standalone 4-8 digit run is what a door code or PIN looks like in
-// EVERY language, and SYSTEM_PROMPT explicitly tells the model to preserve the document's
-// language, so an English-only list would have covered one of the three markets this serves.
-// '15:00' and 'EUR 45' do not match (the boundary requires a pure digit run); a street number or
-// a year does, and costs one click — the tradeoff this file already accepts.
-const DIGIT_RUN_RE = /\b\d{4,8}\b/
+// SCRIPT-agnostic, not language-agnostic — and the distinction is the honest one: `\d` is
+// ASCII-only, so this covers a code written in ASCII numerals whatever the surrounding language,
+// and covers NOTHING written in Arabic-Indic or fullwidth numerals. SYSTEM_PROMPT tells the model
+// to preserve the document's language, so a word list alone would have covered one of the three
+// markets this serves; a digit run covers the rest, up to that ASCII limit.
+// '15:00' and 'EUR 45' do not match — neither contains a 4-digit run. A street number or a year
+// does, and costs one click; that is the tradeoff this file already accepts.
+// LEADING boundary only. `\b\d{4,8}\b` cannot match the '1125' in '1125A' — A is a word
+// character, so the trailing boundary fails — and an alphanumeric code is exactly the shape the live
+// incident had. Dropping the trailing boundary catches it; keeping the leading one stops a match
+// mid-token ('a12345'). Still 4, not the scrub's 3: this fires on its own (the badge is a
+// disjunction), so a 3-digit run here would badge 'Room 101'.
+// CONSEQUENCE WORTH NAMING: without the trailing boundary this also matches the FIRST four digits
+// of a longer run, so a phone number or a timestamp now badges. Safe direction — the badge only
+// unticks — and SYSTEM_PROMPT already tells the model to skip host contact details.
+export const DIGIT_RUN_RE = /\b\d{4,8}/
 // English + the languages of the live market (Finnish, Spanish, French). Bare 'pass' is
 // DELIBERATELY absent: it flagged 'Passeig de Gracia', 'passage' and 'passport'. A badge that
 // cries wolf on an address line teaches the host to ignore it, which defeats the control.
-const CREDENTIAL_WORDS_RE =
+export const CREDENTIAL_WORDS_RE =
   /password|passcode|wi-?fi|ssid|door\s*code|gate\s*code|alarm\s*code|entry\s*code|key\s*pad|key\s*safe|\bpin\b|lock\s*box|salasana|ovikoodi|contrase|clave|codigo|cerradura|mot\s*de\s*passe|code\s*d.entr|digicode/i
-
-export const CREDENTIAL_RE = CREDENTIAL_WORDS_RE
 
 export function looksLikeCredentialText(
   text: string,

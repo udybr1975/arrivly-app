@@ -123,10 +123,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // BUDGET ARITHMETIC — the reservation must fit under the verified 8,000 TPM ceiling, because
     // Groq debits promptTokens + max_tokens RESERVED (never the completion actually generated),
     // and a reservation above the ceiling is a PERMANENT failure that NO retry clears:
-    //   system    SYSTEM_PROMPT, measured with estimateTokens =   738
+    //   system    SYSTEM_PROMPT, measured with estimateTokens =   841
     //   content   CONTENT_TOKEN_BUDGET (see listingText.ts)   = 3,300
     //   output    maxTokens below                             = 2,800
-    //   reservation                                           = 6,838 < 8,000  ✓  (~1,160 spare)
+    //   reservation                                           = 6,941 < 8,000  ✓  (~1,059 spare)
     // The content half is capped in TOKENS, not characters, because SYSTEM_PROMPT tells the model
     // to preserve the document's language and nothing restricts the script a host may upload —
     // 12,000 chars is ~4,000 tokens of Latin but ~7,600 of Greek, and the character-only cap this
@@ -171,11 +171,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Everything past this point treats `parsed` as untrusted: validateImport whitelists every
     // key, types and trims every value, caps every length, and drops anything it cannot make
     // safe. See api/_lib/import-listing.ts.
-    const { proposal, skipped, conflicts } = validateImport(parsed)
+    const { proposal, skipped, conflicts, redacted } = validateImport(parsed)
 
     // An empty proposal is a valid 200 — "nothing found" is an outcome the client renders as an
     // empty state, not an error it should surface as a failure.
-    return res.status(200).json({ proposal, truncated, skipped, conflicts })
+    return res.status(200).json({ proposal, truncated, skipped, conflicts, redacted })
   } catch (e) {
     const msg = scrubErr(e, 120)
     console.error('[import-listing] generate failed —', msg)

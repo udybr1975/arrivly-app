@@ -123,32 +123,35 @@ function domId(key: string): string {
   return 'imp-' + key.replace(/[^a-zA-Z0-9_-]+/g, '-')
 }
 
+// Rows whose value is number-bearing BY CONSTRUCTION — a Helsinki postcode (00100), a Barcelona
+// one (08001), a street number, a guest count. The language-agnostic digit run fires on these
+// constantly, and a badge that cries wolf on an address line teaches the host to ignore it, which
+// is the same argument that removed the bare `pass` alternative. Only the DIGIT half is
+// suppressed for them; the word list still applies everywhere.
+//
+// ENUMERATED, not a `basics.` prefix test. The prefix version also caught `description` and
+// `floor_note`, which are FREE PROSE and public — exactly where a stray "…, 5567" belongs to the
+// heuristic rather than to the exemption. That over-reach shipped in a57102e as a recorded
+// residual; this is the one-line fix it asked for.
+const NUMERIC_BY_CONSTRUCTION = new Set([
+  'basics.street',
+  'basics.street_number',
+  'basics.city',
+  'basics.neighborhood',
+  'basics.country',
+  'basics.max_guests',
+])
+
 // A PUBLIC row whose text reads like a credential is almost always a mis-sort — and it is
 // precisely what a hostile or sloppy document would produce, because public rows default to
-// TICKED while the WiFi/Check-in tabs are protected by "needs your tick". The whitelist upstream
-// controls WHICH field may exist, never WHAT the model put in it, so this is the only place that
-// can catch a door code that landed in House rules.
+// TICKED while the WiFi/Check-in tabs are protected by "needs your tick". The server-side scrub
+// (api/_lib/import-listing.ts) removes the clear cases before they ever arrive; this is what
+// catches what the scrub's language-scoped noun list missed.
 // Deliberately over-broad: it only ever UNTICKS and warns, and the host can tick it straight
 // back. Under-ticking is the safe direction; a false positive costs one click.
-
 function looksLikeCredential(r: Row): boolean {
   if (r.isPrivate) return false
-  // The Basics rows are number-bearing — a Helsinki postcode (00100), a Barcelona one (08001),
-  // a street number, a build year — so the language-agnostic digit run fires on them constantly.
-  // A badge that cries wolf on an address line teaches the host to ignore it, which is the same
-  // argument that removed the bare `pass` alternative. Words still apply here; only the digit run
-  // is suppressed.
-  //
-  // KNOWN OVER-REACH, recorded rather than silently accepted: this `startsWith` also covers
-  // `basics.description` and `basics.floor_note`, which are FREE PROSE and public — a bare
-  // "…, 5567" in a floor note is then neither badged nor unticked, where it would have been
-  // before. The word list still catches the named forms (`keypad`, `door code`, `contraseña`,
-  // `ovikoodi`, …), so this narrows one half of the heuristic on two rows rather than opening a
-  // hole. Both gates flagged it AFTER returning zero must-fix, and narrowing the predicate to an
-  // enumerated set of genuinely numeric fields is an EXECUTABLE change — deferred deliberately
-  // to its own commit rather than taken post-verdict. See the commit message.
-  const addressField = r.key.startsWith('basics.')
-  return addressField
+  return NUMERIC_BY_CONSTRUCTION.has(r.key)
     ? looksLikeCredentialText(r.proposed, { digitRun: false })
     : looksLikeCredentialText(r.proposed)
 }
@@ -180,6 +183,7 @@ export default function ImportListing({
   const [proposal, setProposal] = useState<ImportProposal | null>(null)
   const [skipped, setSkipped] = useState<string[]>([])
   const [conflicts, setConflicts] = useState<{ field: string; values: string[] }[]>([])
+  const [redacted, setRedacted] = useState(0)
   const [accepted, setAccepted] = useState<Record<string, boolean>>({})
   const [applying, setApplying] = useState(false)
   const [results, setResults] = useState<ApplySectionResult[] | null>(null)
@@ -273,12 +277,14 @@ export default function ImportListing({
     setSortError(null)
     setAccepted({})
     setResults(null)
+    setRedacted(0)
     try {
       const data = await api.post<{
         proposal: ImportProposal
         truncated: boolean
         skipped: string[]
         conflicts: { field: string; values: string[] }[]
+        redacted: number
       }>('/import-listing', { apartmentId, content: text })
       // Populate the "in your tab now" columns from PropertySetup's own loaders rather than
       // querying here. Both are lazily loaded by their tabs, so both must be pulled.
@@ -286,6 +292,7 @@ export default function ImportListing({
       setProposal(data.proposal)
       setSkipped(data.skipped ?? [])
       setConflicts(data.conflicts ?? [])
+      setRedacted(data.redacted ?? 0)
       if (data.truncated) setTruncated(true)
       setStage('review')
     } catch {
@@ -433,6 +440,7 @@ export default function ImportListing({
         setProposal(null)
         setConflicts([])
         setSkipped([])
+        setRedacted(0)
       }
     } catch {
       setResults([{ section: 'Import', ok: false, message: 'Something went wrong — nothing further was applied.' }])
@@ -577,6 +585,18 @@ export default function ImportListing({
     <div className={`${CARD} mb-5`}>
       <h2 className={HEADING}>What we found in your file</h2>
 
+      {/* ABOVE the nothingFound ternary on purpose. If every proposed field was code-bearing,
+          rows.length === 0 and the empty-state branch below explains the file as "a booking
+          confirmation rather than a guest guide" — actively wrong, and it is exactly the case
+          where the scrub did the most work. The count must be reachable in both branches. */}
+      {redacted > 0 && (
+        <p className="text-[12px] text-[#6b6459] bg-[#f8f6f2] border border-[#e4ddd0] rounded-[10px] px-3 py-2 mt-3">
+          We left {redacted} sentence{redacted === 1 ? '' : 's'} out of the public sections —
+          {redacted === 1 ? ' it looked like it contained' : ' they looked like they contained'} an
+          access code, and codes belong only in WiFi and Check-in.
+        </p>
+      )}
+
       {nothingFound ? (
         <>
           <p className="text-[13px] text-[#6b6459] mt-1.5 max-w-[60ch]">
@@ -590,9 +610,11 @@ export default function ImportListing({
         </>
       ) : (
         <>
-          <p className="text-[13px] text-[#6b6459] mt-1.5 max-w-[60ch]">
-            Nothing is saved yet. Untick anything you don't want, then apply.
+          <p className="text-[13px] text-[#6b6459] mt-1.5 max-w-[62ch]">
+            Nothing is saved yet. Tick what you want, untick what you don't — Apply writes only
+            the ticked rows into your tabs.
           </p>
+
 
           {TAB_ORDER.map(tab => {
             const group = rows.filter(r => r.tab === tab)
@@ -647,12 +669,19 @@ export default function ImportListing({
                               </span>
                               {r.isPrivate && !on && (
                                 <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#faeeda] text-[#7a4800]">
-                                  needs your tick
+                                  needs your tick — will be private
                                 </span>
                               )}
+                              {/* TWO SEPARATE controls, not one heuristic split two ways — the
+                                  badge above is driven by `isPrivate && !on` and fires on every
+                                  unticked private row, while this one is the credential heuristic,
+                                  which returns false for private rows entirely. A credential
+                                  heading for WiFi/Check-in only needs a tick; the same text
+                                  heading for a PUBLIC tab is the leak, and says so in the
+                                  strongest colour on the screen. */}
                               {looksLikeCredential(r) && (
-                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#fde4e4] text-[#8a1a1a]">
-                                  check this one before ticking
+                                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[#8a1a1a] text-[#fff5f5] font-medium">
+                                  careful — this would be visible to ALL guests
                                 </span>
                               )}
                               {same && <span className="text-[11px] text-[#8a8276]">same as you have</span>}
@@ -660,9 +689,14 @@ export default function ImportListing({
 
                             <div className="grid sm:grid-cols-2 gap-2.5 mt-2">
                               <div>
-                                <div className="text-[10px] uppercase tracking-[.1em] text-[#a79e8e] mb-1">In your tab now</div>
+                                {/* The caption carries the CONSEQUENCE, not just the label: the
+                                    tester who approved the mockup did not know what ticking did,
+                                    and this column is where the answer belongs. */}
+                                <div className="text-[10px] uppercase tracking-[.1em] text-[#a79e8e] mb-1">
+                                  {r.currentText.trim() ? 'In your tab now — replaced if you tick' : 'In your tab now'}
+                                </div>
                                 <div className="text-[12px] text-[#6b6459] whitespace-pre-wrap break-words">
-                                  {r.currentText.trim() || <span className="text-[#b3ab9b]">— empty —</span>}
+                                  {r.currentText.trim() || <span className="text-[#b3ab9b]">empty</span>}
                                 </div>
                               </div>
                               <div>
