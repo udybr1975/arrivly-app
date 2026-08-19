@@ -8,6 +8,13 @@ import Loader from '../shared/Loader'
 import { resolveImageUrl, uploadImage, deleteImage } from '../../lib/imageUtils'
 import { useToast } from '../shared/Toast'
 import PolicyBlockToast from '../shared/PolicyBlockToast'
+import {
+  EXTRAS_CATEGORIES,
+  DETAIL_CATEGORY,
+  isRulesCategory,
+  isWifiCategory,
+  isCheckinCategory,
+} from '../../lib/detailCategories'
 
 // The move distance that counts as "a different place". THE DATABASE OWNS THE OTHER COPY of
 // this number: `public.enforce_property_address_swap()` blocks a move beyond it for a host at
@@ -62,8 +69,6 @@ const TABS: { key: Tab; label: string; privateLock?: boolean }[] = [
   { key: 'calendars', label: 'Calendars' },
   { key: 'look',    label: 'Look' },
 ]
-
-const EXTRAS_CATEGORIES = ['Parking', 'Recycling & Bins', 'Appliances', 'Transport', 'Amenities', 'Safety', 'Good to know']
 
 const DEFAULT_COLOR = '#1c1c1a'
 const GUIDE_FRESH_HOURS = 24
@@ -306,31 +311,52 @@ export default function PropertySetup() {
         .from('apartment_details')
         .select('category, content, is_private')
         .eq('apartment_id', apt.id)
+        // Deterministic order: without it PostgREST row order is unspecified, so which
+        // row wins a single-valued field below could vary between loads.
+        .order('id')
 
       if (dets) {
-        const wifiRow = dets.find(d => d.category === 'WiFi')
-        if (wifiRow) {
-          const lines = wifiRow.content.split('\n')
+        // Read EVERY matching row, not just the first: saveWifi now DELETES every row
+        // isWifiCategory matches, so anything not loaded here would be destroyed without
+        // the host ever seeing it. Prefix search across the joined text, falling back to
+        // the old positional read for a legacy row that carries no prefix.
+        const wifiRows = dets.filter(d => isWifiCategory(d.category))
+        if (wifiRows.length > 0) {
+          const lines = wifiRows.map(d => d.content).join('\n').split('\n')
+          const prefixed = (p: string) => lines.find(l => l.startsWith(p))?.slice(p.length)
           setWifi({
-            ssid: (lines[0] ?? '').replace('Network: ', ''),
-            password: (lines[1] ?? '').replace('Password: ', ''),
+            ssid: prefixed('Network: ') ?? (lines[0] ?? '').replace('Network: ', ''),
+            password: prefixed('Password: ') ?? (lines[1] ?? '').replace('Password: ', ''),
           })
         }
 
-        const ciRows = dets.filter(d => d.category === 'Check-in')
+        const ciRows = dets.filter(d => isCheckinCategory(d.category))
         setCheckin({
           checkInFrom:        ciRows.find(d => d.content.startsWith('Check-in from: '))?.content.replace('Check-in from: ', '') ?? '',
           checkOutBy:         ciRows.find(d => d.content.startsWith('Check-out by: '))?.content.replace('Check-out by: ', '') ?? '',
           doorCode:           ciRows.find(d => d.content.startsWith('Door code: '))?.content.replace('Door code: ', '') ?? '',
-          entryInstructions:  ciRows.find(d =>
+          // JOIN every non-prefixed row — saveCheckin now deletes them all, so a second
+          // free-text row would otherwise be destroyed unseen. The three prefixed fields
+          // above stay first-wins: they are single-valued, and two rows sharing a prefix
+          // are contradictory data where one must win either way.
+          entryInstructions:  ciRows.filter(d =>
             !d.content.startsWith('Check-in from: ') &&
             !d.content.startsWith('Check-out by: ') &&
             !d.content.startsWith('Door code: ')
-          )?.content ?? '',
+          ).map(d => d.content).join('\n'),
         })
 
-        const rulesRow = dets.find(d => d.category === 'House Rules')
-        if (rulesRow) setRawRules(rulesRow.content)
+        // Join every matching PUBLIC row. This is deliberately NOT the guest page's
+        // filter — GuestPage's rulesRaw has no is_private conjunct, so a verified guest
+        // can be shown a private rules-matching row the host is not. At most one row
+        // matches today. `!d.is_private` is a PRIVACY guard, not a display choice:
+        // saveRules re-inserts this joined text as is_private:false, which anon can read. The matchers are
+        // deliberately permissive and NOT disjoint in general — 'House entry rules' matches
+        // both isRulesCategory and isCheckinCategory — so without this a private door-code
+        // row could be republished as public. Unreachable today (no writer produces a
+        // private rules-matching row); nothing else enforces it.
+        const rulesRows = dets.filter(d => isRulesCategory(d.category) && !d.is_private)
+        if (rulesRows.length > 0) setRawRules(rulesRows.map(d => d.content).join('\n'))
       }
 
       setLoading(false)
@@ -650,14 +676,48 @@ export default function PropertySetup() {
     void deleteImage(previous)
   }
 
+  // Delete every apartment_details row the GUEST PAGE would render under `match`,
+  // not just the ones stored under the canonical label. Select-then-delete-by-id so
+  // the delete predicate is literally the same test as the read — a category-equality
+  // delete could not remove a divergently-labelled row, which is how a saved section
+  // ended up rendered twice on the guest page.
+  // Returns an error message on failure; the caller MUST abort the save rather than
+  // fall through to the insert, or it creates the duplicate this exists to prevent.
+  // `match` takes the whole row, not just the category, so a caller can scope the delete
+  // to exactly the rows it scoped its LOAD to — saveRules relies on that to leave private
+  // rules-matching rows alone rather than delete content it never displayed.
+  async function deleteMatchingDetails(
+    aptId: string,
+    match: (row: { category: string | null; is_private: boolean | null }) => boolean,
+  ): Promise<string | null> {
+    const { data, error } = await supabase
+      .from('apartment_details')
+      .select('id, category, is_private')
+      .eq('apartment_id', aptId)
+    if (error) return error.message
+
+    const ids = (data ?? []).filter(d => match(d)).map(d => d.id)
+    if (ids.length === 0) return null
+
+    // apartment_id equality kept as defence in depth even though the ids came from
+    // that apartment — RLS is the boundary, this is a second lock.
+    const { error: delError } = await supabase
+      .from('apartment_details')
+      .delete()
+      .in('id', ids)
+      .eq('apartment_id', aptId)
+    return delError ? delError.message : null
+  }
+
   // ── Tab 2 ──────────────────────────────────────────────────────────────────
   async function saveWifi() {
     if (!apartmentId) { showErr('Save Basic info first'); return }
     setSaving(true)
-    await supabase.from('apartment_details').delete().eq('apartment_id', apartmentId).eq('category', 'WiFi')
+    const delErr = await deleteMatchingDetails(apartmentId, d => isWifiCategory(d.category))
+    if (delErr) { showErr(delErr); setSaving(false); return }
     const { error } = await supabase.from('apartment_details').insert({
       apartment_id: apartmentId,
-      category: 'WiFi',
+      category: DETAIL_CATEGORY.WIFI,
       content: `Network: ${wifi.ssid}\nPassword: ${wifi.password}`,
       is_private: true,
     })
@@ -670,12 +730,14 @@ export default function PropertySetup() {
   async function saveCheckin() {
     if (!apartmentId) { showErr('Save Basic info first'); return }
     setSaving(true)
-    await supabase.from('apartment_details').delete().eq('apartment_id', apartmentId).eq('category', 'Check-in')
+    const delErr = await deleteMatchingDetails(apartmentId, d => isCheckinCategory(d.category))
+    if (delErr) { showErr(delErr); setSaving(false); return }
+    const CI = DETAIL_CATEGORY.CHECKIN
     const rows = [
-      checkin.checkInFrom       && { apartment_id: apartmentId, category: 'Check-in', content: `Check-in from: ${checkin.checkInFrom}`,    is_private: true },
-      checkin.checkOutBy        && { apartment_id: apartmentId, category: 'Check-in', content: `Check-out by: ${checkin.checkOutBy}`,       is_private: true },
-      checkin.doorCode          && { apartment_id: apartmentId, category: 'Check-in', content: `Door code: ${checkin.doorCode}`,            is_private: true },
-      checkin.entryInstructions && { apartment_id: apartmentId, category: 'Check-in', content: checkin.entryInstructions,                   is_private: true },
+      checkin.checkInFrom       && { apartment_id: apartmentId, category: CI,            content: `Check-in from: ${checkin.checkInFrom}`,    is_private: true },
+      checkin.checkOutBy        && { apartment_id: apartmentId, category: CI,            content: `Check-out by: ${checkin.checkOutBy}`,       is_private: true },
+      checkin.doorCode          && { apartment_id: apartmentId, category: CI,            content: `Door code: ${checkin.doorCode}`,            is_private: true },
+      checkin.entryInstructions && { apartment_id: apartmentId, category: CI,            content: checkin.entryInstructions,                   is_private: true },
     ].filter(Boolean) as { apartment_id: string; category: string; content: string; is_private: boolean }[]
 
     if (rows.length > 0) {
@@ -702,10 +764,12 @@ export default function PropertySetup() {
       finalRules = rawRules
     }
 
-    await supabase.from('apartment_details').delete().eq('apartment_id', apartmentId).eq('category', 'House Rules')
+    // Same predicate as the load above — see the privacy note there.
+    const delErr = await deleteMatchingDetails(apartmentId, d => isRulesCategory(d.category) && !d.is_private)
+    if (delErr) { showErr(delErr); setSaving(false); return }
     const { error } = await supabase.from('apartment_details').insert({
       apartment_id: apartmentId,
-      category: 'House Rules',
+      category: DETAIL_CATEGORY.RULES,
       content: finalRules,
       is_private: false,
     })

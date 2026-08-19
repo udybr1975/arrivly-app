@@ -16,6 +16,7 @@ import MessageHost from './MessageHost'
 import { ARRIVLY_CONFIG } from '../../config'
 import { iosNeedsHomeScreen, isStandalone, subscribeGuestToPush, checkPermission, isSubscribed } from '../../lib/webpush'
 import { api } from '../../lib/api'
+import { EXTRAS_CATEGORIES, isRulesCategory, isWifiCategory, isCheckinCategory } from '../../lib/detailCategories'
 
 interface Host {
   brand_name: string | null
@@ -107,7 +108,6 @@ function mapsSearchUrl(name: string, address?: string | null): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`
 }
 
-const EXTRAS_CATEGORIES = ['Parking', 'Recycling & Bins', 'Appliances', 'Transport', 'Amenities', 'Safety', 'Good to know']
 const PREVIEW_SAMPLE_NAME = 'Alex'
 
 // Phase I — bookable experiences (Viator + Tiqets APIs, GetYourGuide links). The
@@ -552,7 +552,7 @@ export default function GuestPage() {
 
   const rulesRaw = useMemo(() =>
     details
-      .filter(d => /rule|house|policy|policies|guidelines/i.test(d.category ?? ''))
+      .filter(d => isRulesCategory(d.category))
       .map(d => d.content)
       .join('\n'),
     [details]
@@ -566,7 +566,7 @@ export default function GuestPage() {
   const showExperiencesEntry =
     EXPERIENCES_ENABLED && (experiencesLoading || (experiences?.length ?? 0) > 0 || !!gygCityLink)
 
-  const wifiDetails = details.filter(d => /wifi|wi-fi|internet|wireless/i.test(d.category ?? ''))
+  const wifiDetails = details.filter(d => isWifiCategory(d.category))
   const wifiParsed = wifiDetails.length > 0
     ? parseWifi(wifiDetails.map(d => d.content).join('\n'))
     : null
@@ -582,7 +582,7 @@ export default function GuestPage() {
   })()
 
   const checkinDetails = details.filter(
-    d => /check.?in|check.?out|timing|door|code|entry/i.test(d.category ?? '') && d.is_private
+    d => isCheckinCategory(d.category) && d.is_private
   )
 
   const extras = details.filter(d => EXTRAS_CATEGORIES.includes(d.category))
