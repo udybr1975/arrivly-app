@@ -8,6 +8,7 @@ import Loader from '../shared/Loader'
 import { resolveImageUrl, uploadImage, deleteImage } from '../../lib/imageUtils'
 import { useToast } from '../shared/Toast'
 import PolicyBlockToast from '../shared/PolicyBlockToast'
+import ImportListing, { type AcceptedImport, type ApplySectionResult } from './ImportListing'
 import {
   EXTRAS_CATEGORIES,
   DETAIL_CATEGORY,
@@ -139,6 +140,10 @@ export default function PropertySetup() {
     name: '', maxGuests: 2, country: '', city: '',
     neighborhood: '', street: '', streetNumber: '', floorNote: '',
   })
+  // NOT edited by any tab — held only so the listing importer's review screen can show the
+  // TRUE current value beside a proposed description. Without it that row would read "empty"
+  // over a real description and the host would overwrite it unknowingly.
+  const [aptDescription, setAptDescription] = useState('')
   const [heroImageUrl, setHeroImageUrl] = useState<string | null>(null)
   const [uploadingHero, setUploadingHero] = useState(false)
   // Tab 2
@@ -169,6 +174,9 @@ export default function PropertySetup() {
   const [pasteText, setPasteText] = useState('')
   const [relocatingKey, setRelocatingKey] = useState<string | null>(null)
   const [enriching, setEnriching] = useState(false)
+  // How many content tabs already hold something, derived in the load effect from `dets` —
+  // data that load ALREADY fetched, so the importer's auto-hide costs no extra query.
+  const [filledTabCount, setFilledTabCount] = useState(0)
   const [candidates, setCandidates] = useState<Array<{
     key: string
     name: string
@@ -212,6 +220,13 @@ export default function PropertySetup() {
     !!basic.streetNumber.trim() && Number(basic.maxGuests) >= 1
 
   useEffect(() => {
+    // CANCELLATION GUARD. Recorded debt until now, and the listing importer is what made it able
+    // to move a CREDENTIAL: applying an import falls back to the stored `wifi`/`checkin` state
+    // for any field the document did not mention, so a late response from the PREVIOUS apartment
+    // landing after the switch could write apartment A's password into apartment B's row.
+    // Both rows are is_private:true, so this was never an anon exposure — but it was a real
+    // cross-property write, and the fix is the same three lines it always was.
+    let cancelled = false
     async function load() {
       if (!aptId) { navigate('/dashboard'); return }
 
@@ -230,10 +245,12 @@ export default function PropertySetup() {
       setExtrasRows([])
       setPasteText('')
       setCandidates([])
+      setFilledTabCount(0)
       setEnriching(false)
       setPicks([])
       setRelocatingKey(null)
       setHeroImageUrl(null)
+      setAptDescription('')
       // Reset UNCONDITIONALLY, before the 'new' early-return below. Leaving the previous
       // apartment's coordinates here would break the change-check for a second unit at the SAME
       // address (same street+number geocodes to identical coordinates), so that apartment would
@@ -254,6 +271,10 @@ export default function PropertySetup() {
       setCsvMsg(null)
 
       const { data: { user } } = await supabase.auth.getUser()
+      // Guard after EVERY await, including this first one. The three below cover the
+      // credential-bearing state; this one covers `hostId` and the `/new` branch, whose stale
+      // resolution would reset apartmentId to null after a switch.
+      if (cancelled) return
       if (!user) { setLoading(false); return }
       setHostId(user.id)
 
@@ -266,11 +287,14 @@ export default function PropertySetup() {
 
       const { data: apt } = await supabase
         .from('apartments')
-        .select('id, name, country, city, neighborhood, street, street_number, floor_note, max_guests, hero_image_url, lat, lng')
+        .select('id, name, country, city, neighborhood, street, street_number, floor_note, max_guests, hero_image_url, lat, lng, description')
         .eq('id', aptId)
         .eq('host_id', user.id)
         .maybeSingle()
 
+      // Guard AFTER every await and BEFORE any setState: a late response must neither write
+      // another apartment's values into state nor navigate away from the one now open.
+      if (cancelled) return
       if (!apt) { navigate('/dashboard'); return }
 
       setApartmentId(apt.id)
@@ -306,6 +330,7 @@ export default function PropertySetup() {
         streetNumber: apt.street_number ?? '',
         floorNote: apt.floor_note ?? '',
       })
+      setAptDescription(apt.description ?? '')
 
       const { data: dets } = await supabase
         .from('apartment_details')
@@ -315,6 +340,7 @@ export default function PropertySetup() {
         // row wins a single-valued field below could vary between loads.
         .order('id')
 
+      if (cancelled) return
       if (dets) {
         // Read EVERY matching row, not just the first: saveWifi now DELETES every row
         // isWifiCategory matches, so anything not loaded here would be destroyed without
@@ -357,11 +383,26 @@ export default function PropertySetup() {
         // private rules-matching row); nothing else enforces it.
         const rulesRows = dets.filter(d => isRulesCategory(d.category) && !d.is_private)
         if (rulesRows.length > 0) setRawRules(rulesRows.map(d => d.content).join('\n'))
+
+        // Derived from rows ALREADY fetched above — no extra query. Drives only the
+        // importer entry card's auto-hide, so an approximate count is fine: it decides
+        // whether to OFFER a shortcut, never what is saved.
+        setFilledTabCount(
+          [
+            !!apt.name && !!apt.city,
+            wifiRows.length > 0,
+            ciRows.length > 0,
+            rulesRows.length > 0,
+            dets.some(d => EXTRAS_CATEGORIES.includes(d.category)),
+          ].filter(Boolean).length,
+        )
       }
 
+      if (cancelled) return
       setLoading(false)
     }
     load()
+    return () => { cancelled = true }
   }, [aptId, searchParams])
 
   const loadPicks = useCallback(async () => {
@@ -749,24 +790,29 @@ export default function PropertySetup() {
   }
 
   // ── Tab 4 ──────────────────────────────────────────────────────────────────
-  async function saveRules() {
-    if (!apartmentId) { showErr('Save Basic info first'); return }
-    if (!rawRules.trim()) return
+  // `overrideText` exists ONLY so the listing importer can drive this exact flow with text the
+  // host has just approved, without waiting a render for setRawRules to land. Behaviour with no
+  // argument is unchanged. The `typeof` guard is load-bearing: this function is also a click
+  // handler, and React would otherwise hand it a MouseEvent as the first argument.
+  async function saveRules(overrideText?: string): Promise<boolean> {
+    if (!apartmentId) { showErr('Save Basic info first'); return false }
+    const sourceRules = typeof overrideText === 'string' ? overrideText : rawRules
+    if (!sourceRules.trim()) return false
     setSaving(true)
 
     // Polish via Gemini on save. On any failure, fall back to the raw text so
     // the host never loses their input.
-    let finalRules = rawRules
+    let finalRules = sourceRules
     try {
-      const data = await api.post<{ result: string }>('/rewrite-rules', { rawRules })
+      const data = await api.post<{ result: string }>('/rewrite-rules', { rawRules: sourceRules })
       if (data?.result && data.result.trim()) finalRules = data.result
     } catch {
-      finalRules = rawRules
+      finalRules = sourceRules
     }
 
     // Same predicate as the load above — see the privacy note there.
     const delErr = await deleteMatchingDetails(apartmentId, d => isRulesCategory(d.category) && !d.is_private)
-    if (delErr) { showErr(delErr); setSaving(false); return }
+    if (delErr) { showErr(delErr); setSaving(false); return false }
     const { error } = await supabase.from('apartment_details').insert({
       apartment_id: apartmentId,
       category: DETAIL_CATEGORY.RULES,
@@ -780,6 +826,194 @@ export default function PropertySetup() {
       showOk()
     }
     setSaving(false)
+    return !error
+  }
+
+  // ── LISTING IMPORTER — apply ───────────────────────────────────────────────
+  //
+  // The importer PROPOSES; this function is the only place its proposal becomes a write, and it
+  // writes through the SAME paths the tabs use — deleteMatchingDetails with the shared matchers
+  // for WiFi and Check-in, the canonical DETAIL_CATEGORY labels, saveRules for the rules flow,
+  // and /generate-host-picks for picks. No second write path exists for imported content, so
+  // nothing can drift from what a manual save does. THE ONE EXCEPTION is extras, which uses a
+  // category-scoped .in() delete (see the comment at that section) because it must touch ONLY
+  // the accepted categories — deleteMatchingDetails has no notion of a category subset.
+  //
+  // ORDER IS LOAD-BEARING: basics first, because a blocked address swap must abort the rest and
+  // hand the host the policy panel. Sections after that are INDEPENDENT and are never rolled
+  // back on a later failure — each is idempotent to re-apply, so a partial success is strictly
+  // better than undoing writes that worked.
+  async function applyImport(accepted: AcceptedImport): Promise<ApplySectionResult[]> {
+    const out: ApplySectionResult[] = []
+    if (!apartmentId || !hostId) {
+      return [{ section: 'Import', ok: false, message: 'Save your basic info first' }]
+    }
+
+    // 1. Basics — one UPDATE carrying only the accepted keys.
+    const basics = accepted.basics
+    const fields: Record<string, string | number> = {}
+    if (basics.street !== undefined) fields.street = basics.street
+    if (basics.street_number !== undefined) fields.street_number = basics.street_number
+    if (basics.floor_note !== undefined) fields.floor_note = basics.floor_note
+    if (basics.city !== undefined) fields.city = basics.city
+    if (basics.neighborhood !== undefined) fields.neighborhood = basics.neighborhood
+    if (basics.country !== undefined) fields.country = basics.country
+    if (basics.description !== undefined) fields.description = basics.description
+    if (typeof basics.max_guests === 'number') fields.max_guests = basics.max_guests
+
+    if (Object.keys(fields).length > 0) {
+      const { error } = await supabase.from('apartments').update(fields).eq('id', apartmentId).eq('host_id', hostId)
+      if (error) {
+        // THE SAME handler saveBasic uses. The address-swap trigger refuses the whole row write,
+        // so this is an upgrade prompt with a panel, not a red toast. Reusing the exact path is
+        // what stops the importer presenting a policy block differently from the Basics tab.
+        if (error.message?.includes('property_address_swap_blocked')) {
+          setSwapBlocked(parseSwapHint(error.hint))
+          return [{ section: 'Basics', ok: false, message: 'That address change needs a bigger plan — see the panel above. Nothing else was applied.' }]
+        }
+        return [{ section: 'Basics', ok: false, message: error.message }]
+      }
+      if (basics.description !== undefined) setAptDescription(basics.description)
+      // Computed OUTSIDE the updater. A state updater must be pure — React 19 StrictMode
+      // double-invokes it in dev — and while assigning the ref in there was idempotent, it is not
+      // a pattern to leave for the next editor to copy into a case where it is not.
+      const nextBasic = {
+        ...basic,
+        street: basics.street ?? basic.street,
+        streetNumber: basics.street_number ?? basic.streetNumber,
+        floorNote: basics.floor_note ?? basic.floorNote,
+        city: basics.city ?? basic.city,
+        neighborhood: basics.neighborhood ?? basic.neighborhood,
+        country: basics.country ?? basic.country,
+        maxGuests: basics.max_guests ?? basic.maxGuests,
+      }
+      setBasic(nextBasic)
+      // "The last Basics values known to be STORED" — this write just changed them. Without this,
+      // a later BLOCKED address save would restore the PRE-IMPORT values into the form, which is
+      // exactly the mismatch this ref exists to prevent.
+      savedBasicRef.current = nextBasic
+      out.push({ section: 'Basics', ok: true })
+    }
+
+    // 2. WiFi — saveWifi's exact shape and format.
+    // FALLS BACK TO THE STORED VALUE for a half the document did not contain. A field that was
+    // never proposed produces NO review row, so the host was never shown it and never chose to
+    // clear it — writing '' there would destroy a saved password they did not know was at risk.
+    // (An explicitly UNTICKED field is different: that one had a row, and it keeps its old value
+    // for the same reason.)
+    if (accepted.wifi) {
+      const ssid = accepted.wifi.ssid ?? wifi.ssid
+      const password = accepted.wifi.password ?? wifi.password
+      const delErr = await deleteMatchingDetails(apartmentId, d => isWifiCategory(d.category))
+      if (delErr) {
+        out.push({ section: 'WiFi', ok: false, message: delErr })
+      } else {
+        const { error } = await supabase.from('apartment_details').insert({
+          apartment_id: apartmentId,
+          category: DETAIL_CATEGORY.WIFI,
+          content: `Network: ${ssid}\nPassword: ${password}`,
+          is_private: true,
+        })
+        if (error) out.push({ section: 'WiFi', ok: false, message: error.message })
+        else { setWifi({ ssid, password }); out.push({ section: 'WiFi', ok: true }) }
+      }
+    }
+
+    // 3. Check-in — saveCheckin's four-row content-prefix shape, is_private: true.
+    if (accepted.checkin) {
+      // Same preservation rule as WiFi above — an absent field keeps what is already stored.
+      const ci = {
+        check_in_from: accepted.checkin.check_in_from ?? checkin.checkInFrom,
+        check_out_by: accepted.checkin.check_out_by ?? checkin.checkOutBy,
+        door_code: accepted.checkin.door_code ?? checkin.doorCode,
+        entry_instructions: accepted.checkin.entry_instructions ?? checkin.entryInstructions,
+      }
+      const delErr = await deleteMatchingDetails(apartmentId, d => isCheckinCategory(d.category))
+      if (delErr) {
+        out.push({ section: 'Check-in', ok: false, message: delErr })
+      } else {
+        const rows = [
+          ci.check_in_from && { apartment_id: apartmentId, category: DETAIL_CATEGORY.CHECKIN, content: 'Check-in from: ' + ci.check_in_from, is_private: true },
+          ci.check_out_by && { apartment_id: apartmentId, category: DETAIL_CATEGORY.CHECKIN, content: 'Check-out by: ' + ci.check_out_by, is_private: true },
+          ci.door_code && { apartment_id: apartmentId, category: DETAIL_CATEGORY.CHECKIN, content: 'Door code: ' + ci.door_code, is_private: true },
+          ci.entry_instructions && { apartment_id: apartmentId, category: DETAIL_CATEGORY.CHECKIN, content: ci.entry_instructions, is_private: true },
+        ].filter(Boolean) as { apartment_id: string; category: string; content: string; is_private: boolean }[]
+        const { error } = rows.length > 0
+          ? await supabase.from('apartment_details').insert(rows)
+          : { error: null }
+        if (error) out.push({ section: 'Check-in', ok: false, message: error.message })
+        else {
+          setCheckin({
+            checkInFrom: ci.check_in_from,
+            checkOutBy: ci.check_out_by,
+            doorCode: ci.door_code,
+            entryInstructions: ci.entry_instructions,
+          })
+          out.push({ section: 'Check-in', ok: true })
+        }
+      }
+    }
+
+    // 4. House rules — through saveRules, NOT straight to the DB, so the tone rewrite and its
+    // fall-back-to-raw-text apply exactly as they do on the tab. The review row warns the host
+    // that the wording will change.
+    if (accepted.rules) {
+      const ok = await saveRules(accepted.rules)
+      out.push({ section: 'House rules', ok, message: ok ? undefined : 'Could not save' })
+    }
+
+    // 5. Extras — delete ONLY the accepted categories. Deliberately narrower than bulk-import's
+    // delete-every-extras-category, so a category the host did not import is left untouched.
+    if (accepted.extras.length > 0) {
+      const cats = [...new Set(accepted.extras.map(e => e.category))]
+      const { error: delError } = await supabase
+        .from('apartment_details')
+        .delete()
+        .eq('apartment_id', apartmentId)
+        .in('category', cats)
+        // is_private:false, MATCHING the precedent saveRules sets above: the rows re-inserted
+        // below are public, so a private row a host stored under an accepted category must not be
+        // destroyed by an import that cannot replace it.
+        .eq('is_private', false)
+      if (delError) {
+        out.push({ section: 'Extras', ok: false, message: delError.message })
+      } else {
+        const { error } = await supabase.from('apartment_details').insert(
+          accepted.extras.map(e => ({
+            apartment_id: apartmentId,
+            category: e.category,
+            content: e.content,
+            is_private: false,
+          })),
+        )
+        if (error) out.push({ section: 'Extras', ok: false, message: error.message })
+        else { await loadExtras(); out.push({ section: 'Extras', ok: true }) }
+      }
+    }
+
+    // 6. Picks LAST — hands the text to the EXISTING /generate-host-picks and drops the host into
+    // the EXISTING candidates review. Zero new picks code, and the host still confirms every
+    // place before anything is written to host_picks.
+    if (accepted.picksText) {
+      const picksText = accepted.picksText
+      try {
+        const data = await api.post<{
+          picks: Array<{ name: string; category: string; address: string; lat: number | null; lng: number | null; located: boolean }>
+        }>('/generate-host-picks', { apartmentId, text: picksText })
+        if (data.picks?.length) {
+          setCandidates(data.picks.map(pk => ({ ...pk, key: crypto.randomUUID(), note: '' })))
+          setPasteText(picksText)
+          setTab('picks')
+          out.push({ section: 'My picks', ok: true, message: data.picks.length + ' to confirm in the My picks tab' })
+        } else {
+          out.push({ section: 'My picks', ok: false, message: "Couldn't identify any places — add them manually in My picks" })
+        }
+      } catch {
+        out.push({ section: 'My picks', ok: false, message: 'Could not identify places' })
+      }
+    }
+
+    return out
   }
 
   // ── Tab 5 ──────────────────────────────────────────────────────────────────
@@ -1085,6 +1319,33 @@ export default function PropertySetup() {
           {basic.name.trim() || (apartmentId === null ? 'New property' : 'Untitled property')}
         </h1>
       </div>
+
+      {/* Listing importer — EXISTING properties only. A brand-new property has no id yet, so
+          there is nothing to import into and no per-property dismissal key to write. */}
+      {apartmentId && (
+        <ImportListing
+          key={apartmentId}
+          apartmentId={apartmentId}
+          propertyName={basic.name.trim() || 'this property'}
+          filledTabCount={filledTabCount}
+          current={{
+            basic: {
+              street: basic.street, streetNumber: basic.streetNumber, floorNote: basic.floorNote,
+              maxGuests: basic.maxGuests, city: basic.city, neighborhood: basic.neighborhood,
+              country: basic.country,
+              description: aptDescription,
+            },
+            wifi,
+            checkin,
+            rawRules,
+            extrasRows,
+            picksCount: picks.length,
+          }}
+          onLoadExtras={loadExtras}
+          onLoadPicks={loadPicks}
+          onApply={applyImport}
+        />
+      )}
 
       {/* Tab bar — horizontal premium tabs */}
       <div className="flex gap-2 flex-wrap mb-5">
@@ -1443,7 +1704,7 @@ export default function PropertySetup() {
               placeholder="No smoking inside. No parties. Keep quiet after 10pm. Check out by 11am. No pets."
             />
           </div>
-          <button onClick={saveRules} disabled={saving || !rawRules.trim()} className={BTN_SAVE}>
+          <button onClick={() => void saveRules()} disabled={saving || !rawRules.trim()} className={BTN_SAVE}>
             {saving ? 'Polishing & saving…' : 'Save rules'}
           </button>
         </div>

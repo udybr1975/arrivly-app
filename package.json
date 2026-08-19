@@ -11,12 +11,15 @@
     "test:affiliate-links": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/affiliate-links.test.mjs",
     "test:city-events": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/city-events.test.mjs",
     "test:stripe": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/stripe.test.mjs",
-    "test:detail-categories": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/detail-categories.test.mjs"
+    "test:detail-categories": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/detail-categories.test.mjs",
+    "test:import-listing": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/import-listing.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.6.0",
     "@supabase/supabase-js": "^2.50.0",
     "lucide-react": "^0.511.0",
+    "mammoth": "^1.12.1",
+    "pdfjs-dist": "^6.2.108",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

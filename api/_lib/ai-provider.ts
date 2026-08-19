@@ -21,6 +21,7 @@ export type AiSurface =
   | 'events'
   | 'guide'
   | 'host_picks'
+  | 'import_listing'
 
 // 'poi' is the guide's Geoapify-POI-data pipeline (pilot Step 4). It is meaningful ONLY on the
 // 'guide' surface; anywhere else it is treated as a typo — see resolveProvider.
@@ -40,6 +41,7 @@ const SURFACE_ENV: Record<AiSurface, string> = {
   events: 'AI_PROVIDER_EVENTS',
   guide: 'AI_PROVIDER_GUIDE',
   host_picks: 'AI_PROVIDER_HOST_PICKS',
+  import_listing: 'AI_PROVIDER_IMPORT_LISTING',
 }
 
 // AI_PROVIDER_<SURFACE> -> AI_PROVIDER_DEFAULT -> 'groq'. An unrecognised value falls back to
@@ -82,6 +84,19 @@ export interface AiGenerateOpts {
   // behind the model-id guard below, because other Groq models take a different value set and
   // would 400 on it. Passing it here is therefore a request, never a guarantee.
   reasoningEffort?: 'low' | 'medium' | 'high'
+  // OPT-IN, default OFF, so every existing call site keeps the exact logging it has today.
+  //
+  // The non-OK path below logs a SCRUBBED SLICE OF THE PROVIDER'S RESPONSE BODY, which is the
+  // right default: it is how a 400 gets diagnosed. But with response_format json_object, Groq's
+  // `json_validate_failed` 400 returns the MODEL'S OWN GENERATED TEXT in `error.failed_generation`
+  // — and scrubErr redacts key PREFIXES (gsk_/AIza/tvly-), which is no defence against a WiFi
+  // password or a door code.
+  //
+  // Set this on any surface whose model output is credential-bearing. api/import-listing.ts is
+  // the first: its input is a host's house manual, so its output reliably contains exactly that.
+  // The status, the length and the error CODE are still logged — enough to diagnose, without the
+  // content.
+  redactErrorBody?: boolean
 }
 
 export function isAiConfigError(e: unknown): boolean {
@@ -272,8 +287,27 @@ async function groqGenerate(surface: AiSurface, opts: AiGenerateOpts): Promise<s
         // `message`: withRetry's isTransient() falls through to a regex over the message, so a
         // 4xx body merely CONTAINING "500"/"timeout"/"network" would have been retried —
         // defeating the never-retry-4xx rule. `status` is the field isTransient reads first.
-        const detail = scrubErr(await res.text().catch(() => ''), 200)
-        console.warn(`[ai-provider] groq ${res.status} - ${detail}`)
+        // `errBody`, NOT `body`: the outer `body` is the REQUEST payload, which on this surface
+        // is the host's entire house manual. A shadowed name here is one careless log away from
+        // dumping the document.
+        const errBody = await res.text().catch(() => '')
+        // `detail` is hung on the error for the caller; what gets LOGGED depends on the flag.
+        // Not computed at all when redacting: `detail` is an enumerable own property on the
+        // thrown Error, so any future structured logger that serialises the error object would
+        // emit the credential-bearing body despite this flag. Cheaper to never carry it.
+        const detail = opts.redactErrorBody ? undefined : scrubErr(errBody, 200)
+        if (opts.redactErrorBody) {
+          // Log the shape, never the content. `error.code` is a fixed provider enum
+          // ('json_validate_failed', 'rate_limit_exceeded', …) and carries no model output.
+          let code = 'unknown'
+          try {
+            const parsed = JSON.parse(errBody) as { error?: { code?: unknown } }
+            if (typeof parsed?.error?.code === 'string') code = scrubErr(parsed.error.code, 40)
+          } catch { /* not JSON — the length below is then the only signal, which is the point */ }
+          console.warn(`[ai-provider] groq ${res.status} - redacted, code=${code} bodyLength=${errBody.length}`)
+        } else {
+          console.warn(`[ai-provider] groq ${res.status} - ${detail}`)
+        }
         // Logged on the NON-OK path too — the 429 is exactly where these headers matter, and
         // there is no usage body to report. Purely additive: the error below is unchanged.
         logGroqUsage(surface, model, res)

@@ -41,6 +41,13 @@ const ROLLING_LIMITS: Record<string, number> = {
   // pacing at 20/h would cross the daily pool while every one of them stayed under limit+1 and
   // nothing alarmed. This is also the only counter here whose vendor is NOT an AI provider.
   'resolve-canonical-city': 60,
+  // 3x the 10/hour cap in api/import-listing.ts. Registered in the SAME commit that added the
+  // brake, because a brake is UNFINISHED until its key is here: unlisted endpoints are ignored
+  // by BOTH detectors below, so the 429 would fire while nothing alarmed. CALLER-KEYED — the
+  // bump follows a proven apartments.host_id ownership check, so blocking the named host is
+  // correct remediation. This endpoint carries the largest per-call Groq reservation of any
+  // host-authenticated surface, against an ORG-WIDE minute.
+  'import-listing': 30,
   // 3x the 30/hour cap in api/cancel-booking.ts. Registered for the reason the block above
   // exists: a brake is UNFINISHED until its key is in this allowlist, because unlisted
   // endpoints are ignored by BOTH detectors and the 429 would fire while nothing alarmed.
@@ -66,6 +73,12 @@ const KEY_HINT: Record<string, string> = {
   // (address save, guide places, host picks), not only the resolve endpoint. 74 chars - measured
   // to survive the 500-char slice as the LAST line of both messages (per-host 451, global 472).
   'resolve-canonical-city': 'LOCATIONIQ_API_KEY - shared with forward geocoding (address, guide, picks)',
+  // Names the blast radius rather than the surface: GROQ_API_KEY is the ORG-WIDE TPM pool that
+  // every Groq surface shares, so an operator paged about this endpoint must know that revoking
+  // it stops the greeting, events, host-picks and the guide too. Without this entry the cron's
+  // own alert falls back to 'see the endpoint owner' while the endpoint's own alarm names the
+  // key — two alerts about one incident disagreeing on the remediation.
+  'import-listing': 'GROQ_API_KEY (console.groq.com) - ORG-WIDE TPM, shared by every Groq surface',
 }
 
 // Cross-host aggregate (Sybil detection). Every per-host check below (and every brake) keys on
