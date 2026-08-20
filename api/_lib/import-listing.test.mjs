@@ -30,6 +30,8 @@ import {
   SOURCE_DOC_MAX_CHARS,
   looksLikeCredentialText,
   extractDoorCode,
+  DOOR_CODE_MAX_LEN,
+  DOOR_CODE_SLICE_SLACK,
 } from '../../src/lib/listingText.ts'
 
 // ── validation: categories ────────────────────────────────────────────────────────────────
@@ -921,4 +923,81 @@ test('a keyword must not match inside an unrelated word', () => {
   assert.equal(extractDoorCode('the spin class, 3 min walk, room 214'), null)
   assert.equal(extractDoorCode('Porttikoodi 1125.'), '1125')
   assert.equal(extractDoorCode('Door codes: 1125'), '1125')
+})
+
+// == the picnic OFFERING (fourth live test) ================================================
+//
+// The two-block prose shipped and worked, and the host's picnic offering was still shredded into
+// inventory: "water bottles provided" under Good to know, the bags gone entirely. Root cause was
+// TAXONOMY, not the prompt — all seven old extras categories were utility-shaped, so hospitality
+// content had no home. 'During your stay' is that home. What the PURE layer must guarantee is
+// that an offering filed there survives byte-identically: the category is accepted, and nothing
+// in the scrub touches it.
+
+test('an offering filed under During your stay passes through intact', () => {
+  const offering =
+    'Two picnic bags are yours to borrow, and two reusable water bottles are in the studio. ' +
+    'Please wash the bottles and leave them for the next guest. ' +
+    'Fill them with Finnish tap water - some of the cleanest in the world.'
+  const { proposal, redacted } = validateImport({
+    extras: [{ category: 'During your stay', content: offering }],
+  })
+  assert.equal(proposal.extras.length, 1, 'the new category must be accepted by isExtrasCategory')
+  assert.equal(proposal.extras[0].category, 'During your stay')
+  // Byte-identical: no digits, so the scrub has nothing to take - the offering keeps the host's
+  // framing, the request and the tip, which is exactly what was being lost.
+  assert.equal(proposal.extras[0].content, offering)
+  assert.equal(redacted, 0)
+})
+
+test('the offering category is one item, not scattered inventory', () => {
+  // The failure shape: the same content split across utility categories. Both are valid to the
+  // layer - only the PROMPT can prefer one - so this pins the half the layer owns: whichever
+  // categories arrive, they are accepted and preserved, so a later prompt fix needs no code change.
+  const { proposal } = validateImport({
+    extras: [
+      { category: 'During your stay', content: 'Two picnic bags to borrow.' },
+      { category: 'Good to know', content: 'Water bottles provided.' },
+    ],
+  })
+  assert.equal(proposal.extras.length, 2)
+  assert.deepEqual(proposal.extras.map(e => e.category), ['During your stay', 'Good to know'])
+})
+
+// == the two recorded residuals, now closed ================================================
+
+test('an over-cap token abandons the keyword instead of offering a neighbour', () => {
+  // MEASURED case from the 38c1c40 residual list: falling through to a shorter neighbour handed
+  // the guest a room number as the door code. An over-cap token inside the window is strong
+  // evidence it WAS the intended value, so no code is the honest answer.
+  assert.equal(extractDoorCode('Door code: ABCD1234EFGH56 room 214'), null)
+  assert.equal(extractDoorCode('Door code: 1234-5678-9012, flat 4B7'), null)
+  // Short NON-DIGIT tokens must still fall through, or the Spanish phrasing breaks.
+  assert.equal(extractDoorCode('El codigo de la puerta es 1125.'), '1125')
+})
+
+// The break is narrowed to DIGIT-BEARING tokens on purpose. A long ordinary word between the
+// label and the value is routine in the two markets this ships to, and breaking on it would
+// silently drop a perfectly good code — the failure a host never reports because the copy cell
+// simply is not there.
+test('a long ordinary word between label and value does not abandon the keyword', () => {
+  assert.equal(extractDoorCode('Ovikoodi rakennuksessa 1125'), '1125')
+  assert.equal(extractDoorCode('Door code for the accommodation: 1234'), '1234')
+  // ...while an over-cap token that LOOKS like a code still abandons it.
+  assert.equal(extractDoorCode('Door code: ABCD1234EFGH56 room 214'), null)
+})
+
+test('the slice slack stays greater than the length cap, whatever the numbers become', () => {
+  // The anti-truncation argument reduces to this inequality. The two used to be bare literals in
+  // separate statements, so raising the cap silently reopened the defect and nothing could see it.
+  assert.ok(
+    DOOR_CODE_SLICE_SLACK > DOOR_CODE_MAX_LEN,
+    `slice slack ${DOOR_CODE_SLICE_SLACK} must exceed the cap ${DOOR_CODE_MAX_LEN}`,
+  )
+  // And the BEHAVIOUR the inequality exists for, parameterised on the constants so it breaks if a
+  // future edit re-hardcodes the slice: a token one over the cap is rejected WHOLE, never trimmed.
+  const overCap = '1'.repeat(DOOR_CODE_MAX_LEN + 1)
+  assert.equal(extractDoorCode(`Door code: ${overCap}`), null)
+  const atCap = '1'.repeat(DOOR_CODE_MAX_LEN)
+  assert.equal(extractDoorCode(`Door code: ${atCap}`), atCap)
 })

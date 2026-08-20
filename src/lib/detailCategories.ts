@@ -15,14 +15,18 @@
 // additionally excludes private rows because that save re-publishes as is_private:false.
 
 /**
- * The seven free-form "extras" categories. Exact-match, case-sensitive — see isExtrasCategory.
+ * The eight free-form "extras" categories. Exact-match, case-sensitive — see isExtrasCategory.
  * FROZEN because this array gates AI output in api/bulk-import.ts and is now shared between the
  * browser bundle and a warm Lambda; the freeze makes a stray push THROW rather than widen that
  * gate (the `string[]` cast erases readonly, so TypeScript alone would not catch one).
  * Object.freeze, NOT `as const` — a readonly literal tuple's `.includes(someString)` would fail
  * to compile at the src/ call sites, which (unlike api/) are typechecked by `npm run build`.
  */
-export const EXTRAS_CATEGORIES: string[] = Object.freeze(['Parking', 'Recycling & Bins', 'Appliances', 'Transport', 'Amenities', 'Safety', 'Good to know']) as string[]
+// ORDER IS DISPLAY ORDER on the guest page, which maps over this array rather than over the
+// rows — so 'During your stay' is FIRST deliberately: hospitality renders before utilities.
+// (The host editor did NOT honour this until 38c1c40's successor sorted its rows by this same
+// index — it rendered in unspecified DB order. Verified, not assumed.)
+export const EXTRAS_CATEGORIES: string[] = Object.freeze(['During your stay', 'Parking', 'Recycling & Bins', 'Appliances', 'Transport', 'Amenities', 'Safety', 'Good to know']) as string[]
 
 /** Canonical labels every WRITE must use, so stored data converges on one spelling. */
 export const DETAIL_CATEGORY = {
@@ -34,7 +38,7 @@ export const DETAIL_CATEGORY = {
 // The three regexes below are the ones GuestPage has always used to READ. They are
 // deliberately permissive: a read must never hide live guest content. Note they are
 // NOT disjoint in general — e.g. 'House entry rules' matches both isRulesCategory and
-// isCheckinCategory. They ARE mutually exclusive across the ten categories that exist
+// isCheckinCategory. They ARE mutually exclusive across the eleven categories that exist
 // today, which detail-categories.test.mjs asserts.
 
 /** True for any category the guest page renders as house rules. */

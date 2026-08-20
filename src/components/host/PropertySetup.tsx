@@ -53,6 +53,15 @@ function parseSwapHint(hint: unknown): { capText: string | null; kmText: string 
   }
 }
 
+// dd.mm.yyyy — the format the rest of this dashboard uses. Falls back to the raw value rather
+// than rendering "Invalid Date" if the column ever holds something unexpected.
+function fmtImportedAt(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()}`
+}
+
 // One decimal under 10 km, whole numbers above — "1.4 km" and "37 km" both read naturally.
 function formatKm(km: number) {
   return km < 10 ? km.toFixed(1) : String(Math.round(km))
@@ -431,7 +440,19 @@ export default function PropertySetup() {
       .select('id, category, content')
       .eq('apartment_id', apartmentId)
       .in('category', EXTRAS_CATEGORIES)
-    setExtrasRows(data ?? [])
+    // SORTED BY THE SHARED ARRAY, because this list did NOT honour it: the query has no ORDER BY,
+    // so the editor rendered extras in unspecified DB order while the guest page mapped over
+    // EXTRAS_CATEGORIES and rendered them in array order. The two disagreed. Now both put
+    // 'During your stay' first, which is the whole point of adding it at index 0 — hospitality
+    // before utilities, in the editor the host reviews AND on the page the guest reads.
+    // NOT ALL THREE, and the claim is scoped deliberately: WelcomePage renders the same rows
+    // filtered by EXCLUSION, in DB order, and still does. Cosmetic there, but "every consumer
+    // agrees" would be false — recorded as a residual rather than widened silently.
+    setExtrasRows(
+      [...(data ?? [])].sort(
+        (a, b) => EXTRAS_CATEGORIES.indexOf(a.category) - EXTRAS_CATEGORIES.indexOf(b.category),
+      ),
+    )
     setExtrasLoading(false)
   }, [apartmentId])
 
@@ -830,6 +851,92 @@ export default function PropertySetup() {
     return !error
   }
 
+  // ── Stored source document (the guest chat's knowledge) ────────────────────────────────
+  //
+  // THE CONSENT COUNTERPART of the import-review tick. Recorded as a gap at aea7a84: a host could
+  // switch the document on during an import but could only switch it off by RE-IMPORTING — which
+  // meant re-supplying the very document they were trying to revoke. A host who had deleted the
+  // file could not reach the control at all.
+  //
+  // DELIBERATELY INDEPENDENT of the import card's dismissal and 3-tab auto-hide. That card is an
+  // empty-property shortcut and is meant to disappear; this is a live setting on stored data, and
+  // a host with a document must always be able to see and remove it.
+  const [sourceDoc, setSourceDoc] = useState<{ chat_enabled: boolean; imported_at: string } | null>(null)
+  const [sourceDocBusy, setSourceDocBusy] = useState(false)
+  const [confirmRemoveDoc, setConfirmRemoveDoc] = useState(false)
+
+  const loadSourceDoc = useCallback(async (signal?: { cancelled: boolean }) => {
+    if (!apartmentId) { setSourceDoc(null); return }
+    // Host's own client: apartment_source_docs is RLS'd to `apartment_id IN (host's apartments)`
+    // and anon holds no grants, so this needs no serverless hop.
+    const { data } = await supabase
+      .from('apartment_source_docs')
+      .select('chat_enabled, imported_at')
+      .eq('apartment_id', apartmentId)
+      .maybeSingle()
+    if (signal?.cancelled) return
+    setSourceDoc(data ?? null)
+  }, [apartmentId])
+
+  // The guard matters here for the same reason it does on the main load: on a fast apartment
+  // switch A's response can land after B's and paint A's date beside B's controls.
+  //
+  // AND THE CONFIRM IS DISARMED ON EVERY APARTMENT CHANGE. This component is reused across
+  // :aptId (apartmentId is state set inside the load effect, not a remount), so without this an
+  // open confirm on property A renders ALREADY ARMED over property B's document — one click from
+  // deleting the wrong property's document. State that guards a destructive act must not outlive
+  // the thing it guarded.
+  useEffect(() => {
+    const signal = { cancelled: false }
+    setConfirmRemoveDoc(false)
+    void loadSourceDoc(signal)
+    return () => { signal.cancelled = true }
+  }, [loadSourceDoc])
+
+  async function toggleSourceDocChat() {
+    if (!apartmentId || !sourceDoc || sourceDocBusy) return
+    const next = !sourceDoc.chat_enabled
+    setSourceDocBusy(true)
+    // Optimistic: the switch is the feedback. Reverted below if the write fails, so the UI can
+    // never claim a state the database refused.
+    setSourceDoc({ ...sourceDoc, chat_enabled: next })
+    // .select() because PostgREST returns NO ERROR when zero rows match, so an RLS-denied or
+    // already-deleted row is otherwise indistinguishable from success. This is the CONSENT
+    // control and its protective state is "off": a switch that renders off while the row still
+    // says on is a false assurance, which is worse here than anywhere else in this file.
+    // applyImport's delete already works this way; this is the site that did not.
+    const { data, error } = await supabase
+      .from('apartment_source_docs')
+      .update({ chat_enabled: next })
+      .eq('apartment_id', apartmentId)
+      .select('chat_enabled')
+      .maybeSingle()
+    if (error || !data) {
+      setSourceDoc({ ...sourceDoc, chat_enabled: !next })
+      showErr(error?.message ?? 'Could not update — nothing was changed')
+    }
+    setSourceDocBusy(false)
+  }
+
+  async function removeSourceDoc() {
+    if (!apartmentId || sourceDocBusy) return
+    setSourceDocBusy(true)
+    // Same reason as the toggle: zero rows deleted is not success.
+    const { data, error } = await supabase
+      .from('apartment_source_docs')
+      .delete()
+      .eq('apartment_id', apartmentId)
+      .select('apartment_id')
+    if (error || (data?.length ?? 0) === 0) {
+      showErr(error?.message ?? 'Could not remove — nothing was changed')
+    } else {
+      setSourceDoc(null)
+      setConfirmRemoveDoc(false)
+      showOk()
+    }
+    setSourceDocBusy(false)
+  }
+
   // ── LISTING IMPORTER — apply ───────────────────────────────────────────────
   //
   // The importer PROPOSES; this function is the only place its proposal becomes a write, and it
@@ -1017,7 +1124,12 @@ export default function PropertySetup() {
           { onConflict: 'apartment_id' },
         )
       if (error) out.push({ section: 'Chat knowledge', ok: false, message: error.message })
-      else out.push({ section: 'Chat knowledge', ok: true, message: 'saved' })
+      else {
+        // Refresh so the revocation row appears immediately — otherwise a host who has just
+        // stored a document cannot see or remove it until the next load.
+        await loadSourceDoc()
+        out.push({ section: 'Chat knowledge', ok: true, message: 'saved' })
+      }
     } else {
       // .select() so the result distinguishes "removed one" from "there was none" — reporting
       // "removed" to a host who never stored a document is a claim the code cannot support.
@@ -1027,11 +1139,14 @@ export default function PropertySetup() {
         .eq('apartment_id', apartmentId)
         .select('apartment_id')
       if (error) out.push({ section: 'Chat knowledge', ok: false, message: error.message })
-      else out.push({
-        section: 'Chat knowledge',
-        ok: true,
-        message: (deleted?.length ?? 0) > 0 ? 'removed' : 'none stored',
-      })
+      else {
+        await loadSourceDoc()
+        out.push({
+          section: 'Chat knowledge',
+          ok: true,
+          message: (deleted?.length ?? 0) > 0 ? 'removed' : 'none stored',
+        })
+      }
     }
 
     // 7. Picks LAST — hands the text to the EXISTING /generate-host-picks and drops the host into
@@ -1362,6 +1477,62 @@ export default function PropertySetup() {
           {basic.name.trim() || (apartmentId === null ? 'New property' : 'Untitled property')}
         </h1>
       </div>
+
+      {/* Stored source document. Rendered whenever one EXISTS, regardless of the import card's
+          dismissal or the 3-tab auto-hide — see the note on loadSourceDoc. A compact row, not a
+          card: it is a setting on existing data, not an offer. */}
+      {apartmentId && sourceDoc && (
+        <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-[10px] border border-[#e4ddd0] bg-[#f8f6f2] px-3.5 py-2.5 text-[12px] text-[#6b6459]">
+          <span className="text-[#231d17]">
+            Imported document ({fmtImportedAt(sourceDoc.imported_at)})
+          </span>
+          <span className="text-[#c9c2b4]">·</span>
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={sourceDoc.chat_enabled}
+              onChange={() => void toggleSourceDocChat()}
+              disabled={sourceDocBusy}
+              className="accent-[#c8a24e]"
+            />
+            <span>chat answers from it</span>
+          </label>
+          <span className="text-[#c9c2b4]">·</span>
+          <button
+            onClick={() => setConfirmRemoveDoc(true)}
+            disabled={sourceDocBusy}
+            className="text-[#8a1a1a] hover:underline disabled:opacity-40"
+          >
+            Remove document
+          </button>
+          {confirmRemoveDoc && (
+            <div className="w-full mt-1.5 rounded-[8px] border border-[#eddcc0] bg-[#faeeda] px-3 py-2 text-[11px] text-[#7a4800]">
+              {/* SAYS ONLY WHAT DELETING DOES. It removes the stored document, so the chat stops
+                  answering from it and the tabs keep everything already applied. It does NOT
+                  un-send what was already sent to the AI provider on past turns, and no copy
+                  anywhere may imply otherwise. */}
+              The guest chat will no longer answer from your document. Your tabs keep everything
+              already applied. Text already sent to the AI in past chats can't be taken back.
+              <div className="mt-2 flex items-center gap-2">
+                <button
+                  onClick={() => void removeSourceDoc()}
+                  disabled={sourceDocBusy}
+                  className="rounded-[8px] bg-[#8a1a1a] px-3 py-1.5 text-[11px] font-semibold text-white disabled:opacity-40"
+                >
+                  {sourceDocBusy ? 'Removing…' : 'Remove it'}
+                </button>
+                <button
+                  onClick={() => setConfirmRemoveDoc(false)}
+                  disabled={sourceDocBusy}
+                  className="rounded-[8px] border border-[#e4ddd0] bg-white px-3 py-1.5 text-[11px] disabled:opacity-40"
+                >
+                  Keep it
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Listing importer — EXISTING properties only. A brand-new property has no id yet, so
           there is nothing to import into and no per-property dismissal key to write. */}

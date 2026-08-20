@@ -93,7 +93,7 @@ export const GUIDE_MODULES: GuideModule[] = [
 
 ### Tab: Extras
 - **Bulk paste box** — dump everything else a guest should know (parking, bins, appliances, transport…). *Why:* one paste instead of many forms.
-- **Add with AI** (the import button) — sorts your paste into tidy categories (Parking, Recycling & Bins, Appliances, Transport, Amenities, Safety, Good to know). *Why:* it organises a messy blob into a clean "Good to know" section on the guest page. **Importing replaces your current extras**, so it's one authoritative list, not duplicates.
+- **Add with AI** (the import button) — sorts your paste into tidy categories (During your stay, Parking, Recycling & Bins, Appliances, Transport, Amenities, Safety, Good to know). *Why:* it organises a messy blob into a clean "Good to know" section on the guest page. **Importing replaces your current extras**, so it's one authoritative list, not duplicates.
 
 ### Tab: My picks
 - **Free-text places box** (e.g. "Mercadona on Carrer del Rec, Bar Marsella…") — your personal recommendations. *Why:* your local picks are what make the guide *yours*, not generic.

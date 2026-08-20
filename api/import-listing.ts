@@ -123,12 +123,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // BUDGET ARITHMETIC — the reservation must fit under the verified 8,000 TPM ceiling, because
     // Groq debits promptTokens + max_tokens RESERVED (never the completion actually generated),
     // and a reservation above the ceiling is a PERMANENT failure that NO retry clears:
-    //   system    SYSTEM_PROMPT, measured with estimateTokens = 1,099
+    //   system    SYSTEM_PROMPT, measured with estimateTokens = 1,097
     //   content   CONTENT_TOKEN_BUDGET (see listingText.ts)   = 3,300
     //   output    maxTokens below                             = 2,800
-    //   reservation                                           = 7,199 < 8,000  ✓  (~801 spare)
-    //   THE MARGIN IS AT THE WALL — 801 against the test's own >= 800 floor. ONE token.
-    //   Precisely: +5 ASCII characters, or +2 non-ASCII, fails the test. The prose rules were
+    //   reservation                                           = 7,197 < 8,000  ✓  (~803 spare)
+    //   THE MARGIN IS AT THE WALL — 803 against the test's own >= 800 floor, i.e. THREE tokens.
+    //   Precisely: about +10 ASCII characters, or +4 non-ASCII, fails the test. The prose rules were
     //   afforded by CONSOLIDATING three older passages, not by adding budget, and there is no
     //   fat left to reclaim without losing a behaviour. NOTE EXTRAS_CATEGORIES is interpolated
     //   into SYSTEM_PROMPT, so the queued category-naming migration will trip this test on a

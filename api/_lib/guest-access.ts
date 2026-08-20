@@ -158,10 +158,11 @@ export async function buildGuestSystemInstruction(
       .eq('apartment_id', apt.id)
       .maybeSingle()
     // chat_enabled is checked against `true` EXPLICITLY so null, undefined, a missing row or an
-    // unexpected type all read as OFF. NOTE the importer expresses "off" by DELETING the row, not
-    // by writing false — so today this column is always true when a row exists. It is honoured
-    // anyway, because it is the flag a revocation toggle would use, and a read that trusts the
-    // row's existence alone would silently ignore it.
+    // unexpected type all read as OFF. THE FLAG IS LIVE: the property editor's revocation control
+    // writes chat_enabled = false and LEAVES the row, so a false row is a real, reachable state
+    // and the existence of a row proves nothing. (It was not always so — the importer once
+    // expressed "off" by deleting the row, which is why this check reads as defensive.) A read
+    // that trusted the row's existence alone would ignore a host's explicit revocation.
     if (sourceDoc?.chat_enabled === true && sourceDoc.content) {
       // Strip any forged fence marker from the content itself. Belt to the nonce's braces: with an
       // unguessable id a forged marker cannot match, and with this it cannot even appear.

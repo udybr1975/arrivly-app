@@ -42,10 +42,10 @@ export const SOURCE_DOC_MAX_CHARS = 20_000
  * reservation above the verified 8,000 TPM ceiling can NEVER be satisfied on any bucket state —
  * a PERMANENT failure no retry clears. Measured, not assumed:
  *
- *   system    SYSTEM_PROMPT, 3,284 chars, measured with estimateTokens = 1,099
+ *   system    SYSTEM_PROMPT, 3,272 chars, measured with estimateTokens = 1,097
  *   content   CONTENT_TOKEN_BUDGET                                     = 3,300
  *   output    max_tokens in api/import-listing.ts                      = 2,800
- *   reservation                                                        = 7,199 < 8,000
+ *   reservation                                                        = 7,197 < 8,000
  *
  * A CHARACTER cap alone CANNOT be safe here, and this is the trap the first version fell into.
  * SYSTEM_PROMPT tells the model to preserve the document's language, and nothing restricts the
@@ -235,6 +235,15 @@ export const DOOR_CODE_KEYWORD_RE = /(?:\bcodes?|digicode|\bpins?|koodi|c[oó]di
 /** Distance only — how far after the keyword a value may START. Never crosses a line. */
 export const DOOR_CODE_WINDOW = 26
 
+/** Accepted token length. The anti-truncation argument reduces to SLICE_SLACK > DOOR_CODE_MAX_LEN:
+ *  a token is judged only if it starts inside the window, so it must be VISIBLE past the cap to be
+ *  rejected whole rather than trimmed into the band. These were two bare literals in separate
+ *  statements; raising the cap past the slack silently reopened the defect four gate rounds closed,
+ *  and no test could see it. Derived now, and pinned by a test. */
+export const DOOR_CODE_MIN_LEN = 3
+export const DOOR_CODE_MAX_LEN = 12
+export const DOOR_CODE_SLICE_SLACK = DOOR_CODE_MAX_LEN + 4
+
 /** A whole run of code-ish characters. Length is checked in code, not by the regex, so an
  *  over-long token is REJECTED rather than trimmed. */
 export const DOOR_CODE_TOKEN_RE = /[A-Za-z0-9#*-]+/
@@ -249,17 +258,29 @@ export function extractDoorCode(text: string): string | null {
   let k: RegExpExecArray | null
   while ((k = keyword.exec(text)) !== null) {
     // Bounded slice, not the whole tail: slicing the remainder on every keyword hit is O(n*k).
-    // WINDOW + 16 is enough to see a token that STARTS inside the window and runs past it, which
+    // WINDOW + DOOR_CODE_SLICE_SLACK is enough to see a token that STARTS inside the window and
+    // runs past it, which
     // is what lets an over-long code be rejected WHOLE instead of trimmed.
     const line = text
-      .slice(keyword.lastIndex, keyword.lastIndex + DOOR_CODE_WINDOW + 16)
+      .slice(keyword.lastIndex, keyword.lastIndex + DOOR_CODE_WINDOW + DOOR_CODE_SLICE_SLACK)
       .split(/[\n\r]/)[0]
     if (BENIGN_BEFORE_RE.test(text.slice(Math.max(0, k.index - 14), k.index))) continue
     if (BENIGN_AFTER_RE.test(line.slice(0, 14))) continue
     for (const m of line.matchAll(new RegExp(DOOR_CODE_TOKEN_RE.source, 'g'))) {
       if ((m.index ?? 0) >= DOOR_CODE_WINDOW) break
       const token = m[0]
-      if (token.length >= 3 && token.length <= 12 && /\d/.test(token)) return token
+      // BREAK, not continue, on an over-cap token THAT CARRIES A DIGIT. Falling through to a shorter neighbour offered
+      // a room number as the door code — measured: "Door code: ABCD1234EFGH56 room 214" returned
+      // "214". An over-cap token inside the window is strong evidence it WAS the intended value,
+      // so the honest answer is no code rather than a different one. Short non-digit tokens still
+      // fall through, which is what keeps "El codigo de la puerta es 1125" working.
+      // The digit test is what keeps the break narrow: an over-cap token with no digit is an
+      // ORDINARY WORD sitting between the label and the value, and Finnish and Spanish put long
+      // ones there routinely ("Ovikoodi rakennuksessa 1125" — 13 chars; "accommodation" — 13).
+      // Breaking on those would silently lose codes in the home market. An over-cap token WITH a
+      // digit is the code-shaped impostor this guard exists for, so it still abandons the keyword.
+      if (token.length > DOOR_CODE_MAX_LEN) { if (/\d/.test(token)) break; continue }
+      if (token.length >= DOOR_CODE_MIN_LEN && /\d/.test(token)) return token
     }
   }
   return null

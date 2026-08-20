@@ -5,7 +5,7 @@
 // guest page READS with. If two matchers both claimed the same category, one save would
 // delete a row another save had just written under a different label. These matchers are
 // NOT disjoint in general ('House entry rules' matches both rules and check-in) — they
-// are only proven mutually exclusive across the ten categories that actually exist. This
+// are only proven mutually exclusive across the eleven categories that actually exist. This
 // test is what makes that a checked property rather than an assumption.
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
@@ -31,10 +31,26 @@ const LIVE_CATEGORIES = [
   ...EXTRAS_CATEGORIES,
 ]
 
-test('the ten live categories are the three canonical labels plus the seven extras', () => {
-  assert.equal(EXTRAS_CATEGORIES.length, 7)
-  assert.equal(LIVE_CATEGORIES.length, 10)
-  assert.equal(new Set(LIVE_CATEGORIES).size, 10)
+test('the eleven live categories are the three canonical labels plus the eight extras', () => {
+  assert.equal(EXTRAS_CATEGORIES.length, 8)
+  assert.equal(LIVE_CATEGORIES.length, 11)
+  assert.equal(new Set(LIVE_CATEGORIES).size, 11)
+})
+
+test("'During your stay' is FIRST, because array order is guest-page display order", () => {
+  // The guest page maps over EXTRAS_CATEGORIES rather than over the rows, and the host editor
+  // now sorts its rows by the same index. Hospitality renders before utilities in both.
+  assert.equal(EXTRAS_CATEGORIES[0], 'During your stay')
+})
+
+test("'During your stay' must NOT collide with the check-in matcher", () => {
+  // isCheckinCategory is /check.?in|check.?out|timing|door|code|entry/i — deliberately permissive,
+  // and this label is prose rather than a noun, so the collision risk is real enough to pin. A
+  // collision would make the host editor load this public category into the PRIVATE check-in tab
+  // and saveCheckin's delete would then destroy it.
+  assert.equal(isCheckinCategory('During your stay'), false)
+  assert.equal(isRulesCategory('During your stay'), false)
+  assert.equal(isWifiCategory('During your stay'), false)
 })
 
 test('no live category is matched by more than one regex matcher', () => {

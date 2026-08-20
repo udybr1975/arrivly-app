@@ -16,7 +16,7 @@ import { CREDENTIAL_WORDS_RE } from '../../src/lib/listingText.js'
  *  into one field gets clipped rather than passed through. */
 export const MAX_FIELD_CHARS = 4_000
 
-/** Array caps. Sized to the domain, not to the model's imagination: there are seven extras
+/** Array caps. Sized to the domain, not to the model's imagination: there are eight extras
  *  categories (a few items each is plausible), and a skipped/conflicts list longer than this is
  *  noise the host will not read. */
 export const MAX_EXTRAS_ITEMS = 20
@@ -69,67 +69,62 @@ const WIFI_KEYS = ['ssid', 'password'] as const
 const CHECKIN_KEYS = ['check_in_from', 'check_out_by', 'door_code', 'entry_instructions'] as const
 
 export const SYSTEM_PROMPT =
-  'You are sorting a short-term rental host\'s guest guide / house manual into their property page fields. ' +
+  'Sort a short-term rental host\'s guest guide / house manual into their property page fields. ' +
   'Output ONLY a JSON object with these keys: ' +
-  '"basics" (object: description, street, street_number, floor_note, max_guests (number), city, neighborhood, country), ' +
-  '"wifi" (object: ssid, password), ' +
-  '"checkin" (object: check_in_from, check_out_by, door_code, entry_instructions), ' +
+  '"basics" (description, street, street_number, floor_note, max_guests (number), city, neighborhood, country), ' +
+  '"wifi" (ssid, password), ' +
+  '"checkin" (check_in_from, check_out_by, door_code, entry_instructions), ' +
   '"rules" (string), ' +
-  '"extras" (array of { "category": string, "content": string }), ' +
+  '"extras" ({category, content} array), ' +
   '"picks_text" (string), ' +
-  '"skipped" (array of short strings), ' +
-  '"conflicts" (array of { "field": string, "values": array of strings }). ' +
+  '"skipped" (strings), ' +
+  '"conflicts" ({field, values[]} array). ' +
   'Each "extras" category MUST be exactly one of: ' + EXTRAS_CATEGORIES.join(', ') + '. ' +
-  // ONE CODES PARAGRAPH, consolidated from three that grew separately across a57102e / 993fa3d /
-  // aea7a84: the codes-only-in-wifi-checkin rule, the relocate-never-drop rule, and the public
-  // cross-reference. Every behaviour of all three survives here — the mapping is in the commit
-  // message. They were merged to buy the budget for the prose example below, which is what the
-  // third live test showed was actually missing.
-  // The cross-reference is now a COMMAND ("MUST"), because as a suggestion it fired weakly: the
-  // codes relocated correctly and no public line told the guest the bikes existed at all.
+  // ONE CODES PARAGRAPH, consolidated at 38c1c40 from three that grew separately. Every behaviour
+  // of all three survives here — the mapping is in that commit message.
   'CODES: access codes, PINs, passwords and lock combinations belong ONLY in wifi and checkin, ' +
   'never in extras, rules or basics, even if the source repeats them. Never discard one — codes ' +
   'beyond the main door (gates, bike locks, storage) go in checkin.entry_instructions. ' +
-  'Whenever entry_instructions holds a code for something a guest can see or use, the matching ' +
-  'extras category MUST carry one sentence introducing that thing and ending with a private ' +
-  'pointer: \"Two Jopo bikes wait in the courtyard for you — lock codes are in your ' +
-  'check-in info.\" The thing is public; the code is not. ' +
-  // EXAMPLE VALUES ARE DELIBERATELY 0000 / 9999, and the RULE outlives the reason. The host
-  // document's codes were used here first; they turned out to be FAKE (confirmed by Udy, 19 Aug
-  // 2026 — see the fixture note in import-listing.test.mjs, and do not re-raise it), so nothing
-  // was exposed. The practice stands anyway on its own merit: an obviously-synthetic value teaches
-  // the SHAPE just as well, and a model that copies one produces something a host spots instantly
-  // rather than a plausible wrong code. EXTRACT, NEVER INVENT above is what forbids copying at all.
-  // THE THIRD LIVE TEST'S FINDING. Relocation worked and produced an unreadable run-on: five
-  // unrelated thoughts, no structure, codes stapled to the end. A model follows an EXAMPLE far
-  // better than it follows adjectives, so the example is the load-bearing part of this block.
-  'Write entry_instructions as flowing prose in two blocks separated by a blank line: ' +
-  '"Getting in:" for arrival only (entrance, route, key retrieval, door and lockbox codes), ' +
+  'When entry_instructions holds a code for something a guest can see or use, the matching ' +
+  'extras category MUST introduce it in one sentence ending with a private pointer: ' +
+  '"Two Jopo bikes in the courtyard — lock codes are in your check-in info." ' +
+  'The thing is public; the code is not. ' +
+  // THE FOURTH LIVE TEST'S FINDING, and it was TAXONOMY not prompt: all seven old extras
+  // categories were utility-shaped, so a picnic OFFERING had no home and was shredded into
+  // inventory ("water bottles provided" under Good to know; the bags vanished entirely). The
+  // eighth category is the fix; this rule is what routes to it.
+  // The general keep-the-host's-voice rule is merged in here rather than left standalone: it
+  // overlapped this one almost entirely, and merging is part of what funded the addition.
+  'OFFERINGS: things the host presents as an offering — picnic kit, sauna, bikes, ' +
+  'welcome treats, games — stay as ONE extras item under "During your stay". Never reduce an ' +
+  'offering to an inventory line. Everywhere in extras, keep the host\'s requests, tips and ' +
+  'colour words ("wash the bottles and leave them for the next guest", "tap water is excellent", ' +
+  'bike colours): shorten formatting, never meaning. ' +
+  'Write entry_instructions as prose in two blocks separated by a blank line: ' +
+  '"Getting in:" for arrival only (entrance, route, key, door and lockbox codes), ' +
   'then "During your stay:" for everything else private (keys, gates, bikes, storage, ' +
-  'other codes). Labels in the document\'s language. Introduce a thing before ' +
-  'giving its code, one topic per sentence, code at the sentence end. Example:\n' +
-  'Getting in: Enter through entrance B, one floor up — the studio is the first door on your ' +
-  'right. The key is in the lockbox left of the door. Lockbox code: 0000.\n\n' +
-  'During your stay: Keep the key with you when you go out. In the courtyard you\'ll find ' +
-  'two Jopo bikes — one orange, one light blue — free for you to use. Both locks ' +
-  'open with PIN 9999.\n' +
-  'Safety info goes under "Safety" — fuse box, emergency numbers, smoke alarm, ' +
-  'extinguisher, first aid, water shut-off, caretaker contact FOR EMERGENCIES — not ' +
-  '"Good to know". ' +
-  'EXTRACT, NEVER INVENT: every value, including prose you rearrange, must trace to a phrase ' +
-  'in the source. Omit any absent field; prefer an empty object or array over a guess. ' +
-  'Preserve the document\'s language and never translate; category names and JSON keys stay English. ' +
-  'IGNORE and label in "skipped": cancellation/refund policy, review scores, empty FAQ ' +
-  'stubs, platform boilerplate ("Unavailable: ..."), prices and fees, chat timestamps, ' +
-  'legal or deposit text. ' +
-  'Keep the host\'s requests, tips and colour words ("wash the bottles and leave ' +
-  'them for the next guest", "tap water is excellent", bike colours): shorten formatting, ' +
-  'never meaning. ' +
-  'NEVER extract the host\'s phone, WhatsApp or email into any field; add the skipped label ' +
-  '"host contact details". ' +
+  // DISAMBIGUATION: the label now exists twice, once private and once public, and they hold
+  // opposite things. Folded into the block rule rather than added as a standalone sentence,
+  // which is cheaper and puts it where the confusion would arise.
+  'other codes) — that private block is codes and practicalities only; the public ' +
+  '"During your stay" category is OFFERINGS ONLY, never a code or utility. ' +
+  'Labels in the document\'s language. Introduce a thing before its code, one topic per ' +
+  'sentence, code last. Example:\n' +
+  'Getting in: Entrance B, one floor up — the studio is the first door right. The key is in ' +
+  'the lockbox left of the door. Lockbox code: 0000.\n\n' +
+  'During your stay: In the courtyard, two Jopo bikes — orange and light blue — free to use. ' +
+  'Both locks open with PIN 9999.\n' +
+  'Safety info goes under "Safety" — fuse box, emergency numbers, smoke alarm, water shut-off, ' +
+  'caretaker contact FOR EMERGENCIES — not "Good to know". ' +
+  'EXTRACT, NEVER INVENT: every value, including prose you rearrange, must trace to the source. ' +
+  'Omit absent fields; prefer empty over a guess. ' +
+  'Preserve the document\'s language, never translate; category names and JSON keys stay English. ' +
+  'IGNORE and label in "skipped": cancellation/refund policy, reviews, FAQ stubs, platform ' +
+  'boilerplate, prices, chat timestamps, legal or deposit text. ' +
+  'NEVER extract the host\'s phone, WhatsApp or email; add the skipped label "host contact details". ' +
   'If a fact appears twice with different values, put the likelier in its field AND record ' +
   'both in "conflicts". ' +
-  '"picks_text": passages recommending restaurants, cafes, bars, sights or shops — copy ' +
+  '"picks_text": passages recommending restaurants, cafes, bars, sights, shops — copy ' +
   'verbatim or lightly joined; invent no addresses or structure. ' +
   'Output the raw JSON object only, no code fences.'
 
