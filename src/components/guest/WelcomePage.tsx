@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import { MapPin, Navigation, Star, Wifi, KeyRound, Ticket, Send } from 'lucide-react'
 import { resolveImageUrl } from '../../lib/imageUtils'
 import { getDirectionsUrl } from '../../lib/maps'
@@ -52,6 +52,69 @@ type ChatMsg = { role: 'user' | 'assistant'; text: string }
 // Public detail categories that live behind the guest page, surfaced here as a nudge only.
 const PRIVATE_HINT = 'WiFi and entry details are waiting inside your guest page — scan the QR in the apartment on arrival.'
 
+// ── Pre-arrival personal link ────────────────────────────────────────────────────
+// The host pastes ONE static template into their booking platform's automated message,
+// carrying the PLATFORM'S OWN variables for the guest's first name and confirmation code:
+//   https://bemgu.app/w/AAAA1111#g={{guest_first_name}}&c={{confirmation_code}}
+//
+// THE HINTS ARE IN THE FRAGMENT ON PURPOSE, AND THIS IS NOT COSMETIC. vercel.json rewrites
+// /(.*) to index.html, so a QUERY STRING would be written into Vercel's edge access log
+// before any of this code runs — stripping it here afterwards would be theatre. A browser
+// never transmits a fragment to a server and never puts it in a Referer, so the hints exist
+// only in this tab until we POST them. Never move them into a query string, a GET, a URL we
+// fetch, or a redirect target.
+type ClaimHints = { g: string; c: string }
+type ClaimResult =
+  | { state: 'preview'; guestName: string | null; checkIn: string }
+  | { state: 'thankyou'; guestName: string | null }
+
+// Read the hints and REMOVE them from the address bar in the same breath, so they are never
+// in a link the guest can copy, screenshot, or leave in their history. Called once per
+// mount, during the first render — before any network call can be made with them.
+function readAndStripHash(): ClaimHints | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.location.hash.replace(/^#/, '')
+  if (!raw) return null
+  // URLSearchParams never throws on a malformed string — it simply yields no matches.
+  const params = new URLSearchParams(raw)
+  const g = params.get('g')
+  const c = params.get('c')
+  const hints: ClaimHints | null = g && c ? { g, c } : null
+  // Strip unconditionally: a malformed fragment is cleared too, so nothing survives in the
+  // URL bar on any path through this function. pathname + search, NOT pathname alone, so a
+  // host who pastes the template with a ?utm_* tail does not silently lose it.
+  //
+  // TWO OTHER READERS OF THIS FRAGMENT EXIST, and neither is a leak today: react-router's
+  // in-memory location still holds the original hash for this mount (this is a direct
+  // history call, so the router is not notified) — nothing reads it, and the active hand-off
+  // replaces it — and src/lib/supabase.ts creates its client with detectSessionInUrl on, so
+  // supabase-js also parses the hash at module init and ignores non-auth fragments. Neither
+  // transmits anything. Do NOT start reading useLocation().hash here on the assumption that
+  // it has been cleaned.
+  window.history.replaceState(null, '', window.location.pathname + window.location.search)
+  return hints
+}
+
+// Whole days from local today to a 'YYYY-MM-DD' date. Built from local y/m/d parts on
+// purpose: `new Date('YYYY-MM-DD')` parses as UTC and would shift the day for every
+// positive-UTC viewer, which is the entire market this countdown is shown to.
+function daysUntil(isoDate: string): number | null {
+  const parts = isoDate.split('-').map(Number)
+  if (parts.length !== 3 || parts.some(n => !Number.isFinite(n))) return null
+  const target = new Date(parts[0], parts[1] - 1, parts[2])
+  const now = new Date()
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000)
+}
+
+function countdownLabel(isoDate: string): string | null {
+  const days = daysUntil(isoDate)
+  if (days === null || days < 0) return null
+  if (days === 0) return 'You arrive today'
+  if (days === 1) return 'You arrive tomorrow'
+  return `${days} days to go`
+}
+
 function whatsappHref(raw: string): string {
   const digits = raw.replace(/[^\d]/g, '')
   return `https://wa.me/${digits}`
@@ -63,8 +126,53 @@ function mapsSearchUrl(query: string): string {
 
 export default function WelcomePage() {
   const { code } = useParams<{ code: string }>()
+  const navigate = useNavigate()
   const [payload, setPayload] = useState<Payload | null>(null)
   const [loading, setLoading] = useState(true)
+
+  // Read + strip during the FIRST RENDER, not in an effect: an effect runs after paint, so
+  // the hints would sit in the address bar (and in anything that samples it) for a frame.
+  // The ref makes it once-per-mount — a second render finds the value already captured.
+  const hintsRef = useRef<ClaimHints | null | undefined>(undefined)
+  if (hintsRef.current === undefined) hintsRef.current = readAndStripHash()
+
+  const [claim, setClaim] = useState<ClaimResult | null>(null)
+  // Only true when there is actually something to claim, so a plain link never waits.
+  const [claiming, setClaiming] = useState(hintsRef.current !== null)
+
+  useEffect(() => {
+    const hints = hintsRef.current
+    // Clear the flag before returning: `claiming` starts true whenever hints were captured,
+    // so a falsy `code` (only reachable if the route shape changes) would otherwise leave the
+    // page on its spinner forever.
+    if (!code || !hints) { setClaiming(false); return }
+    let cancelled = false
+    fetch('/api/welcome-claim', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ code, g: hints.g, c: hints.c }),
+    })
+      .then(r => (r.ok ? r.json() : null))
+      .then((data: (ClaimResult & { token?: string; apartmentId?: string }) | null) => {
+        if (cancelled) return
+        // ACTIVE — hand off to the existing guest page with the token that already existed
+        // on the booking. This feature does not rebuild that page and does not change how
+        // its token works.
+        if (data && (data as { state?: string }).state === 'active' && data.apartmentId && data.token) {
+          navigate(
+            `/guest?apt=${encodeURIComponent(data.apartmentId)}&token=${encodeURIComponent(data.token)}`,
+            { replace: true }
+          )
+          return
+        }
+        if (data && (data.state === 'preview' || data.state === 'thankyou')) setClaim(data)
+        // Anything else — a miss, the brake, a bad response — falls through to the ORDINARY
+        // welcome page. A guest whose hint did not match must never see an error.
+        setClaiming(false)
+      })
+      .catch(() => { if (!cancelled) setClaiming(false) })
+    return () => { cancelled = true }
+  }, [code, navigate])
 
   // Marketplace content ⇒ noindex (Viator licence). Same mechanism GuestPage uses:
   // inject a robots meta only while this page is mounted, remove on unmount.
@@ -94,7 +202,7 @@ export default function WelcomePage() {
     return () => { cancelled = true }
   }, [code])
 
-  if (loading) {
+  if (loading || claiming) {
     return (
       <div className="min-h-screen bg-[#fbfaf7] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-[#e9e4d9] border-t-[#1c1c1a] rounded-full animate-spin" />
@@ -143,11 +251,11 @@ export default function WelcomePage() {
     )
   }
 
-  return <LiveWelcome payload={payload} accent={accent} brandName={brandName} logo={logo} whatsapp={whatsapp} code={code!} />
+  return <LiveWelcome payload={payload} accent={accent} brandName={brandName} logo={logo} whatsapp={whatsapp} code={code!} claim={claim} />
 }
 
 function LiveWelcome({
-  payload, accent, brandName, logo, whatsapp, code,
+  payload, accent, brandName, logo, whatsapp, code, claim,
 }: {
   payload: Extract<Payload, { state: 'live' }>
   accent: string
@@ -155,8 +263,12 @@ function LiveWelcome({
   logo: string | null
   whatsapp: string | null
   code: string
+  // null for a plain link — the page then renders exactly as it always has. A PLAIN LINK
+  // NEVER SELF-TRANSFORMS, on any date; only a CLAIMED one does.
+  claim: ClaimResult | null
 }) {
   const { apartment, details, picks, guide, showFooter } = payload
+  const countdown = claim?.state === 'preview' ? countdownLabel(claim.checkIn) : null
   const area = [apartment.neighborhood, apartment.city].filter(Boolean).join(', ')
   const hasAddress = !!(apartment.street && apartment.street_number)
   const fullAddress = hasAddress
@@ -209,9 +321,22 @@ function LiveWelcome({
         {logo && <img src={logo} alt="" className="h-14 w-auto mx-auto mb-5 object-contain" />}
         {area && <div className={`${eyebrow} mb-2`} style={{ color: accent }}>{area}</div>}
         <h1 className="font-['Fraunces'] font-light text-[32px] leading-tight text-[#1c1c1a]">
-          Your stay is almost here.
+          {claim?.state === 'thankyou'
+            ? (claim.guestName ? `Thank you for staying, ${claim.guestName}.` : 'Thank you for staying.')
+            : claim?.state === 'preview' && claim.guestName
+              ? `See you soon, ${claim.guestName}.`
+              : 'Your stay is almost here.'}
         </h1>
-        <p className="mt-3 text-[14px] text-[#5b5853]">A little welcome from {brandName}.</p>
+        {claim?.state === 'preview' && countdown && (
+          <div className="mt-3 inline-block rounded-full border border-[#e9e4d9] bg-[#fffdf9] px-3.5 py-1.5 text-[12px] font-semibold tracking-[0.02em]" style={{ color: accent }}>
+            {countdown}
+          </div>
+        )}
+        <p className="mt-3 text-[14px] text-[#5b5853]">
+          {claim?.state === 'thankyou'
+            ? `We hope you enjoyed ${apartment.name}.`
+            : `A little welcome from ${brandName}.`}
+        </p>
       </header>
 
       <main className="max-w-xl mx-auto px-5 space-y-4">

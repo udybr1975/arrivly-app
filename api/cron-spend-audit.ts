@@ -54,12 +54,29 @@ const ROLLING_LIMITS: Record<string, number> = {
   // CLASSIFIED CALLER-KEYED — the bump follows a proven ownership check on
   // apartments.host_id, so blocking the named host is the correct remediation. NOTE this
   // file emits ONE SHARED alarm string for every endpoint (it leads with "INVESTIGATE BEFORE
-  // BLOCKING" and names the three victim-keyed endpoints as the exception), so the
+  // BLOCKING" and names the four victim-keyed endpoints as the exception), so the
   // classification does not change the rendered text today — it is recorded here so a future
   // per-endpoint wording pass puts this one on the right side. No KEY_HINT: this endpoint
   // spends nothing with any vendor, so there is no key to revoke; the builders fall back to
   // 'see the endpoint owner'. Registered for the cross-endpoint view.
   'cancel-booking': 90,
+  // 3x the 20/hour failed-claim cap in api/welcome-claim.ts. Registered in the SAME commit
+  // that added the brake, because a brake is UNFINISHED until its key is here: unlisted
+  // endpoints are ignored by BOTH detectors below, so the endpoint's 429 would fire while
+  // nothing alarmed — and this endpoint is the one an attacker actually has a reason to
+  // attack, since a correct guess yields a guest token.
+  // CLASSIFIED VICTIM-KEYED, and it is the strongest case of it in this file: the counter is
+  // keyed on the host whose PROPERTY was addressed by a PUBLIC caller, so the named host is
+  // the target of the guessing run and never its author. Remediation is INVESTIGATE; it must
+  // never be reworded to "block this host". No KEY_HINT — this endpoint spends nothing with
+  // any vendor, so there is no key to revoke.
+  //
+  // BOTH ALERT STRINGS BELOW NAME THIS ENDPOINT EXPLICITLY, and that is not decoration: their
+  // victim-keyed list reads as exhaustive, so an endpoint absent from it is placed on the
+  // caller-keyed side by omission — pointing an operator at blocking a PAYING HOST who is the
+  // one being attacked. A classification comment that the rendered message contradicts is
+  // worth nothing. If a victim-keyed endpoint is ever added, add it to both strings too.
+  'welcome-claim': 60,
 }
 const KEY_HINT: Record<string, string> = {
   'guest-chat': 'GEMINI_API_KEY_CHAT = gen-lang-client-0221179352',
@@ -70,8 +87,11 @@ const KEY_HINT: Record<string, string> = {
   'create-booking': 'amplifier (mints guest passes) - watch guest-chat + daily-greeting spend',
   'sync-ical': 'amplifier (mints guest passes) - watch guest-chat + daily-greeting spend',
   // Names the blast radius, not just the key: revoking this breaks address lookup EVERYWHERE
-  // (address save, guide places, host picks), not only the resolve endpoint. 74 chars - measured
-  // to survive the 500-char slice as the LAST line of both messages (per-host 451, global 472).
+  // (address save, guide places, host picks), not only the resolve endpoint. 74 chars - RE-MEASURED
+  // 21 Aug 2026 by executing both templates at their worst case (this hint, the longest endpoint
+  // name): per-host 467, global 487, both inside sendNtfy's 500-char slice with this hint intact
+  // as the last line. The figures moved from 451/472 when welcome-claim was added to the
+  // victim-keyed list in each string (+14 chars); re-measure again if either string grows.
   'resolve-canonical-city': 'LOCATIONIQ_API_KEY - shared with forward geocoding (address, guide, picks)',
   // Names the blast radius rather than the surface: GROQ_API_KEY is the ORG-WIDE TPM pool that
   // every Groq surface shares, so an operator paged about this endpoint must know that revoking
@@ -268,7 +288,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message:
           `Endpoint ${endpoint}: ${total} calls across ${hosts} hosts in ${WINDOW_HOURS}h (threshold ${threshold}).\n` +
           `ACTION: see GLOBAL top-contributors in the Vercel logs, then INVESTIGATE BEFORE BLOCKING.\n` +
-          `Contributors are counter KEYS: on guest-chat/daily-greeting/city-events-public the key is the VICTIM host, not the caller - rotate QR secrets / revoke tokens instead.\n` +
+          `Contributors are counter KEYS: on guest-chat/daily-greeting/city-events-public/welcome-claim the key is the VICTIM host, not the caller - rotate QR secrets / revoke tokens instead.\n` +
           `A Sybil spread under the per-host limits shows here only.\n` +
           `${KEY_HINT[endpoint] ?? 'see the endpoint owner'}`,
         priority: 'high',
@@ -286,7 +306,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         title: 'Bemgu SUSTAINED spend alert (rolling 6h)',
         message:
           `Host ${host}: ${total} ${endpoint} calls in the last ${WINDOW_HOURS}h (rolling threshold ${ROLLING_LIMITS[endpoint]}).\n` +
-          `ACTION: INVESTIGATE BEFORE BLOCKING - on guest-chat/daily-greeting/city-events-public this key is the VICTIM host, not the caller (rotate QR secrets / revoke tokens instead).\n` +
+          `ACTION: INVESTIGATE BEFORE BLOCKING - on guest-chat/daily-greeting/city-events-public/welcome-claim this key is the VICTIM host, not the caller (rotate QR secrets / revoke tokens instead).\n` +
           `Paced at/under the hourly cap, so the per-hour alarm alone may not have flagged this.\n` +
           `${KEY_HINT[endpoint] ?? 'see the endpoint owner'}`,
         priority: 'high',
