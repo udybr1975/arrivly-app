@@ -46,6 +46,9 @@ function generateRef(): string {
 // error). Over the event cap we mint NOTHING (safe default), never a partial batch. Tunable.
 const MAX_ICAL_URLS = 20
 const MAX_ICAL_EVENTS = 100
+// Real feed UIDs are well under 100 characters (Airbnb's are 56). Generous ceiling — it
+// exists to bound what a hostile feed can write into bookings.ical_uid, not to filter.
+const MAX_UID_LEN = 512
 
 export function detectSource(url: string): string {
   if (/airbnb/i.test(url)) return 'airbnb'
@@ -58,18 +61,126 @@ export function detectSource(url: string): string {
   return 'ical'
 }
 
-function parseIcal(text: string): Array<{ uid: string; start: string; end: string; summary: string }> {
-  const events: Array<{ uid: string; start: string; end: string; summary: string }> = []
-  const blocks = text.split('BEGIN:VEVENT')
+/**
+ * RFC 5545 line unfolding. Producers wrap long content lines at 75 octets and continue
+ * them on the next line prefixed with ONE space or horizontal tab; the fold marker is the
+ * line break PLUS that single whitespace character, and nothing else.
+ *
+ * This matters because parseIcal matches line-by-line with /^KEY:(.+)$/m and therefore
+ * reads only a folded value's FIRST fragment. Airbnb's DESCRIPTION is long enough to fold
+ * mid-URL on every real reservation, which is what hid the confirmation code — but the
+ * truncation was never DESCRIPTION-specific: a long SUMMARY folds identically and has been
+ * silently cut short here all along. Unfolding is deliberately applied to the WHOLE feed,
+ * once, before any splitting or matching, so every field is read whole.
+ *
+ * Only the one whitespace character immediately after the break is removed. Do NOT
+ * trim lines or collapse runs of whitespace: a genuine space inside a value (and the
+ * SECOND space of a value that legitimately continues with two) must survive intact.
+ */
+function unfoldIcal(text: string): string {
+  return text.replace(/\r\n[ \t]|[\r\n][ \t]/g, '')
+}
+
+/**
+ * Booking-platform confirmation code, extracted from Airbnb's DESCRIPTION reservation URL
+ * (`https://www.airbnb.com/hosting/reservations/details/<CODE>`). Third-party input on its
+ * way to a database column and, later, to a comparison against a value arriving in a public
+ * URL — so it is constrained HERE, at the boundary, on three axes at once:
+ *
+ * ORIGIN. The match is anchored to an `airbnb.com` host (any subdomain), not to the
+ * floating substring `reservations/details/`. The anchor is deliberately a LITERAL rather
+ * than a shape: a generic `airbnb\.[a-z]{2,6}(\.[a-z]{2,6})?` form is satisfied by
+ * `airbnb.evil.com`, which is the whole class of lookalike it was meant to exclude. A
+ * regional domain therefore yields null — the fail-safe direction, since null is normal.
+ *
+ * BE HONEST ABOUT WHAT THE ANCHOR BUYS. A host controls their own ical_urls, so a host
+ * determined to write a CHOSEN value can still do it by putting a well-formed airbnb.com
+ * URL in their own feed; no pattern here can tell that from a real one. The anchor removes
+ * accidental and third-party-feed matches, not deliberate self-poisoning — and since the
+ * RPC's coalesce makes a written value permanent, the defence that actually matters is the
+ * apartment-scoped lookup named in the invariant below.
+ *
+ * TERMINATION. The trailing `(?![A-Za-z0-9])` is load-bearing and must not be dropped:
+ * without it `[A-Z0-9]+` stops at the first character it cannot eat and RETURNS THE PREFIX,
+ * so `.../details/ABCDEFGH12ab` would yield "ABCDEFGH12" — a plausible-looking wrong value,
+ * which is worse than none, and prefixes collide far more readily than whole codes. With
+ * the lookahead the whole match simply fails and the result is null. A lowercase code
+ * therefore yields null too — again the fail-safe direction.
+ *
+ * LENGTH. Airbnb codes are 10 characters; the floor is deliberately near that rather than
+ * at a token minimum, because a 4-character code is ~1.7M values and this one will later
+ * authenticate a request from an unauthenticated caller. The floor carries a SECOND job,
+ * so lowering it would be a privacy change and not merely a collision-strength one: the
+ * same DESCRIPTION line ends "Phone Number (Last 4 Digits): NNNN", and a floor of 8
+ * structurally excludes a 4-digit run from ever satisfying it. The ceiling of 20 is simply
+ * generous headroom over the observed 10 — it bounds, it does not classify.
+ *
+ * Absent, malformed, or simply a non-Airbnb feed all yield null, and null is the NORMAL
+ * case — Booking.com and Vrbo carry no such code and must sync exactly as they do today.
+ *
+ * INVARIANT FOR THE FUTURE CLAIM ENDPOINT: platform_ref is NOT unique across tenants and
+ * nothing in the schema makes it so. Any lookup must be scoped by apartment_id, compared
+ * case-sensitively with no normalisation, and rate-limited.
+ */
+const PLATFORM_REF_MIN = 8
+const PLATFORM_REF_MAX = 20
+// The subdomain run is bounded at three labels of bounded length, so backtracking is
+// bounded too — no blow-up on a hostile 5 MB feed.
+const RESERVATION_URL_RE =
+  /https:\/\/(?:[a-z0-9-]{1,63}\.){0,3}airbnb\.com\/hosting\/reservations\/details\/([A-Z0-9]+)(?![A-Za-z0-9])/
+function extractPlatformRef(description: string): string | null {
+  const code = description.match(RESERVATION_URL_RE)?.[1]
+  if (!code || code.length < PLATFORM_REF_MIN || code.length > PLATFORM_REF_MAX) return null
+  return code
+}
+
+/** Exported for `npm run test:ical` only — the parser is not used outside this module. */
+export function parseIcal(
+  text: string
+): Array<{ uid: string; start: string; end: string; summary: string; platformRef: string | null }> {
+  const events: Array<{
+    uid: string
+    start: string
+    end: string
+    summary: string
+    platformRef: string | null
+  }> = []
+  const blocks = unfoldIcal(text).split('BEGIN:VEVENT')
   for (let i = 1; i < blocks.length; i++) {
     const block = blocks[i]
     const uid = (block.match(/^UID:(.+)$/m)?.[1] ?? '').trim()
     const rawStart = (block.match(/^DTSTART[^:]*:(.+)$/m)?.[1] ?? '').trim()
     const rawEnd = (block.match(/^DTEND[^:]*:(.+)$/m)?.[1] ?? '').trim()
     const summary = (block.match(/^SUMMARY:(.+)$/m)?.[1] ?? '').trim()
+    // Read the code and let the rest of this line fall on the floor. The SAME line carries
+    // "Phone Number (Last 4 Digits): NNNN" — personal data that must never be stored,
+    // logged, returned, or folded into an error string. `description` is local to this
+    // iteration and nothing but extractPlatformRef ever sees it.
+    // Parameters may themselves contain a colon (DESCRIPTION;ALTREP="cid:x":value), which
+    // would start this capture mid-parameter. Harmless: the capture still contains the
+    // value's tail, and RESERVATION_URL_RE is anchored on the URL rather than on position.
+    const description = (block.match(/^DESCRIPTION[^:\r\n]*:(.+)$/m)?.[1] ?? '').trim()
+    // Unfolding removed the implicit ~71-octet ceiling a folded UID used to be truncated
+    // at, so a hostile feed could now write a megabyte-long ical_uid. Bounded here, and
+    // REJECTED rather than sliced for the same reason as the confirmation code: a sliced
+    // uid is a colliding key.
+    //
+    // THE SAFETY HERE IS MEASURED, NOT STRUCTURAL, and the distinction matters. "Only this
+    // path could have written such a row" is true of provenance but proves nothing, because
+    // this path had NO ceiling until today — a producer serving one long UNFOLDED UID line
+    // was stored whole. A legacy row above the cap would now drop out of the reconciled uid
+    // set and be soft-cancelled. What rules that out is the measurement: max(length(ical_uid))
+    // = 56 across all 84 uid-bearing rows, live DB, 21 Aug 2026.
+    if (uid.length > MAX_UID_LEN) continue
     if (!uid || !rawStart || !rawEnd) continue
     const toDate = (s: string) => s.replace(/T.*/, '').replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3')
-    events.push({ uid, start: toDate(rawStart), end: toDate(rawEnd), summary })
+    events.push({
+      uid,
+      start: toDate(rawStart),
+      end: toDate(rawEnd),
+      summary,
+      platformRef: extractPlatformRef(description),
+    })
   }
   return events
 }
@@ -80,6 +191,8 @@ type ReconcileEvent = {
   check_out: string
   is_block: boolean
   new_ref: string
+  /** Platform confirmation code from the feed, or null when it carries none. */
+  platform_ref: string | null
 }
 
 /**
@@ -93,6 +206,11 @@ type ReconcileEvent = {
  * cancel sees the WHOLE source family at once. A source with ANY failed fetch is skipped
  * entirely (no RPC call) so a feed that didn't load can never cancel its own live rows.
  * Error strings are provider-label only — never the URL (which can embed auth tokens).
+ *
+ * Each event also carries `platform_ref`, the booking platform's own confirmation code
+ * where the feed exposes one. The RPC writes it on insert and, on conflict, applies it
+ * through coalesce(excluded, existing) — so a feed that stops carrying a code never
+ * erases one already held. null is the normal case for feeds that publish no code.
  *
  * OPTIONAL TIME BUDGET (`opts.deadlineAt`, epoch ms). The URL loop is SEQUENTIAL and
  * MAX_ICAL_URLS (20) x safeFetchIcal's 10s cap = up to 200s for ONE apartment, against a
@@ -185,6 +303,7 @@ export async function syncApartmentBookings(
           check_out: event.end,
           is_block: /blocked|not available|unavailable|closed/i.test(event.summary),
           new_ref: generateRef(),
+          platform_ref: event.platformRef,
         })
         totalEvents++
       }
