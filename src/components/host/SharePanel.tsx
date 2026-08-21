@@ -6,6 +6,7 @@ import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { ARRIVLY_CONFIG } from '../../config'
 import { useToast } from '../shared/Toast'
+import { DEFAULT_PLATFORM, PLATFORMS, platformById, type PlatformId, type PlatformRecord } from './sharePlatforms'
 import Loader from '../shared/Loader'
 
 // Matches the DB CHECK `apartments_welcome_message_len` (char_length <= 2000). JS
@@ -40,26 +41,36 @@ function welcomeUrl(code: string) {
   return `${ARRIVLY_CONFIG.appUrl}/w/${code}`
 }
 
-// The default share message. NEVER written to the DB on render — only an explicit
-// Save persists anything, so `welcome_message IS NULL` keeps meaning "unedited" and
-// a future wording change reaches every host who never edited theirs.
-function defaultMessage(url: string) {
-  return `Hi — we're really glad you're coming.
-
-Before you travel, here's your guide to the flat and the neighbourhood:
-${url}
-
-You'll find our own favourite places to eat and drink nearby, tours and tickets you can book ahead, and a chat that answers questions any time of day.
-
-Worth opening now rather than on arrival — the best tables and tours go early.
-
-See you soon.`
+// The default share message, now per-platform (see ./sharePlatforms). NEVER written to the
+// DB on render — only an explicit Save persists anything, so `welcome_message IS NULL` keeps
+// meaning "unedited" and a future wording change reaches every host who never edited theirs.
+//
+// ONE COLUMN, TWO SHAPES: `apartments.welcome_message` is a single value, while the guided
+// default deliberately omits the link and the paste-all default carries it. So the DEFAULT
+// is chosen by the platform currently selected, and a SAVED message is shown as the host
+// wrote it, on every platform.
+//
+// THAT LEAVES TWO CROSSINGS, NOT ONE, AND THEY ARE HANDLED DIFFERENTLY — see `copyText` and
+// `messageHasUrl` in SendStep. A guided-saved message copied on paste-all is COMPLETED with
+// the link (the stored value is untouched, and the result is what a save there would have
+// produced). A paste-all-saved message viewed on guided gets a NOTE instead, because
+// removing a line from a host's own prose is a rewrite rather than a completion. Never
+// mutate a host's saved prose for display.
+function defaultMessage(url: string, platform: PlatformRecord) {
+  return platform.message(url)
 }
 
 // A message without the link is the one failure mode that makes this feature pointless,
 // so a save that dropped it gets the link appended rather than rejected. Callers MUST
 // reject empty input before calling this — on `''` it would return a bare link under two
 // blank lines, which is a truthy value and would sail past an emptiness check placed after.
+//
+// APPLIES ON 'paste-all' ONLY, and deleting it instead would have been wrong in the other
+// direction. On a paste-all platform a message without the link genuinely IS broken, which
+// is what this exists for. On a GUIDED platform the message ends before the link ON PURPOSE
+// — the host builds the link afterwards from the platform's own tags — so appending here
+// would staple a plain, HINT-FREE url onto the end and silently undo the whole design: the
+// guest would land on the generic welcome page and never be recognised.
 function ensureUrl(text: string, url: string) {
   return text.includes(url) ? text : `${text.replace(/\s+$/, '')}\n\n${url}`
 }
@@ -68,12 +79,33 @@ function ensureUrl(text: string, url: string) {
 // newlines AFTER the textarea's own limit has been enforced, so budgeting for the append
 // is what stops such a draft becoming an over-length rejection the counter never saw
 // coming. Callers pick between this and MESSAGE_MAX per draft — see `limit` in SendStep.
+//
+// THE RESERVATION FOLLOWS THE APPEND. A guided draft is never appended to, so it must not
+// pay for one: charging it would show a host `1958` as their ceiling while the database
+// accepts 2000, which is the same class of lying counter the comment above describes.
 function effectiveMax(url: string) {
   return MESSAGE_MAX - (url.length + 2)
 }
 
 function slugify(s: string) {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'qr'
+}
+
+// A copy state keyed by WHICH thing was copied, for a card with more than one copy button.
+// `useCopy` cannot be called per step (the step count is data-driven, and hooks are not),
+// and one shared flag would tick every button at once — telling a host they copied something
+// they did not, on a card whose whole job is getting one exact string into another app.
+function useKeyedCopy() {
+  const [copiedKey, setCopiedKey] = useState<string | null>(null)
+  useEffect(() => {
+    if (copiedKey === null) return
+    const t = window.setTimeout(() => setCopiedKey(null), 1600)
+    return () => window.clearTimeout(t)
+  }, [copiedKey])
+  const copy = (key: string, text: string) => {
+    navigator.clipboard?.writeText(text).then(() => setCopiedKey(key)).catch(() => {})
+  }
+  return { copiedKey, copy }
 }
 
 function useCopy() {
@@ -91,6 +123,44 @@ function useCopy() {
 
 /* ---------------------------------------------------------------- Step 1 */
 
+function PlatformTabs({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: PlatformId
+  onChange: (id: PlatformId) => void
+  disabled: boolean
+}) {
+  // HORIZONTAL premium tabs, charcoal active pill — the confirmed in-page switcher pattern.
+  // A vertical rail was tried elsewhere in this dashboard and rejected: it reads as a second
+  // competing menu. `aria-pressed` buttons rather than a full tablist, because these swap
+  // instructions in place and do not need roving-tabindex arrow navigation to be usable.
+  return (
+    <div role="group" aria-label="Where you are sending this" className="mt-3 flex flex-wrap gap-1.5">
+      {PLATFORMS.map(pl => {
+        const active = pl.id === value
+        return (
+          <button
+            key={pl.id}
+            type="button"
+            aria-pressed={active}
+            disabled={disabled}
+            onClick={() => onChange(pl.id)}
+            className={
+              active
+                ? 'rounded-full bg-[#1c1c1a] px-3 py-1.5 text-[11.5px] font-semibold text-[#f0ede6] disabled:opacity-60'
+                : 'rounded-full border border-[#d7e2c2] px-3 py-1.5 text-[11.5px] text-[#6b6354] transition-colors hover:bg-white disabled:opacity-60'
+            }
+          >
+            {pl.label}
+          </button>
+        )
+      })}
+    </div>
+  )
+}
+
 function SendStep({
   apt,
   hostId,
@@ -101,22 +171,61 @@ function SendStep({
   onSaved: (aptId: string, message: string) => void
 }) {
   const { toast } = useToast()
-  const { copied, copy } = useCopy()
+  // TWO independent copy states. One `useCopy` shared between the message button and the
+  // step-1 button would tick both at once, telling the host they copied something they did
+  // not — on a card whose whole job is getting one exact string into another app.
+  const messageCopy = useCopy()
+  const stepCopy = useKeyedCopy()
+  const [platformId, setPlatformId] = useState<PlatformId>(DEFAULT_PLATFORM)
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
 
+  const platform = platformById(platformId)
+
   // welcome_code is NULL-checked by the caller; this component only renders with one.
   const url = welcomeUrl(apt.welcome_code as string)
-  const message = apt.welcome_message ?? defaultMessage(url)
+  const message = apt.welcome_message ?? defaultMessage(url, platform)
+
+  // Only a paste-all message is completed by an append, so only it budgets for one.
+  const appendsUrl = platform.mode === 'paste-all'
   // The bound that applies to THIS draft. Only a draft missing the link gets the append,
   // so only that draft has to budget for it. Deriving it from the draft rather than
   // pinning it is what stops the counter lying: a stored message saved at the reduced
   // bound comes back ~39 chars longer than that bound, and a pinned limit would then
   // display `1995 / 1958` while silently refusing every keystroke.
-  const limit = draft.includes(url) ? MESSAGE_MAX : effectiveMax(url)
+  const limit = !appendsUrl || draft.includes(url) ? MESSAGE_MAX : effectiveMax(url)
   const counterFrom = Math.max(0, limit - 200)
   const overLimit = draft.length > limit
+
+  // ONE STORED MESSAGE, TWO PLATFORM SHAPES — and BOTH crossings have to be handled. The
+  // save path is not enough on its own, because `ensureUrl` runs only on save while the host
+  // can switch platforms afterwards and copy whatever is on screen.
+  //
+  // GUIDED-SAVED, VIEWED ON paste-all: the stored prose ends before the link by design, and
+  // this card has no steps to supply one — so Copy would hand over a paragraph promising a
+  // guide with no link in it, which is the one failure mode that makes the whole feature
+  // pointless. The COPIED text is completed here. This is a completion, not a rewrite: the
+  // stored value is untouched, and it is exactly what a save on this platform would produce.
+  // PRECONDITION NOTE: ensureUrl's contract is that callers reject empty input first, and
+  // this line does not — on the unverified record, whose message() returns '', it would
+  // yield a bare link under two blank lines. Unreachable today because that record renders
+  // the honest panel with NO copy button, so nothing consumes copyText there. If a copy
+  // button is ever added to that branch, guard this first.
+  const copyText = appendsUrl ? ensureUrl(message, url) : message
+  // PASTE-ALL-SAVED, VIEWED ON guided: the stored prose already carries a plain link, and
+  // following the steps as well would leave the guest a hint-free link beside a personalised
+  // one — the plain one wins if they tap it. This direction CANNOT be fixed by completion,
+  // because removing a line from a host's own prose is a rewrite, so it gets a visible note.
+  const messageHasUrl = !appendsUrl && message.includes(url)
+
+  const steps = platform.steps(url)
+  const targetLine = platform.targetLine(url)
+  // GATED ON THE MODE, never on `steps.length`. A guided record that shipped with an empty
+  // steps array would otherwise degrade into a paste-all-looking card that still never
+  // appends the URL — a silent failure in the wrong direction. Mode is the single fact that
+  // decides both what renders and whether the link is appended.
+  const guided = platform.mode === 'guided'
 
   function startEdit() {
     setDraft(message)
@@ -133,18 +242,31 @@ function SendStep({
       toast('The message can’t be empty. Write something, or press Cancel to keep the current one.', 'error')
       return
     }
-    const next = ensureUrl(raw, url)
+    // GUIDED SAVES ARE NOT APPENDED TO. See ensureUrl — on this path the message ends
+    // before the link deliberately, and an append would replace a personalised link with a
+    // plain one without the host ever seeing it happen.
+    const next = appendsUrl ? ensureUrl(raw, url) : raw
     if (next.length > MESSAGE_MAX) {
       toast(`Too long — ${next.length} of ${MESSAGE_MAX} characters.`, 'error')
       return
     }
     setSaving(true)
-    const { error } = await supabase
+    // `.select('id')` IS NOT DECORATION. PostgREST reports NO ERROR on a zero-row write, so
+    // an RLS-denied or mis-scoped update is indistinguishable from an applied one — the host
+    // would see "Message saved", the panel would show prose that is not in the database, and
+    // they would paste a template believing it was stored. Rows returned is the only proof.
+    // Same class as the import consent control (aea7a84) and applyImport's delete.
+    const { data: written, error } = await supabase
       .from('apartments')
       .update({ welcome_message: next })
       .eq('id', apt.id)
       .eq('host_id', hostId)
+      .select('id')
     setSaving(false)
+    if (!error && (written?.length ?? 0) !== 1) {
+      toast('We couldn’t save that — please reload and try again.', 'error')
+      return
+    }
     if (error) {
       // The DB CHECK is the real bound; surface it in the host's language.
       toast(
@@ -162,10 +284,17 @@ function SendStep({
 
   return (
     <div className="flex-1 min-w-0 rounded-[12px] border border-[#d7e2c2] bg-[#f4f7ec] p-4">
-      <h3 className="text-[14px] font-['Fraunces'] font-normal text-[#231d17]">Step 1 — send this</h3>
+      <h3 className="text-[14px] font-['Fraunces'] font-normal text-[#231d17]">Send this before they travel</h3>
       <p className="mt-0.5 text-[12px] text-[#6b6354]">
-        Paste into Airbnb, Booking.com or WhatsApp once the booking is confirmed.
+        Set it up once and your booking platform sends it for every guest. Optional — the QR code works
+        on its own.
       </p>
+
+      <PlatformTabs value={platformId} onChange={setPlatformId} disabled={editing} />
+      {/* #6b6354 not the muted #8a8276: on this card's #f4f7ec that token computes 3.50:1
+          against a 4.5:1 floor, and these lines carry the card's structure rather than
+          decorating it. #6b6354 computes 5.47:1 and is already used here. */}
+      <p className="mt-2 text-[11.5px] text-[#6b6354]">{platform.blurb}</p>
 
       {!apt.is_visible && (
         <div className="mt-3 flex items-start gap-1.5 rounded-[8px] border border-[#e8d5a8] bg-[#faf3e2] px-2.5 py-2 text-[11.5px] text-[#7a5b12]">
@@ -174,7 +303,14 @@ function SendStep({
         </div>
       )}
 
-      {editing ? (
+      {/* NOT VERIFIED — the honest panel, and nothing else. No steps, no target line, no
+          message, no copy button. `verified` is a property of the record, so a caller
+          cannot render an untested platform as if it were tested. */}
+      {!platform.verified ? (
+        <div className="mt-3 rounded-[9px] border border-[#e4ddd0] bg-white px-3 py-2.5 text-[12px] leading-[1.65] text-[#6b6354]">
+          {platform.unavailableNote}
+        </div>
+      ) : editing ? (
         <>
           {/* maxLength is pinned to the DB ceiling, never to `limit`. A maxLength below the
               length of an already-saved message swallows keystrokes with no explanation;
@@ -211,14 +347,33 @@ function SendStep({
             </button>
           </div>
           <p className="mt-2 text-[11px] text-[#8a8276]">
-            The link is added back automatically if you remove it.
+            {appendsUrl
+              ? 'The link is added back automatically if you remove it.'
+              : 'This message ends just before the link — you add the link itself afterwards.'}
           </p>
         </>
       ) : (
         <>
-          <div className="mt-3 max-h-[236px] overflow-y-auto whitespace-pre-wrap rounded-[9px] border border-[#d7e2c2] bg-white px-3 py-2.5 text-left text-[12.5px] leading-[1.6] text-[#3f3a32]">
+          {/* PART 1 — the message. Nine tenths of the work, and one click. */}
+          {guided && (
+            <div className="mt-3.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-[#6b6354]">
+              1 — the message
+            </div>
+          )}
+          <div className="mt-2 max-h-[236px] overflow-y-auto whitespace-pre-wrap rounded-[9px] border border-[#d7e2c2] bg-white px-3 py-2.5 text-left text-[12.5px] leading-[1.6] text-[#3f3a32]">
             {message}
           </div>
+
+          {messageHasUrl && (
+            <p className="mt-2.5 flex items-start gap-1.5 text-[11.5px] text-[#7a5b12]">
+              <AlertTriangle size={13} className="mt-px shrink-0" />
+              <span>
+                Your saved message already contains the plain link. On {platform.label}, delete that line
+                before you follow the steps below — otherwise the guest gets both, and the plain one
+                doesn’t know who they are.
+              </span>
+            </p>
+          )}
 
           {apt.hasPicks === false && (
             <p className="mt-2.5 flex items-start gap-1.5 text-[11.5px] text-[#7a5b12]">
@@ -239,11 +394,11 @@ function SendStep({
           <div className="mt-3 flex gap-2">
             <button
               type="button"
-              onClick={() => copy(message)}
+              onClick={() => messageCopy.copy(copyText)}
               className="inline-flex items-center justify-center gap-1.5 rounded-[9px] bg-[#c8a24e] px-3.5 py-2 text-[12.5px] font-semibold text-[#16100d] transition-colors hover:bg-[#e7d6ad]"
             >
-              {copied ? <Check size={14} /> : <Copy size={14} />}
-              {copied ? 'Copied' : 'Copy message'}
+              {messageCopy.copied ? <Check size={14} /> : <Copy size={14} />}
+              {messageCopy.copied ? 'Copied' : 'Copy message'}
             </button>
             <button
               type="button"
@@ -254,6 +409,68 @@ function SendStep({
             </button>
           </div>
           <p className="mt-2 text-[11px] text-[#8a8276]">Edits are saved for this property only.</p>
+
+          {/* PART 2 — the link. Separate from the message ON PURPOSE: the message ends where
+              the link goes, so the paste leaves the cursor in exactly the right place. */}
+          {guided && (
+            <div className="mt-5 border-t border-[#d7e2c2] pt-4">
+              <div className="text-[11px] font-semibold uppercase tracking-[0.06em] text-[#6b6354]">
+                2 — the link
+              </div>
+              {platform.stepsIntro && (
+                <p className="mt-1.5 text-[11.5px] text-[#6b6354]">{platform.stepsIntro}</p>
+              )}
+
+              <ol className="mt-3 space-y-2.5">
+                {steps.map((step, i) => (
+                  <li key={i} className="flex gap-2.5">
+                    <span
+                      aria-hidden="true"
+                      className="mt-px flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full bg-[#e7d6ad] text-[10px] font-bold text-[#16100d]"
+                    >
+                      {i + 1}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[12px] leading-[1.55] text-[#3f3a32]">{step.text}</p>
+                      {step.copy && (
+                        <div className="mt-1.5 flex items-center gap-2 rounded-[9px] border border-[#d7e2c2] bg-white px-2.5 py-1.5">
+                          <span className="min-w-0 flex-1 truncate text-left font-mono text-[11px] text-[#6b6354]">
+                            {step.copy}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => stepCopy.copy(`step-${i}`, step.copy as string)}
+                            aria-label={stepCopy.copiedKey === `step-${i}` ? 'Copied' : 'Copy the start of the address'}
+                            className="shrink-0 text-[#6b6354] transition-colors hover:text-[#231d17]"
+                          >
+                            {stepCopy.copiedKey === `step-${i}` ? (
+                              <Check size={15} className="text-[#5d7c34]" />
+                            ) : (
+                              <Copy size={15} />
+                            )}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+
+              {/* THE SELF-CHECK. This line is what carries the card: the host compares their
+                  own work against it without having to send a test booking. */}
+              {targetLine && (
+                <div className="mt-3.5 rounded-[10px] border border-[#e7d6ad] bg-[#faf6ea] px-3 py-2.5">
+                  <div className="text-[11px] font-semibold text-[#7a5b12]">It should end up looking like this</div>
+                  <p className="mt-1.5 break-all font-mono text-[11.5px] leading-[1.5] text-[#3f3a32]">
+                    {targetLine}
+                  </p>
+                  {platform.targetNote && (
+                    <p className="mt-1.5 text-[11px] leading-[1.5] text-[#6b6354]">{platform.targetNote}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
     </div>
@@ -311,9 +528,10 @@ function PrintStep({ apt }: { apt: ApartmentShare }) {
 
   return (
     <div className="w-full shrink-0 rounded-[12px] border border-[#e4ddd0] bg-[#fdfbf7] p-4 lg:w-[268px]">
-      <h3 className="text-[14px] font-['Fraunces'] font-normal text-[#231d17]">Step 2 — print this</h3>
+      <h3 className="text-[14px] font-['Fraunces'] font-normal text-[#231d17]">Print this for the wall</h3>
       <p className="mt-0.5 text-[12px] text-[#6b6354]">
-        Put it up inside the flat. Guests scan it once they arrive.
+        Put it up inside the flat. Guests scan it once they arrive — it works whether or not you ever
+        set the message up, and being in the room is what proves they’re really your guest.
       </p>
 
       <div className="mt-3 flex justify-center rounded-[10px] border border-[#e4ddd0] bg-white p-3">
@@ -433,9 +651,10 @@ function PropertyShareCard({
           <SendStep apt={apt} hostId={hostId} onSaved={onSaved} />
         ) : (
           <div className="flex-1 min-w-0 rounded-[12px] border border-[#e4ddd0] bg-[#f7f3ec] p-4">
-            <h3 className="text-[14px] font-['Fraunces'] font-normal text-[#231d17]">Step 1 — send this</h3>
+            <h3 className="text-[14px] font-['Fraunces'] font-normal text-[#231d17]">Send this before they travel</h3>
             <p className="mt-1.5 text-[12px] text-[#8a8276]">
-              The welcome link isn’t available for this property yet. The QR code below works as usual.
+              The welcome link isn’t available for this property yet. The QR code works as usual — nothing
+              is blocked by this.
             </p>
           </div>
         )}
@@ -547,7 +766,8 @@ export default function SharePanel() {
       <header className="mb-7">
         <h1 className="text-[25px] font-['Fraunces'] font-light text-[#231d17]">Share</h1>
         <p className="text-[13px] text-[#8a8276] mt-1">
-          Two things per property: a link you send before the trip, and a code you print for the wall.
+          Two things per property: a message you send before the trip, and a code you print for the wall.
+          The code alone is enough — the message is an upgrade.
         </p>
       </header>
 

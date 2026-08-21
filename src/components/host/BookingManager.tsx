@@ -1,5 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Link } from 'react-router-dom'
+// Aliased: `Link` in this file is react-router's, and two identifiers one character
+// apart would be a trap for the next editor.
+import { Link2 as LinkIcon } from 'lucide-react'
 import { supabase } from '../../lib/supabase'
 import { useToast } from '../shared/Toast'
 import { api } from '../../lib/api'
@@ -18,6 +21,44 @@ interface Booking {
   reference_number: string | null
   source: string | null
   guests: { first_name: string; last_name: string } | null
+  /**
+   * Set the first time a guest opened their personal pre-arrival link and it resolved.
+   * TEMPLATE HEALTH, not guest surveillance: it is how a host learns their pasted template
+   * actually works, without being asked to run a test booking.
+   *
+   * NOTE what is deliberately NOT fetched beside it: `platform_ref`, the booking platform's
+   * confirmation code. That value is the credential the claim endpoint accepts from a public
+   * caller, and this screen has no reason to display it. Do not add it to the select.
+   */
+  link_claimed_at: string | null
+}
+
+/**
+ * "Guest identified via link" — shown when a booking's pre-arrival link has been opened and
+ * matched. Its job is TEMPLATE HEALTH: it tells the host their paste worked.
+ *
+ * IT MARKS ARRIVAL, NOT THE PRE-ARRIVAL VISIT, and the wording says so. The server writes
+ * link_claimed_at only when the claim resolves to the ACTIVE state — from 11:00 on check-in
+ * day — so a guest who opens their personalised link three weeks early gets their NAME
+ * attached with no chip. A host checking their template that week sees the name appear and
+ * no confirmation here; do not word this as if it covered that window.
+ *
+ * THERE IS DELIBERATELY NO "not identified" COUNTERPART. Absence is the normal state — most
+ * bookings are entered by hand, and a host who never sets the template up is not doing
+ * anything wrong. A negative chip would turn the ordinary case into a warning.
+ */
+function LinkClaimedChip({ compact = false }: { compact?: boolean }) {
+  return (
+    <span
+      title="This guest opened the personal link from your booking-platform message when they arrived, so your template is working."
+      className={`inline-flex items-center gap-1 rounded-full border border-[#d7e2c2] bg-[#eaf0dd] px-2 py-0.5 font-medium text-[#5d7c34] ${
+        compact ? 'text-[9.5px]' : 'text-[10px]'
+      }`}
+    >
+      <LinkIcon size={compact ? 9 : 10} className="shrink-0" aria-hidden="true" />
+      Guest identified via link
+    </span>
+  )
 }
 
 // Shape of the 409 body from api/create-booking's overlap guard.
@@ -209,6 +250,7 @@ function CalendarView({
                   <span className="text-[12px] font-semibold text-[#231d17]">
                     {isBlockSource(b.source) ? 'Blocked' : b.guests?.first_name ?? 'Guest'}
                   </span>
+                  {!isBlockSource(b.source) && b.link_claimed_at && <LinkClaimedChip compact />}
                   <span className="text-[11px] text-[#8a8276]">{fmt(b.check_in)} → {fmt(b.check_out)}</span>
                   <span className="text-[10px] text-[#8a8276] bg-[#f4f1ea] border border-[#e4ddd0] px-2 py-0.5 rounded-full">
                     {sourceLabel(b.source)}
@@ -303,7 +345,7 @@ export default function BookingManager() {
     try {
       const { data } = await supabase
         .from('bookings')
-        .select('id, check_in, check_out, status, reference_number, source, guests(first_name, last_name)')
+        .select('id, check_in, check_out, status, reference_number, source, link_claimed_at, guests(first_name, last_name)')
         .eq('apartment_id', aptId)
         .neq('status', 'cancelled') // hide soft-cancelled feed ghosts (reconcile sync marks dropped rows 'cancelled')
         .order('check_in', { ascending: false })
@@ -506,6 +548,11 @@ Reference ${b.reference_number}` : ''
               <span className="text-[13px] font-semibold text-[#231d17]">
                 {b.guests ? b.guests.first_name : 'Guest'}
               </span>
+              {/* The isBlockSource guard is repeated here rather than inferred from the
+                  caller: `reservationCard` is only reached for non-blocks today, but a chip
+                  reading "Guest identified" on a blocked period would be nonsense, and the
+                  two render sites should not depend on each other to stay correct. */}
+              {!isBlockSource(b.source) && b.link_claimed_at && <LinkClaimedChip />}
               {unread > 0 && (
                 <span className="bg-[#c8a24e] text-[#16100d] text-[9px] font-bold rounded-full min-w-[16px] h-4 px-1 flex items-center justify-center">
                   {unread}
