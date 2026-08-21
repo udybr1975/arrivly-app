@@ -2345,3 +2345,61 @@ deadline; option A buys the time.
 **Lessons (29.6k) STAYS — it is permanent-lifetime content.** It gained six `###` subheads and
 nothing else: 58 bullets in, 58 out, every text asserted identical, none reworded, merged or
 dropped. Grouping a flat list is navigation, not editing.
+
+## Session — 18-19 Aug 2026 (restructure, the push-state rule, four UI items — HEAD 60a4c2b)
+
+**SHIPPED:** `eb13715` the CLAUDE.md restructure (138,525 → 120,004 chars) · `39d0a9c` the
+push-state rule · `60a4c2b` four UI items — the availability picker, cancel from the calendar
+view, the generic policy-block toast and the cancelled-conversation chip. **`60a4c2b` is PUSHED
+AND VERIFIED LIVE** (`dpl_FG7LrLidcSRwsaW4738YTWoDkfQu` READY, deployed SHA matches) and
+**confirmed working by Udy**. Three gate rounds, two must-fix, both mine, both contrast.
+
+**THE TWO CELL STATES THAT CARRY THE POINT OF THE COMPONENT WERE THE TWO THAT FAILED CONTRAST.**
+FULL cells are always disabled, so their white-on-colour text is WCAG-exempt — but DEPARTURE and
+ARRIVAL are the ENABLED ones (departure is a legal check-in; arrival at `maxCheckout` is the last
+legal check-out), and their digit sat on the source-colour wedge at **1.45:1** against a 4.5:1
+floor. Now a solid cream chip at **16.41:1**. The second must-fix was the only explanation a host
+gets for why Cancel is absent on a feed row, at 2.46:1. **Both fixes were verified by COMPUTING
+the ratios, not by eyeballing them.**
+
+**A FIX I SHIPPED DID NOT WORK, AND A JUSTIFICATION I WROTE WAS WRONG — the same failure mode
+twice, two files apart.** The tooltip explaining an illegal cell never rendered: a disabled button
+receives no pointer events, so `title` never fires and Tab skips it, meaning "hovering explains
+why" was silently dead for every cell that needed it. Separately, I justified extracting
+`bookingChrome.ts` with a temporal-dead-zone claim that would not actually occur under ESM live
+bindings — the extraction is right for a different reason (three consumers sharing a contract
+about what a colour MEANS) and the comment now argues only that. **Then round 3 caught that my FIX
+for the tooltip was itself an assertion:** `display:contents` gives the wrapper no box, and
+resolving `title` through a boxless ancestor is UA behaviour, not spec. Taken rather than
+recorded, because having just corrected one "probably works" claim, shipping another two files
+over would have been incoherent. The wrapper now generates a box.
+
+**I HAD WRITTEN A DENYLIST.** `status !== 'cancelled'` on the guest-page link renders a
+live-looking link for every OTHER status the resolver also rejects — the same defect the chip
+exists to fix, one value over. Now an allowlist mirroring `guest-access.ts` and `guest-state.ts`.
+**Rule: gate on the values the server ACCEPTS, never on the one you happen to be thinking about.**
+
+**THE PICKER'S INTERVAL LOGIC WAS PROVED, NOT ASSERTED.** Every `(checkIn, checkOut)` pair across
+a 60-day window against fixtures including a same-day turnover and a block, cross-checked with the
+server predicate: **0 pairs offered that the server would reject** (sound) and **0 safe pairs
+wrongly blocked** (complete — an over-restrictive picker silently costs bookings, the failure
+nobody reports). code-reviewer re-derived it independently rather than trusting the sweep.
+
+**THE SEPTEMBER SANDBOX ITEM IS CLOSED, AND THE REASON MATTERS MORE THAN THE DATES.** The measured
+dates were right and the exposure was not: **none of the five addresses belongs to a real person**
+(Udy, 18 Aug 2026). **The entry had been carried for weeks as what was then believed to be the file's only real deadline, on the
+strength of an address LOOKING personal** — `anna.humalainen@gmail.com` reads like a person, so it
+was treated as one, and no one asked. **An address is not evidence of a human.**
+
+**A MIRROR'S EXISTENCE IS EVIDENCE THE GATE GUARDING IT PASSED.** The webhook ignores any
+subscription whose `metadata.app !== 'arrivly'`, and that metadata cannot be read without the
+Stripe key (all five Stripe vars are Sensitive-flagged and pull EMPTY — the `CRON_SECRET` trap
+again). But `hosts.current_period_end`, `tier` and `subscription_status` are written ONLY by that
+webhook, and all five rows carry them — so the gate passed for all five. **Reach for the
+downstream artefact when the upstream check is unreadable.**
+
+**A SCRIPT THAT MUTATES IN MEMORY AND WRITES AT THE END LOSES EVERYTHING IF A LATER ASSERTION
+THROWS.** `eb13715` left two run-together bullets because the script carrying their fix aborted on
+an unrelated assertion before its single write. The assertion did its job; the write pattern
+defeated it. Repaired here. **Write after each independent edit, or accept that one failure
+discards the batch.**
