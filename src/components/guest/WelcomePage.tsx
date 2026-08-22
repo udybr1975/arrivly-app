@@ -55,7 +55,13 @@ const PRIVATE_HINT = 'WiFi and entry details are waiting inside your guest page 
 // ── Pre-arrival personal link ────────────────────────────────────────────────────
 // The host pastes ONE static template into their booking platform's automated message,
 // carrying the PLATFORM'S OWN variables for the guest's first name and confirmation code:
-//   https://bemgu.app/w/AAAA1111#g={{guest_first_name}}&c={{confirmation_code}}
+//   https://bemgu.app/w/AAAA1111#c={{confirmation_code}}&g={{guest_first_name}}
+//
+// THE CODE COMES FIRST AND THAT ORDER IS LOAD-BEARING: a first name can contain a SPACE,
+// which terminates an auto-linked URL. Code-first, a truncated link still arrives as
+// `#c=CODE&g=Anna` — both values present, only the name shortened. Name-first it arrives as
+// `#g=Anna`, the code is gone, and the feature silently never fires. Do not reorder these
+// when copying the template; sharePlatforms.ts is the authoritative copy.
 //
 // THE HINTS ARE IN THE FRAGMENT ON PURPOSE, AND THIS IS NOT COSMETIC. vercel.json rewrites
 // /(.*) to index.html, so a QUERY STRING would be written into Vercel's edge access log

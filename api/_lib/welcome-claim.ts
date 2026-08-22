@@ -1,7 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 /**
- * Resolution core for the PRE-ARRIVAL PERSONAL GUEST LINK (`/w/:code#g=…&c=…`).
+ * Resolution core for the PRE-ARRIVAL PERSONAL GUEST LINK (`/w/:code#c=…&g=…`).
+ *
+ * CODE FIRST, NAME SECOND, deliberately: a first name can contain a space, which terminates
+ * an auto-linked URL, so name-first loses the CODE and the claim silently never fires.
+ * Parsing here is order-free (URLSearchParams), so this is about what the HOST pastes.
  *
  * Split out of the HTTP handler so the decisions that carry the security weight — what
  * counts as a match, which state a booking is in, and exactly which fields are allowed

@@ -2,7 +2,9 @@
 
 Historical detail moved out of CLAUDE.md on 2026-07-29 so the always-loaded file stays
 under the context limit. Nothing here was edited — every block is verbatim as it stood in
-CLAUDE.md. Ordered newest first. Read this only when past context is actually needed.
+CLAUDE.md. **Ordered OLDEST FIRST — new records are APPENDED at the end** (the header said
+"newest first" until 22 Aug 2026; it never was, and a reader looking for the latest block at the
+top would have found the oldest). Read this only when past context is actually needed.
 
 Current state, active workstreams, database schema, lessons and conventions all stay in
 CLAUDE.md; this file is the archive of work already shipped.
@@ -2403,3 +2405,62 @@ THROWS.** `eb13715` left two run-together bullets because the script carrying th
 an unrelated assertion before its single write. The assertion did its job; the write pattern
 defeated it. Repaired here. **Write after each independent edit, or accept that one failure
 discards the batch.**
+
+## Session — 20 Aug 2026 (the importer, completed through five live test rounds — HEAD 3417e01)
+
+**THE IMPORTER WAS FINISHED BY LIVE TESTING, NOT BY REVIEW.** Five runs against a real host
+document, each one finding what the previous round's gates could not: **run 1 leaked codes into
+public extras** · run 2 scrubbed them · run 3 RELOCATED them into labelled `entry_instructions`
+instead of dropping them · run 4 produced readable two-block prose · **run 5 the picnic offering
+survived intact under 'During your stay', with the public tier MECHANICALLY verified clean — zero
+digit-runs, zero code values.** Every round was gated; the leak in run 1 existed under code that
+had already passed both gates twice. **A gate reads the diff in front of it; only the live run
+reads the product.**
+
+**SHIPPED (all gated, all verified live chat-side):** `9be4449` category taxonomy hardening
+(shared `EXTRAS_CATEGORIES`, host/guest matcher symmetry, select-then-delete-by-id, `is_private`
+guard) · `8252236` docs: `apartment_details` RLS predicate + grants recorded · `993fa3d` the
+credential scrub (sentence-level, conjunction rule, orphan-value merge, Finnish compounds, the
+Croatian "kod" false positive removed) · `aea7a84` code RELOCATION + anti-compression +
+`apartment_source_docs` chat knowledge (tier-gated, nonce-fenced, consent tick; anon zero grants
+verified) · `3417e01` the eighth extras category + the room-number extractor fix + the cap-relation
+pin + the source-doc revocation row. **Chat-side migrations:**
+`normalise_apartment_details_category_orphans` (20260819072724), `create_apartment_source_docs`.
+
+**THE ROOT CAUSE OF RUN 4's FAILURE WAS TAXONOMY, NOT PROMPT — which is why three rounds of
+wording could not fix it.** All seven extras categories were utility-shaped, so a picnic OFFERING
+had no home and the model did the only thing available: it broke the offering into parts and filed
+the parts ("water bottles provided" under Good to know; the bags vanished). **When a model keeps
+mangling one kind of content, check whether the schema has a slot for it before tuning the words.**
+
+**TWO DEFECTS I SHIPPED INTO THE GATES, BOTH FOUND, BOTH THE SAME SHAPE — a probe set that agreed
+with its own defect.** (1) The over-cap `break` was a REGRESSION in the home market: it abandoned
+the keyword on any long token, including an ordinary word between label and value, so
+`"Ovikoodi rakennuksessa 1125"` returned null. Finnish and Spanish put long words there routinely.
+**My 25-case probe set missed it because every over-cap case I had written happened to carry
+digits.** Narrowed to digit-bearing tokens. (2) The consent control **reported success it could not
+prove**: PostgREST returns NO ERROR on a zero-row write, so an RLS-denied revocation was
+indistinguishable from an applied one — the host sees the switch off while the document keeps
+feeding the chat. Both writes now chain `.select()` and treat zero rows as failure, which
+`applyImport`'s delete four hundred lines up already did.
+
+**A NUMBER IN PROSE HAS NO GATE BUT THE READER.** I changed `SYSTEM_PROMPT` and left two comment
+blocks asserting the OLD reservation arithmetic — including a sensitivity sentence ("+5 ASCII
+characters fails the test") that a future editor would have budgeted against. **Both gates caught
+it independently; the dynamic test could not, because it enforces the invariant rather than the
+narration.** Re-measured by execution twice, the second time because a later fix moved it again.
+Final: **3,272 chars, 1,097 tokens, reservation 7,197, headroom 803** against the 800 floor, no
+budget number touched.
+
+**THE BRIEF'S OWN PREMISES WERE WRONG TWICE, AND CHECKING COST A MINUTE EACH.** Array order was
+said to drive display order in BOTH consumers — true of the guest page, false of the host editor,
+whose `loadExtras` had no `ORDER BY` and rendered in DB order, so array position meant nothing
+there until it was sorted. And the stated headroom of 801 came from those stale comments; the
+measured value was 804. **Neither would have been discovered by building what was asked.**
+
+**OPEN, CARRIED:** `ARR-IMP401` guest-chat test on "importer test" (`8ad00130`) **NEVER RUN** —
+folds into the pre-arrival feature's test round · **bulk-import lacks the offering-routing rule**,
+so drift into 'During your stay' is expected on that path · prompt headroom ~803/800, so any growth
+must be consolidation-funded · extractor residual: value-first splits and punctuation-fragment
+adjacency are badge-covered DECLARED boundaries · **`WelcomePage` renders extras in DB order** (an
+exclusion filter, not the shared constant) — residual from `3417e01`.

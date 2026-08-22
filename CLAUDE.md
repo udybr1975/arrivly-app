@@ -516,6 +516,65 @@ as the clean "no subscription" test case that had since acquired one.
   the strength of that impression, and nobody asked. **Before recording an exposure that turns on
   who is on the other end, ask who is on the other end.**
 
+- **iCAL FOLDS LONG LINES AT 75 OCTETS, CONTINUING THEM WITH A LEADING SPACE — SO A LINE-BY-LINE
+  PARSER SILENTLY CAPTURES A FRAGMENT (Aug 21 2026).** `parseIcal` matched `/^KEY:(.+)$/m` and
+  never unfolded, so Airbnb's DESCRIPTION — which folds mid-URL on every real reservation — yielded
+  `…/hosting/reservations/de` and lost the confirmation code. **THE TRUNCATION WAS NEVER
+  DESCRIPTION-SPECIFIC: it was cutting ANY folded field, and had been all along.** Nobody noticed
+  because Airbnb's SUMMARY values are short enough never to fold. **AND THE DEFECT SHIPS LOOKING
+  CORRECT: a short hand-written fixture does not fold, so it passes while every real feed fails.**
+  A fixture that does not fold proves nothing — fold it on purpose, mid-token.
+
+- **A QUERY STRING CANNOT SATISFY A "NEVER LOGGED" REQUIREMENT ON THIS PROJECT (Aug 21 2026).**
+  `vercel.json` rewrites `/(.*)` to `index.html`, so the full query string is written into Vercel's
+  EDGE ACCESS LOG **before a line of our JavaScript runs**. Client-side stripping afterwards is
+  theatre — it cleans the address bar and nothing else. **A URL FRAGMENT is the only structural
+  answer:** browsers never transmit it to a server and never place it in a `Referer`. When a
+  requirement is "this value must never reach a log", the question is not what our code does with
+  it, but **whether the value ever crosses the boundary at all.**
+
+- **NEVER COPY LIVE FEED OR BOOKING OUTPUT FROM CHAT INTO A PROMPT, FIXTURE, DOC OR MEMORY — THE
+  REPO IS PUBLIC (Aug 21 2026).** A real Airbnb VEVENT, carrying a live confirmation code, real
+  last-4 phone digits, a real UID and real stay dates, was pasted into a build prompt this session
+  and became a test fixture. The security gate blocked the commit. **Then the FIRST replacement was
+  a CASE-FOLDED version of the real code — and case-folding is NOT de-identification: the full
+  entropy is preserved and it is reversed by typing it in upper case.** The tell is that the value
+  still looks random beside fixtures that look invented. **Fabricate the whole thing; keep only the
+  SHAPE.** git objects do not expire, and a committed fixture is a permanent carve-out from the
+  published 30-day guest-identity retention promise.
+
+- **A WRITE-BOUNDARY FIX MUST BE REPEATED AT EVERY WRITER, FOREVER — INCLUDING WRITERS THAT DO NOT
+  EXIST YET. A READ-BOUNDARY FIX IS DONE ONCE (Aug 22 2026).** `guests.first_name` is interpolated
+  raw into the guest-chat system instruction at `guest-access.ts:200`, outside the nonce fence.
+  `c0848d8` constrained the name at the NEW write path — correct and necessary, because that path
+  moved the write from "authenticated host" to "anyone holding a confirmation code" — but two other
+  writers remain and any future one starts unprotected by default. **Prefer the read boundary;
+  keep the write-boundary check as defence in depth.** The same asymmetry decides where every
+  future sanitiser belongs.
+
+- **A PROMPT SENTENCE IS A HINT, NOT A MECHANISM (Aug 22 2026).** `f113943` added a generalised
+  CODES rule to `bulk-import`'s prompt, which lowers the FREQUENCY of a code reaching a public
+  extras row and changes the BOUND not at all. The mechanism is `scrubCredentialSentences`, applied
+  in code before the insert — and that endpoint still has none. **Record the difference explicitly
+  wherever a prompt rule stands in for a missing check**, because the realistic failure is not a
+  reader believing the path is safe: it is someone triaging the queue, seeing a shipped rule with a
+  passing test, and deprioritising the mechanism.
+
+- **VERIFY THE PALETTE AGAINST SHIPPED SOURCE, NEVER AGAINST A REMEMBERED SPEC (Aug 22 2026).** A
+  build prompt this session specified a DARK host card (`#1c1c1a`, `bg-white/10`); the shipped
+  dashboard is the CREAM workspace, exactly as this file's Design System records. Claude Code
+  checked the neighbouring components, overrode the brief and said so. **NEITHER GATE COULD HAVE
+  CAUGHT THIS** — a wrong palette is not a security finding and not a correctness bug, so it would
+  have shipped as the only dark surface in the workspace. **Design-system claims need the same
+  "check it at the source" discipline as environment facts.**
+
+- **TWO PROMPTS TEACHING THE SAME CONCEPT WILL DRIFT, AND THE DRIFT STARTS IMMEDIATELY
+  (Aug 22 2026).** In `f113943` a clause diverged **on day one** — "never a code or A utility"
+  against the importer's "never a code or utility" — inside a paragraph whose own comment declared
+  it copied verbatim. **The fix that holds is a WHOLE-BLOCK equality test against the other
+  prompt's LIVE value.** Sampling sentences is blind to the failure shape that actually occurs,
+  which is "added to one side only" — precisely how `3417e01` left this gap in the first place.
+
 > Full narrative evidence for these, and the B3.5 events analysis and greeting-system detail, is in docs/learnings.md.
 
 ## Workflow
@@ -707,16 +766,25 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   the Stripe sandbox 90-day auto-cancel was never established against Stripe. It stops mattering
   when no recipient is real — and it would need re-answering only if a real address is ever
   introduced as a fixture.
-- **THE QUEUE (updated 20 Aug 2026). In order:**
-  1. **~~The four UI items~~ (`60a4c2b`), ~~the category cleanup migration~~ and ~~the listing
-     importer~~ — ALL DONE and pushed.** The importer closed 20 Aug 2026 at `3417e01` after five
-     live test rounds; the category migration ran chat-side as
-     `normalise_apartment_details_category_orphans`.
-  2. **NEXT — the PRE-ARRIVAL PERSONAL GUEST LINK. Designed and LOCKED (20 Aug 2026) — mockup
-     first, then build. Do NOT re-open the design; it is recorded below.**
-  3. **bulk-import's offering-routing clause** — the one known gap left by `3417e01`, deliberately
-     outside that commit's frozen surface.
-  4. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
+- **THE QUEUE (updated 22 Aug 2026). In order:**
+  1. **~~The four UI items~~ (`60a4c2b`), ~~the category cleanup migration~~, ~~the listing
+     importer~~ (`3417e01`), ~~the PRE-ARRIVAL PERSONAL GUEST LINK~~ (`13eaaf3` / `c0848d8` /
+     `ed92ad2`) and ~~bulk-import's offering-routing clause~~ (`f113943`) — ALL DONE, pushed and
+     deploy-verified.**
+  2. **NEXT — `bulk-import` HAS NO CREDENTIAL SCRUB, AND THIS CLASS OF FAILURE HAS ALREADY
+     OCCURRED ONCE.** MEASURED at source 22 Aug 2026, not inferred: `api/bulk-import.ts` matches
+     `scrubCredentialSentences` exactly TWICE and **both matches are COMMENTS** — zero real calls —
+     while `api/_lib/import-listing.ts` calls it THREE times (lines 350, 394, 429). bulk-import
+     writes **`is_private: false` on EVERY row**, so a door code that slips past the model on the
+     old paste-a-wall-of-text path is **anon-readable on the guest page**.
+     **`993fa3d` EXISTS BECAUSE A CODE LEAKED INTO PUBLIC EXTRAS ON A LIVE RUN — and the scrub
+     written in response was wired into ONE DOOR ONLY.** `f113943` added a generalised CODES
+     sentence to bulk-import's prompt, and that helps, but **A PROMPT SENTENCE IS A HINT, NOT A
+     MECHANISM.** The fix is **one import and one call before the insert** (the function is already
+     exported), and the disposition is **SUPPRESSION, not relocation**, because this path never
+     writes `entry_instructions`. **It currently lives ONLY in `f113943`'s commit message, which is
+     the weakest place for it — that is why it is here.**
+  3. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
      dependency vulnerabilities (8 high, 8 moderate) as of the 18 Aug push, UNREVIEWED.** Read the
      list before the gate — **earlier if any high is runtime-reachable**. NOTE this supersedes the
      earlier "7 total / 5 high / 2 moderate" `npm audit` measurement: those two tools count
@@ -733,22 +801,86 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
      a client-only SPA with no SSR and no RSC, so they appear unreachable — leaving the
      **backslash open-redirect in `<Link>`/`useNavigate` (GHSA-wrjc-x8rr-h8h6)** and the
      **route-matching DoS** as the two genuinely worth triaging.
+     **ADDED TO THE GATE 22 Aug 2026:**
+     - **THE RAW NAME INTERPOLATION — and the PRINCIPLE is worth more than the instance.**
+       `api/_lib/guest-access.ts:200` interpolates the guest's name straight into the guest-chat
+       SYSTEM INSTRUCTION, **outside the nonce fence**. `c0848d8` fixed the WRITE boundary on the
+       new claim path with an allowlist, but **two writers of host-supplied names remain** —
+       `api/create-booking.ts:193` and `api/import-airbnb-csv.ts:168,178` — both
+       host-authenticated, so severity drops, and the defect is NOT closed. (A third inserter,
+       `api/demo-create.ts:139`, writes a hardcoded constant and does not count.)
+       **THE PRINCIPLE: A WRITE-BOUNDARY FIX MUST BE REPEATED AT EVERY WRITER, FOREVER — INCLUDING
+       WRITERS THAT DO NOT EXIST YET. A READ-BOUNDARY FIX IS DONE ONCE.** The durable fix is
+       fencing the name where it is INTERPOLATED; the allowlists stay as defence in depth.
+     - **`bulk-import` has NO rate limiter, NO `bump_api_counter` and NO `ROLLING_LIMITS` entry,**
+       unlike its sibling importer, which has all three. Pre-existing. **The same two-doors
+       argument `f113943` makes about wording, one layer down.**
+     - **VERCEL'S `x-forwarded-for` HANDLING ON THIS PROJECT IS UNMEASURED.** `welcome-claim`'s
+       `clientIp` prefers the platform-set headers (`x-vercel-forwarded-for`, `x-real-ip`) and
+       falls back to `x-forwarded-for`. **The IP keys BOTH anti-enumeration controls on that
+       endpoint**, so an unmeasured assumption sits underneath them. **One measurement closes it**
+       — and until it is taken, the honest control is `platform_ref` entropy, not the brakes.
 
 
-### PRE-ARRIVAL PERSONAL GUEST LINK — DESIGNED AND LOCKED (20 Aug 2026). Next build.
+### PRE-ARRIVAL PERSONAL GUEST LINK — LOCKED 20 Aug 2026, AMENDED 22 Aug 2026, SHIPPED
 
-**DO NOT RE-OPEN THIS DESIGN.** It was decided in full; what remains is a mockup, then the build.
-**This feature becomes the centre of the pentest gate.**
+**SHIPPED** across `13eaaf3` / `c0848d8` / `ed92ad2`, all deploy-verified. The design below is
+the record of what was decided and what CHANGED; the amendments are marked in place rather than
+rewritten over, so the original decision and its correction can both be read.
+**This feature is still the centre of the pentest gate.**
+
+**WHY AMENDING A LOCKED DESIGN WAS LEGITIMATE, and the precedent matters more than this
+feature:** the design carried its own invariant — *verify the platform's variable syntax
+against live behaviour at build time, never from memory*. Doing exactly that, on 21 Aug, is
+what FALSIFIED the check-in date. **The lock held and the invariant overrode it.** A lock that
+survives contact with evidence it told you to go and collect is not a lock, it is a wish.
 
 **THE MECHANISM.** ONE STATIC host template, pasted ONCE into the booking platform's automated
-welcome message, carrying **the PLATFORM'S OWN variables** (guest first name + check-in date)
-appended to the existing welcome link. Click → the server reads the hints → attaches the name to
+welcome message, carrying **the PLATFORM'S OWN variables** ~~(guest first name + check-in
+date)~~ **— AMENDED 22 Aug 2026: guest first name + CONFIRMATION CODE, and the order is
+`#c={code}&g={name}`, CODE FIRST —** appended to the existing welcome link.
+
+**WHY THE DATE IS GONE (verified live, 21 Aug 2026):** Airbnb's check-in date chip renders as a
+human-readable string containing spaces and a comma, which TERMINATES a URL, and it is
+LOCALISED, so it breaks differently per language. It was never going to work.
+
+**THE CONFIRMATION CODE IS NOT A CONSOLATION PRIZE — IT IS BETTER ON EVERY AXIS THAT MATTERS,
+which is why the amendment improved the design rather than merely rescuing it.** A date is
+AMBIGUOUS (two bookings can share one check-in date), TRIVIALLY GUESSABLE (there are only so
+many plausible dates, and a guesser knows the season), and LOCALISED. A confirmation code is
+unambiguous, unguessable at ~3.7e15, and locale-independent.
+
+**CODE FIRST IS THE LEAST OBVIOUS AND MOST CONSEQUENTIAL DETAIL IN THE WHOLE FEATURE.** A first
+name can contain a SPACE, and a space TERMINATES an auto-linked URL. Name-first, the link
+arrives as `…#g=Anna` — the code is GONE, the claim fails, and the feature silently never fires
+while the host's own self-check still looks perfectly correct. Code-first, the same link
+arrives as `…#c=CODE&g=Anna`: both values present, only the NAME shortened, claim succeeds.
+**And under the old order those truncated links registered as FAILED claims** — feeding the
+brake and the victim-keyed counter against a real guest's own host. Do not reorder these.
+
+**THE HINT RIDES IN A URL FRAGMENT (`#`), NEVER A QUERY STRING (`?`), AND THAT IS WHAT MAKES
+THE "NEVER LOGGED" INVARIANT STRUCTURAL RATHER THAN MERELY INTENDED.** `vercel.json` rewrites
+`/(.*)` to `index.html`, so a query string is written into Vercel's EDGE ACCESS LOG **before a
+line of our JavaScript runs** — stripping it client-side afterwards would have been theatre.
+Browsers never transmit a fragment to a server and never place it in a `Referer` header, so the
+values exist only in the tab until we POST them in a body. **Never move them into a query
+string, a GET, a fetched URL, or a redirect target.** Click → the server reads the hints → attaches the name to
 the matching booking, **including an iCal booking that has no name** (Airbnb iCal carries none).
 
 **ONE LINK, TWO STATES, SELF-TRANSFORMING.** Pre-arrival it is a BROCHURE: the guest's name and a
 countdown. On check-in day, after the **11:00 cutoff**, the SAME link becomes the full guest page —
-**our server plants the `ARR-` token at first claim, identical machinery to the QR flow:
-first-claim-wins plus a host push.** No location gate. No question box.
+**our server reveals the `ARR-` token at first claim, plus a host push.** No location gate. No
+question box.
+
+**ONE DELIBERATE DEVIATION FROM THE LOCKED DESIGN — `link_claimed_at` IS A PING MARKER, NOT A
+FIRST-CLAIM LOCKOUT.** The design said "first-claim-wins, identical machinery to the QR flow",
+and the machinery is deliberately NOT identical. **The QR proves PHYSICAL PRESENCE, so a
+lockout is safe there. A confirmation code is a SHARED CREDENTIAL** — two travellers on one
+booking both legitimately hold it — **so a lockout would lock out the second traveller.** The
+marker exists so the HOST is told once that their paste worked: the push fires ONCE, decided by
+rows returned from a conditional update, and the token is never withheld from a later device.
+**Also note the token is REVEALED, not minted** — every feed booking already carries an `ARR-`
+reference from `reconcile_ical_bookings`, so nothing is generated at claim time.
 
 **THE INVARIANTS — these are what a future change could break:**
 - **The link is the DEFAULT; the QR is the PERMANENT FALLBACK and the SOLE PRESENCE-PROOF path.**
@@ -758,11 +890,24 @@ first-claim-wins plus a host push.** No location gate. No question box.
 - **A PLAIN LINK NEVER SELF-TRANSFORMS ("Tom protection")** — without the hints, arrival day shows
   a QR pointer line instead. The transformation is a property of a CLAIMED link, not of the date.
 - **THE NAME HINT IS READ ONCE, STRIPPED FROM THE URL IMMEDIATELY, NEVER LOGGED, FIRST NAME ONLY.**
-  A few-tries-then-QR brake plus a host ping covers guessing.
+  A few-tries-then-QR brake plus a host ping covers guessing. **AMENDED 22 Aug 2026: the name is
+  an ALLOWLIST (letters, marks, spaces, apostrophes, hyphens, full stops), not a
+  control-character strip** — because `guests.first_name` is interpolated RAW into the
+  guest-chat system instruction, outside the nonce fence, and this endpoint moved that write
+  from "authenticated host only" to "anyone holding a confirmation code". **A STORED NAME ALWAYS
+  WINS: the hint fills a blank, never corrects one**, or the endpoint is a rename primitive.
+- **THE REAL SPEND/GUESSING CONTROL IS `platform_ref` ENTROPY, NOT THE BRAKE.** Both in-memory
+  brakes are per-Lambda-instance; the persistent victim-keyed counter is the detector that
+  survives an attack. **No second writer of `platform_ref` may be added without redoing that
+  analysis** — the 8-char floor the validator accepts is only 1e8.
 - **VERIFY THE PLATFORM'S VARIABLE SYNTAX AGAINST LIVE DOCS AT BUILD TIME, NEVER FROM MEMORY.**
 
-**SURFACES THAT MOVE:** the Share panel reorders to **template first, QR second**; Bookings shows
-**"guest identified via link"** as a template-health signal (it tells the host their paste worked).
+**SURFACES THAT MOVED (`ed92ad2`):** the Share panel already rendered the message before the QR,
+so only the "Step 1 / Step 2" headings went — they are no longer a sequence. **Platforms are now
+DATA** (`src/components/host/sharePlatforms.ts`), so adding Booking.com later is a record rather
+than a component rewrite, and `verified: false` STRUCTURALLY cannot render steps. Bookings shows
+**"guest identified via link"** on both the list row and the calendar day-detail, never on a
+block, with no "not identified" counterpart — absence is the normal case, not a warning.
 
   **STILL PARKED, unchanged:** block-source message fix (before Founding Hosts) · pre-arrival
   messaging gap · **`groq/compound` evaluation — PARKED WITHOUT A DEADLINE (option B).** Option A
@@ -1037,64 +1182,61 @@ drill) remains a graduation prerequisite.**
 > write-after-each-edit rule, the computed-contrast rule and "an address is not evidence of a
 > human" — none of which existed anywhere else.
 
-## Session — 20 Aug 2026 (the importer, completed through five live test rounds — HEAD 3417e01)
+> Moved to docs/history.md — "Session — 20 Aug 2026 (the importer, completed through five
+> live test rounds)". NOTHING needed hoisting: its taxonomy-before-prompt lesson and the
+> label-comp-fixtures rule were already in Lessons, and its open items are carried in the
+> queue below.
 
-**THE IMPORTER WAS FINISHED BY LIVE TESTING, NOT BY REVIEW.** Five runs against a real host
-document, each one finding what the previous round's gates could not: **run 1 leaked codes into
-public extras** · run 2 scrubbed them · run 3 RELOCATED them into labelled `entry_instructions`
-instead of dropping them · run 4 produced readable two-block prose · **run 5 the picnic offering
-survived intact under 'During your stay', with the public tier MECHANICALLY verified clean — zero
-digit-runs, zero code values.** Every round was gated; the leak in run 1 existed under code that
-had already passed both gates twice. **A gate reads the diff in front of it; only the live run
-reads the product.**
+## Session — 22 Aug 2026 (the pre-arrival personal guest link, shipped in three commits, plus the bulk-import offering clause — HEAD f113943)
 
-**SHIPPED (all gated, all verified live chat-side):** `9be4449` category taxonomy hardening
-(shared `EXTRAS_CATEGORIES`, host/guest matcher symmetry, select-then-delete-by-id, `is_private`
-guard) · `8252236` docs: `apartment_details` RLS predicate + grants recorded · `993fa3d` the
-credential scrub (sentence-level, conjunction rule, orphan-value merge, Finnish compounds, the
-Croatian "kod" false positive removed) · `aea7a84` code RELOCATION + anti-compression +
-`apartment_source_docs` chat knowledge (tier-gated, nonce-fenced, consent tick; anon zero grants
-verified) · `3417e01` the eighth extras category + the room-number extractor fix + the cap-relation
-pin + the source-doc revocation row. **Chat-side migrations:**
-`normalise_apartment_details_category_orphans` (20260819072724), `create_apartment_source_docs`.
+**FOUR COMMITS, and the feature is complete end to end.**
 
-**THE ROOT CAUSE OF RUN 4's FAILURE WAS TAXONOMY, NOT PROMPT — which is why three rounds of
-wording could not fix it.** All seven extras categories were utility-shaped, so a picnic OFFERING
-had no home and the model did the only thing available: it broke the offering into parts and filed
-the parts ("water bottles provided" under Good to know; the bags vanished). **When a model keeps
-mangling one kind of content, check whether the schema has a slot for it before tuning the words.**
+- **`13eaaf3`** — iCal LINE UNFOLDING + capture of the platform's own booking reference into
+  `bookings.platform_ref`. **VERIFIED LIVE against a real Airbnb feed AFTER the deploy:
+  13 of 13 current-or-future reservations carry a code, every one 10 chars, all distinct, all
+  matching `^[A-Z0-9]{10}$` · 0 of 52 blocks and 0 of 19 past reservations, both CORRECT —
+  Airbnb exports only current and future events, and a block is not a reservation. Zero
+  contaminated rows.**
+- **`c0848d8`** — `api/welcome-claim.ts` + `api/_lib/welcome-claim.ts` (public claim endpoint),
+  `WelcomePage` fragment read/strip and the three guest states, `ROLLING_LIMITS` registration.
+- **`ed92ad2`** — `sharePlatforms.ts`, the two-part Airbnb card, the conditional `ensureUrl`,
+  the "Guest identified via link" chip.
+- **`f113943`** — bulk-import learns what an offering is (the clause `3417e01` left behind).
 
-**TWO DEFECTS I SHIPPED INTO THE GATES, BOTH FOUND, BOTH THE SAME SHAPE — a probe set that agreed
-with its own defect.** (1) The over-cap `break` was a REGRESSION in the home market: it abandoned
-the keyword on any long token, including an ordinary word between label and value, so
-`"Ovikoodi rakennuksessa 1125"` returned null. Finnish and Spanish put long words there routinely.
-**My 25-case probe set missed it because every over-cap case I had written happened to carry
-digits.** Narrowed to digit-bearing tokens. (2) The consent control **reported success it could not
-prove**: PostgREST returns NO ERROR on a zero-row write, so an RLS-denied revocation was
-indistinguishable from an applied one — the host sees the switch off while the document keeps
-feeding the chat. Both writes now chain `.select()` and treat zero rows as failure, which
-`applyImport`'s delete four hundred lines up already did.
+**WHAT WAS VERIFIED LIVE, ON UDY'S OWN AIRBNB ACCOUNT, 21 Aug 2026 — and this is the evidence
+the whole design rests on, so do not re-derive it from memory:**
+- **Shortcodes CANNOT be typed or pasted.** They are inserted from an "Add details" menu inside
+  Airbnb's editor, so a pasted template arrives as dead literal text. **That is why no
+  copy-the-whole-thing button can exist for Airbnb** and why its card is guided.
+- **The check-in DATE chip is DEAD.** It renders as a human-readable string with spaces and a
+  comma, which TERMINATES a URL, and it is LOCALISED, so it breaks differently per language.
+- **The confirmation-code chip renders as an unbroken uppercase-alphanumeric run** and inserts
+  mid-URL cleanly.
+- **A `#` fragment survives that insertion intact.**
+- **A plain link saves in a scheduled message with no error.**
 
-**A NUMBER IN PROSE HAS NO GATE BUT THE READER.** I changed `SYSTEM_PROMPT` and left two comment
-blocks asserting the OLD reservation arithmetic — including a sensitivity sentence ("+5 ASCII
-characters fails the test") that a future editor would have budgeted against. **Both gates caught
-it independently; the dynamic test could not, because it enforces the invariant rather than the
-narration.** Re-measured by execution twice, the second time because a later fix moved it again.
-Final: **3,272 chars, 1,097 tokens, reservation 7,197, headroom 803** against the 800 floor, no
-budget number touched.
+**NOT VERIFIED, and the gap is stated rather than implied: whether a link is actually CLICKABLE
+once SENT to a guest** (everything above was observed in the composer, not in a delivered
+message) · **Booking.com** · **Vrbo**. The last two ship as a `verified: false` record that
+structurally cannot render steps.
 
-**THE BRIEF'S OWN PREMISES WERE WRONG TWICE, AND CHECKING COST A MINUTE EACH.** Array order was
-said to drive display order in BOTH consumers — true of the guest page, false of the host editor,
-whose `loadExtras` had no `ORDER BY` and rendered in DB order, so array position meant nothing
-there until it was sorted. And the stated headroom of 801 came from those stale comments; the
-measured value was 804. **Neither would have been discovered by building what was asked.**
+**THE GATES CAUGHT SEVEN MUST-FIX ITEMS ACROSS THE THREE BUILD COMMITS, and the pattern in them
+is worth more than the list.** Every one was invisible from the design and visible only in the
+diff: a brake that a single trailing space made completely inert (the bucket label came from the
+raw code, the matcher from the trimmed one) · an unauthenticated caller able to write 40
+arbitrary characters into the guest-chat SYSTEM INSTRUCTION · a missing expired-subscription gate
+inherited by copying `api/welcome.ts`'s frame but not its billing check · a brake that left NO
+ARTEFACT, so a guessing run would have been unobservable afterwards · a display path that routed
+around `ensureUrl`, so a message saved on Airbnb and copied for email went out with no link at
+all · a save reporting success PostgREST never confirmed · and a test fixture that was VERBATIM
+LIVE GUEST DATA in a public repo.
 
-**OPEN, CARRIED:** `ARR-IMP401` guest-chat test on "importer test" (`8ad00130`) **NEVER RUN** —
-folds into the pre-arrival feature's test round · **bulk-import lacks the offering-routing rule**,
-so drift into 'During your stay' is expected on that path · prompt headroom ~803/800, so any growth
-must be consolidation-funded · extractor residual: value-first splits and punctuation-fragment
-adjacency are badge-covered DECLARED boundaries · **`WelcomePage` renders extras in DB order** (an
-exclusion filter, not the shared constant) — residual from `3417e01`.
+**THE HONEST SECURITY ARGUMENT FOR THE CLAIM ENDPOINT IS `platform_ref` ENTROPY, NOT THE BRAKE**
+— Airbnb's 10-character code is ~3.7e15, which no online attack reaches. The brake is a speed
+bump; the persistent victim-keyed counter is the detector. Recorded in the file, because a
+future reader will otherwise assume the brake is the control. **The 8-character floor the
+validator accepts is only 1e8, so no second writer of `platform_ref` may be added without
+redoing that analysis.**
 
 ## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
 
@@ -1161,6 +1303,33 @@ docs/spend-hardening.md. What stays here is only what a future change could BREA
 > Full mechanism and history: docs/spend-hardening.md.
 
 ### PRE-LIVE ADDITIONS from this session (add to the pre-live checklist)
+
+- **NEW 22 Aug 2026 — THE HELP-DRAWER REFRESH, deliberately LAST so it is written ONCE.**
+  `src/guide/content.ts` feeds **both the drawer AND the help chat**, so one edit updates both.
+  It still describes an older product. Bring it up to date with everything shipped since, in ONE
+  pass: the listing importer · `apartment_source_docs` guest-chat knowledge · AvailabilityPicker +
+  cancel-from-calendar + the cancelled-conversation chip · the city-events DB cache and host
+  refresh · the experience marketplaces and earnings · the welcome/share panel · PWA install · and
+  the pre-arrival link.
+  **THE SPLIT THAT AVOIDS DRIFT, and it is the point of doing it last:** the **SHARE PANEL holds
+  the authoritative STEPS** — they are DATA in `sharePlatforms.ts`, so they change with the
+  platform — while the **DRAWER explains WHAT the feature is, WHY the link is shaped that way,
+  what a finished link looks like, and what to do when it goes wrong.** Two copies of the steps
+  would drift within a session; this session proved that twice.
+- **NEW 22 Aug 2026 — A PASTE-BACK CHECKER. Proposed, NOT built.** A host pastes their finished
+  link and the app tells them whether it is right. **It catches the failure Airbnb's own forums
+  are full of:** a host who TYPED the tag instead of inserting it from the menu, whose messages
+  then go out reading "Dear guest first name". **HARD CONDITION, and it is not negotiable: it must
+  run ENTIRELY CLIENT-SIDE — never sent to the server, never stored, never logged — because a
+  RESOLVED paste contains a real guest's name AND their real booking credential.** A checker that
+  posts the link for validation would recreate, on purpose, the exact exposure the fragment design
+  exists to prevent.
+- **NEW 22 Aug 2026 — THE CHIP'S TIMING GAP.** `link_claimed_at` is written only in the ACTIVE
+  state, so **"Guest identified via link" appears on ARRIVAL DAY**, not when the guest first opens
+  the link. Its stated purpose is TEMPLATE HEALTH, which wants a signal at PASTE time — a host who
+  sets the template up in March learns nothing until someone arrives. **The earlier signal already
+  exists in the data and needs no new column: an iCal booking that suddenly HAS a name got it from
+  a link, because Airbnb iCal carries no names.** Not a defect; a follow-up.
 
 - **~~GUIDE GROUNDING / GUIDE QUALITY~~ — WORKSTREAM CLOSED (verified 30 Jul; see "SESSION
   Aug 4 2026").** No further prompt tuning on this endpoint; a thin category is answered by
