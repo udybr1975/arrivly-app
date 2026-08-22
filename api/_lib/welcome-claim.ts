@@ -321,6 +321,14 @@ export async function resolveClaim(
     // visit feeds the victim-keyed detector as a failure. One or two such visits against a
     // 20/hour floor is noise, not a false alarm, but widening the window is the lever if that
     // ever stops being true.
+    //
+    // THAT ESTIMATE'S PREMISE CHANGED when the welcome page learned to remember a verified
+    // claim on the device (src/lib/welcomeClaimStore.ts): the claim now fires AUTOMATICALLY
+    // on every launch of an installed page, not only when a guest deliberately re-opens the
+    // original link. It stays bounded because a 'miss' CLEARS the stored entry, so it is one
+    // post-checkout failure per device rather than a loop — three co-travellers behind one IP
+    // is 3 of the brake's 5 and 3 of the detector's 20. Re-derive from THIS model, not the
+    // deliberate-revisit one above, before changing FAILED_CLAIM_LIMIT.
     .in('status', ['confirmed', 'completed'])
     .gte('check_out', helsinkiToday)
     .order('check_in', { ascending: true })

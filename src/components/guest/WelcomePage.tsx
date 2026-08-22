@@ -1,16 +1,29 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { MapPin, Navigation, Star, Wifi, KeyRound, Ticket, Send } from 'lucide-react'
-import { resolveImageUrl } from '../../lib/imageUtils'
+import {
+  MapPin, Navigation, Star, Wifi, KeyRound, Ticket, Send,
+  Home, MessageCircle, Settings as SettingsIcon, Lock,
+} from 'lucide-react'
+import { resolveImageUrl, FALLBACK_HERO } from '../../lib/imageUtils'
 import { getDirectionsUrl } from '../../lib/maps'
+import { useInstallPrompt } from '../../lib/useInstallPrompt'
+import { readStoredHints, rememberHints, forgetHints } from '../../lib/welcomeClaimStore'
 import { ARRIVLY_CONFIG } from '../../config'
 import ExperiencesSheet, { type ExperienceItem } from './ExperiencesSheet'
 import TurnstileWidget from '../demo/TurnstileWidget'
 
 // PUBLIC per-apartment welcome page (/w/:code). A host pastes this link into their booking
 // platform's automated message; the guest opens it after booking, before travelling. No
-// booking, no token, no login, no guest data collected. Visual language mirrors GuestPage
-// (accent-led on cream/charcoal neutrals, Fraunces display) — accent comes from the brand.
+// booking, no token, no login, no guest data collected.
+//
+// It wears the GUEST PAGE'S SHELL — photo hero, four-tab bar, quick-access strip — because
+// the two pages are the same product to a guest, seen a few weeks apart. The visual language
+// is COPIED, never imported: GuestPage.tsx is not touched by this file and must not be.
+//
+// WHAT MUST NEVER APPEAR HERE, no matter how the design moves: any private value. No WiFi
+// password, no door code, no entry instructions. api/welcome.ts filters `is_private:false`
+// server-side and this page has no token with which to ask for more. The locked quick-access
+// tiles are LABELS, not withheld data — the values are not in the payload at all.
 
 const DEFAULT_ACCENT = ARRIVLY_CONFIG.colourPresets[0].hex // #1c1c1a
 const EXPERIENCES_ENABLED = import.meta.env.VITE_EXPERIENCES_ENABLED === 'true'
@@ -29,6 +42,11 @@ interface WelcomeApartment {
   country: string | null
   neighborhood: string | null
   welcome_note: string | null
+  // Cover photo — NOT gated by welcome_show_address (that flag guards the street and the
+  // coordinates; a photo is neither). See the matching note in api/welcome.ts.
+  hero_image_url: string | null
+  city_image_url: string | null
+  city_image_credit: string | null
   // Address + coords are present only when the host enabled welcome_show_address.
   street?: string | null
   street_number?: string | null
@@ -48,9 +66,13 @@ type Payload =
   | { state: 'unavailable'; brand: null }
 
 type ChatMsg = { role: 'user' | 'assistant'; text: string }
+type ActiveTab = 'home' | 'chat' | 'explore' | 'more'
 
-// Public detail categories that live behind the guest page, surfaced here as a nudge only.
-const PRIVATE_HINT = 'WiFi and entry details are waiting inside your guest page — scan the QR in the apartment on arrival.'
+// REQUIRED COPY. This is the replacement for the old PRIVATE_HINT line and it must stay on the
+// Home tab: it is the only thing telling a guest that the locked tiles are a schedule rather
+// than a missing feature, and the only place the QR fallback is mentioned pre-arrival.
+const UNLOCK_EXPLAINER =
+  "Your WiFi and entry details unlock right here on your check-in day. They're waiting inside the apartment too — there's a QR code on arrival."
 
 // ── Pre-arrival personal link ────────────────────────────────────────────────────
 // The host pastes ONE static template into their booking platform's automated message,
@@ -73,6 +95,19 @@ type ClaimHints = { g: string; c: string }
 type ClaimResult =
   | { state: 'preview'; guestName: string | null; checkIn: string }
   | { state: 'thankyou'; guestName: string | null }
+
+// The raw body as it arrives. DELIBERATELY LOOSE — 'preview', 'active', 'thankyou' and 'miss'
+// are all read from the SAME field, and a union typed to only the two RENDERED states makes the
+// other two unreachable to the compiler, which is how the persistence branches below would
+// silently be dropped. ('braked' never reaches this type at all: it ships as a 429, so `data` is
+// already null by then — which is why the brake can neither write nor clear.)
+type ClaimResponse = {
+  state?: string
+  guestName?: string | null
+  checkIn?: string
+  token?: string
+  apartmentId?: string
+}
 
 // Read the hints and REMOVE them from the address bar in the same breath, so they are never
 // in a link the guest can copy, screenshot, or leave in their history. Called once per
@@ -126,6 +161,12 @@ function whatsappHref(raw: string): string {
   return `https://wa.me/${digits}`
 }
 
+/** True only for a parseable https:// URL — anything else never becomes an href. */
+function isHttpsUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  try { return new URL(value).protocol === 'https:' } catch { return false }
+}
+
 function mapsSearchUrl(query: string): string {
   return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`
 }
@@ -139,15 +180,30 @@ export default function WelcomePage() {
   // Read + strip during the FIRST RENDER, not in an effect: an effect runs after paint, so
   // the hints would sit in the address bar (and in anything that samples it) for a frame.
   // The ref makes it once-per-mount — a second render finds the value already captured.
-  const hintsRef = useRef<ClaimHints | null | undefined>(undefined)
-  if (hintsRef.current === undefined) hintsRef.current = readAndStripHash()
+  //
+  // A FRAGMENT ALWAYS WINS over the remembered value: the host's link is the live source of
+  // truth, and the strip must run on every mount regardless of what storage holds.
+  //
+  // KEYED BY `code`, NOT JUST BY MOUNT. The route is /w/:code with no `key`, so navigating
+  // between two welcome codes REUSES this component — and a mount-only ref would then POST
+  // the FIRST property's confirmation code against the SECOND property's welcome code: a
+  // guaranteed miss, a brake failure recorded, and a victim-keyed counter bumped against a
+  // host who was never involved. Unreachable today (nothing links between two /w/ routes),
+  // which is exactly why it must not be left to routing luck.
+  const hintsRef = useRef<{ forCode: string | undefined; hints: ClaimHints | null } | null>(null)
+  if (hintsRef.current === null || hintsRef.current.forCode !== code) {
+    const fromUrl = readAndStripHash()
+    hintsRef.current = { forCode: code, hints: fromUrl ?? (code ? readStoredHints(code) : null) }
+  }
+  const initialHints = hintsRef.current.hints
 
   const [claim, setClaim] = useState<ClaimResult | null>(null)
   // Only true when there is actually something to claim, so a plain link never waits.
-  const [claiming, setClaiming] = useState(hintsRef.current !== null)
+  const [claiming, setClaiming] = useState(initialHints !== null)
 
   useEffect(() => {
-    const hints = hintsRef.current
+    const captured = hintsRef.current
+    const hints = captured && captured.forCode === code ? captured.hints : null
     // Clear the flag before returning: `claiming` starts true whenever hints were captured,
     // so a falsy `code` (only reachable if the route shape changes) would otherwise leave the
     // page on its spinner forever.
@@ -159,19 +215,32 @@ export default function WelcomePage() {
       body: JSON.stringify({ code, g: hints.g, c: hints.c }),
     })
       .then(r => (r.ok ? r.json() : null))
-      .then((data: (ClaimResult & { token?: string; apartmentId?: string }) | null) => {
+      .then((data: ClaimResponse | null) => {
         if (cancelled) return
+        const state = data?.state
+        // PERSISTENCE DECIDED BY THE BODY, NEVER BY r.ok — a miss is a 200. Write only what
+        // the server actually resolved; forget what it refused or what is finished. 'braked'
+        // deliberately does NEITHER: the brake answers before the lookup, so it is not
+        // evidence either way and must not be able to erase a good stored value.
+        // 'preview' carries the check-in date that bounds the entry's life; 'active' carries a
+        // token instead, so it passes null and the store falls back to an already-stored date
+        // or to today. See rememberHints.
+        if (state === 'preview' || state === 'active') {
+          rememberHints(code, hints, typeof data?.checkIn === 'string' ? data.checkIn : null)
+        }
+        else if (state === 'miss' || state === 'thankyou') forgetHints(code)
+
         // ACTIVE — hand off to the existing guest page with the token that already existed
         // on the booking. This feature does not rebuild that page and does not change how
-        // its token works.
-        if (data && (data as { state?: string }).state === 'active' && data.apartmentId && data.token) {
+        // its token works. A storage-sourced claim reaches this identically to a URL one.
+        if (data && state === 'active' && data.apartmentId && data.token) {
           navigate(
             `/guest?apt=${encodeURIComponent(data.apartmentId)}&token=${encodeURIComponent(data.token)}`,
             { replace: true }
           )
           return
         }
-        if (data && (data.state === 'preview' || data.state === 'thankyou')) setClaim(data)
+        if (data && (state === 'preview' || state === 'thankyou')) setClaim(data as ClaimResult)
         // Anything else — a miss, the brake, a bad response — falls through to the ORDINARY
         // welcome page. A guest whose hint did not match must never see an error.
         setClaiming(false)
@@ -197,7 +266,7 @@ export default function WelcomePage() {
       .then(r => (r.ok ? r.json() : { state: 'unavailable', brand: null }))
       .then((data: Payload) => {
         if (cancelled) return
-        setPayload(data && (data as any).state ? data : { state: 'unavailable', brand: null })
+        setPayload(data && (data as { state?: string }).state ? data : { state: 'unavailable', brand: null })
         setLoading(false)
       })
       .catch(() => {
@@ -260,6 +329,54 @@ export default function WelcomePage() {
   return <LiveWelcome payload={payload} accent={accent} brandName={brandName} logo={logo} whatsapp={whatsapp} code={code!} claim={claim} />
 }
 
+// ── Small shared pieces ─────────────────────────────────────────────────────────
+
+/** A quick-access tile that is deliberately INERT: not a button, not focusable, no value. */
+function LockedTile({ Icon, label }: { Icon: typeof Wifi; label: string }) {
+  return (
+    // Inert BY CONSTRUCTION: a div, no role, no tabIndex, no handler — there is nothing to
+    // activate and nothing behind it. The explanation rides in a visually-hidden span rather
+    // than an aria-label, because aria-label on a role-less element is not a valid naming
+    // context and most screen readers drop it silently.
+    <div className="bg-[#faf8f4] border border-dashed border-[#ded8cc] rounded-xl p-3 flex flex-col items-start gap-2 text-left">
+      <span className="sr-only">{label} — unlocks on your check-in day</span>
+      <span className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#f0ece3] text-[#8a8276]">
+        <Icon size={15} />
+      </span>
+      <span className="text-[10px] tracking-widest uppercase text-[#8a8276]">{label}</span>
+      <span className="text-[13px] font-medium text-[#5b5853] flex items-center gap-1">
+        <Lock size={11} /> On arrival
+      </span>
+    </div>
+  )
+}
+
+function WhatsAppRow({ whatsapp, brandName, accent, logo }: { whatsapp: string; brandName: string; accent: string; logo: string | null }) {
+  return (
+    <a
+      href={whatsappHref(whatsapp)}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="w-full flex items-center gap-3.5 bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl p-4 shadow-[0_1px_5px_rgba(0,0,0,0.04)] text-left no-underline"
+    >
+      {logo ? (
+        <img src={logo} alt={brandName} className="w-11 h-11 rounded-full object-cover shrink-0" />
+      ) : (
+        <span className="w-11 h-11 rounded-full flex items-center justify-center text-white text-base font-semibold shrink-0" style={{ background: accent }}>
+          {brandName.charAt(0)}
+        </span>
+      )}
+      <div className="flex-1 min-w-0">
+        <p className="font-semibold text-[14px] text-[#1c1c1a]">Message {brandName} directly</p>
+        <p className="text-[11.5px] text-[#5b5853] leading-snug mt-0.5">A question before you travel — WhatsApp is the fastest way to reach me.</p>
+      </div>
+      <span className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center" style={{ background: accent + '14', color: accent }}>
+        <MessageCircle size={16} />
+      </span>
+    </a>
+  )
+}
+
 function LiveWelcome({
   payload, accent, brandName, logo, whatsapp, code, claim,
 }: {
@@ -274,20 +391,50 @@ function LiveWelcome({
   claim: ClaimResult | null
 }) {
   const { apartment, details, picks, guide, showFooter } = payload
+  const [activeTab, setActiveTab] = useState<ActiveTab>('home')
+
   const countdown = claim?.state === 'preview' ? countdownLabel(claim.checkIn) : null
   const area = [apartment.neighborhood, apartment.city].filter(Boolean).join(', ')
   const hasAddress = !!(apartment.street && apartment.street_number)
+  const hasCoords = apartment.lat != null && apartment.lng != null
   const fullAddress = hasAddress
     ? [`${apartment.street} ${apartment.street_number}`, apartment.neighborhood, apartment.city, apartment.country].filter(Boolean).join(', ')
     : ''
   const mapLink = hasAddress
-    ? (apartment.lat != null && apartment.lng != null ? getDirectionsUrl(apartment.lat, apartment.lng) : mapsSearchUrl(fullAddress))
+    ? (hasCoords ? getDirectionsUrl(apartment.lat!, apartment.lng!) : mapsSearchUrl(fullAddress))
     : null
 
   const guideEntries = guide ? Object.entries(guide).filter(([, items]) => Array.isArray(items) && items.length) : []
   // "Good to know" = public details EXCEPT any that would be WiFi/check-in (those are private
   // now and never arrive here, but filter defensively so the card only shows real extras).
   const goodToKnow = details.filter(d => d.category !== 'WiFi' && d.category !== 'Check-in')
+
+  // Hero precedence, identical to GuestPage: host upload → cached by-city image (with its
+  // attribution caption) → static fallback. The CITY IMAGE IS THE NORMAL CASE here — most
+  // apartments have no host upload — so the caption is a mainline path, not an edge case.
+  const heroSrc = apartment.hero_image_url
+    ? resolveImageUrl(apartment.hero_image_url)
+    : (apartment.city_image_url || FALLBACK_HERO)
+  let heroCredit: { name: string; userLink: string; unsplashLink: string } | null = null
+  if (!apartment.hero_image_url && apartment.city_image_url && apartment.city_image_credit) {
+    try {
+      const parsed = JSON.parse(apartment.city_image_credit)
+      // BOTH LINKS ARE VALIDATED TO https BEFORE THEY BECOME hrefs. api/city-image.ts writes
+      // this column with a USER-SCOPED client, so it is host-writable through PostgREST rather
+      // than server-derived — which makes it the one unvalidated URL sink on a page that now
+      // also holds a booking credential in this origin's localStorage. React's handling of a
+      // javascript: href is version-dependent and is not a control to rely on.
+      heroCredit = parsed && isHttpsUrl(parsed.userLink) && isHttpsUrl(parsed.unsplashLink)
+        ? { name: String(parsed.name ?? 'Unsplash'), userLink: parsed.userLink, unsplashLink: parsed.unsplashLink }
+        : null
+    } catch { heroCredit = null }
+  }
+
+  const headline = claim?.state === 'thankyou'
+    ? (claim.guestName ? `Thank you for staying, ${claim.guestName}.` : 'Thank you for staying.')
+    : claim?.state === 'preview' && claim.guestName
+      ? `See you soon, ${claim.guestName}.`
+      : 'Your stay is almost here.'
 
   // ── Experiences (reuse the guest-page component + endpoint) ──
   const [experiences, setExperiences] = useState<ExperienceItem[] | null>(null)
@@ -318,126 +465,261 @@ function LiveWelcome({
   const showExperiencesEntry = EXPERIENCES_ENABLED && (experiencesLoading || (experiences?.length ?? 0) > 0 || !!gygCityLink)
 
   const card = 'bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl'
-  const eyebrow = 'text-[11px] uppercase tracking-[0.18em] font-semibold'
+  const accentCard = `${card} overflow-hidden shadow-[0_1px_5px_rgba(0,0,0,0.04)]`
+  const eyebrow = 'text-[10px] tracking-widest uppercase font-semibold'
 
   return (
-    <div className="min-h-screen bg-[#fbfaf7] text-[#1c1c1a] font-['Inter'] pb-16">
-      {/* 1 — Hero */}
-      <header className="max-w-xl mx-auto px-5 pt-12 pb-8 text-center">
-        {logo && <img src={logo} alt="" className="h-14 w-auto mx-auto mb-5 object-contain" />}
-        {area && <div className={`${eyebrow} mb-2`} style={{ color: accent }}>{area}</div>}
-        <h1 className="font-['Fraunces'] font-light text-[32px] leading-tight text-[#1c1c1a]">
-          {claim?.state === 'thankyou'
-            ? (claim.guestName ? `Thank you for staying, ${claim.guestName}.` : 'Thank you for staying.')
-            : claim?.state === 'preview' && claim.guestName
-              ? `See you soon, ${claim.guestName}.`
-              : 'Your stay is almost here.'}
-        </h1>
-        {claim?.state === 'preview' && countdown && (
-          <div className="mt-3 inline-block rounded-full border border-[#e9e4d9] bg-[#fffdf9] px-3.5 py-1.5 text-[12px] font-semibold tracking-[0.02em]" style={{ color: accent }}>
-            {countdown}
-          </div>
-        )}
-        <p className="mt-3 text-[14px] text-[#5b5853]">
-          {claim?.state === 'thankyou'
-            ? `We hope you enjoyed ${apartment.name}.`
-            : `A little welcome from ${brandName}.`}
-        </p>
-      </header>
+    <div className="min-h-screen bg-[#fbfaf7] text-[#1c1c1a] font-['Inter']">
 
-      <main className="max-w-xl mx-auto px-5 space-y-4">
-        {/* 2 — Host welcome note */}
-        <section className={`${card} p-6`}>
-          <div className={`${eyebrow} mb-3`} style={{ color: accent }}>A note from your host</div>
-          {apartment.welcome_note ? (
-            <p className="text-[15px] leading-relaxed text-[#3a352e] whitespace-pre-line">{apartment.welcome_note}</p>
-          ) : (
-            <p className="text-[15px] leading-relaxed text-[#3a352e]">
-              We're so glad you're coming to stay at {apartment.name}{area ? ` in ${area}` : ''}. Everything you need for a smooth
-              arrival is on its way — for now, here's a little to help you plan ahead.
-            </p>
-          )}
-        </section>
-
-        {/* 3 — Getting here */}
-        <section className={`${card} p-6`}>
-          <div className={`${eyebrow} mb-3`} style={{ color: accent }}>Getting here</div>
-          {hasAddress ? (
-            <>
-              <div className="flex items-start gap-2.5">
-                <MapPin size={18} className="mt-0.5 shrink-0" style={{ color: accent }} />
-                <div className="text-[15px] text-[#1c1c1a] leading-snug">{fullAddress}</div>
+      {activeTab === 'home' && (
+        <div className="pb-28 bg-[#fbfaf7]">
+          {/* 1 — Photo hero */}
+          <div className="relative h-[68vh] min-h-[460px] max-h-[560px]">
+            <img src={heroSrc} alt="" className="absolute inset-0 w-full h-full object-cover" onError={e => { (e.target as HTMLImageElement).src = FALLBACK_HERO }} />
+            <div className="absolute inset-0 bg-[linear-gradient(to_top,rgba(18,16,13,0.86)_0%,rgba(18,16,13,0.55)_22%,rgba(18,16,13,0.12)_46%,transparent_80%)]" />
+            {heroCredit && (
+              <div className="absolute top-2 right-2 text-[9px] text-white/80 bg-black/30 rounded px-1.5 py-0.5">
+                Photo by <a href={heroCredit.userLink} target="_blank" rel="noopener noreferrer" className="underline">{heroCredit.name}</a> on <a href={heroCredit.unsplashLink} target="_blank" rel="noopener noreferrer" className="underline">Unsplash</a>
               </div>
-              {mapLink && (
+            )}
+            <div className="absolute left-0 right-0 bottom-0 px-6 pb-12 text-white">
+              <p className="text-[11px] tracking-[0.26em] uppercase opacity-80 mb-3">
+                {apartment.city}{apartment.country ? `, ${apartment.country}` : ''}
+              </p>
+              <h1 className="font-['Fraunces'] font-light text-[40px] leading-none tracking-tight">
+                {headline}
+              </h1>
+              <p className="font-['Fraunces'] font-light text-[18px] leading-snug opacity-90 mt-3 max-w-[280px]">
+                {claim?.state === 'thankyou'
+                  ? `We hope you enjoyed ${apartment.name}.`
+                  : `${apartment.name}${area ? ` — ${area}` : ''} is getting ready for you.`}
+              </p>
+              {countdown && (
+                <div className="mt-4 inline-block rounded-full bg-white/15 ring-1 ring-white/40 px-3.5 py-1.5 text-[12px] font-semibold tracking-[0.02em]">
+                  {countdown}
+                </div>
+              )}
+              <div className="mt-5 flex items-center gap-2.5">
+                {logo ? (
+                  <img src={logo} alt={brandName} className="w-[38px] h-[38px] rounded-full object-cover ring-1 ring-white/40" />
+                ) : (
+                  <span className="w-[38px] h-[38px] rounded-full bg-white/15 ring-1 ring-white/40 flex items-center justify-center text-sm font-semibold">
+                    {brandName.charAt(0)}
+                  </span>
+                )}
+                <span className="font-['Fraunces'] italic text-[15px] opacity-90">— {brandName}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 2 — The letter */}
+          <div className="max-w-lg mx-auto px-6 pt-9 pb-4">
+            <h2 className="font-['Fraunces'] font-normal text-[27px] tracking-tight text-[#1c1c1a]">
+              Dear {claim?.guestName ? claim.guestName : 'guest'},
+            </h2>
+            {apartment.welcome_note ? (
+              <p className="text-[15px] leading-relaxed text-[#36322c] mt-4 whitespace-pre-line">{apartment.welcome_note}</p>
+            ) : (
+              <p className="text-[15px] leading-relaxed text-[#36322c] mt-4">
+                We&apos;re so glad you&apos;re coming to stay at {apartment.name}{area ? ` in ${area}` : ''}. Everything you need for a smooth
+                arrival is on its way — for now, here&apos;s a little to help you plan ahead.
+              </p>
+            )}
+            <div className="mt-5 flex justify-end">
+              <p className="font-['Fraunces'] italic text-[15px]" style={{ color: accent }}>— {brandName}</p>
+            </div>
+            <div className="mt-6 flex items-center gap-3">
+              <div className="flex-1 h-px bg-[#e9e4d9]" />
+              <span className="text-xs" style={{ color: accent }}>✦</span>
+              <div className="flex-1 h-px bg-[#e9e4d9]" />
+            </div>
+          </div>
+
+          {/* 3 — Getting here. This slot is GuestPage's "Right now" card; weather is
+              deliberately NOT ported to a page a guest reads weeks before arrival. */}
+          <div className="max-w-lg mx-auto px-6 pt-3 pb-2">
+            <div className={accentCard}>
+              <div className="h-[3px]" style={{ background: accent }} />
+              <div className="p-5">
+                <p className={eyebrow} style={{ color: accent }}>Getting here</p>
+                {hasAddress ? (
+                  <>
+                    <div className="flex items-start gap-2.5 mt-2.5">
+                      <MapPin size={18} className="mt-0.5 shrink-0" style={{ color: accent }} />
+                      <div className="text-[15px] text-[#1c1c1a] leading-snug">{fullAddress}</div>
+                    </div>
+                    {mapLink && (
+                      <a
+                        href={mapLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white no-underline"
+                        style={{ background: accent }}
+                      >
+                        <Navigation size={15} /> Open in maps
+                      </a>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-start gap-2.5 mt-2.5">
+                      <MapPin size={18} className="mt-0.5 shrink-0" style={{ color: accent }} />
+                      <div className="text-[15px] text-[#1c1c1a] leading-snug">{area || apartment.city || 'Your destination'}</div>
+                    </div>
+                    <p className="text-[13px] text-[#5b5853] leading-relaxed mt-2.5">
+                      Your host will share the exact address closer to your arrival.
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* 4 — Message the host */}
+          {whatsapp && (
+            <div className="max-w-lg mx-auto px-6 pt-3 pb-2">
+              <WhatsAppRow whatsapp={whatsapp} brandName={brandName} accent={accent} logo={logo} />
+            </div>
+          )}
+
+          {/* 5 — Quick access. WiFi and Door are ALWAYS rendered and ALWAYS locked: their
+              absence would read as a missing feature, their lock reads as a schedule. */}
+          <div className="max-w-lg mx-auto px-6 pt-3 pb-2">
+            <p className="text-[10px] tracking-widest uppercase text-[#9a958c] mb-2.5">Quick access</p>
+            <div className="grid grid-cols-3 gap-2.5">
+              <LockedTile Icon={Wifi} label="WiFi" />
+              <LockedTile Icon={KeyRound} label="Door" />
+              {hasCoords ? (
                 <a
-                  href={mapLink}
+                  href={getDirectionsUrl(apartment.lat!, apartment.lng!)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-4 inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-semibold text-white"
-                  style={{ background: accent }}
+                  className="bg-[#fffdf9] border border-[#e9e4d9] rounded-xl p-3 flex flex-col items-start gap-2 text-left no-underline"
                 >
-                  <Navigation size={15} /> Open in maps
+                  <span className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: accent + '14', color: accent }}>
+                    <Navigation size={15} />
+                  </span>
+                  <span className="text-[10px] tracking-widest uppercase text-[#9a958c]">Home</span>
+                  <span className="text-[13px] font-medium text-[#1c1c1a]">Directions</span>
                 </a>
+              ) : (
+                <LockedTile Icon={Navigation} label="Home" />
               )}
-            </>
-          ) : (
-            <div className="flex items-start gap-2.5">
-              <MapPin size={18} className="mt-0.5 shrink-0" style={{ color: accent }} />
-              <div className="text-[15px] text-[#1c1c1a] leading-snug">
-                {area || apartment.city || 'Your host will share the exact address closer to your arrival.'}
+            </div>
+            <p className="text-[12.5px] text-[#5b5853] leading-relaxed mt-3">{UNLOCK_EXPLAINER}</p>
+          </div>
+
+          {/* 6 — Good to know */}
+          {goodToKnow.length > 0 && (
+            <div className="max-w-lg mx-auto px-6 pt-3 pb-2">
+              <div className={`${card} p-5`}>
+                <p className={`${eyebrow} mb-3`} style={{ color: accent }}>Good to know</p>
+                <div className="space-y-3">
+                  {goodToKnow.map(d => (
+                    <div key={d.id}>
+                      <div className="text-[12px] font-semibold text-[#1c1c1a] mb-0.5">{d.category}</div>
+                      <div className="text-[13.5px] text-[#5b5853] leading-relaxed whitespace-pre-line">{d.content}</div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           )}
-        </section>
 
-        {/* 4 — What we'd do */}
-        {(picks.length > 0 || guideEntries.length > 0 || showExperiencesEntry) && (
-          <section className={`${card} p-6`}>
-            <div className={`${eyebrow} mb-1`} style={{ color: accent }}>What we'd do</div>
-            <p className="text-[13px] text-[#5b5853] mb-4">{brandName}'s picks for planning your days.</p>
+          {/* 7 — Powered by Bemgu (trial only) */}
+          {showFooter && (
+            <div className="pt-6 pb-2 text-center">
+              <p className="font-['Fraunces'] italic text-[15px] text-[#9a958c]">{brandName}</p>
+              <p className="text-[10px] text-[#b3aa9b] mt-5">{ARRIVLY_CONFIG.poweredByText}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'chat' && (
+        <div style={{ height: 'calc(100vh - 64px)' }}>
+          <WelcomeChat accent={accent} brandName={brandName} code={code} />
+        </div>
+      )}
+
+      {activeTab === 'explore' && (
+        <div className="pb-28 bg-[#fbfaf7]">
+          <div className="px-6 pt-8 pb-6 text-white" style={{ background: accent }}>
+            <p className="text-[10px] tracking-[0.16em] uppercase opacity-70 mb-1">Host picks &amp; local guide</p>
+            <h2 className="font-['Fraunces'] font-light text-2xl tracking-tight">
+              Around {apartment.neighborhood || apartment.city || 'the neighbourhood'}
+            </h2>
+          </div>
+
+          <div className="max-w-lg mx-auto px-6 pt-6 space-y-4">
+            {/* Take me home — pinned above everything, live only with real coordinates. */}
+            {hasCoords && (
+              <a
+                href={getDirectionsUrl(apartment.lat!, apartment.lng!)}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full flex items-center gap-3 rounded-2xl border border-[#e9e4d9] bg-[#fffdf9] p-4 no-underline shadow-[0_1px_5px_rgba(0,0,0,0.04)]"
+              >
+                <span className="w-9 h-9 rounded-full flex items-center justify-center shrink-0" style={{ background: accent + '14', color: accent }}>
+                  <Navigation size={16} />
+                </span>
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-[14px] text-[#1c1c1a]">Take me home</p>
+                  <p className="text-[11.5px] text-[#5b5853] leading-snug mt-0.5">Directions to the apartment</p>
+                </div>
+                <span style={{ color: accent }}>→</span>
+              </a>
+            )}
 
             {picks.length > 0 && (
-              <div className="space-y-2.5 mb-4">
-                {picks.map(p => (
-                  <a
-                    key={p.id}
-                    href={mapsSearchUrl(p.address ? `${p.name}, ${p.address}` : p.name)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="block rounded-xl border border-[#e9e4d9] bg-[#fbfaf7] p-3.5 no-underline"
-                  >
-                    <div className="flex items-center gap-1.5">
-                      <Star size={13} style={{ color: accent }} />
-                      <span className="text-[10px] uppercase tracking-wide text-[#9a958c]">{p.category}</span>
-                    </div>
-                    <div className="mt-0.5 font-['Fraunces'] text-[15px] text-[#1c1c1a]">{p.name}</div>
-                    {p.note && <div className="mt-1 text-[13px] text-[#5b5853] leading-snug">{p.note}</div>}
-                  </a>
-                ))}
+              <div className={`${card} p-5`}>
+                <p className={`${eyebrow} mb-1`} style={{ color: accent }}>What we&apos;d do</p>
+                <p className="text-[13px] text-[#5b5853] mb-4">{brandName}&apos;s picks for planning your days.</p>
+                <div className="space-y-2.5">
+                  {picks.map(p => (
+                    <a
+                      key={p.id}
+                      href={mapsSearchUrl(p.address ? `${p.name}, ${p.address}` : p.name)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block rounded-xl border border-[#e9e4d9] bg-[#fbfaf7] p-3.5 no-underline"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <Star size={13} style={{ color: accent }} />
+                        <span className="text-[10px] uppercase tracking-wide text-[#9a958c]">{p.category}</span>
+                      </div>
+                      <div className="mt-0.5 font-['Fraunces'] text-[15px] text-[#1c1c1a]">{p.name}</div>
+                      {p.note && <div className="mt-1 text-[13px] text-[#5b5853] leading-snug">{p.note}</div>}
+                    </a>
+                  ))}
+                </div>
               </div>
             )}
 
             {guideEntries.length > 0 && (
-              <div className="space-y-3 mb-4">
-                {guideEntries.map(([cat, items]) => (
-                  <div key={cat}>
-                    <div className="text-[12px] font-semibold text-[#1c1c1a] mb-1.5">{cat}</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {items.slice(0, 8).map((i, idx) => (
-                        <a
-                          key={`${cat}-${idx}`}
-                          href={mapsSearchUrl(i.address ? `${i.name}, ${i.address}` : `${i.name} ${apartment.city ?? ''}`)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="rounded-full border px-2.5 py-1 text-[12px] no-underline"
-                          style={{ borderColor: accent + '55', color: accent, background: accent + '14' }}
-                        >
-                          {i.name}
-                        </a>
-                      ))}
+              <div className={`${card} p-5`}>
+                <p className={`${eyebrow} mb-3`} style={{ color: accent }}>The neighbourhood</p>
+                <div className="space-y-3">
+                  {guideEntries.map(([cat, items]) => (
+                    <div key={cat}>
+                      <div className="text-[12px] font-semibold text-[#1c1c1a] mb-1.5">{cat}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {items.slice(0, 8).map((i, idx) => (
+                          <a
+                            key={`${cat}-${idx}`}
+                            href={mapsSearchUrl(i.address ? `${i.name}, ${i.address}` : `${i.name} ${apartment.city ?? ''}`)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="rounded-full border px-2.5 py-1 text-[12px] no-underline"
+                            style={{ borderColor: accent + '55', color: accent, background: accent + '14' }}
+                          >
+                            {i.name}
+                          </a>
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             )}
 
@@ -445,7 +727,7 @@ function LiveWelcome({
               <button
                 type="button"
                 onClick={() => setShowExperiences(true)}
-                className="w-full flex items-center justify-between gap-3 rounded-xl border border-[#e9e4d9] bg-[#fbfaf7] p-4 text-left"
+                className="w-full flex items-center justify-between gap-3 rounded-2xl border border-[#e9e4d9] bg-[#fffdf9] p-4 text-left cursor-pointer"
               >
                 <div className="flex items-center gap-2.5">
                   <Ticket size={18} style={{ color: accent }} />
@@ -457,53 +739,90 @@ function LiveWelcome({
                 <span style={{ color: accent }}>→</span>
               </button>
             )}
-          </section>
-        )}
 
-        {/* 5 — Ask <brand> */}
-        <WelcomeChat accent={accent} brandName={brandName} code={code} />
-
-        {/* 6 — Good to know */}
-        <section className={`${card} p-6`}>
-          <div className={`${eyebrow} mb-3`} style={{ color: accent }}>Good to know</div>
-          {goodToKnow.length > 0 ? (
-            <div className="space-y-3 mb-4">
-              {goodToKnow.map(d => (
-                <div key={d.id}>
-                  <div className="text-[12px] font-semibold text-[#1c1c1a] mb-0.5">{d.category}</div>
-                  <div className="text-[13.5px] text-[#5b5853] leading-relaxed whitespace-pre-line">{d.content}</div>
-                </div>
-              ))}
-            </div>
-          ) : null}
-          <div className="flex items-start gap-2.5 rounded-xl border border-[#e9e4d9] bg-[#fbfaf7] p-3.5">
-            <div className="flex gap-1.5 mt-0.5 shrink-0" style={{ color: accent }}>
-              <Wifi size={16} /><KeyRound size={16} />
-            </div>
-            <div className="text-[13px] text-[#5b5853] leading-relaxed">{PRIVATE_HINT}</div>
+            {picks.length === 0 && guideEntries.length === 0 && !showExperiencesEntry && !hasCoords && (
+              <div className={`${card} p-5`}>
+                <p className="text-[13.5px] text-[#5b5853] leading-relaxed">
+                  {brandName} is still putting their local favourites together. Ask in the Chat tab in the
+                  meantime — it knows the area.
+                </p>
+              </div>
+            )}
           </div>
-        </section>
+        </div>
+      )}
 
-        {/* 7 — WhatsApp */}
-        {whatsapp && (
-          <a
-            href={whatsappHref(whatsapp)}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-center justify-center gap-2 rounded-xl px-5 py-3.5 text-[14px] font-semibold text-white"
-            style={{ background: accent }}
-          >
-            Message {brandName} on WhatsApp
-          </a>
-        )}
-
-        {/* 8 — Powered by Bemgu (trial only) */}
-        {showFooter && (
-          <div className="text-center text-[11px] uppercase tracking-widest text-[#9a958c] pt-2">
-            {ARRIVLY_CONFIG.poweredByText}
+      {activeTab === 'more' && (
+        <div className="pb-28 bg-[#fbfaf7]">
+          <div className="px-6 pt-8 pb-6 text-white" style={{ background: accent }}>
+            {logo && <img src={logo} alt={brandName} className="h-7 mb-2 object-contain" />}
+            <p className="text-[10px] tracking-[0.16em] uppercase opacity-70 mb-1">Settings</p>
+            <h2 className="font-['Fraunces'] font-light text-2xl tracking-tight">{brandName}</h2>
           </div>
-        )}
-      </main>
+
+          <div className="max-w-lg mx-auto px-6 pt-6 space-y-3">
+            <p className="text-[10px] tracking-widest uppercase text-[#9a958c]">This device</p>
+
+            {/* a) Keep this page. NOTIFICATIONS ARE DELIBERATELY NOT OFFERED HERE: a push
+                subscription needs the booking token this page does not have. */}
+            <KeepThisPageCard accent={accent} />
+
+            {/* b) On your check-in day — approved copy, verbatim. */}
+            <div className={accentCard}>
+              <div className="h-[3px]" style={{ background: accent }} />
+              <div className="p-5">
+                <p className={eyebrow} style={{ color: accent }}>On your check-in day</p>
+                <p className="text-[14px] text-[#36322c] leading-relaxed mt-2.5">
+                  This page turns into your personal guest page on its own — your WiFi, your door code and
+                  your entry instructions appear, and you can message your host directly. Nothing for you to do.
+                </p>
+                <p className="text-[13px] text-[#5b5853] leading-relaxed mt-2.5">
+                  There&apos;s a QR code in the apartment too, if you&apos;d rather open it that way.
+                </p>
+              </div>
+            </div>
+
+            {/* c) WhatsApp */}
+            {whatsapp && <WhatsAppRow whatsapp={whatsapp} brandName={brandName} accent={accent} logo={logo} />}
+
+            <div className="pt-6 pb-2 text-center">
+              <p className="font-['Fraunces'] italic text-[15px] text-[#9a958c]">{brandName}</p>
+              {showFooter && <p className="text-[10px] text-[#b3aa9b] mt-5">{ARRIVLY_CONFIG.poweredByText}</p>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tab bar — same markup, sizing and active indicator as GuestPage's. */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 bg-[rgba(255,253,249,0.93)] backdrop-blur border-t border-[#e9e4d9] h-16 flex items-stretch">
+        {(
+          [
+            { id: 'home', Icon: Home, label: 'Home' },
+            { id: 'chat', Icon: MessageCircle, label: 'Chat' },
+            { id: 'explore', Icon: MapPin, label: 'Explore' },
+            { id: 'more', Icon: SettingsIcon, label: 'Settings' },
+          ] as const
+        ).map(({ id, Icon, label }) => {
+          const isActive = activeTab === id
+          return (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className="flex-1 flex flex-col items-center justify-center gap-0.5 border-none bg-transparent cursor-pointer relative"
+              style={{ color: isActive ? accent : '#a8a399' }}
+            >
+              {isActive && (
+                <div
+                  className="absolute top-0 left-1/2 -translate-x-1/2 w-7 h-[3px] rounded-b"
+                  style={{ background: accent }}
+                />
+              )}
+              <Icon size={18} />
+              <span className="text-[9px] tracking-widest uppercase font-medium">{label}</span>
+            </button>
+          )
+        })}
+      </div>
 
       {showExperiences && (
         <ExperiencesSheet
@@ -521,7 +840,57 @@ function LiveWelcome({
   )
 }
 
-// ── Section 5: the public concierge (Turnstile-gated, /api/welcome-chat) ──
+// ── Settings card (a): install this page ────────────────────────────────────────
+// Uses the SHARED useInstallPrompt hook rather than a local beforeinstallprompt listener.
+// Same mechanism GuestPage uses, one layer up: index.html captures the event before React
+// mounts, so a listener registered in a component can miss it entirely on a fast load.
+function KeepThisPageCard({ accent }: { accent: string }) {
+  const { canInstall, isIOSSafari, isChromium, standalone, install, installed } = useInstallPrompt()
+
+  return (
+    <div className="bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl p-[17px] shadow-[0_1px_5px_rgba(0,0,0,0.04)]">
+      <div className="flex items-start gap-3.5 mb-4">
+        <span className="w-[42px] h-[42px] rounded-xl flex items-center justify-center shrink-0" style={{ background: accent + '14', color: accent }}>
+          <Home size={19} />
+        </span>
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold text-[15px] text-[#1c1c1a]">Keep this page</p>
+          <p className="text-[13px] text-[#5b5853] leading-snug mt-0.5">
+            Add it to your home screen. It remembers you, and becomes your guest page on check-in day.
+          </p>
+        </div>
+      </div>
+
+      {standalone || installed ? (
+        <p className="text-[13px] text-[#5b5853]">Added to your home screen ✓</p>
+      ) : canInstall ? (
+        <button
+          onClick={() => { void install() }}
+          className="w-full py-3.5 rounded-xl text-white text-[10px] tracking-widest uppercase border-none cursor-pointer font-semibold"
+          style={{ background: accent }}
+        >
+          Add to home screen →
+        </button>
+      ) : isIOSSafari ? (
+        <p className="text-sm text-[#5b5853] leading-relaxed">
+          On iPhone: tap the Share button, then &lsquo;Add to Home Screen&rsquo;.
+        </p>
+      ) : isChromium ? (
+        <p className="text-sm text-[#5b5853] leading-relaxed">
+          Tap the ⋮ menu, then &lsquo;Install app&rsquo; (or &lsquo;Add to Home Screen&rsquo;).
+        </p>
+      ) : (
+        <p className="text-sm text-[#5b5853] leading-relaxed">
+          Open this page in Chrome or Safari to add it to your home screen.
+        </p>
+      )}
+    </div>
+  )
+}
+
+// ── The public concierge (Turnstile-gated, /api/welcome-chat) ──
+// Full-height chat column so the composer sits above the tab bar, matching the guest page's
+// chat tab. The transport, history cap and Turnstile handling are unchanged.
 function WelcomeChat({ accent, brandName, code }: { accent: string; brandName: string; code: string }) {
   const [messages, setMessages] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
@@ -563,7 +932,7 @@ function WelcomeChat({ accent, brandName, code }: { accent: string; brandName: s
         setError('That check expired — please tick the box again.')
         setTurnstileToken(null)
       } else {
-        setError("The assistant is having a moment. Please try again shortly.")
+        setError('The assistant is having a moment. Please try again shortly.')
       }
     } catch {
       setError('Something went wrong. Please try again.')
@@ -576,59 +945,63 @@ function WelcomeChat({ accent, brandName, code }: { accent: string; brandName: s
   }
 
   return (
-    <section className="bg-[#fffdf9] border border-[#e9e4d9] rounded-2xl p-6">
-      <div className="text-[11px] uppercase tracking-[0.18em] font-semibold mb-1" style={{ color: accent }}>
-        Ask {brandName}
+    <div className="h-full flex flex-col bg-[#fbfaf7]">
+      <div className="shrink-0 px-5 pt-5 pb-3 border-b border-[#e9e4d9]">
+        <p className="text-[10px] tracking-widest uppercase font-semibold" style={{ color: accent }}>Ask {brandName}</p>
+        <p className="text-[12.5px] text-[#5b5853] mt-1">
+          Planning ahead? Ask about the neighbourhood, getting around, or what&apos;s worth booking early.
+        </p>
       </div>
-      <p className="text-[13px] text-[#5b5853] mb-4">
-        Planning ahead? Ask about the neighbourhood, getting around, or what's worth booking early.
-      </p>
 
-      {messages.length > 0 && (
-        <div ref={scrollRef} className="max-h-64 overflow-y-auto space-y-2 mb-3">
-          {messages.map((m, i) => (
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-5 space-y-3">
+        {messages.length === 0 && !sending && (
+          <p className="text-[13px] text-[#9a958c] text-center px-6 pt-6 leading-relaxed">
+            Nothing asked yet — try &ldquo;what&apos;s the best way in from the airport?&rdquo;
+          </p>
+        )}
+        {messages.map((m, i) => (
+          <div key={i} className={m.role === 'user' ? 'flex justify-end' : 'flex justify-start'}>
             <div
-              key={i}
-              className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-[13.5px] leading-snug ${
-                m.role === 'user' ? 'ml-auto text-white rounded-br-sm' : 'mr-auto border border-[#e9e4d9] bg-[#fbfaf7] text-[#3a352e] rounded-bl-sm'
+              className={`max-w-[75%] rounded-2xl px-4 py-2.5 text-sm leading-snug ${
+                m.role === 'user' ? 'rounded-tr-sm text-white' : 'rounded-tl-sm bg-white text-[#1c1c1a] shadow-sm'
               }`}
               style={m.role === 'user' ? { background: accent } : undefined}
             >
               {m.text}
             </div>
-          ))}
-          {sending && <div className="mr-auto text-[12px] text-[#9a958c] px-1">Thinking…</div>}
-        </div>
-      )}
-
-      {error && <div className="text-[12px] text-[#8a1a1a] mb-2">{error}</div>}
-
-      <div className="flex items-center gap-2 rounded-full border border-[#e9e4d9] bg-[#fbfaf7] pl-4 pr-1.5 py-1.5">
-        <input
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); send() } }}
-          placeholder="Ask about the area…"
-          className="flex-1 bg-transparent text-[14px] text-[#1c1c1a] placeholder:text-[#9a958c] focus:outline-none"
-        />
-        <button
-          type="button"
-          onClick={send}
-          disabled={sending || !input.trim()}
-          aria-label="Send"
-          className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white disabled:opacity-40"
-          style={{ background: accent }}
-        >
-          <Send size={15} />
-        </button>
+          </div>
+        ))}
+        {sending && <div className="text-[12px] text-[#9a958c] px-1">Thinking…</div>}
       </div>
 
-      {/* Human check — reuse the existing Turnstile widget rather than a new one. */}
-      {TURNSTILE_SITE_KEY && (
-        <div className="mt-3">
-          <TurnstileWidget key={turnstileKey} siteKey={TURNSTILE_SITE_KEY} onToken={setTurnstileToken} />
+      <div className="shrink-0 border-t border-[#e9e4d9] bg-[#fffdf9] px-4 py-3">
+        {error && <div className="text-[12px] text-[#8a1a1a] mb-2">{error}</div>}
+        <div className="flex items-center gap-2">
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); void send() } }}
+            placeholder="Ask about the area…"
+            className="flex-1 bg-[#fbfaf7] border border-[#e9e4d9] rounded-full px-4 py-2 text-sm text-[#1c1c1a] placeholder:text-[#9a958c] outline-none"
+          />
+          <button
+            type="button"
+            onClick={() => { void send() }}
+            disabled={sending || !input.trim()}
+            aria-label="Send"
+            className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-white disabled:opacity-40 border-none cursor-pointer"
+            style={{ background: accent }}
+          >
+            <Send size={15} />
+          </button>
         </div>
-      )}
-    </section>
+        {/* Human check — reuse the existing Turnstile widget rather than a new one. */}
+        {TURNSTILE_SITE_KEY && (
+          <div className="mt-3">
+            <TurnstileWidget key={turnstileKey} siteKey={TURNSTILE_SITE_KEY} onToken={setTurnstileToken} />
+          </div>
+        )}
+      </div>
+    </div>
   )
 }

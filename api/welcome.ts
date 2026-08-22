@@ -6,8 +6,15 @@ import { createClient } from '@supabase/supabase-js'
 // Modelled on api/guest-bootstrap.ts (svc() client, per-instance rate limiter, truncated
 // secret-free logging). NEVER returns private apartment_details rows (WiFi / check-in
 // content became private in 27b881b and stay behind api/guest-details.ts), never returns
-// welcome_code / host_id / is_visible / welcome_show_address, and never leaks any billing
-// state. A missing OR hidden apartment yields an identical 'unavailable' body — no oracle.
+// welcome_code / is_visible / welcome_show_address, and never leaks any billing state beyond
+// the one bit `showFooter` has always carried. A missing OR hidden apartment yields an
+// identical 'unavailable' body — no oracle.
+//
+// HOST_ID IS NOT RETURNED AS A FIELD BUT IS DERIVABLE FROM AN IMAGE PATH, and that is
+// accepted rather than overlooked: `hero_image_url` is `{hostId}/{aptId}/hero-{ts}.jpg` and
+// `brand.logo_url` is `{hostId}/logo-{ts}.jpg` (api/create-upload-url.ts). The logo already
+// shipped that way on every state, so the cover photo adds nothing new — the bucket is
+// public-read and no authority attaches to the UUID itself.
 
 const CODE_RE = /^[23456789ABCDEFGHJKMNPQRSTVWXYZ]{8}$/
 
@@ -56,7 +63,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from('apartments')
       .select(
         'id, host_id, name, city, country, neighborhood, lat, lng, ' +
-          'street, street_number, welcome_note, welcome_show_address, is_visible'
+          'street, street_number, welcome_note, welcome_show_address, is_visible, ' +
+          'hero_image_url, city_image_url, city_image_credit'
       )
       .eq('welcome_code', code)
       .maybeSingle()
@@ -106,6 +114,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       country: aptRow.country,
       neighborhood: aptRow.neighborhood,
       welcome_note: aptRow.welcome_note ?? null,
+      // Cover photo + its Unsplash attribution. DELIBERATELY NOT GATED BY
+      // welcome_show_address: that flag protects the STREET and the COORDINATES, and a
+      // cover photo is neither. Do not couple them — a host who hides their address still
+      // wants their property to look like a place someone would want to stay in.
+      hero_image_url: aptRow.hero_image_url ?? null,
+      city_image_url: aptRow.city_image_url ?? null,
+      city_image_credit: aptRow.city_image_credit ?? null,
     }
     // Address ONLY when the host opted in — omitted entirely otherwise. lat/lng are gated
     // by the SAME flag: exact coordinates reverse-geocode to the address, so hiding the
