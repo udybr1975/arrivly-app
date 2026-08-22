@@ -174,6 +174,13 @@ values — do not change without an explicit decision.**
 - **`ARR-EVT777` / `ARR-PAR777` / `ARR-BCN777` are KEEP-PERMANENTLY** live/active/thank-you-state
   fixtures. Re-roll their dates when they lapse; never delete them.
 - **Roy's `property_cap_override` was set to 2 for D8 and REVERTED to null** — verified reverted.
+- **THE TWO PRE-ARRIVAL CLAIM FIXTURES, on "importer test" (welcome code `DX89PW3H`). BOTH
+  CREDENTIALS ARE FABRICATED — shape only, no entropy from any real feed. Udy keeps all test
+  data; never suggest deleting these.** `ARR-IMP401` / `platform_ref` `TESTCLAIM1`, 19-23 Aug
+  2026 — exercises the **ACTIVE** state (verified claimed). `ARR-PRE901` / `TESTFUTURE1`,
+  21-25 Sep 2026, guest first name attached **BY THE LINK** (the booking had none) — exercises
+  the **PREVIEW** state and the name-fill path, and its `link_claimed_at` is still NULL, which
+  is the chip's timing gap showing up exactly as recorded.
 
 **Billing-test host rows rot fastest of all — VERIFY AGAINST THE LIVE DB, never trust a written
 list.** The 11 Aug check found four of five prior descriptions wrong, including one row named here
@@ -598,6 +605,29 @@ as the clean "no subscription" test case that had since acquired one.
   prompt's LIVE value.** Sampling sentences is blind to the failure shape that actually occurs,
   which is "added to one side only" — precisely how `3417e01` left this gap in the first place.
 
+- **TEST GUEST-FACING FIRST-VISIT FLOWS IN A FRESH PROFILE (Aug 22 2026).** `118d05f` was
+  invisible for hours because every browser in use already had the service worker installed AND a
+  token in localStorage — **two independent reasons the broken path looked fine.** A developer's
+  own browser is never a first-time guest.
+
+- **A NO-ORACLE ENDPOINT IS ALSO OPAQUE TO ITS AUTHOR (Aug 22 2026).** `welcome-claim` returns
+  200 with an identical body for hit and miss BY DESIGN, so the logs could not distinguish them;
+  diagnosis needed a direct endpoint call plus a network trace. **The posture is correct — budget
+  for the diagnostic cost rather than weakening it.**
+
+- **AN ABORTED REQUEST HAS NO STATUS IN A NETWORK TRACE (Aug 22 2026).** The ABSENCE of a
+  response code was the whole tell in `118d05f`. **Reading only completed requests would have
+  missed it entirely.**
+
+- **WHEN TWO DEVICES DISAGREE, SUSPECT LOCAL STATE BEFORE SUSPECTING THE PLATFORM
+  (Aug 22 2026).** The first hypothesis was that Airbnb's in-app browser stripped the fragment.
+  **It did not.** The difference was service-worker registration and a stored token.
+
+- **A COPY-PASTE ARTEFACT IS NOT PLATFORM BEHAVIOUR (Aug 22 2026).** Text copied out of Airbnb
+  into a chat gained object-replacement characters and a swallowed word, and that was
+  misdiagnosed as Airbnb's linkifier mangling the URL. **The composer screenshot falsified it.**
+  Verify against the SOURCE SURFACE, never a transcription of it.
+
 > Full narrative evidence for these, and the B3.5 events analysis and greeting-system detail, is in docs/learnings.md.
 
 ## Workflow
@@ -777,7 +807,8 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   1. **~~The four UI items~~ (`60a4c2b`), ~~the category cleanup migration~~, ~~the listing
      importer~~ (`3417e01`), ~~the PRE-ARRIVAL PERSONAL GUEST LINK~~ (`13eaaf3` / `c0848d8` /
      `ed92ad2`) and ~~bulk-import's offering-routing clause~~ (`f113943`) — ALL DONE, pushed and
-     deploy-verified.**
+     deploy-verified. **~~The service-worker reload that aborted the claim~~ (`118d05f`) — DONE,
+     and its acceptance test has since PASSED on the controlled path.****
   2. **NEXT — `bulk-import` HAS NO CREDENTIAL SCRUB, AND THIS CLASS OF FAILURE HAS ALREADY
      OCCURRED ONCE.** MEASURED at source 22 Aug 2026, not inferred: `api/bulk-import.ts` matches
      `scrubCredentialSentences` exactly TWICE and **both matches are COMMENTS** — zero real calls —
@@ -791,7 +822,32 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
      exported), and the disposition is **SUPPRESSION, not relocation**, because this path never
      writes `entry_instructions`. **It currently lives ONLY in `f113943`'s commit message, which is
      the weakest place for it — that is why it is here.**
-  3. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
+  3. **RESIDUALS FROM `118d05f`, recorded so they are not rediscovered as bugs.** (a) A genuine
+     worker UPDATE arriving mid-claim still reloads and still aborts the POST — seconds long,
+     only after a deploy; closing it means coupling `main.tsx` to `WelcomePage`, which is why it
+     was not. (b) A tab loaded via HARD RELOAD bypasses the SW and starts uncontrolled with no
+     claim event, so it spends its latch on the NEXT deploy's worker and picks up the one after.
+     **Bounded, never permanent** — nothing serves stale, `sw.js` being network-first for
+     navigations.
+  4. **PHASE H — PRE-ARRIVAL / GUEST PAGE VISUAL PARITY. The two pages read as different
+     products.** Measured, not impressionistic: `GuestPage` has a full-bleed photo hero
+     (`hero_image_url`, scrim, Unsplash credit, the host-upload → city-image → default fallback
+     chain) and `WelcomePage` has **NO IMAGE** — a centred logo on cream. **That is the biggest
+     gap, and the data is already loaded.** `GuestPage` also has the bottom tab bar
+     (Home/Chat/Explore/Settings) where `WelcomePage` is one long scroll · quick-access tiles
+     (WIFI/DOOR/HOME) where it has none · and the PWA install prompt, which `WelcomePage` does
+     NOT offer — **arguably backwards, since the pre-arrival page is the one a guest holds for
+     weeks.** Accent branding IS already consistent across both.
+     **OPEN DESIGN QUESTION, not a bug:** does `WelcomePage` adopt the tab shell (Home/Explore/
+     Chat all work pre-arrival, with WIFI/DOOR rendering LOCKED), or stay a single scroll?
+     **Mockup-first.**
+  5. **TEMPLATE COPY — add a reassurance line before the link in `sharePlatforms.ts`,** so a
+     guest expects Airbnb's "You're leaving Airbnb" interstitial instead of bouncing off it.
+  6. **PRIVACY QUESTION — RECORD, DO NOT ACT.** The welcome page shows the property's STREET
+     ADDRESS, and that page is public to anyone holding the welcome code. **Pre-existing
+     behaviour, but the pre-arrival link makes that page far more widely shared.** Decide
+     deliberately rather than by drift.
+  7. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
      dependency vulnerabilities (8 high, 8 moderate) as of the 18 Aug push, UNREVIEWED.** Read the
      list before the gate — **earlier if any high is runtime-reachable**. NOTE this supersedes the
      earlier "7 total / 5 high / 2 moderate" `npm audit` measurement: those two tools count
@@ -1152,7 +1208,8 @@ drill) remains a graduation prerequisite.**
 
 ## Session — 22 Aug 2026 (the pre-arrival personal guest link, shipped in three commits, plus the bulk-import offering clause — HEAD f113943)
 
-**FOUR COMMITS, and the feature is complete end to end.**
+**FIVE COMMITS. The feature is complete end to end, and the fifth is the one that made it
+actually work for a guest.**
 
 - **`13eaaf3`** — iCal LINE UNFOLDING + capture of the platform's own booking reference into
   `bookings.platform_ref`. **VERIFIED LIVE against a real Airbnb feed AFTER the deploy:
@@ -1165,6 +1222,20 @@ drill) remains a graduation prerequisite.**
 - **`ed92ad2`** — `sharePlatforms.ts`, the two-part Airbnb card, the conditional `ensureUrl`,
   the "Guest identified via link" chip.
 - **`f113943`** — bulk-import learns what an offering is (the clause `3417e01` left behind).
+- **`118d05f`** — **A LAUNCH-BLOCKING DEFECT FOUND AFTER THE DOCS COMMIT, during live testing:
+  the pre-arrival link did not work for ANY first-time visitor.** `public/sw.js` calls
+  `self.clients.claim()` unconditionally on activate and `src/main.tsx` reloaded on every
+  `controllerchange`, so a FIRST visit always self-reloaded — aborting the in-flight claim POST
+  and reloading a URL that no longer carried the hints, because `WelcomePage` strips them during
+  first render. The second load saw no hints and rendered the ordinary welcome page.
+  **PRE-EXISTING, NOT NEW: a QR link carries its data in QUERY PARAMETERS, which survive a
+  reload; a fragment does not.** The spurious reload had been shipping for a long time and was
+  harmless until something depended on in-flight state. `GuestPage`'s first-visit
+  `/api/guest-state` fetch was latently exposed to the same abort and is now also protected.
+  **FIX:** `navigator.serviceWorker.controller` sampled at MODULE EVALUATION — read inside the
+  handler it always observes the NEW controller, so the guard could never fire — and the guard
+  **LATCHES** rather than returning forever, so a genuine update later in the same tab still
+  reloads it. `sw.js` unchanged. 19 lines, `src/main.tsx` only; reasoning in the commit message.
 
 **WHAT WAS VERIFIED LIVE, ON UDY'S OWN AIRBNB ACCOUNT, 21 Aug 2026 — and this is the evidence
 the whole design rests on, so do not re-derive it from memory:**
@@ -1178,10 +1249,27 @@ the whole design rests on, so do not re-derive it from memory:**
 - **A `#` fragment survives that insertion intact.**
 - **A plain link saves in a scheduled message with no error.**
 
-**NOT VERIFIED, and the gap is stated rather than implied: whether a link is actually CLICKABLE
-once SENT to a guest** (everything above was observed in the composer, not in a delivered
-message) · **Booking.com** · **Vrbo**. The last two ship as a `verified: false` record that
+**AND VERIFIED ON A SENT MESSAGE, 22 Aug 2026 — this was previously the stated gap and is now
+closed:** Airbnb DOES linkify a `bemgu.app` URL in a delivered message (underlined, tappable) ·
+tapping shows an interstitial — warning triangle, *"You're leaving Airbnb — make sure you trust
+the source before continuing"*, **Back to Airbnb** / **Continue to bemgu.app** · **THE FRAGMENT
+SURVIVES both the linkifier and that interstitial redirect**, confirmed by a completed
+`POST /api/welcome-claim` from the tapped link.
+
+**STILL NOT VERIFIED: Booking.com · Vrbo.** Both ship as a `verified: false` record that
 structurally cannot render steps.
+
+**THE ACCEPTANCE TEST `118d05f` LEFT UNRUN HAS SINCE BEEN RUN, against production in a real
+browser, and PASSED:** `POST /api/welcome-claim` 200 (completed, not aborted) · exactly ONE
+`GET /api/welcome` 200 · `guest-bootstrap`, `guest-state`, `guest-details` all 200 · final URL
+`/guest?apt=…&token=…`. No aborted requests, no second load. **CAVEAT: that profile ALREADY had
+the service worker installed, so it exercised the CONTROLLED path. The genuinely UNCONTROLLED
+first visit is covered by the guard's logic but has NOT been observed.**
+
+**THE REAL PROPERTY IS NOW LIVE — "Beautiful private space in Helsinki center"** (welcome code
+`PDQV8ATW`, Helsinki, created 22 Aug 2026), Airbnb feed connected. **Measured in the DB, not
+recalled: 13 of 13 Airbnb reservations carry `platform_ref`, and 5 of 5 blocks correctly carry
+none.**
 
 **THE GATES CAUGHT SEVEN MUST-FIX ITEMS ACROSS THE THREE BUILD COMMITS, and the pattern in them
 is worth more than the list.** Every one was invisible from the design and visible only in the
