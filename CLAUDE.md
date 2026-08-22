@@ -4,6 +4,14 @@ Historical session detail lives in docs/history.md. Read it only when past conte
 needed. (Deliberately a plain filename, NOT an @import — an imported file is pulled into
 context automatically every session, which is exactly what splitting this file avoided.)
 
+Three more purpose-named files were split out at the 22 Aug 2026 restructure. **NO RULE lives
+in any of them** — every rule stayed here; those files hold only the reasoning behind one:
+- **docs/pre-arrival-link-design.md** — the full pre-arrival link design: the locked decision,
+  the amendment that falsified part of it, and why each rule is shaped as it is. Read before
+  changing that feature's shape.
+- **docs/resolved-debt.md** — closed debt, each with what closed it AND how that was verified.
+  Read before re-opening something that looks broken, in case it was already answered.
+
 > **BRAND vs CODENAME (Jul 12 2026 — rebrand):** the **public brand = Bemgu** (domain **https://bemgu.app**, Resend sender **hello@bemgu.app**, registrar **Porkbun**). The **internal codename = arrivly** — the GitHub repo name (`udybr1975/arrivly-app`), `package.json` name, local folder `C:\dev\arrivly`, the Stripe **`metadata.app === 'arrivly'`** filter (case-sensitive, load-bearing in `api/stripe-webhook.ts`), every `arrivly_*`/`arrivly:*` storage key + window/DOM event, the `arrivly-v*` SW cache name, all env var NAMES, and every code identifier / CSS class deliberately KEEP "arrivly". **Never rename them.** User-facing strings (page titles, meta tags, email copy + sender, push titles, aria-labels, displayed URLs, the "Powered by Bemgu" footer, manifest name) are all "Bemgu".
 >
 > **Cloudflare Turnstile widgets are HOSTNAME-ALLOWLISTED.** Any domain change must repeat it or the demo money-gate shows "Unable to connect".
@@ -175,19 +183,30 @@ as the clean "no subscription" test case that had since acquired one.
 
 ## Known notes / minor debt
 - Cron sequential loops in `cron-sync-ical` AND `cron-refresh-events` share the "batch at scale / maxDuration" debt — fine at current apartment counts; batch before many booked apartments. (Phase G cron-batching item.) **⚠ NO LONGER "fine at current counts" FOR `cron-refresh-events` (Aug 6 2026): at B3.3+ prompt sizes its `mapPool` concurrency of 2 EXCEEDS the Groq org TPM ceiling deterministically (2 x ~7.6k debit, measured Aug 10, against what was then 12K TPM — **the ceiling is now 8,000 TPM, VERIFIED 17-18 Aug 2026, so the margin is TIGHTER not looser and concurrency 1 is the only width that fits**), so a multi-candidate run is expected to 429 AND starves guest-chat / guide / daily-greeting across every tenant while it runs. Fix is `concurrency: 1`, and it is the top of this debt — see "SESSION CLOSE Aug 6 2026" open item 1.**
+  **PARTIALLY CLOSED, VERIFIED AT SOURCE 22 Aug 2026:** `cron-refresh-events` now calls
+  `mapPool(units, 1, …)` — concurrency IS 1, so the TPM half of this debt is done. The
+  `cron-sync-ical` batching half is **UNVERIFIED AT THE RESTRUCTURE** and stays open.
 - `city-events` lazy-fill: the FIRST guest to view an uncached apartment waits ~the generation time (one-off); the cron pre-warms apartments with current/upcoming bookings so most are already warm.
-- **`cron-refresh-events` schedule vs Gemini quota-day — CLOSED (`dbfc034`, Jul 28 2026).** Both Gemini crons rescheduled off the tail of the free-tier quota day: `cron-refresh-events` `0 4 * * *` → **`0 9 * * *`**; `cron-refresh-guides` `0 3 1 * *` → **`0 10 1 * *`** (verified via source that it calls Gemini through `generateGuideForApartment` → `api/_lib/guide.ts`). Key isolation confirmed at the same time: events reads `GEMINI_API_KEY_EVENTS || GEMINI_API_KEY`, guides reads `GEMINI_API_KEY_GUIDES || GEMINI_API_KEY` — each a separate AI Studio project with its own daily quota, so neither reschedule is neutralised by key-sharing. **HONEST FRAMING:** the Jun 25 incident was already mitigated a month earlier by the dedicated events key (`acd16f4`); this reschedule is defence-in-depth for events, and the FIRST timing protection for guides. code-reviewer PASS (0 must-fix); vercel.json only, 2 changed lines, both schedule strings. Original entry follows for history: The events cron runs `0 4 * * *` (04:00 UTC ≈ 21:00 Pacific) — the TAIL of Gemini's free-tier quota-day (free-tier daily limits reset ~midnight Pacific ≈ 07:00–08:00 UTC). On 2026-06-25 this run 429'd every candidate apartment and fired the ntfy "all event refreshes failed" alert because city-events was still on the SHARED `GEMINI_API_KEY`, whose daily quota was exhausted. Mitigated by the dedicated `GEMINI_API_KEY_EVENTS` (`acd16f4`) giving the events surface its own daily quota. **Not yet done (Udy deferred):** reschedule `cron-refresh-events` from `0 4 * * *` → `0 9 * * *` in `vercel.json` so the run lands just AFTER the Pacific reset — the dedicated key lowers recurrence risk, the reschedule mostly removes it. NOTE: the cron itself behaved correctly that day (returned 200, left cache rows intact / stale-safe; the alert only fires when `refreshed === 0`). VERIFICATION PENDING: the next 04:00 UTC run is the passive test — no ntfy alert = the dedicated key worked.
+- **`cron-refresh-events` / `cron-refresh-guides` schedule vs the Gemini quota-day — CLOSED
+  (`dbfc034`, Jul 28 2026).** Narrative and the original incident moved to
+  **docs/resolved-debt.md**. The surviving rule: both Gemini crons run AFTER the Pacific
+  free-tier reset (`0 9 * * *` events, `0 10 1 * *` guides) and each reads its OWN key, so
+  neither reschedule is neutralised by key-sharing.
 - Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
 - iCal fetch (`api/_lib/ical.ts`, used by both sync-ical and cron-sync-ical): mild SSRF (no
   private-IP/metadata blocklist on fetched URLs); no per-host rate limit. The monthly cron now
   exercises this unattended. Tidy SSRF + rate limit before public launch.
 - `sendPushToHost` url check uses `startsWith('/')`, which also admits protocol-relative `//host` — only ever set from the host's own send-push request (self-targeted), so negligible.
 - send-push `apartmentId` is not ownership-checked — latent only (lookup forces `host_id = userId`, so a foreign apartmentId matches zero rows).
+> Two items VERIFIED RESOLVED at the 22 Aug restructure and moved to **docs/resolved-debt.md**
+> with the grep that closed each: `BookingManager.tsx`'s `arrivly:messages-read` cancellation
+> signal, and `PropertySetup.tsx`'s load-effect cancellation guard. Both are fixed in the
+> shipped code; the entries are kept as evidence, not as work.
+
 - `api/guest-chat.ts` (S21): verify-gated (public tier → `403 verify_required` before any Gemini call) + per-instance rate limiter (15/min, apt+IP) + dedicated `GEMINI_API_KEY_CHAT`. The limiter is per-instance best-effort, not a hard cross-instance cap. `generate-guide` remains host-auth+ownership-gated (no public AI-spend surface).
 - **Retention crons SHIPPED (11 Aug 2026)** — `cron-cleanup-messages` (30d) and `cron-retention` (guest identities 30d, greetings 30d, guest push 7d, admin audit 365d). **The periods are a PUBLISHED PROMISE** in the guest notice §6 and in the Art. 30 record: change a constant and the document in the SAME commit, or neither. **No exemptions, ever** — a carve-out makes the notice false for everyone; fixtures survive by refreshing their DATES.
 - sw.js `showNotification().then()` — if showNotification rejects, badge is not set and the rejection is swallowed by `event.waitUntil`; low risk, standard SW pattern (W2, `c294bda`).
 - `countUnread` in `Layout.tsx` called directly from event listeners with no mounted guard at call site — safe because `mounted` flag is closed over and listeners are removed on cleanup before it matters; no real bug (W3, `c294bda`).
-- `BookingManager.tsx` `arrivly:messages-read` handler calls `loadBookings()` without a cancellation signal — tiny stale-overwrite race on rapid apartment switching; fold into next BookingManager change.
 - **The address-swap gate has a DECLARED LIMITATION, not an oversight (shipped `34e79c3`):**
   a swap to another flat in the SAME city, under 1km, is NOT stopped. The trigger
   `enforce_property_address_swap()` blocks a >1km coordinate move or a city/country text
@@ -220,9 +239,13 @@ as the clean "no subscription" test case that had since acquired one.
     switches apartments could see A's rows land after B's. Same shape as the existing `await` calls
     in the success and cancel paths.
 - `api/public-pricing.ts` cache is `s-maxage=60` — admin trial/price edits show on the landing within ~1 min.
-- **npm vulnerabilities — SUPERSEDED COUNT, kept only as history: 8 (2 moderate, 6 high). The CURRENT figure is GitHub's 16 (8 high, 8 moderate), 18 Aug 2026 — see the queue.** `npm audit fix` NOT run, because it touches the lockfile and every commit it could have ridden on was scoped elsewhere. **Triage before the pentest gate.** (Supersedes the earlier 7-total measurement; the counting difference between `npm audit` and GitHub's alert list is already recorded under DEPENDENCY VULNS.)
+- **npm vulnerabilities — the superseded 8-count and the tool-counting explanation moved to
+  **docs/resolved-debt.md**. THE LIVE NUMBER IS IN THE QUEUE (GitHub's 16), and the
+  npm-audit-vs-Dependabot gap is a counting difference, NOT drift — do not re-litigate it.
 - **Redundant root `as any` in `api/stripe-webhook.ts` blunts a compile-error canary.** `types/Subscriptions.d.ts` declares `current_period_end` on the root, so that read compiles uncast; the cast's only effect is to SUPPRESS the error a Basil-typed SDK bump would raise there — the exact migration signal `api/_lib/stripe.ts` preserves and tells you not to cast away. **One-token removal, no runtime effect** — take it on the next non-comment edit to that block.
-- **First real `invoice.payment_succeeded` after `7f3dac5` is worth watching in the Vercel logs.** That path has NEVER executed on this endpoint (the pre-Basil field read resolved null and returned 200), so nothing downstream of the id extraction has run here. Specifically check it resolves the CURRENT subscription, not a superseded one — see the `sub.id` item under Tracked security follow-ups.
+- **First real `invoice.payment_succeeded` after `7f3dac5` is worth watching in the Vercel logs.**
+  **UNVERIFIED AT THE 22 Aug 2026 RESTRUCTURE** — settling it needs the Vercel runtime logs,
+  which cannot be read from the repo, so it stays open by the restructure's own rule. That path has NEVER executed on this endpoint (the pre-Basil field read resolved null and returned 200), so nothing downstream of the id extraction has run here. Specifically check it resolves the CURRENT subscription, not a superseded one — see the `sub.id` item under Tracked security follow-ups.
 - **`app_settings.trial_days` is 14; the original project brief says 30.** The brief is STALE — code and UI agree on 14, and 14 is the confirmed live plan value. Recorded so the discrepancy is not "discovered" again and fixed in the wrong direction.
 
 ### Tracked security follow-ups (S19; updated S24)
@@ -746,26 +769,10 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   docs/design-backlog.md.
 - **RUN `api/backfill-canonical-city` BY HAND** — GET with `Authorization: Bearer <CRON_SECRET>`. Idempotent. On no schedule. Watch `resolvedNoKey`: a city that resolves with no valid country code stays on the per-apartment path. **HALF DONE — RE-COUNTED AGAINST THE LIVE DB 18 Aug 2026: the fleet is NINE visible apartments, not ten.** 4 of 9 carry a `canonical_city_key` and 4 have been attempted, across 8 distinct cities; the rest have `canonical_resolved_at` NULL = never attempted. **⚠ BUT THIS IS NOT CURRENTLY DOABLE:** `CRON_SECRET` is flagged **Sensitive** in Vercel, so its value cannot be read back and the Bearer header cannot be reconstructed — see the CRON_SECRET lesson below. This item is blocked on that decision, not on effort.
 - **PRE-LIVE — OBTAIN WRITTEN CONFIRMATION FROM GYG AND TIQETS ON MULTI-TENANT HOST-OWN-ID.** Udy's own terms review (11 Aug 2026) cleared BOTH to keep host-own-partner-ID on Tier 3, and the code ships that way. **But note the EVIDENCE CLASS: that is a self-assessment, not a provider ruling.** For Viator we hold a written answer from Partner Support; for GYG and Tiqets we hold our own reading. **Viator is the proof that the two differ** — the terms were read carefully, the risk was spotted, the question was asked anyway, and the answer came back NO. Send the same question to both **before the Stripe live flip**, so a paying Tier-3 host is never sold a connection a provider later refuses. **Tiqets first — it uses the same partner-ID substitution shape (`partner=`) that Viator prohibited.** Contacts parked in PHASE I. If either answers no, Tier 3 needs repositioning, not just a code change.
-- **~~SANDBOX SUBSCRIPTIONS MAIL REAL PEOPLE~~ — CLOSED 18 Aug 2026. THE DATES WERE RIGHT AND THE
-  EXPOSURE NEVER EXISTED.** Udy confirmed **none of the five addresses belongs to a real person**,
-  so nothing here can reach anyone. The item is closed on that ground, not on the dates.
-  **THE DATES ARE KEPT AS MEASURED FACT** (live `hosts`, 18 Aug 2026, `cancel_at_period_end` FALSE
-  on all five) because they are the only accurate record and the earlier "6-9 Sept" was both wrong
-  and eleven days late on the first pair:
-  | `current_period_end` | Host |
-  |---|---|
-  | **24 Aug 2026** | udy.bar.yosef@sterlights.com AND anna.humalainen@gmail.com |
-  | 5 Sept 2026 | yiftach@xn--gnai-8qa.com |
-  | 7 Sept 2026 | udy@1234.com |
-  | 9 Sept 2026 | udy.baryosef@jchelsinki.fi |
-  **WHY THIS WAS CARRIED FOR WEEKS AS THE FILE'S ONLY REAL DEADLINE — AN ADDRESS IS NOT EVIDENCE OF
-  A HUMAN.** `anna.humalainen@gmail.com` READS like a person, so it was treated as one and nobody
-  asked. The whole entry rested on that inference. **Before recording an exposure that turns on who
-  is on the other end, ask who is on the other end.**
-  Still true and still unverified, but now academic: whether the trigger would be the RENEWAL or
-  the Stripe sandbox 90-day auto-cancel was never established against Stripe. It stops mattering
-  when no recipient is real — and it would need re-answering only if a real address is ever
-  introduced as a fixture.
+- **~~SANDBOX SUBSCRIPTIONS MAIL REAL PEOPLE~~ — CLOSED 18 Aug 2026**, on the ground that
+  none of the five addresses belongs to a real person. The measured `current_period_end`
+  dates and the reasoning moved to **docs/resolved-debt.md**. The lesson it produced — an
+  address is not evidence of a human — is in Lessons and stays there.
 - **THE QUEUE (updated 22 Aug 2026). In order:**
   1. **~~The four UI items~~ (`60a4c2b`), ~~the category cleanup migration~~, ~~the listing
      importer~~ (`3417e01`), ~~the PRE-ARRIVAL PERSONAL GUEST LINK~~ (`13eaaf3` / `c0848d8` /
@@ -822,94 +829,53 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
        — and until it is taken, the honest control is `platform_ref` entropy, not the brakes.
 
 
-### PRE-ARRIVAL PERSONAL GUEST LINK — LOCKED 20 Aug 2026, AMENDED 22 Aug 2026, SHIPPED
+### PRE-ARRIVAL PERSONAL GUEST LINK — the binding rules (SHIPPED `13eaaf3`/`c0848d8`/`ed92ad2`)
 
-**SHIPPED** across `13eaaf3` / `c0848d8` / `ed92ad2`, all deploy-verified. The design below is
-the record of what was decided and what CHANGED; the amendments are marked in place rather than
-rewritten over, so the original decision and its correction can both be read.
-**This feature is still the centre of the pentest gate.**
+> Full design record — the original locked decision, the 22 Aug amendment with its
+> strike-through, and the reasoning for both — moved to **docs/pre-arrival-link-design.md**.
+> Read it when you need to know WHY one of these is shaped the way it is. Everything below
+> BINDS the next change to this feature.
 
-**WHY AMENDING A LOCKED DESIGN WAS LEGITIMATE, and the precedent matters more than this
-feature:** the design carried its own invariant — *verify the platform's variable syntax
-against live behaviour at build time, never from memory*. Doing exactly that, on 21 Aug, is
-what FALSIFIED the check-in date. **The lock held and the invariant overrode it.** A lock that
-survives contact with evidence it told you to go and collect is not a lock, it is a wish.
-
-**THE MECHANISM.** ONE STATIC host template, pasted ONCE into the booking platform's automated
-welcome message, carrying **the PLATFORM'S OWN variables** ~~(guest first name + check-in
-date)~~ **— AMENDED 22 Aug 2026: guest first name + CONFIRMATION CODE, and the order is
-`#c={code}&g={name}`, CODE FIRST —** appended to the existing welcome link.
-
-**WHY THE DATE IS GONE (verified live, 21 Aug 2026):** Airbnb's check-in date chip renders as a
-human-readable string containing spaces and a comma, which TERMINATES a URL, and it is
-LOCALISED, so it breaks differently per language. It was never going to work.
-
-**THE CONFIRMATION CODE IS NOT A CONSOLATION PRIZE — IT IS BETTER ON EVERY AXIS THAT MATTERS,
-which is why the amendment improved the design rather than merely rescuing it.** A date is
-AMBIGUOUS (two bookings can share one check-in date), TRIVIALLY GUESSABLE (there are only so
-many plausible dates, and a guesser knows the season), and LOCALISED. A confirmation code is
-unambiguous, unguessable at ~3.7e15, and locale-independent.
-
-**CODE FIRST IS THE LEAST OBVIOUS AND MOST CONSEQUENTIAL DETAIL IN THE WHOLE FEATURE.** A first
-name can contain a SPACE, and a space TERMINATES an auto-linked URL. Name-first, the link
-arrives as `…#g=Anna` — the code is GONE, the claim fails, and the feature silently never fires
-while the host's own self-check still looks perfectly correct. Code-first, the same link
-arrives as `…#c=CODE&g=Anna`: both values present, only the NAME shortened, claim succeeds.
-**And under the old order those truncated links registered as FAILED claims** — feeding the
-brake and the victim-keyed counter against a real guest's own host. Do not reorder these.
-
-**THE HINT RIDES IN A URL FRAGMENT (`#`), NEVER A QUERY STRING (`?`), AND THAT IS WHAT MAKES
-THE "NEVER LOGGED" INVARIANT STRUCTURAL RATHER THAN MERELY INTENDED.** `vercel.json` rewrites
-`/(.*)` to `index.html`, so a query string is written into Vercel's EDGE ACCESS LOG **before a
-line of our JavaScript runs** — stripping it client-side afterwards would have been theatre.
-Browsers never transmit a fragment to a server and never place it in a `Referer` header, so the
-values exist only in the tab until we POST them in a body. **Never move them into a query
-string, a GET, a fetched URL, or a redirect target.** Click → the server reads the hints → attaches the name to
-the matching booking, **including an iCal booking that has no name** (Airbnb iCal carries none).
-
-**ONE LINK, TWO STATES, SELF-TRANSFORMING.** Pre-arrival it is a BROCHURE: the guest's name and a
-countdown. On check-in day, after the **11:00 cutoff**, the SAME link becomes the full guest page —
-**our server reveals the `ARR-` token at first claim, plus a host push.** No location gate. No
-question box.
-
-**ONE DELIBERATE DEVIATION FROM THE LOCKED DESIGN — `link_claimed_at` IS A PING MARKER, NOT A
-FIRST-CLAIM LOCKOUT.** The design said "first-claim-wins, identical machinery to the QR flow",
-and the machinery is deliberately NOT identical. **The QR proves PHYSICAL PRESENCE, so a
-lockout is safe there. A confirmation code is a SHARED CREDENTIAL** — two travellers on one
-booking both legitimately hold it — **so a lockout would lock out the second traveller.** The
-marker exists so the HOST is told once that their paste worked: the push fires ONCE, decided by
-rows returned from a conditional update, and the token is never withheld from a later device.
-**Also note the token is REVEALED, not minted** — every feed booking already carries an `ARR-`
-reference from `reconcile_ical_bookings`, so nothing is generated at claim time.
-
-**THE INVARIANTS — these are what a future change could break:**
-- **The link is the DEFAULT; the QR is the PERMANENT FALLBACK and the SOLE PRESENCE-PROOF path.**
+- **THE HINT RIDES IN A URL FRAGMENT (`#`), NEVER A QUERY STRING (`?`).** `vercel.json` rewrites
+  `/(.*)` to `index.html`, so a query string is written into Vercel's EDGE ACCESS LOG **before a
+  line of our JavaScript runs** — client-side stripping afterwards is theatre. A fragment is
+  never transmitted to a server and never appears in a `Referer`. **Never move the hints into a
+  query string, a GET, a fetched URL, or a redirect target.** They travel in a POST body.
+- **THE ORDER IS `#c={code}&g={name}` — CODE FIRST.** A first name can contain a SPACE, and a
+  space TERMINATES an auto-linked URL. Name-first, the link arrives as `…#g=Anna`, the CODE IS
+  GONE, and the feature silently never fires while the host's own self-check still looks
+  correct. Code-first, only the name shortens and the claim still succeeds. **Do not reorder.**
+- **THE LINK IS THE DEFAULT; THE QR IS THE PERMANENT FALLBACK AND THE SOLE PRESENCE-PROOF PATH.**
   QR semantics are unchanged by this feature.
-- **THE PRODUCT MUST WORK 100% FOR A HOST WHO DOES NOTHING.** The template is an upgrade, never a
-  precondition.
-- **A PLAIN LINK NEVER SELF-TRANSFORMS ("Tom protection")** — without the hints, arrival day shows
-  a QR pointer line instead. The transformation is a property of a CLAIMED link, not of the date.
-- **THE NAME HINT IS READ ONCE, STRIPPED FROM THE URL IMMEDIATELY, NEVER LOGGED, FIRST NAME ONLY.**
-  A few-tries-then-QR brake plus a host ping covers guessing. **AMENDED 22 Aug 2026: the name is
-  an ALLOWLIST (letters, marks, spaces, apostrophes, hyphens, full stops), not a
-  control-character strip** — because `guests.first_name` is interpolated RAW into the
+- **THE PRODUCT MUST WORK 100% FOR A HOST WHO DOES NOTHING.** The template is an upgrade, never
+  a precondition. Nothing in the Share panel may gate, block or require it.
+- **A PLAIN LINK NEVER SELF-TRANSFORMS ("Tom protection")** — without the hints, arrival day
+  shows a QR pointer line. The transformation is a property of a CLAIMED link, not of the date.
+- **THE NAME HINT IS READ ONCE, STRIPPED FROM THE URL IMMEDIATELY, NEVER LOGGED, FIRST NAME
+  ONLY**, and it is an **ALLOWLIST** (letters, marks, spaces, apostrophes, hyphens, full stops)
+  rather than a control-character strip — `guests.first_name` is interpolated RAW into the
   guest-chat system instruction, outside the nonce fence, and this endpoint moved that write
   from "authenticated host only" to "anyone holding a confirmation code". **A STORED NAME ALWAYS
   WINS: the hint fills a blank, never corrects one**, or the endpoint is a rename primitive.
-- **THE REAL SPEND/GUESSING CONTROL IS `platform_ref` ENTROPY, NOT THE BRAKE.** Both in-memory
-  brakes are per-Lambda-instance; the persistent victim-keyed counter is the detector that
-  survives an attack. **No second writer of `platform_ref` may be added without redoing that
-  analysis** — the 8-char floor the validator accepts is only 1e8.
-- **VERIFY THE PLATFORM'S VARIABLE SYNTAX AGAINST LIVE DOCS AT BUILD TIME, NEVER FROM MEMORY.**
+- **`link_claimed_at` IS A PING MARKER, NOT A LOCKOUT.** The QR proves PHYSICAL PRESENCE so a
+  lockout is safe there; a confirmation code is a SHARED CREDENTIAL and two travellers on one
+  booking both hold it, so a lockout would lock out the second traveller. The host push fires
+  ONCE (decided by rows returned from a conditional update); the token is never withheld.
+- **THE TOKEN IS REVEALED, NOT MINTED** — every feed booking already carries an `ARR-` reference
+  from `reconcile_ical_bookings`. If a future edit finds itself generating one here, stop.
+- **THE REAL GUESSING CONTROL IS `platform_ref` ENTROPY, NOT THE BRAKE.** Both in-memory brakes
+  are per-Lambda-instance; the persistent victim-keyed counter is the detector. **No second
+  writer of `platform_ref` may be added without redoing that analysis** — the 8-char floor the
+  validator accepts is only 1e8, against Airbnb's 10-char ~3.7e15.
+- **VERIFY THE PLATFORM'S VARIABLE SYNTAX AGAINST LIVE BEHAVIOUR AT BUILD TIME, NEVER FROM
+  MEMORY.** This invariant is what falsified the check-in date on 21 Aug and forced the
+  amendment — the lock held and the invariant overrode it.
+- **NOT VERIFIED, and do not let this be read as covered: whether a link is CLICKABLE once
+  actually SENT to a guest** (everything was observed in Airbnb's composer, not in a delivered
+  message) · **Booking.com** · **Vrbo**. The latter two ship as a `verified: false` record that
+  structurally cannot render steps.
 
-**SURFACES THAT MOVED (`ed92ad2`):** the Share panel already rendered the message before the QR,
-so only the "Step 1 / Step 2" headings went — they are no longer a sequence. **Platforms are now
-DATA** (`src/components/host/sharePlatforms.ts`), so adding Booking.com later is a record rather
-than a component rewrite, and `verified: false` STRUCTURALLY cannot render steps. Bookings shows
-**"guest identified via link"** on both the list row and the calendar day-detail, never on a
-block, with no "not identified" counterpart — absence is the normal case, not a warning.
-
-  **STILL PARKED, unchanged:** block-source message fix (before Founding Hosts) · pre-arrival
+**STILL PARKED, unchanged:** block-source message fix (before Founding Hosts) · pre-arrival
   messaging gap · **`groq/compound` evaluation — PARKED WITHOUT A DEADLINE (option B).** Option A
   (repoint + env-configurable model, decided 18 Aug 2026) clears the 16 Oct date, so this is no
   longer the only route and is not on the critical path · **the `api/` typecheck gap** (`api/` is outside
@@ -1070,9 +1036,6 @@ block, with no "not identified" counterpart — absence is the normal case, not 
   `Landing`), so the pattern a future editor pattern-matches against is the conditional one —
   and making this one conditional would reintroduce the exact defect `736a715` fixed. A one-line
   comment above it would make a regression visible in a diff.
-- **`PropertySetup.tsx`'s load effect has no cancellation guard** — same class as the recorded
-  `BookingManager.tsx` `arrivly:messages-read` note: a tiny stale-overwrite race on rapid
-  apartment switching. Fold into the next change to that file.
 - **The `code-reviewer` subagent wrote `.claude/agent-memory/` files on its own initiative
   (14 Aug 2026), and they are NOT adopted.** They are gitignored, so they are invisible to
   everyone but the machine that wrote them, which is precisely why they must not become a second
