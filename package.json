@@ -14,7 +14,8 @@
     "test:detail-categories": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/detail-categories.test.mjs",
     "test:import-listing": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/import-listing.test.mjs",
     "test:ical": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/ical.test.mjs",
-    "test:welcome-claim": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/welcome-claim.test.mjs"
+    "test:welcome-claim": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/welcome-claim.test.mjs",
+    "test:bulk-import": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/bulk-import.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.6.0",
