@@ -52,19 +52,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .eq('is_demo', true)
     .lte('demo_expires_at', nowIso)
     .neq('subscription_status', 'expired')
-    .select('id, contact_email, name')
+    .select('id, contact_email, name, is_test')
   if (error) {
     console.error('[cron-demo-expiry] claim failed —', error.message?.slice(0, 120))
     return res.status(500).json({ error: 'claim_failed' })
   }
 
-  const hosts = (claimed ?? []) as Array<{ id: string; contact_email: string | null; name: string | null }>
+  const hosts = (claimed ?? []) as Array<{ id: string; contact_email: string | null; name: string | null; is_test: boolean }>
   let emailed = 0
 
   for (const host of hosts) {
     // Best-effort email — a send failure must NOT fail the run or undo the flip. The
     // recipient comes from the DB row only.
-    if (host.contact_email) {
+    // The demo lifecycle itself is deliberately untouched by is_test — the page close and the
+    // status flip above still run for every lapsed demo. Only the email is suppressed, because
+    // no email may ever reach a test host.
+    if (host.contact_email && !host.is_test) {
       const result = await sendEmail({ to: host.contact_email, ...demoEndedEmail({ firstName: host.name, appUrl: APP_URL }) })
       if (result.ok) emailed++
     }

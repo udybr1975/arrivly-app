@@ -24,6 +24,8 @@ interface HostEntry {
   subscription_status: string | null
   tier: number | null
   is_exempt: boolean
+  /** Fixture account. Excluded from every metric in `totals`; still listed here. */
+  is_test: boolean
   trial_ends_at: string | null
   created_at: string
   price_override_cents: number | null

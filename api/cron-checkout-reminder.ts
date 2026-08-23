@@ -18,7 +18,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data, error } = await supabase
     .from('bookings')
-    .select('apartment_id, source, apartments!inner(id, host_id, name)')
+    .select('apartment_id, source, apartments!inner(id, host_id, name, hosts!inner(is_test))')
+    // Test rows are never iterated by a cron. Filtered on the !inner embeds so the joins
+    // themselves drop them — a JS-side filter would still have fetched the rows. BOTH columns,
+    // and the host one is the authority: nothing maintains apartments.is_test on INSERT, and
+    // `authenticated` can UPDATE it, while hosts.is_test is SELECT-only (measured 23 Aug 2026).
+    .eq('apartments.is_test', false)
+    .eq('apartments.hosts.is_test', false)
     .eq('check_out', today)
     .in('status', ['confirmed', 'completed'])
   if (error) return res.status(500).json({ error: 'Query failed' })

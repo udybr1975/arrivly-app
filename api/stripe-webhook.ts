@@ -172,7 +172,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Read host row BEFORE writing for transition detection
   const { data: hostRow } = await admin
     .from('hosts')
-    .select('tier,subscription_status,stripe_subscription_id,contact_email,name,pending_tier')
+    .select('tier,subscription_status,stripe_subscription_id,contact_email,name,pending_tier,is_test')
     .eq('id', hostId)
     .maybeSingle()
 
@@ -299,6 +299,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const oldTier = hostRow.tier as number | null
   const oldStatus = hostRow.subscription_status as string | null
   const hadSubscription = !!(hostRow.stripe_subscription_id as string | null)
+  // A test host must never be contacted. The DB update above, the admin email (d), the admin
+  // push (e), ntfy (f) and the audit row (g) all still fire — the operator wants to SEE test
+  // events; only the host-facing email (b) and host push (c) are suppressed.
+  const isTestHost = hostRow.is_test === true
   const effectiveNewStatus = newStatus ?? oldStatus
 
   type NoticeType = 'started' | 'upgraded' | 'downgraded' | 'cancelled' | 'grace'
@@ -371,7 +375,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // b) host lifecycle email
         (async () => {
-          if (!recipientEmail) return
+          if (!recipientEmail || isTestHost) return
           const tmpl =
             n === 'started'
               ? subscriptionStartedEmail(hostName, tier, { priceCents: safePriceCents, currency: safeCurrency, nextPaymentIso: safeRenewalIso })
@@ -389,7 +393,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         })(),
 
         // c) host push
-        sendPushToHost(admin, hostId, { title: hostPushTitle, body: hostPushBody, url: '/dashboard/billing' }),
+        isTestHost
+          ? Promise.resolve()
+          : sendPushToHost(admin, hostId, { title: hostPushTitle, body: hostPushBody, url: '/dashboard/billing' }),
 
         // d) admin event email
         sendEmail({

@@ -28,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { data: settingsRow, error: settingsErr  },
     ] = await Promise.all([
       db.from('hosts')
-        .select('id, brand_name, name, contact_email, city, subscription_status, tier, is_exempt, trial_ends_at, created_at, price_override_cents, discount_percent, discount_until, property_cap_override')
+        .select('id, brand_name, name, contact_email, city, subscription_status, tier, is_exempt, is_test, trial_ends_at, created_at, price_override_cents, discount_percent, discount_until, property_cap_override')
         .order('created_at', { ascending: false }),
       db.from('plans').select('*').order('tier'),
       db.from('apartments').select('id, host_id'),
@@ -79,6 +79,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return {
         ...h,
         is_exempt: !!h.is_exempt,
+        is_test: !!h.is_test,
         apartments_count:  aptCountByHost.get(h.id)     ?? 0,
         bookings_count:    bookingCountByHost.get(h.id)  ?? 0,
         effective_price_cents,
@@ -86,16 +87,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     })
 
-    const mrr_cents = hosts
+    // Metrics describe the REAL business only. The full `hosts` list is still returned intact,
+    // each row carrying is_test, for a LATER UI pass — SuperAdmin.tsx does not render the flag
+    // yet, so until it does the operator sees `totals` excluding hosts that the list below still
+    // shows, with no on-screen cue. Deliberate; the greying-out is the next change, not this one.
+    const realHosts = hosts.filter(h => !h.is_test)
+
+    const mrr_cents = realHosts
       .filter(h => h.subscription_status === 'active' && !h.is_exempt)
       .reduce((sum, h) => sum + h.effective_price_cents, 0)
 
     const totals = {
-      total_hosts:  hosts.length,
-      on_trial:     hosts.filter(h => h.subscription_status === 'trial').length,
-      paid_active:  hosts.filter(h => h.subscription_status === 'active').length,
-      grace:        hosts.filter(h => h.subscription_status === 'grace').length,
-      expired:      hosts.filter(h => h.subscription_status === 'expired').length,
+      total_hosts:  realHosts.length,
+      on_trial:     realHosts.filter(h => h.subscription_status === 'trial').length,
+      paid_active:  realHosts.filter(h => h.subscription_status === 'active').length,
+      grace:        realHosts.filter(h => h.subscription_status === 'grace').length,
+      expired:      realHosts.filter(h => h.subscription_status === 'expired').length,
       mrr_cents,
     }
 

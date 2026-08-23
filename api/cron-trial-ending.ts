@@ -22,6 +22,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { data, error } = await supabase
     .from('hosts')
     .select('id, name, contact_email, trial_ends_at')
+    // Test hosts are never iterated by a cron — filtered in the query, not in JS.
+    .eq('is_test', false)
     .eq('subscription_status', 'trial')
     .is('trial_reminder_sent_at', null)
     .gte('trial_ends_at', start.toISOString())

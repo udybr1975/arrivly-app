@@ -33,11 +33,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { data: host } = await admin
       .from('hosts')
-      .select('stripe_subscription_id, name, contact_email, tier')
+      .select('stripe_subscription_id, name, contact_email, tier, is_test')
       .eq('id', userId)
       .maybeSingle()
 
     if (!host) return res.status(404).json({ error: 'host_not_found' })
+    // A test host is never emailed. The admin email and ntfy still fire, and they still carry
+    // the host's address — the operator wants to see the event, the test host must not.
+    const isTestHost = host.is_test === true
     if (!host.stripe_subscription_id) return res.status(400).json({ error: 'no_subscription' })
 
     const stripe = getStripe()
@@ -73,7 +76,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       const hostNameR = host.name as string | null
       await Promise.allSettled([
-        ...(contactEmailR ? [sendEmail({
+        ...(contactEmailR && !isTestHost ? [sendEmail({
           to: contactEmailR,
           ...subscriptionResumedEmail(hostNameR, {
             priceCents: resumePriceCents,
@@ -134,7 +137,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const contactEmailC = host.contact_email as string | null
     const hostNameC = host.name as string | null
     await Promise.allSettled([
-      ...(contactEmailC ? [sendEmail({
+      ...(contactEmailC && !isTestHost ? [sendEmail({
         to: contactEmailC,
         ...subscriptionScheduledCancelEmail(hostNameC, cancelAt, { alsoCancelledScheduledChange: hadPendingChange }),
       })] : []),

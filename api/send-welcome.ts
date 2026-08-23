@@ -22,7 +22,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .update({ welcome_email_sent_at: new Date().toISOString() })
     .eq('id', user.id)
     .is('welcome_email_sent_at', null)
-    .select('name, contact_email')
+    .select('name, contact_email, is_test')
     .maybeSingle()
 
   if (claimErr) {
@@ -35,6 +35,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     await db.from('hosts').update({ welcome_email_sent_at: null }).eq('id', user.id)
     return res.status(200).json({ sent: false, skipped: 'no_email' })
   }
+
+  // A test host is never emailed. The claim stamp stays set on purpose — releasing it would let
+  // every later signup-page visit retry the send. CONSEQUENCE, stated because it is one-way: if
+  // is_test is later flipped back to false on this host, welcome_email_sent_at is already stamped
+  // and the welcome email can never be sent. Clear the column by hand if that host must get it.
+  if (claimed.is_test) return res.status(200).json({ sent: false, skipped: 'test_host' })
 
   const result = await sendEmail({ to: claimed.contact_email, ...welcomeEmail(claimed.name) })
   if (!result.ok) {

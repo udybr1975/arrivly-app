@@ -40,12 +40,22 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   }
   const supabase = createClient(process.env.VITE_SUPABASE_URL!, serviceKey)
 
-  // Eligibility (deny-by-default): a demo, expired more than 1 day ago, that never subscribed.
+  // Eligibility (deny-by-default): a demo, expired more than 1 day ago, that never subscribed,
+  // and NOT a test account. This cron deletes the auth user and cascades hosts -> apartments ->
+  // bookings -> picks — the one destructive host iteration in vercel.json's crons[] — so it is
+  // the one place the is_test filter protects data rather than just suppressing work.
+  // SCOPE, stated honestly: the is_demo + expired + never-subscribed predicates already made this
+  // narrow, and NO host is currently both is_demo and is_test (measured 0, 23 Aug 2026). The
+  // filter guards a future fixture built on an expired unconverted demo; it is not fixing a live
+  // hazard. TRADE-OFF: a demo flagged is_test is now never purged, so its auth.users row persists
+  // indefinitely. Guest identities are still swept globally by cron-retention at 30 days, which
+  // takes NO is_test exemption and must never take one.
   const cutoffIso = new Date(Date.now() - 86_400_000).toISOString()
   const { data: hosts, error } = await supabase
     .from('hosts')
     .select('id')
     .eq('is_demo', true)
+    .eq('is_test', false)
     .not('demo_expires_at', 'is', null)
     .lt('demo_expires_at', cutoffIso)
     .is('stripe_subscription_id', null)

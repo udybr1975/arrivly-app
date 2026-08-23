@@ -65,7 +65,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data, error } = await supabase
     .from('apartments')
-    .select('id, name, street, street_number, neighborhood, city, country, lat, lng')
+    .select('id, name, street, street_number, neighborhood, city, country, lat, lng, hosts!inner(is_test)')
+    // TEST ROWS ARE EXCLUDED ON BOTH COLUMNS, AND ONLY THE HOST ONE IS AUTHORITATIVE.
+    // MEASURED 23 Aug 2026, not assumed: (1) NO trigger maintains apartments.is_test — it is a
+    // one-time backfill, so the next apartment a test host creates defaults to false and would
+    // re-enter this cron on the apartment predicate alone; (2) `authenticated` holds column-level
+    // UPDATE on apartments.is_test but only SELECT on hosts.is_test. So the apartment column is a
+    // denormalised CONVENIENCE that is neither maintained on INSERT nor protected from the host,
+    // and hosts!inner is what actually holds. Both predicates run in ONE query against ONE
+    // planner — the apartment one is not a "cheap first cut" and buys no speed; it is kept so a
+    // SINGLE apartment can be marked test under a real host. It is also the only predicate that
+    // can wrongly EXCLUDE a real row, which is why the REVOKE on apartments.is_test is an open
+    // follow-up. Both columns are NOT NULL DEFAULT false (verified), so .eq(false) is NULL-safe.
+    .eq('is_test', false)
+    .eq('hosts.is_test', false)
     .eq('is_visible', true)
     .not('city', 'is', null)
     .neq('city', '')
