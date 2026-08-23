@@ -2464,3 +2464,86 @@ so drift into 'During your stay' is expected on that path · prompt headroom ~80
 must be consolidation-funded · extractor residual: value-first splits and punctuation-fragment
 adjacency are badge-covered DECLARED boundaries · **`WelcomePage` renders extras in DB order** (an
 exclusion filter, not the shared constant) — residual from `3417e01`.
+## Session — 22 Aug 2026 (the pre-arrival personal guest link, shipped in three commits, plus the bulk-import offering clause — HEAD f113943)
+
+**FIVE COMMITS. The feature is complete end to end, and the fifth is the one that made it
+actually work for a guest.**
+
+- **`13eaaf3`** — iCal LINE UNFOLDING + capture of the platform's own booking reference into
+  `bookings.platform_ref`. **VERIFIED LIVE against a real Airbnb feed AFTER the deploy:
+  13 of 13 current-or-future reservations carry a code, every one 10 chars, all distinct, all
+  matching `^[A-Z0-9]{10}$` · 0 of 52 blocks and 0 of 19 past reservations, both CORRECT —
+  Airbnb exports only current and future events, and a block is not a reservation. Zero
+  contaminated rows.**
+- **`c0848d8`** — `api/welcome-claim.ts` + `api/_lib/welcome-claim.ts` (public claim endpoint),
+  `WelcomePage` fragment read/strip and the three guest states, `ROLLING_LIMITS` registration.
+- **`ed92ad2`** — `sharePlatforms.ts`, the two-part Airbnb card, the conditional `ensureUrl`,
+  the "Guest identified via link" chip.
+- **`f113943`** — bulk-import learns what an offering is (the clause `3417e01` left behind).
+- **`118d05f`** — **A LAUNCH-BLOCKING DEFECT FOUND AFTER THE DOCS COMMIT, during live testing:
+  the pre-arrival link did not work for ANY first-time visitor.** `public/sw.js` calls
+  `self.clients.claim()` unconditionally on activate and `src/main.tsx` reloaded on every
+  `controllerchange`, so a FIRST visit always self-reloaded — aborting the in-flight claim POST
+  and reloading a URL that no longer carried the hints, because `WelcomePage` strips them during
+  first render. The second load saw no hints and rendered the ordinary welcome page.
+  **PRE-EXISTING, NOT NEW: a QR link carries its data in QUERY PARAMETERS, which survive a
+  reload; a fragment does not.** The spurious reload had been shipping for a long time and was
+  harmless until something depended on in-flight state. `GuestPage`'s first-visit
+  `/api/guest-state` fetch was latently exposed to the same abort and is now also protected.
+  **FIX:** `navigator.serviceWorker.controller` sampled at MODULE EVALUATION — read inside the
+  handler it always observes the NEW controller, so the guard could never fire — and the guard
+  **LATCHES** rather than returning forever, so a genuine update later in the same tab still
+  reloads it. `sw.js` unchanged. 19 lines, `src/main.tsx` only; reasoning in the commit message.
+
+**WHAT WAS VERIFIED LIVE, ON UDY'S OWN AIRBNB ACCOUNT, 21 Aug 2026 — and this is the evidence
+the whole design rests on, so do not re-derive it from memory:**
+- **Shortcodes CANNOT be typed or pasted.** They are inserted from an "Add details" menu inside
+  Airbnb's editor, so a pasted template arrives as dead literal text. **That is why no
+  copy-the-whole-thing button can exist for Airbnb** and why its card is guided.
+- **The check-in DATE chip is DEAD.** It renders as a human-readable string with spaces and a
+  comma, which TERMINATES a URL, and it is LOCALISED, so it breaks differently per language.
+- **The confirmation-code chip renders as an unbroken uppercase-alphanumeric run** and inserts
+  mid-URL cleanly.
+- **A `#` fragment survives that insertion intact.**
+- **A plain link saves in a scheduled message with no error.**
+
+**AND VERIFIED ON A SENT MESSAGE, 22 Aug 2026 — this was previously the stated gap and is now
+closed:** Airbnb DOES linkify a `bemgu.app` URL in a delivered message (underlined, tappable) ·
+tapping shows an interstitial — warning triangle, *"You're leaving Airbnb — make sure you trust
+the source before continuing"*, **Back to Airbnb** / **Continue to bemgu.app** · **THE FRAGMENT
+SURVIVES both the linkifier and that interstitial redirect**, confirmed by a completed
+`POST /api/welcome-claim` from the tapped link.
+
+**STILL NOT VERIFIED: Booking.com · Vrbo.** Both ship as a `verified: false` record that
+structurally cannot render steps.
+
+**THE ACCEPTANCE TEST `118d05f` LEFT UNRUN HAS SINCE BEEN RUN, against production in a real
+browser, and PASSED:** `POST /api/welcome-claim` 200 (completed, not aborted) · exactly ONE
+`GET /api/welcome` 200 · `guest-bootstrap`, `guest-state`, `guest-details` all 200 · final URL
+`/guest?apt=…&token=…`. No aborted requests, no second load. **CAVEAT: that profile ALREADY had
+the service worker installed, so it exercised the CONTROLLED path. The genuinely UNCONTROLLED
+first visit is covered by the guard's logic but has NOT been observed.**
+
+**THE REAL PROPERTY IS NOW LIVE — "Beautiful private space in Helsinki center"** (welcome code
+`PDQV8ATW`, Helsinki, created 22 Aug 2026), Airbnb feed connected. **Measured in the DB, not
+recalled: 13 of 13 Airbnb reservations carry `platform_ref`, and 5 of 5 blocks correctly carry
+none.**
+
+**THE GATES CAUGHT SEVEN MUST-FIX ITEMS ACROSS THE THREE BUILD COMMITS, and the pattern in them
+is worth more than the list.** Every one was invisible from the design and visible only in the
+diff: a brake that a single trailing space made completely inert (the bucket label came from the
+raw code, the matcher from the trimmed one) · an unauthenticated caller able to write 40
+arbitrary characters into the guest-chat SYSTEM INSTRUCTION · a missing expired-subscription gate
+inherited by copying `api/welcome.ts`'s frame but not its billing check · a brake that left NO
+ARTEFACT, so a guessing run would have been unobservable afterwards · a display path that routed
+around `ensureUrl`, so a message saved on Airbnb and copied for email went out with no link at
+all · a save reporting success PostgREST never confirmed · and a test fixture that was VERBATIM
+LIVE GUEST DATA in a public repo.
+
+**THE HONEST SECURITY ARGUMENT FOR THE CLAIM ENDPOINT IS `platform_ref` ENTROPY, NOT THE BRAKE**
+— Airbnb's 10-character code is ~3.7e15, which no online attack reaches. The brake is a speed
+bump; the persistent victim-keyed counter is the detector. Recorded in the file, because a
+future reader will otherwise assume the brake is the control. **The 8-character floor the
+validator accepts is only 1e8, so no second writer of `platform_ref` may be added without
+redoing that analysis.**
+

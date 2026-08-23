@@ -49,6 +49,10 @@ Many bookings have **no name at all**. Calendar links from Airbnb and similar si
 - Questions you type into the chat assistant
 - A notification registration for your device, if you switch notifications on
 
+**On your own device**
+
+If you open a personal link from your host, your browser keeps your booking reference and your first name on your device, so that the page reopens as your own page instead of a general one. It is cleared when your stay ends, and in any case 30 days after your check-in date. This is held on your device only — it is not extra information collected about you on our servers.
+
 **Automatically**
 - Standard server records when the page loads, which may include your IP address
 - A record that someone viewed the page, and that a suggested activity was tapped. These counts are **not linked to you** — no name, no IP address, no device identifier.
@@ -102,6 +106,7 @@ To keep the service working and stop it being abused, we keep short-lived server
 | Notification registration | **7 days after check-out**, then permanently erased |
 | Automatically generated daily suggestions | 30 days after check-out |
 | Stay dates and booking reference | Kept in your host's calendar, **with no name attached** once the above is erased |
+| The booking reference and first name your browser keeps on your device | **Cleared when your stay ends; expires 30 days after check-in** |
 | Server logs | **[CONFIRM]** |
 
 "Permanently erased" means the record is deleted, not hidden. Encrypted backups run on a rolling cycle, so a deleted record may briefly persist in a backup. **[CONFIRM — state the backup window as a number]**

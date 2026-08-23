@@ -174,21 +174,18 @@ values — do not change without an explicit decision.**
 - **`ARR-EVT777` / `ARR-PAR777` / `ARR-BCN777` are KEEP-PERMANENTLY** live/active/thank-you-state
   fixtures. Re-roll their dates when they lapse; never delete them.
 - **Roy's `property_cap_override` was set to 2 for D8 and REVERTED to null** — verified reverted.
-- **THE TWO PRE-ARRIVAL CLAIM FIXTURES, on "importer test" (welcome code `DX89PW3H`). BOTH
-  CREDENTIALS ARE FABRICATED — shape only, no entropy from any real feed. Udy keeps all test
-  data; never suggest deleting these.** `ARR-IMP401` / `platform_ref` `TESTCLAIM1`, 19-23 Aug
-  2026 — exercises the **ACTIVE** state (verified claimed). `ARR-PRE901` / `TESTFUTURE1`,
-  21-25 Sep 2026, guest first name attached **BY THE LINK** (the booking had none) — exercises
-  the **PREVIEW** state and the name-fill path, and its `link_claimed_at` is still NULL, which
-  is the chip's timing gap showing up exactly as recorded.
-
-**Billing-test host rows rot fastest of all — VERIFY AGAINST THE LIVE DB, never trust a written
-list.** The 11 Aug check found four of five prior descriptions wrong, including one row named here
-as the clean "no subscription" test case that had since acquired one.
-
----
-
-## Known notes / minor debt
+- **THE THREE PRE-ARRIVAL CLAIM FIXTURES, on "importer test" (welcome code `DX89PW3H`). ALL
+  CREDENTIALS FABRICATED — shape only, no entropy from any real feed. Udy keeps all test data;
+  never suggest deleting these.** Verified in the DB 23 Aug 2026:
+  - **`ARR-ACT501` / `TESTACTIVE1` — KEEP PERMANENTLY.** 22-26 Aug. **Its dates are MOVED BY HAND**
+    to exercise preview / active / thankyou in turn, so a date that looks stale here is the
+    fixture working, not drift.
+  - **`ARR-IMP401` / `TESTCLAIM1`** — 19-23 Aug, checked out 23 Aug, the thankyou fixture.
+    **BUT "permanent thankyou" IS NOT A THING THE DATA CAN DO:** `welcome-claim` reaches thankyou
+    only between 11:00 and midnight Helsinki on CHECKOUT DAY (`check_out >= helsinkiToday`), so
+    from 24 Aug this resolves to a MISS. **Re-roll `check_out` to today to test that state.**
+  - **`ARR-PRE901` / `TESTFUTURE1`** — 21-25 Sep, `link_claimed_at` deliberately still NULL.
+    **The clean PREVIEW control — do not claim it**, or the only unclaimed fixture is gone.
 - Cron sequential loops in `cron-sync-ical` AND `cron-refresh-events` share the "batch at scale / maxDuration" debt — fine at current apartment counts; batch before many booked apartments. (Phase G cron-batching item.) **⚠ NO LONGER "fine at current counts" FOR `cron-refresh-events` (Aug 6 2026): at B3.3+ prompt sizes its `mapPool` concurrency of 2 EXCEEDS the Groq org TPM ceiling deterministically (2 x ~7.6k debit, measured Aug 10, against what was then 12K TPM — **the ceiling is now 8,000 TPM, VERIFIED 17-18 Aug 2026, so the margin is TIGHTER not looser and concurrency 1 is the only width that fits**), so a multi-candidate run is expected to 429 AND starves guest-chat / guide / daily-greeting across every tenant while it runs. Fix is `concurrency: 1`, and it is the top of this debt — see "SESSION CLOSE Aug 6 2026" open item 1.**
   **PARTIALLY CLOSED, VERIFIED AT SOURCE 22 Aug 2026:** `cron-refresh-events` now calls
   `mapPool(units, 1, …)` — concurrency IS 1, so the TPM half of this debt is done. The
@@ -1206,88 +1203,18 @@ drill) remains a graduation prerequisite.**
 > label-comp-fixtures rule were already in Lessons, and its open items are carried in the
 > queue below.
 
-## Session — 22 Aug 2026 (the pre-arrival personal guest link, shipped in three commits, plus the bulk-import offering clause — HEAD f113943)
+> Moved to docs/history.md — "Session — 22 Aug 2026 (the pre-arrival personal guest
+> link, shipped in three commits, plus the bulk-import offering clause)". Its binding
+> rules already live in "PRE-ARRIVAL PERSONAL GUEST LINK"; nothing needed hoisting.
 
-**FIVE COMMITS. The feature is complete end to end, and the fifth is the one that made it
-actually work for a guest.**
+## Session — 23 Aug 2026 (Phase H pre-arrival parity, 3aaca7b)
 
-- **`13eaaf3`** — iCal LINE UNFOLDING + capture of the platform's own booking reference into
-  `bookings.platform_ref`. **VERIFIED LIVE against a real Airbnb feed AFTER the deploy:
-  13 of 13 current-or-future reservations carry a code, every one 10 chars, all distinct, all
-  matching `^[A-Z0-9]{10}$` · 0 of 52 blocks and 0 of 19 past reservations, both CORRECT —
-  Airbnb exports only current and future events, and a block is not a reservation. Zero
-  contaminated rows.**
-- **`c0848d8`** — `api/welcome-claim.ts` + `api/_lib/welcome-claim.ts` (public claim endpoint),
-  `WelcomePage` fragment read/strip and the three guest states, `ROLLING_LIMITS` registration.
-- **`ed92ad2`** — `sharePlatforms.ts`, the two-part Airbnb card, the conditional `ensureUrl`,
-  the "Guest identified via link" chip.
-- **`f113943`** — bulk-import learns what an offering is (the clause `3417e01` left behind).
-- **`118d05f`** — **A LAUNCH-BLOCKING DEFECT FOUND AFTER THE DOCS COMMIT, during live testing:
-  the pre-arrival link did not work for ANY first-time visitor.** `public/sw.js` calls
-  `self.clients.claim()` unconditionally on activate and `src/main.tsx` reloaded on every
-  `controllerchange`, so a FIRST visit always self-reloaded — aborting the in-flight claim POST
-  and reloading a URL that no longer carried the hints, because `WelcomePage` strips them during
-  first render. The second load saw no hints and rendered the ordinary welcome page.
-  **PRE-EXISTING, NOT NEW: a QR link carries its data in QUERY PARAMETERS, which survive a
-  reload; a fragment does not.** The spurious reload had been shipping for a long time and was
-  harmless until something depended on in-flight state. `GuestPage`'s first-visit
-  `/api/guest-state` fetch was latently exposed to the same abort and is now also protected.
-  **FIX:** `navigator.serviceWorker.controller` sampled at MODULE EVALUATION — read inside the
-  handler it always observes the NEW controller, so the guard could never fire — and the guard
-  **LATCHES** rather than returning forever, so a genuine update later in the same tab still
-  reloads it. `sw.js` unchanged. 19 lines, `src/main.tsx` only; reasoning in the commit message.
-
-**WHAT WAS VERIFIED LIVE, ON UDY'S OWN AIRBNB ACCOUNT, 21 Aug 2026 — and this is the evidence
-the whole design rests on, so do not re-derive it from memory:**
-- **Shortcodes CANNOT be typed or pasted.** They are inserted from an "Add details" menu inside
-  Airbnb's editor, so a pasted template arrives as dead literal text. **That is why no
-  copy-the-whole-thing button can exist for Airbnb** and why its card is guided.
-- **The check-in DATE chip is DEAD.** It renders as a human-readable string with spaces and a
-  comma, which TERMINATES a URL, and it is LOCALISED, so it breaks differently per language.
-- **The confirmation-code chip renders as an unbroken uppercase-alphanumeric run** and inserts
-  mid-URL cleanly.
-- **A `#` fragment survives that insertion intact.**
-- **A plain link saves in a scheduled message with no error.**
-
-**AND VERIFIED ON A SENT MESSAGE, 22 Aug 2026 — this was previously the stated gap and is now
-closed:** Airbnb DOES linkify a `bemgu.app` URL in a delivered message (underlined, tappable) ·
-tapping shows an interstitial — warning triangle, *"You're leaving Airbnb — make sure you trust
-the source before continuing"*, **Back to Airbnb** / **Continue to bemgu.app** · **THE FRAGMENT
-SURVIVES both the linkifier and that interstitial redirect**, confirmed by a completed
-`POST /api/welcome-claim` from the tapped link.
-
-**STILL NOT VERIFIED: Booking.com · Vrbo.** Both ship as a `verified: false` record that
-structurally cannot render steps.
-
-**THE ACCEPTANCE TEST `118d05f` LEFT UNRUN HAS SINCE BEEN RUN, against production in a real
-browser, and PASSED:** `POST /api/welcome-claim` 200 (completed, not aborted) · exactly ONE
-`GET /api/welcome` 200 · `guest-bootstrap`, `guest-state`, `guest-details` all 200 · final URL
-`/guest?apt=…&token=…`. No aborted requests, no second load. **CAVEAT: that profile ALREADY had
-the service worker installed, so it exercised the CONTROLLED path. The genuinely UNCONTROLLED
-first visit is covered by the guard's logic but has NOT been observed.**
-
-**THE REAL PROPERTY IS NOW LIVE — "Beautiful private space in Helsinki center"** (welcome code
-`PDQV8ATW`, Helsinki, created 22 Aug 2026), Airbnb feed connected. **Measured in the DB, not
-recalled: 13 of 13 Airbnb reservations carry `platform_ref`, and 5 of 5 blocks correctly carry
-none.**
-
-**THE GATES CAUGHT SEVEN MUST-FIX ITEMS ACROSS THE THREE BUILD COMMITS, and the pattern in them
-is worth more than the list.** Every one was invisible from the design and visible only in the
-diff: a brake that a single trailing space made completely inert (the bucket label came from the
-raw code, the matcher from the trimmed one) · an unauthenticated caller able to write 40
-arbitrary characters into the guest-chat SYSTEM INSTRUCTION · a missing expired-subscription gate
-inherited by copying `api/welcome.ts`'s frame but not its billing check · a brake that left NO
-ARTEFACT, so a guessing run would have been unobservable afterwards · a display path that routed
-around `ensureUrl`, so a message saved on Airbnb and copied for email went out with no link at
-all · a save reporting success PostgREST never confirmed · and a test fixture that was VERBATIM
-LIVE GUEST DATA in a public repo.
-
-**THE HONEST SECURITY ARGUMENT FOR THE CLAIM ENDPOINT IS `platform_ref` ENTROPY, NOT THE BRAKE**
-— Airbnb's 10-character code is ~3.7e15, which no online attack reaches. The brake is a speed
-bump; the persistent victim-keyed counter is the detector. Recorded in the file, because a
-future reader will otherwise assume the brake is the control. **The 8-character floor the
-validator accepts is only 1e8, so no second writer of `platform_ref` may be added without
-redoing that analysis.**
+BINDING (reasoning: `3aaca7b`):
+- WelcomePage IS the guest-page shell pre-arrival. Private data renders **LOCKED, never absent**. `GuestPage.tsx` untouched; markup COPIED.
+- Storage keys are `arrivly:`, never `bemgu:` — a post-ship rename strands live entries.
+- **"A plain link never self-transforms" binds the LINK, not the DEVICE.** The recipient's own bookmark transforming IS the feature; never delete persistence to "restore" it.
+- Entries expire at `check_in + 30`, the server's date — not a constant.
+- `api/welcome.ts` images deliberately NOT gated by `welcome_show_address`.
 
 ## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
 
