@@ -1,11 +1,19 @@
-// Tests for api/bulk-import.ts's SYSTEM_PROMPT (node:test + node:assert only).
+// Tests for api/bulk-import.ts — its SYSTEM_PROMPT and its buildRows scrub (node:test +
+// node:assert only).
 // Run with:  npm run test:bulk-import
 //
-// READ THIS BEFORE TRUSTING THESE ASSERTIONS. Everything here checks the PROMPT'S CONTENT
-// and the two prompts' AGREEMENT WITH EACH OTHER. Nothing here checks what a model actually
-// does with either — that needs a real generation, and this repo holds no AI credentials
-// outside Vercel, so a behavioural test cannot run in this environment at all. The live
-// paste is still the real test; MESSY_FIXTURE at the bottom is the script for it.
+// READ THIS BEFORE TRUSTING THESE ASSERTIONS. Everything ABOVE the MECHANISM section near the
+// bottom checks the PROMPT'S CONTENT and the two prompts' AGREEMENT WITH EACH OTHER. Nothing
+// in that part checks what a model actually does with either — that needs a real generation,
+// and this repo holds no AI credentials outside Vercel, so a behavioural test of the MODEL
+// cannot run in this environment at all. The live paste is still the real test for the prompt;
+// MESSY_FIXTURE at the bottom is the script for it.
+//
+// THE MECHANISM SECTION IS DIFFERENT and must not be tarred with the paragraph above: buildRows
+// is pure, so those tests run the real scrub on real input and ARE behavioural. That section
+// was added 23 Aug 2026 and this header was corrected in the same commit — the earlier version
+// said "everything here checks the prompt", which would have led a reader to under-credit the
+// only tests in the file that pin a security boundary.
 //
 // The distinction matters because of how the offerings defect was found in the first place:
 // five live rounds against real, run-on host prose, after code that had already passed both
@@ -14,7 +22,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { SYSTEM_PROMPT } from '../bulk-import.ts'
+import { SYSTEM_PROMPT, buildRows } from '../bulk-import.ts'
 import { SYSTEM_PROMPT as IMPORTER_PROMPT } from './import-listing.ts'
 import { EXTRAS_CATEGORIES } from '../../src/lib/detailCategories.ts'
 
@@ -98,8 +106,10 @@ test('the offerings-only clause is ADAPTED from the importer, and the delta is e
 test('a codes rule exists here at all, and is general across every category', () => {
   // NOT a copy: the importer's CODES paragraph relocates a stray code into
   // checkin.entry_instructions, a field this endpoint cannot write. The suppression half is
-  // kept and the disposition half is replaced with a pointer. It is a HINT, not a mechanism
-  // — this path runs no scrubCredentialSentences — and the comment at the site says so.
+  // kept and the disposition half is replaced with a pointer. It is still a HINT, not a
+  // mechanism — but since 23 Aug 2026 the mechanism exists beside it: buildRows runs
+  // scrubCredentialSentences over every row before the insert (tested at the bottom of this
+  // file). The rule lowers how often a code reaches that scrub; it does not bound anything.
   assert.match(SYSTEM_PROMPT, /CODES: never write an access code, PIN, password or lock combination into ANY category/)
   assert.match(SYSTEM_PROMPT, /say the code is in the guest's check-in info/)
   // The importer's relocation target must NOT appear here: this endpoint writes extras only.
@@ -208,4 +218,109 @@ test('the live fixture is messy in the ways that have caught defects', () => {
   assert.ok(MESSY_FIXTURE.includes('bins') && MESSY_FIXTURE.includes('parking'))
   // Invented, and it has to stay that way: this repo is public.
   assert.ok(!/@|\+\d|http/.test(MESSY_FIXTURE), 'no contact details or urls in a fixture')
+})
+
+// ---------------------------------------------------------------------------
+// the MECHANISM — buildRows runs the scrub (23 Aug 2026)
+// ---------------------------------------------------------------------------
+//
+// Everything above this line tests PROMPT TEXT, which is a hint. These test the belt.
+// Unlike the prompt assertions these ARE behavioural: buildRows is pure, so the real
+// function runs against real input here — no model, no network, no supabase.
+//
+// EVERY FIXTURE BELOW IS INVENTED. Never paste real listing text or a real code into this
+// repo: it is public, git objects do not expire, and a committed fixture is a permanent
+// carve-out from the published 30-day guest-identity retention promise. Shape only.
+// Assertion style is deliberately the same as the scrub tests in import-listing.test.mjs,
+// so the two doors' tests cannot drift apart either.
+
+const APT = 'aaaaaaaa-0000-0000-0000-000000000001'
+
+// ALL INVENTED — shape only, no entropy from any real feed or listing. Named rather than
+// inlined so the pin at the bottom reads the same strings the tests run on, the way
+// MESSY_FIXTURE is pinned above; an inline fixture and a source-scanning pin drift apart.
+const F = {
+  mixed: [
+    'The bins go out on Tuesday morning.',
+    'The lockbox code is 7742.',
+    'Tap water is excellent, no need to buy bottles.',
+  ].join('\n'),
+  mixedKept: 'The bins go out on Tuesday morning.\nTap water is excellent, no need to buy bottles.',
+  codeOnly: 'The gate code is 1125.',
+  codeOnly2: 'The keypad combination is 5567.',
+  clean: 'Bikes live in the shed.\nThe sauna heats in about 40 minutes.',
+  parking: 'There is a free bay behind the building.',
+  padded: '  Permit is on the fridge.  ',
+  paddedCode: '   The door code is 4432.   ',
+}
+
+test('a code sentence is removed and the ordinary lines survive', () => {
+  const { rows, redacted } = buildRows(APT, [{ category: 'Good to know', content: F.mixed }])
+  assert.equal(redacted, 1)
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].content, F.mixedKept)
+  // The belt is only meaningful because of where these rows go.
+  assert.equal(rows[0].is_private, false)
+  assert.equal(rows[0].apartment_id, APT)
+  assert.equal(rows[0].category, 'Good to know')
+})
+
+test('a row that was ONLY a code sentence is DROPPED, never inserted empty', () => {
+  // An empty card is worse than no card — the importer argues the same at its extras loop.
+  const { rows, redacted } = buildRows(APT, [{ category: 'Safety', content: F.codeOnly }])
+  assert.equal(redacted, 1)
+  assert.deepEqual(rows, [])
+})
+
+test('a dropped row does not appear in the inserted set while its siblings do', () => {
+  // The handler derives its `categories` response from rows, not from `valid`, so this is
+  // what stops the response claiming a category it did not save.
+  const { rows, redacted } = buildRows(APT, [
+    { category: 'Safety', content: F.codeOnly2 },
+    { category: 'Parking', content: F.parking },
+  ])
+  assert.equal(redacted, 1)
+  assert.deepEqual(rows.map(r => r.category), ['Parking'])
+})
+
+test('clean content is passed through untouched and nothing is counted', () => {
+  // The over-scrub direction costs the host real content, so it is asserted, not assumed.
+  const { rows, redacted } = buildRows(APT, [{ category: 'During your stay', content: F.clean }])
+  assert.equal(redacted, 0)
+  assert.equal(rows[0].content, F.clean)
+})
+
+test('a row that is whitespace-only after scrubbing is dropped, and survivors are trimmed', () => {
+  // NAMED FOR WHAT IT PROVES. An earlier name claimed this pinned scrub-before-trim ordering;
+  // it cannot. scrubCredentialSentences returns its input untouched when nothing is redacted
+  // and trims its own rejoin when something is, so both orders pass these fixtures. The
+  // ordering in buildRows is still the right one to write — it stays correct if the scrub ever
+  // stops trimming — but nothing here holds it, and a test whose name overstates its reach is
+  // the kind of cover this file argues against elsewhere.
+  const { rows } = buildRows(APT, [
+    { category: 'Parking', content: F.padded },
+    { category: 'Safety', content: F.paddedCode },
+  ])
+  assert.equal(rows.length, 1)
+  assert.equal(rows[0].content, 'Permit is on the fridge.')
+})
+
+test('an empty input list yields no rows and nothing redacted', () => {
+  const { rows, redacted } = buildRows(APT, [])
+  assert.deepEqual(rows, [])
+  assert.equal(redacted, 0)
+})
+
+test('the fixtures are invented, and must stay that way', () => {
+  // Same pin as MESSY_FIXTURE above: this repo is public, git objects do not expire, and a
+  // committed fixture is a permanent carve-out from the published retention promise.
+  for (const [name, value] of Object.entries(F)) {
+    // Same expression as the MESSY_FIXTURE pin above — deliberately identical, because the
+    // weaker of two guards is the one a future editor trusts. A single @ is an email; \+\d is
+    // the start of an international number. Do not 'tighten' either into something narrower.
+    assert.ok(!/@|\+\d|http/.test(value), `contact details or url in fixture: ${name}`)
+  }
+  // The invented codes are short and obviously fake — a value that still looks random beside
+  // these is the tell that something real was pasted in. Case-folding is NOT de-identification.
+  assert.ok(/7742/.test(F.mixed) && /1125/.test(F.codeOnly))
 })

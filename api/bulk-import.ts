@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { GoogleGenAI } from '@google/genai'
 import { scrubErr } from './_lib/scrub.js'
 import { aiGenerate, resolveProvider } from './_lib/ai-provider.js'
+import { scrubCredentialSentences } from './_lib/import-listing.js'
 import { EXTRAS_CATEGORIES, isExtrasCategory } from '../src/lib/detailCategories.js'
 
 const MODEL = 'gemini-2.5-flash'
@@ -40,19 +41,21 @@ const MODEL = 'gemini-2.5-flash'
 // asymmetry it leaves is worth stating plainly rather than discovering later:
 //   - this path writes `is_private: false` on EVERY row, so a code that slips through is
 //     anon-readable on the guest page,
-//   - and unlike the importer it does NOT run `scrubCredentialSentences`, the server-side
-//     belt added in 993fa3d after a code leaked into public extras on a live run,
 //   - and where the importer RELOCATES a stray code into entry_instructions ("never discard
 //     one"), the rule below can only tell the model to DROP it — with no signal to the host
 //     that anything was dropped, and pointing the guest at check-in info that, on this path,
 //     nobody wrote the code into. That dangling pointer fails safe (the guest asks the host)
 //     but it is a real difference in what the same manual produces through the two doors.
-// A PROMPT SENTENCE IS A HINT, NOT A MECHANISM. The mechanism is that scrub, applied to each
-// row before the insert — one import and one call, since scrubCredentialSentences is already
-// exported. It was left out as a scope decision about THIS commit (prompt and tests only),
-// NOT because it is expensive, and at the time of writing it is recorded only in this commit
-// message: it is not yet an entry in CLAUDE.md's queue. Do not read the rule below as making
-// this path protected, and do not let a passing CODES test deprioritise the scrub.
+// A PROMPT SENTENCE IS A HINT, NOT A MECHANISM — and the mechanism is now HERE. Since
+// 23 Aug 2026 `buildRows` below runs `scrubCredentialSentences`, the server-side belt added
+// in 993fa3d after a code leaked into public extras on a live run, over every row before the
+// insert; a row that collapses to empty is dropped rather than written blank. The paragraph
+// above USED to end by saying this path had only the prompt, which was the asymmetry that
+// mattered most between the two doors: that half is closed, and both doors now scrub.
+// The suppression-vs-relocation difference in the bullet above is NOT closed and is
+// structural — this endpoint has no entry_instructions to relocate into.
+// Still read the rule below as a hint: it lowers how often a code reaches the scrub, and it
+// is the scrub, not the rule, that bounds what reaches the guest page.
 const SYSTEM_PROMPT =
   'You are a property information organiser. Split the provided property info text into the following fixed categories: ' +
   EXTRAS_CATEGORIES.join(', ') + '. ' +
@@ -90,11 +93,49 @@ const SYSTEM_PROMPT =
   'Do NOT include WiFi, Check-in, or House Rules content — skip it entirely. ' +
   'Output the raw JSON array only, no other text, no code fences.'
 
-// Exported for `npm run test:bulk-import`. The tests assert the PROMPT'S CONTENT — that the
-// offerings rule is present, that the category list is interpolated rather than hand-copied,
-// and that the private-block clause is absent. They do NOT assert model BEHAVIOUR: that needs
-// a real generation, and this repo has no AI credentials outside Vercel. See the test file.
+// Exported for `npm run test:bulk-import`. THE PROMPT TESTS assert the PROMPT'S CONTENT — that
+// the offerings rule is present, that the category list is interpolated rather than hand-copied,
+// and that the private-block clause is absent. Those do NOT assert model BEHAVIOUR: that needs
+// a real generation, and this repo has no AI credentials outside Vercel. (The buildRows tests
+// in the same file ARE behavioural — that function is pure, so the real scrub runs on real
+// input with no model involved.) See the test file.
 export { SYSTEM_PROMPT }
+
+/**
+ * Rows-building step, split out so the SCRUB is testable with plain node — see
+ * api/_lib/bulk-import.test.mjs. Pure: no network, no supabase, no clock.
+ *
+ * THE MODEL'S OUTPUT IS UNTRUSTED INPUT and this path writes `is_private: false` on every
+ * row, so a code the prompt failed to suppress would be anon-readable on the guest page.
+ * `scrubCredentialSentences` is the same server-side belt api/_lib/import-listing.ts runs
+ * on its extras. A row that was nothing but a code sentence collapses to empty and is
+ * DROPPED rather than inserted blank — an empty card is worse than no card, exactly as the
+ * importer argues at its own extras loop. The scrub is written before the trim so it stays
+ * correct if the scrub ever stops trimming its own rejoin; today it does trim, so the order
+ * is defensive rather than load-bearing, and no test pins it.
+ *
+ * DISPOSITION IS SUPPRESSION, NOT RELOCATION. The importer moves a stray code into
+ * checkin.entry_instructions ("never discard one"); this endpoint writes extras and nothing
+ * else, so there is no destination to move it to and the sentence simply goes.
+ *
+ * `redacted` is returned for LOGGING ONLY — the HTTP response shape is unchanged. It is a
+ * count, never the removed text: the whole point is that the text does not travel.
+ */
+export function buildRows(
+  apartmentId: string,
+  valid: { category: string; content: string }[]
+): { rows: { apartment_id: string; category: string; content: string; is_private: boolean }[]; redacted: number } {
+  const rows: { apartment_id: string; category: string; content: string; is_private: boolean }[] = []
+  let redacted = 0
+  for (const item of valid) {
+    const scrubbed = scrubCredentialSentences(item.content)
+    redacted += scrubbed.redacted
+    const content = scrubbed.text.trim()
+    if (!content) continue
+    rows.push({ apartment_id: apartmentId, category: item.category, content, is_private: false })
+  }
+  return { rows, redacted }
+}
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -212,25 +253,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ categories: [] })
     }
 
+    // Scrub BEFORE the delete. If every row collapses to empty, this returns the same
+    // { categories: [] } the `valid.length === 0` guard above returns — and, like that
+    // guard, WITHOUT deleting: a run that has nothing to write must not wipe the extras
+    // the host already has. The delete+insert ordering below is otherwise unchanged.
+    //
+    // THE PARTIAL CASE IS DELIBERATE AND WAS ARGUED, so it is not rediscovered as a bug.
+    // The delete below is WHOLESALE — every extras category, not just the ones being
+    // written — and that width is a documented decision: PropertySetup.tsx's apply path
+    // describes itself as "deliberately narrower than bulk-import's delete-every-extras-
+    // category". (That path narrows on a SECOND axis this one does not: it also filters
+    // `is_private = false`, so the wide delete here destroys a host's PRIVATE extras rows
+    // too. Pre-existing, unchanged by this commit, and noted so the citation above is not
+    // read as claiming the two paths differ on one axis only.)
+    // So a category the model did not emit has ALWAYS been wiped by a paste,
+    // and a category the scrub empties is the same outcome by the same contract, not a new
+    // one. Narrowing the delete to the surviving categories would reverse that decision
+    // AND point the wrong way for this commit's own purpose: the row left standing could be
+    // a previous run's leaked code, which is exactly what must not survive a re-paste.
+    // What IS a real residual is that the host is not told — see the note at the warn below.
+    const { rows, redacted } = buildRows(apartmentId, valid)
+    if (redacted > 0) {
+      // Count only, never the text. Silent suppression is the one thing the incident
+      // comment above calls out as a real difference between the two doors, so at least
+      // the operator can see it happened.
+      //
+      // THE HOST IS STILL NOT TOLD, and that is a KNOWN RESIDUAL, not an oversight. The
+      // other door returns `redacted` in its response and ImportListing.tsx renders "We
+      // left N sentence(s) out of the public sections"; this one returns categories only,
+      // and PropertySetup.tsx renders NOTHING for an empty list while clearing the paste
+      // box — so an all-scrubbed run looks to the host like it worked. Closing it means
+      // adding a field to this response and a line to that component, which is a shape
+      // change this commit deliberately does not make. Do not mistake the log for the fix.
+      console.warn('[bulk-import] credential sentences removed before insert:', redacted)
+    }
+    if (rows.length === 0) {
+      return res.status(200).json({ categories: [] })
+    }
+
     await admin
       .from('apartment_details')
       .delete()
       .eq('apartment_id', apartmentId)
       .in('category', EXTRAS_CATEGORIES)
 
-    const rows = valid.map(item => ({
-      apartment_id: apartmentId,
-      category: item.category,
-      content: item.content.trim(),
-      is_private: false,
-    }))
     const { error: insertErr } = await admin.from('apartment_details').insert(rows)
     if (insertErr) {
       console.error('[bulk-import] insert failed:', insertErr.message)
       return res.status(500).json({ error: 'save_failed' })
     }
 
-    const categories = valid.map(item => item.category)
+    // Derived from the rows actually INSERTED, not from `valid` — a category whose only
+    // content was a code sentence is gone, and the response must not claim it was saved.
+    const categories = rows.map(row => row.category)
     return res.status(200).json({ categories })
   } catch (e) {
     const msg = scrubErr(e, 120)
