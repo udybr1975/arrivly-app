@@ -27,6 +27,13 @@ interface Host {
   accent_color: string | null
 }
 
+// Mirrors TOKEN_RE in api/guest-state.ts and api/guest-bootstrap.ts. Used ONLY to decide
+// whether a candidate token is worth sending to the bootstrap: both endpoints 400 on a
+// malformed token, and a 400 from the bootstrap would drop the whole page to the neutral
+// screen (empty boot -> availability check) even though the apartment is fine. The server
+// remains the authority on validity.
+const TOKEN_RE = /^[A-Za-z0-9-]{4,32}$/
+
 interface Apartment {
   id: string
   host_id: string
@@ -34,8 +41,11 @@ interface Apartment {
   neighborhood: string
   city: string
   country: string
-  lat: number | null
-  lng: number | null
+  // OPTIONAL, not just nullable: /api/guest-bootstrap OMITS both fields unless the host
+  // has welcome_show_address on, or the request carried a verified booking token. Every
+  // read must stay `!= null`-guarded, which also covers the absent case.
+  lat?: number | null
+  lng?: number | null
   accent_color: string | null
   max_guests: number | null
   hero_image_url: string | null
@@ -270,10 +280,23 @@ export default function GuestPage() {
       // Guests have no auth session, so use plain fetch (not the api helper). A network
       // or parse failure behaves exactly like an empty result (apartment null) → the
       // availability check below, then neutral.
+      //
+      // The token rides along because it is what unlocks apartment.lat/lng when the host
+      // has welcome_show_address off — the server re-verifies it against a confirmed or
+      // completed booking, so sending an unverified candidate here is safe and costs
+      // nothing when the toggle is on. Stage A below still resolves booking STATE via
+      // /api/guest-state; that flow order is unchanged.
       let boot: { apartment: Apartment | null; details: Detail[]; picks: HostPick[]; guide: GuideCategories | null } =
         { apartment: null, details: [], picks: [], guide: null }
       try {
-        const r = await fetch(`/api/guest-bootstrap?apt=${encodeURIComponent(aptId!)}`)
+        // Trim before testing, exactly as both endpoints do — otherwise a token with
+        // stray whitespace fails here, is accepted by /api/guest-state after ITS trim,
+        // and the page goes active with the coordinates silently missing.
+        const bootToken = activeToken?.trim() ?? ''
+        const bootUrl = TOKEN_RE.test(bootToken)
+          ? `/api/guest-bootstrap?apt=${encodeURIComponent(aptId!)}&token=${encodeURIComponent(bootToken)}`
+          : `/api/guest-bootstrap?apt=${encodeURIComponent(aptId!)}`
+        const r = await fetch(bootUrl)
         if (r.ok) boot = await r.json()
       } catch {
         // network/parse error → treat as empty (apartment null) → availability check → neutral

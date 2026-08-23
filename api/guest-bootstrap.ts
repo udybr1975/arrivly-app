@@ -1,5 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
+import { resolveGuestAccess } from './_lib/guest-access.js'
 
 // Service-role loader for the PUBLIC guest-page bootstrap. Moves the apartment,
 // public apartment_details, host_picks and guide_recommendations reads off the client
@@ -14,8 +15,28 @@ import { createClient } from '@supabase/supabase-js'
 // apartment yields an identical empty body, so the endpoint never distinguishes the two
 // (GuestPage calls api/guest-availability separately to pick the unavailable vs neutral
 // screen).
+//
+// COORDINATES ARE GATED. Exact lat/lng reverse-geocode to the street address, so they
+// are the same disclosure api/welcome.ts gates behind apartments.welcome_show_address.
+// Returning them here for any visible apartment UUID would defeat that toggle in one
+// hop. lat/lng are therefore included only when welcome_show_address is true, OR when
+// resolveGuestAccess() rates the supplied token 'verified' for THIS apartment — the
+// canonical gate: a confirmed/completed booking AND today inside the stay dates.
+// Otherwise both fields are OMITTED — absent, not null, mirroring welcome.ts's
+// omission style.
+//
+// ORACLE SCOPE, stated precisely: a WRONG token is indistinguishable from no token
+// (same status, same body shape). A VALID one is distinguishable, because the
+// coordinates appear — that is the feature, and it tells the holder nothing that
+// api/guest-state.ts does not already tell them for the same token in the same
+// window. Do NOT loosen the gate to status-only, which would extend that signal to
+// future-dated and long-past tokens that guest-state deliberately flattens.
+//
+// This response varies by token, so it must NEVER gain an s-maxage/CDN cache header:
+// a cached coordinate-bearing body could be served to a tokenless caller.
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const TOKEN_RE = /^[A-Za-z0-9-]{4,32}$/   // identical to api/guest-state.ts
 
 const svc = () => createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
@@ -56,6 +77,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const apt = typeof req.query.apt === 'string' ? req.query.apt.trim() : ''
   if (!apt || !UUID_RE.test(apt)) return res.status(400).json({ error: 'bad_request' })
 
+  // Optional token — the ONLY thing it can unlock here is lat/lng. Malformed input is
+  // rejected exactly as api/guest-state.ts rejects it; a well-formed but unknown token
+  // simply fails the booking lookup below and yields the coordinate-free body.
+  const tokenProvided = req.query.token !== undefined
+  const token = typeof req.query.token === 'string' ? req.query.token.trim() : ''
+  if (tokenProvided && !TOKEN_RE.test(token)) return res.status(400).json({ error: 'bad_request' })
+
   const db = svc()
   try {
     // --- Apartment must exist AND be visible ---
@@ -63,7 +91,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .from('apartments')
       .select(
         'id, host_id, name, country, city, neighborhood, lat, lng, max_guests, ' +
-          'accent_color, hero_image_url, city_image_url, city_image_credit, greeting_blurb, is_visible'
+          'accent_color, hero_image_url, city_image_url, city_image_credit, greeting_blurb, ' +
+          'is_visible, welcome_show_address'
       )
       .eq('id', apt)
       .maybeSingle()
@@ -76,9 +105,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json(EMPTY)
     }
 
-    // Strip is_visible from the response (internal gating field only).
+    // Coordinate gate — see the header note. The host's public-address toggle is the
+    // first door; a verified booking token is the second. The booking lookup runs only
+    // when it can change the outcome, so the public case costs no extra query.
+    let coordsAllowed = aptRow.welcome_show_address === true
+    if (!coordsAllowed && tokenProvided) {
+      // Reuse the CANONICAL token gate rather than re-implementing it. A status-only
+      // check is NOT equivalent: resolveGuestAccess also requires the stay to be in
+      // dates, and both gates caught that divergence here. It matters most for the
+      // pre-arrival case — api/_lib/welcome-claim.ts hands the ARR- token to whoever
+      // holds the confirmation code, and api/welcome.ts refuses that same person the
+      // address and the coordinates, so a future-dated token unlocking coords here
+      // would reopen the bypass one hop later. A completed booking likewise stops
+      // being a coordinate credential the day after checkout.
+      const access = await resolveGuestAccess(db, apt, token)
+      coordsAllowed = access.tier === 'verified'
+    }
+
+    // Strip the internal gating fields from the response (never returned to the client).
     const apartment = { ...aptRow }
     delete (apartment as { is_visible?: unknown }).is_visible
+    delete (apartment as { welcome_show_address?: unknown }).welcome_show_address
+    if (!coordsAllowed) {
+      delete (apartment as { lat?: unknown }).lat
+      delete (apartment as { lng?: unknown }).lng
+    }
 
     // --- Public sub-reads (never private rows). Run in parallel. ---
     const [detailsRes, picksRes, guideRes] = await Promise.all([
