@@ -66,17 +66,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const { data, error } = await supabase
     .from('apartments')
     .select('id, name, street, street_number, neighborhood, city, country, lat, lng, hosts!inner(is_test)')
-    // TEST ROWS ARE EXCLUDED ON BOTH COLUMNS, AND ONLY THE HOST ONE IS AUTHORITATIVE.
-    // MEASURED 23 Aug 2026, not assumed: (1) NO trigger maintains apartments.is_test — it is a
-    // one-time backfill, so the next apartment a test host creates defaults to false and would
-    // re-enter this cron on the apartment predicate alone; (2) `authenticated` holds column-level
-    // UPDATE on apartments.is_test but only SELECT on hosts.is_test. So the apartment column is a
-    // denormalised CONVENIENCE that is neither maintained on INSERT nor protected from the host,
-    // and hosts!inner is what actually holds. Both predicates run in ONE query against ONE
-    // planner — the apartment one is not a "cheap first cut" and buys no speed; it is kept so a
-    // SINGLE apartment can be marked test under a real host. It is also the only predicate that
-    // can wrongly EXCLUDE a real row, which is why the REVOKE on apartments.is_test is an open
-    // follow-up. Both columns are NOT NULL DEFAULT false (verified), so .eq(false) is NULL-safe.
+    // TEST ROWS ARE EXCLUDED ON BOTH COLUMNS, AND BOTH ARE NOW LOAD-BEARING.
+    // RE-MEASURED 24 Aug 2026 against the live DB. The previous version of this comment said
+    // apartments.is_test had NO maintaining trigger and that `authenticated` held column-level
+    // UPDATE on it. **BOTH STATEMENTS ARE NOW FALSE.** They were accurate when written on
+    // 23 Aug and were superseded THE SAME DAY by the rest of that session's work, which is
+    // exactly how a "MEASURED" label goes stale without anyone noticing:
+    //   (1) TRIGGERS EXIST — `trg_apartments_inherit_is_test` (BEFORE INSERT OR UPDATE on
+    //       apartments) forces a new apartment under a test host to test, and
+    //       `trg_hosts_cascade_is_test` (AFTER UPDATE OF is_test on hosts) cascades true
+    //       downward. So the apartment column IS maintained on INSERT; a test host's next
+    //       apartment does not default to false.
+    //   (2) `has_column_privilege('authenticated', ..., 'is_test', 'UPDATE')` is FALSE on
+    //       apartments AND on hosts — the column-allowlist migration excluded is_test from the
+    //       re-granted set, which closed the REVOKE the old comment listed as an open follow-up.
+    //       A host cannot write either flag.
+    // Both predicates still run in ONE query against ONE planner, so the apartment one buys no
+    // speed; it is kept because it is the only way to mark a SINGLE apartment test under a real
+    // host. Both columns are NOT NULL DEFAULT false (verified), so .eq(false) is NULL-safe.
+    // DO NOT re-derive this from the old text: re-measure before changing either predicate.
     .eq('is_test', false)
     .eq('hosts.is_test', false)
     .eq('is_visible', true)

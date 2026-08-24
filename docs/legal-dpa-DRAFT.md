@@ -180,6 +180,7 @@ If this agreement conflicts with our Terms of Service on the handling of guest p
 | Stripe | Host subscription payments — **no guest data** | Ireland / United States |
 | Unsplash | Stock city images — **no guest data** | United States |
 | Viator, GetYourGuide, Tiqets | Experience listings — **no guest data** | EU / United States |
+| ntfy.sh | Operator operational alerts and guest-page-open heartbeats — pseudonymous property-level event data, **no guest identifiers** | **[CONFIRM]** |
 
 **[CONFIRM — decide whether to publish this annex at a stable URL so changes are visible, rather than only sending notice by email. Recommended.]**
 

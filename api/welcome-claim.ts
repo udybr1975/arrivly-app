@@ -256,6 +256,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
+    // OPERATOR HEARTBEAT — every pre-arrival link open (preview/active/thankyou), NEVER a
+    // miss: misses feed the brake + victim-keyed detector above and must not be
+    // double-reported here. Fires on every open including reloads — deliberate launch
+    // monitoring; the off switch is unsetting NTFY_URL. is_test properties still fire,
+    // tagged, per the standing is_test rule (operator machinery always stays visible).
+    // CONTENT RULE (Art. 30: ntfy carries no personal data): property and request facts
+    // ONLY. Never the guest name, token, confirmation code, IP, stay dates, or any host
+    // identifier. Awaited: sendNtfy never throws and self-caps at 5s, so a dead ntfy
+    // delays a page by at most that and can never fail it.
+    if (outcome.heartbeat) {
+      const h = outcome.heartbeat
+    // The name is HOST-AUTHORED FREE TEXT and is collapsed + capped before it goes near the
+    // feed. Two reasons, both measured: a name containing a newline forges an extra line in
+    // the operator feed (one open can be made to look like two, or to fake a state), and
+    // sendNtfy caps the BODY at 500 chars, so a long name would push the state/door line —
+    // the only field carrying the meaning — off the end.
+    // NOT AT RISK, and worth keeping that way: the [test] tag lives in the TITLE, which
+    // sendNtfy strips to \x20-\x7E and truncates to 100, so host input can neither forge nor
+    // suppress it. If a future edit moves the name or the tag between Title and body, that
+    // property is lost silently.
+    // WIDENED 24 Aug 2026 after both gates caught the same gap: NAME IS NOT THE ONLY HOST-AUTHORED
+    // FIELD HERE. neighborhood/city/country are the same trust boundary — measured at the live DB,
+    // `authenticated` holds column UPDATE on all four and there is NO length CHECK on any of them,
+    // so the form's maxLength is not the control and a host can PATCH a newline or a 500-char city
+    // straight through PostgREST. Both are collapsed and capped. This is a CROSS-TENANT feed: the
+    // injector is any host, the reader is the operator.
+      const safeName = (h.apartmentName || 'Unnamed property').replace(/\s+/g, ' ').trim().slice(0, 60)
+      const place = [h.neighborhood, h.city, h.country].filter(Boolean).join(', ').replace(/\s+/g, ' ').trim().slice(0, 80)
+      await sendNtfy({
+        title: `${h.isTest ? '[test] ' : ''}Bemgu: guest page open`,
+        message: `${safeName}${place ? ' — ' + place : ''}\n${h.state} · pre-arrival link`,
+        priority: 'default',
+      })
+    }
+
     return res.status(outcome.status).json(outcome.body)
   } catch (e) {
     // FAILURE CLASS ONLY — a FIXED string, with nothing taken from the caught value. The

@@ -108,6 +108,15 @@ export interface ClaimOutcome {
    * codes is deliberately uncounted rather than being dumped into one shared bucket.
    */
   victimHostId?: string
+  /** Operator heartbeat metadata. Set ONLY on a hit; never reaches a guest-facing body. */
+  heartbeat?: {
+    apartmentName: string
+    neighborhood: string | null
+    city: string | null
+    country: string | null
+    state: ClaimState
+    isTest: boolean
+  }
 }
 
 const miss = (): ClaimOutcome => ({ status: CLAIM_MISS_STATUS, body: CLAIM_MISS, failed: true })
@@ -282,7 +291,7 @@ export async function resolveClaim(
 
   const { data: apt, error: aptErr } = await db
     .from('apartments')
-    .select('id, name, host_id, is_visible')
+    .select('id, name, neighborhood, city, country, host_id, is_visible, is_test')
     .eq('welcome_code', input.code)
     .maybeSingle()
   if (aptErr) return { status: 500, body: { error: 'query_failed' }, failed: false }
@@ -384,6 +393,20 @@ export async function resolveClaim(
     }
   }
 
-  return { status: 200, body, failed: false, ...victim, ...(firstClaim ? { firstClaim } : {}) }
+  // OPERATOR HEARTBEAT METADATA — attached HERE and nowhere else, which is what makes
+  // "never on a miss" true by construction rather than by the handler remembering: every
+  // miss returns through `miss()`, which cannot carry this field. Read off the `apt` row
+  // already in hand, so it costs no extra query. Property facts only — see the content
+  // rule at the handler that consumes it.
+  const heartbeat: ClaimOutcome['heartbeat'] = {
+    apartmentName: (apt.name as string | null) ?? '',
+    neighborhood: (apt.neighborhood as string | null) ?? null,
+    city: (apt.city as string | null) ?? null,
+    country: (apt.country as string | null) ?? null,
+    state,
+    isTest: apt.is_test === true,
+  }
+
+  return { status: 200, body, failed: false, ...victim, ...(firstClaim ? { firstClaim } : {}), heartbeat }
 }
 

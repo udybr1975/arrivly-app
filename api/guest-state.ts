@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import type { SupabaseClient } from '@supabase/supabase-js'
+import { sendNtfy } from './_lib/ntfy.js'
 
 // Service-role resolver for a guest's booking STATE. This moves the booking
 // reads off the client (which previously queried the `bookings` table with the
@@ -54,6 +55,79 @@ async function resolveGuestName(db: SupabaseClient, guestId: string | null): Pro
   return g?.first_name ?? null
 }
 
+// OPERATOR HEARTBEAT — fires on ACTIVE resolutions ONLY. thankyou and neutral are
+// deliberately silent here: neutral is the flat body every non-active outcome returns, so
+// notifying on it would both drown the signal and put a ping behind a probe of any visible
+// apartment UUID. Fires on every open including reloads — deliberate launch monitoring; the
+// off switch is unsetting NTFY_URL. is_test properties still fire, tagged, per the standing
+// is_test rule (operator machinery always stays visible).
+// CONTENT RULE (Art. 30: ntfy carries no personal data): property and request facts ONLY.
+// Never the guest name, token, confirmation code, IP, stay dates, or any host identifier.
+// Awaited: sendNtfy never throws and self-caps at 5s, so a dead ntfy delays a page by at
+// most that and can never fail it.
+// KNOWN OVER-COUNT, MEASURED — the feed counts REDIRECTS, not humans, and whoever reads the
+// first week's numbers needs this. GuestPage.tsx redirects after resolving a token, and the
+// reload hits this endpoint a second time:
+//   - keyed QR scan (no token in the URL) -> TWO pings: `QR (date)` then `QR (token)`
+//   - stored-token open with no ?token     -> TWO pings: `QR (token)` twice
+//   - direct ?token= open (incl. post-redirect) -> ONE ping
+//   - a RETURNING guest re-scanning a keyed QR already has a USABLE stored token, so Stage A
+//     runs first and it is `QR (token)` TWICE, never `QR (date)`.
+//     CONSEQUENCE FOR THE NUMBERS: `QR (date)` counts opens by devices with NO USABLE STORED
+//     TOKEN — not scans, and NOT first-ever opens either. A device whose stored token has
+//     since stopped resolving (booking gone or cancelled) falls through to Stage B and
+//     produces `QR (date)` again, so one device can appear on that path more than once.
+//   - the keyed-date ping fires BEFORE the token reaches the client, and GuestPage renders
+//     NEUTRAL without redirecting when a different token is already stored — so a `QR (date)`
+//     ping can exist for an open that never unlocked a page at all. Unlike the redirect cases
+//     (same human, two requests) this one has no unlocked page behind it.
+//   - CROSS-ENDPOINT, and the operator sees two lines for one human: WelcomePage navigates
+//     an active pre-arrival claim to /guest?apt=&token=, so ONE arrival emits
+//     `active · pre-arrival link` from api/welcome-claim AND `active · QR (token)` from
+//     here. The within-endpoint cases above do not cover this one.
+//   - `door` says `QR (token)` on the stored-token path, so a guest who arrived via the
+//     PRE-ARRIVAL LINK and was redirected with ?token= is reported as a QR entry. The entry
+//     path label is indicative, not authoritative.
+// AND A GAP IN THE FEED IS NOT A GAP IN TRAFFIC: sendNtfy swallows a non-2xx (it logs 429 and
+// 200 identically), so ntfy's own rate limiting shows up as MISSING pings, never as an error.
+// Do not read a quiet hour as no arrivals.
+// Fixing it means changing the redirect logic in GuestPage.tsx, which is out of scope here and
+// deliberately NOT done: accepted as known noise for launch monitoring. Do not "correct" the
+// count by suppressing a ping here — that would hide the second, real request.
+async function notifyOpen(
+  apt: {
+    name: string | null
+    neighborhood: string | null
+    city: string | null
+    country: string | null
+    is_test: boolean
+  },
+  door: 'QR (token)' | 'QR (date)',
+): Promise<void> {
+  // The name is HOST-AUTHORED FREE TEXT and is collapsed + capped before it goes near the
+  // feed. Two reasons, both measured: a name containing a newline forges an extra line in
+  // the operator feed (one open can be made to look like two, or to fake a state), and
+  // sendNtfy caps the BODY at 500 chars, so a long name would push the state/door line —
+  // the only field carrying the meaning — off the end.
+  // NOT AT RISK, and worth keeping that way: the [test] tag lives in the TITLE, which
+  // sendNtfy strips to \x20-\x7E and truncates to 100, so host input can neither forge nor
+  // suppress it. If a future edit moves the name or the tag between Title and body, that
+  // property is lost silently.
+  // WIDENED 24 Aug 2026 after both gates caught the same gap: NAME IS NOT THE ONLY HOST-AUTHORED
+  // FIELD HERE. neighborhood/city/country are the same trust boundary — measured at the live DB,
+  // `authenticated` holds column UPDATE on all four and there is NO length CHECK on any of them,
+  // so the form's maxLength is not the control and a host can PATCH a newline or a 500-char city
+  // straight through PostgREST. Both are collapsed and capped. This is a CROSS-TENANT feed: the
+  // injector is any host, the reader is the operator.
+  const safeName = (apt.name || 'Unnamed property').replace(/\s+/g, ' ').trim().slice(0, 60)
+  const place = [apt.neighborhood, apt.city, apt.country].filter(Boolean).join(', ').replace(/\s+/g, ' ').trim().slice(0, 80)
+  await sendNtfy({
+    title: `${apt.is_test ? '[test] ' : ''}Bemgu: guest page open`,
+    message: `${safeName}${place ? ' — ' + place : ''}\nactive · ${door}`,
+    priority: 'default',
+  })
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' })
 
@@ -85,7 +159,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // --- 2. Apartment must exist AND be visible ---
     const { data: apartment, error: aptErr } = await db
       .from('apartments')
-      .select('id, is_visible')
+      .select('id, name, neighborhood, city, country, is_test, is_visible')
       .eq('id', apt)
       .maybeSingle()
     if (aptErr) {
@@ -115,6 +189,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
         if (helsinkiToday >= booking.check_in && helsinkiToday <= booking.check_out) {
           const guestName = await resolveGuestName(db, booking.guest_id)
+          await notifyOpen(apartment, 'QR (token)')
           return res.status(200).json({ state: 'active', token, guestName })
         }
         // future/other → fall through to keyed date path
@@ -150,6 +225,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         if (dateBooking?.reference_number) {
           const guestName = await resolveGuestName(db, dateBooking.guest_id)
+          await notifyOpen(apartment, 'QR (date)')
           return res.status(200).json({ state: 'active', token: dateBooking.reference_number, guestName })
         }
       }
