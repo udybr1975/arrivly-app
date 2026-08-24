@@ -75,15 +75,13 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
               (/api/welcome-chat) carries the same disclosure as of 24 Aug 2026. Its label is fixed
               INK rather than this cream pill, because its header is already light — the shared
               rule is that the disclosure must not read `accent`, not that the markup matches.
-              A THIRD AI chat exists and is NOT YET labelled: GuideDrawer (/api/guide-assistant).
-              DO NOT READ THAT AS "INTERNAL SURFACES ARE EXEMPT" — Art. 50 attaches to natural
-              persons, and a host is one, so "host-facing" is NOT a carve-out. The only carve-out
-              is OBVIOUSNESS to a reasonably well-informed person, and GuideDrawer scores WEAKLY
-              on it: measured, the string "AI" appears ZERO times in that file's user-visible
-              copy, and its intro speaks in the FIRST PERSON ("I answer only from the guide"),
-              which is the same construction removed from the two guest surfaces. It is queued as
-              its own commit, not settled as exempt. The obligation attaches to every AI surface,
-              so the fix is a site ENUMERATION — never an edit to whichever one you have open. */}
+              ALL THREE AI CHATS ARE NOW LABELLED — this one, WelcomePage's pre-arrival concierge
+              (/api/welcome-chat) and GuideDrawer (/api/guide-assistant), as of 24 Aug 2026.
+              GuideDrawer was labelled DESPITE being host-facing: Art. 50 attaches to natural
+              persons and a host is one, so there is NO internal-surface or B2B carve-out — the
+              only carve-out is OBVIOUSNESS, and it scored weakly on it. If a FOURTH AI surface is
+              ever added it inherits this obligation; the fix is a site ENUMERATION, never an edit
+              to whichever one you happen to have open. */}
           {/* INK ON CREAM, NOT white-on-accent at 70% opacity. `accentColor` is any host-typed
               hex (PropertySetup validates only /^#[0-9a-fA-F]{6}$/), so white-on-accent has NO
               verifiable ratio — MessageHost's close control in this same change measures white

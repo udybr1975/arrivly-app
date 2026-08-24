@@ -359,9 +359,26 @@ function AskPanel({ reportFocus }: { reportFocus?: (focused: boolean) => void })
       tabIndex={0}
       className="flex-1 min-h-0 flex flex-col focus:outline-none"
     >
+      {/* EU AI ACT ART. 50 — the THIRD and last AI chat surface, after ChatBot (/api/guest-chat)
+          and WelcomePage (/api/welcome-chat). LABELLED DESPITE BEING HOST-FACING, because the
+          earlier reasoning for leaving it out was wrong: Art. 50 attaches to NATURAL PERSONS and
+          a host is one, so there is no internal-surface or B2B carve-out. The only carve-out is
+          OBVIOUSNESS, and this surface scored weakly on it — before this change the string "AI"
+          appeared ZERO times in the user-visible copy while the intro spoke in the FIRST PERSON.
+          OUTSIDE THE SCROLL CONTAINER ON PURPOSE: the intro below sits inside `scrollRef` and
+          scrolls away as the thread grows, which is exactly why a first message is not a
+          disclosure. This row does not move. Ink #231d17 on the drawer's #fffdf9 is 16.41:1 —
+          computed; unlike the guest surfaces there is no host-set accent here to escape. */}
+      <div className="shrink-0 px-4 pt-3">
+        <p className="text-[10px] tracking-[0.16em] uppercase font-semibold text-[#231d17]">AI assistant</p>
+      </div>
+
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+        {/* THIRD PERSON, not "I". The first-person voice was the same implies-a-human
+            construction removed from both guest chats; it is worse here for having no AI label
+            anywhere near it. */}
         <p className="text-[12.5px] leading-[1.5] text-[#6b6354] mb-3">
-          Ask anything about Bemgu — I answer only from the guide, so I won't invent features or give general advice.
+          An AI assistant that answers only from the Bemgu guide — it won&apos;t invent features or give general advice.
         </p>
 
         {thread.length === 0 ? (
