@@ -75,3 +75,34 @@ method is named on each entry.
 
 - **Why "wipe" was the wrong half of the question:** the fixtures are the only regression corpus this project has, and several are load-bearing (the C8 cancelled-conversation fixture, the deliberate Vantaa geocode, the three pre-arrival claim fixtures). Deleting them to clean the launch surface would have destroyed the evidence that past defects stay fixed.
 - **Closed with it:** the `subscription_status` DECOUPLED-from-the-access-gate item. Its workaround — `is_exempt = true` on host `1d5a3b9c` — is now the SANCTIONED resting state for a test host (active + exempt, NULL Stripe refs), not a workaround awaiting reconciliation.
+
+## STILL-OPEN residuals from `60a4c2b` (the four UI items) — moved verbatim, 24 Aug 2026
+
+NOTE THE EXCEPTION: this file otherwise holds CLOSED debt. These six are OPEN, and they are
+here only because they are residual DETAIL — CLAUDE.md keeps a one-line statement for each
+plus a single pointer. Moved VERBATIM during the 24 Aug restructure; nothing edited.
+
+- **RESIDUALS FROM `60a4c2b` (the four UI items) — recorded here so they outlive the commit message:**
+  - **`Messages.tsx` still carries its own `isBlockSource` / `sourceColor` / `sourceLabel`** now
+    that `bookingChrome.ts` exists, and its `sourceLabel` DIVERGES (no `*_block` variants, so it
+    would render `airbnb_block` as "Airbnb"). Unreachable today because Messages filters blocks out
+    before building conversations — **one import from fixed, and a latent trap until it is.**
+  - **The `ARR-` token now renders VISIBLY on hover** in the availability picker. It previously sat
+    only in the accessibility tree, because a disabled button swallows its own `title`. Same trust
+    boundary and the same data the list view shows openly; the added risk is shoulder-surfing or
+    screen-sharing only.
+  - **Neither calendar has `role="grid"` / roving tabindex / arrow-key movement.** Every cell is a
+    real button with a visible focus ring and a full `aria-label`, so the accessibility floor is
+    met — grid semantics would be an improvement, not a fix.
+  - **`fmt()` parses `new Date('YYYY-MM-DD')` as UTC and formats locally** — correct for the
+    positive-UTC market, off by one day for a negative-UTC viewer. Pre-existing and shared by three
+    surfaces; changing a formatter's parse semantics inside a UI commit is the coupling that
+    produces a defect nobody attributes to that diff.
+  - **The picker's `nightMap` caps each booking's expansion at 800 nights**, so a genuine
+    multi-year block is truncated exactly like a malformed iCal `check_out` and its later nights
+    draw free. Degrades to a 409, never to a double booking — the server range-tests
+    `check_in`/`check_out` directly and never re-walks days. **There is NO server-side maximum stay
+    length, which is what makes the cap reachable at all.**
+  - **`void loadBookings()` on the 409 is unsignalled**, so a host who hits it and immediately
+    switches apartments could see A's rows land after B's. Same shape as the existing `await` calls
+    in the success and cancel paths.

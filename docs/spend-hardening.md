@@ -96,3 +96,33 @@ billing (SDK: client-only). Size Google per-project spend caps at ~2x the limits
 > Moved to docs/history.md — "SESSION Jul 29 2026 (2) — compliance pins + the guide became grounded".
 > Moved to docs/history.md — "GUIDE GENERATION — MEASURED BEHAVIOUR (six live regenerations, Jul 29 2026)".
 > Moved to docs/history.md — "CITY GUIDE — geocoding fix SHIPPED (`98017fe`)". The pre-live checklist below STAYS.
+
+## OPEN residual items — moved verbatim from CLAUDE.md, 24 Aug 2026
+
+Moved during the 24 Aug restructure. VERBATIM; nothing was edited, summarised or renumbered.
+CLAUDE.md keeps each item's one-line statement and a single pointer here.
+
+- **OPEN — spend hardening.** Hoisted verbatim out of "SPEND-ABUSE ALARM + CALL COUNTER" when it
+  moved to docs/history.md. **The (a)/(b)/(c)/(ii) labels are the ones from their SOURCE lists
+  there, not a sequence** — they were kept so each item can be traced back; do not read them as
+  ordered or complete.
+  (b) COMPLIANCE: ntfy spend alerts now MAY include a host account UUID (pseudonymous).
+      NTFY_URL confirmed a PRIVATE topic. Update the Art. 30 ntfy row from "no personal
+      data" to "may include a host account UUID" (fbf58aa's blanket claim is now narrower).
+  (c) KEY-NAMING TRAP: shared key GEMINI_API_KEY is nicknamed "Arrivly guide"
+      (0819525902) but the PRIMARY guide spend goes to GEMINI_API_KEY_GUIDES
+      (0816353550, billed, no recorded console nickname). Consider renaming project
+      0816353550 to e.g. "bemgu-guides-billed" so an incident responder disables the
+      right project.
+  (a) NO ALERT ON VOLUME MINTED. Both alarms fire on RATE (5/h) and on CAP (100). An attacker
+      serving exactly 100 uids and stopping at 5 syncs/hour mints 500 passes/hour with BOTH
+      ALARMS SILENT. Cheapest fix: alert on `imported` per sync, not just request count.
+  (b) The capped alert is NOT one-shot (unlike the rate alert's strict `=== LIMIT + 1`), so a
+      capped host can fire up to 5 high-priority ntfy/hour. Give it the same dedupe.
+  (c) `MAX_ICAL_URLS = 20` x the 10s `safeFetchIcal` timeout = up to 200s against
+      `maxDuration: 150` — interactive: a self-inflicted 504 with the counter already spent;
+      CRON: with `mapPool` concurrency 4, one host's slow feeds can burn the window and starve
+      other hosts' syncs (a cross-tenant availability lever). Pre-existing and IMPROVED by the
+      URL cap, not introduced. Consider `MAX_ICAL_URLS ~= 10` and/or a cron wall-clock budget.
+  (ii) STILL OPEN: no cross-endpoint view — a host at 49% on all seven endpoints at once is
+  invisible.

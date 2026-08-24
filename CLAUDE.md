@@ -4,13 +4,22 @@ Historical session detail lives in docs/history.md. Read it only when past conte
 needed. (Deliberately a plain filename, NOT an @import — an imported file is pulled into
 context automatically every session, which is exactly what splitting this file avoided.)
 
-Three more purpose-named files were split out at the 22 Aug 2026 restructure. **NO RULE lives
-in any of them** — every rule stayed here; those files hold only the reasoning behind one:
-- **docs/pre-arrival-link-design.md** — the full pre-arrival link design: the locked decision,
-  the amendment that falsified part of it, and why each rule is shaped as it is. Read before
+Purpose-named files were split out at the 22 Aug and 24 Aug 2026 restructures. **NO RULE lives
+in any of them** — every rule stayed here; those files hold only the reasoning behind one, and
+every open item keeps its one-line statement here. Read one when you need to know WHY:
+- **docs/pre-arrival-link-design.md** — the pre-arrival link design: the locked decision, the
+  amendment that falsified part of it, and why each rule is shaped as it is. Read before
   changing that feature's shape.
 - **docs/resolved-debt.md** — closed debt, each with what closed it AND how that was verified.
   Read before re-opening something that looks broken, in case it was already answered.
+- **docs/events-system.md** (24 Aug) — the events / city-events measurements, arithmetic and
+  accepted trade-offs behind those open items.
+- **docs/guide-cron-debt.md** (24 Aug) — the guide-cron starvation detail, the `refreshed++`
+  miscount and the capacity arithmetic, with enough detail to fix in ONE pass.
+- **docs/pre-live-checklist.md** (24 Aug) — the argument behind each pre-live addition.
+- **docs/spend-hardening.md** — the seven brakes, plus the six open residual items (24 Aug).
+- **docs/design-backlog.md** — scoped-but-not-built work, plus the parked and landing/marketing
+  narrative (24 Aug).
 
 > **BRAND vs CODENAME (Jul 12 2026 — rebrand):** the **public brand = Bemgu** (domain **https://bemgu.app**, Resend sender **hello@bemgu.app**, registrar **Porkbun**). The **internal codename = arrivly** — the GitHub repo name (`udybr1975/arrivly-app`), `package.json` name, local folder `C:\dev\arrivly`, the Stripe **`metadata.app === 'arrivly'`** filter (case-sensitive, load-bearing in `api/stripe-webhook.ts`), every `arrivly_*`/`arrivly:*` storage key + window/DOM event, the `arrivly-v*` SW cache name, all env var NAMES, and every code identifier / CSS class deliberately KEEP "arrivly". **Never rename them.** User-facing strings (page titles, meta tags, email copy + sender, push titles, aria-labels, displayed URLs, the "Powered by Bemgu" footer, manifest name) are all "Bemgu".
 >
@@ -232,30 +241,22 @@ values — do not change without an explicit decision.**
   `is_demo` exempt). **It defends the CAP against city-scale swaps; tightening it further
   would block genuine address corrections.** The function is INVOKER rights and that is
   load-bearing — see the SECURITY DEFINER lesson.
-- **RESIDUALS FROM `60a4c2b` (the four UI items) — recorded here so they outlive the commit message:**
-  - **`Messages.tsx` still carries its own `isBlockSource` / `sourceColor` / `sourceLabel`** now
-    that `bookingChrome.ts` exists, and its `sourceLabel` DIVERGES (no `*_block` variants, so it
-    would render `airbnb_block` as "Airbnb"). Unreachable today because Messages filters blocks out
-    before building conversations — **one import from fixed, and a latent trap until it is.**
-  - **The `ARR-` token now renders VISIBLY on hover** in the availability picker. It previously sat
-    only in the accessibility tree, because a disabled button swallows its own `title`. Same trust
-    boundary and the same data the list view shows openly; the added risk is shoulder-surfing or
-    screen-sharing only.
-  - **Neither calendar has `role="grid"` / roving tabindex / arrow-key movement.** Every cell is a
-    real button with a visible focus ring and a full `aria-label`, so the accessibility floor is
-    met — grid semantics would be an improvement, not a fix.
-  - **`fmt()` parses `new Date('YYYY-MM-DD')` as UTC and formats locally** — correct for the
-    positive-UTC market, off by one day for a negative-UTC viewer. Pre-existing and shared by three
-    surfaces; changing a formatter's parse semantics inside a UI commit is the coupling that
-    produces a defect nobody attributes to that diff.
-  - **The picker's `nightMap` caps each booking's expansion at 800 nights**, so a genuine
-    multi-year block is truncated exactly like a malformed iCal `check_out` and its later nights
-    draw free. Degrades to a 409, never to a double booking — the server range-tests
-    `check_in`/`check_out` directly and never re-walks days. **There is NO server-side maximum stay
-    length, which is what makes the cap reachable at all.**
-  - **`void loadBookings()` on the 409 is unsignalled**, so a host who hits it and immediately
-    switches apartments could see A's rows land after B's. Same shape as the existing `await` calls
-    in the success and cancel paths.
+- **RESIDUALS FROM `60a4c2b` (the four UI items) — six items, one line each; full argument in
+  docs/resolved-debt.md under "STILL-OPEN residuals".**
+  - `Messages.tsx` still carries its own `isBlockSource`/`sourceColor`/`sourceLabel` now that
+  `bookingChrome.ts` exists, and its `sourceLabel` DIVERGES — unreachable today, **one import
+  from fixed, and a latent trap until it is.**
+  - The `ARR-` token now renders VISIBLY on hover in the availability picker — same trust
+  boundary and same data the list view shows openly; added risk is shoulder-surfing only.
+  - Neither calendar has `role="grid"` / roving tabindex — every cell is a real button with a
+  focus ring and full `aria-label`, so the accessibility floor is met. An improvement, not a fix.
+  - `fmt()` parses `new Date('YYYY-MM-DD')` as UTC and formats locally — off by one day for a
+  negative-UTC viewer. Pre-existing, shared by three surfaces.
+  - The picker's `nightMap` caps expansion at 800 nights, so a genuine multi-year block draws its
+  later nights free. **Degrades to a 409, never to a double booking. There is NO server-side
+  maximum stay length, which is what makes the cap reachable at all.**
+  - `void loadBookings()` on the 409 is unsignalled — A's rows could land after B's.
+
 - `api/public-pricing.ts` cache is `s-maxage=60` — admin trial/price edits show on the landing within ~1 min.
 - **npm vulnerabilities — the superseded 8-count and the tool-counting explanation moved to
   **docs/resolved-debt.md**. THE LIVE NUMBER IS IN THE QUEUE (GitHub's 16), and the
@@ -726,6 +727,13 @@ Claude in chat NEVER pushes to GitHub. All code changes are delivered as Claude 
   reports that `api/welcome.ts` returns `lat`/`lng` even when `welcome_show_address` is
   false. **It does not.** `street`, `street_number`, `lat` and `lng` are all inside the same
   `if (showAddress)` block — verified in source and live. Dismiss it when it recurs.
+- **`.claude/agent-memory/` IS NOT ADOPTED — PROJECT MEMORY LIVES IN CLAUDE.md + docs/ AND
+  NOWHERE ELSE.** The `code-reviewer` subagent wrote files there on its own initiative
+  (14 Aug 2026). They are gitignored, so they are invisible to everyone but the machine that
+  wrote them — which is exactly why they must never become a second source of truth. **Do not
+  read from, cite, or maintain those files**, and tell a subagent not to write them.
+  (HOISTED 24 Aug 2026 out of "RESIDUALS FROM 14 Aug" before that block moved to
+  docs/guide-cron-debt.md — it existed at ONE site and would otherwise have left with it.)
 - **The other standing false positive:** `VITE_`-prefixed env vars read in `api/` routes are
   correct on Vercel (all env vars reach functions regardless of prefix).
 
@@ -963,16 +971,29 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   fits today · **`MAX_EVENTS` 15 vs the "aim for 20-30" prompt** — events 16-30 are reservation
   waste, now competing with the reasoning trace for the same allowance.
 
-- **EVENTS RECALL IS CORPUS-LIMITED, NOT WINDOW-LIMITED — the untouched lever is SEARCH.** Measured
-  10 Aug: the first 30-day run returned **TWO** events where `874c26d` predicted 5-8, and candidate
-  counts across runs were **8, 10, 7 — FLAT regardless of window width**. The binding constraint is
-  the **Tavily corpus** (4 searches, 14 snippets, ~13k chars), so every past round that tuned the
-  extraction prompt was working downstream of the real limit. **The lever is query design, results
-  per search, and number of searches** — none of which has been touched. **Read `874c26d`'s message
-  with this correction beside it**: its stated premise (the 7-day window was throttling recall) is
-  FALSIFIED, though the widening was still right for the different reason it also gives.
-  **Sequence it AFTER Commit B** — the staleness gate cuts run frequency, which is what buys the
-  Tavily headroom any recall work would spend.
+- **OPEN — EVENTS / CITY-EVENTS SYSTEM. Nine items, one-line each; the measurements, the
+  arithmetic and the accepted trade-offs are in docs/events-system.md.** The RULES are here, not
+  there.
+  - **RECALL IS CORPUS-LIMITED, NOT WINDOW-LIMITED** — the untouched lever is SEARCH (query
+  design, results per search, number of searches), never the extraction prompt.
+  - **CITY COMPRESSION is SUPERSEDED BY UNPUBLISHING, deliberately NOT re-derived.**
+  **RULE: re-derive at >= 10 PAYING hosts** — that is when the card decision is taken.
+  - **LEAN CONTEXT IS A MEASURED CONSTRAINT, not a preference** — the 8,000 TPM ceiling is what
+  binds. **RULE: PILOT STEP 2's rule (b) — the router's ungrounded leg must NOT embed the guide
+  — now binds on TPM as well as on the day pool.**
+  - `city_events_cache` holds ONE stale row while `city_events_by_city` refreshes daily — decide
+  whether to delete the row or the fallback path. **One look, not a build.**
+  - The per-apartment fallback has no `last_attempted_at`, so a failing apartment can pin the
+  head of the LRU queue.
+  - `demo-create.ts` is a FOURTH writer bypassing `eventsCacheRef` — safe only while a demo
+  apartment has no canonical key, and it breaks QUIETLY if that changes.
+  - The shared 20h freshness gate is CROSS-TENANT and **ACCEPTED** — but **RULE: the
+  `fresh_city` copy must NEVER read as a refusal.**
+  - An empty first-fill from the public lazy-fill is visible CITY-WIDE until something non-empty
+  replaces it; self-heals via the cron or a host refresh.
+  - REMAINING EDGE, accepted: a host moving real coordinates into another city spends at someone
+  else's credit — never content poisoning.
+
 - **GUEST-CHAT'S 40/HOUR BRAKE — DOWNGRADED 12 Aug 2026: leave it until real guest usage exists.**
   `api/guest-chat.ts:87` `CHAT_HOURLY_LIMIT = 40`, enforced via `bump_api_counter`, alerting once at
   limit+1. The arithmetic still holds — at ~2.3k tok/turn, 40/hour is ~92k tokens from ONE host
@@ -989,31 +1010,18 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   BLOCK, never per item**, or the pointer costs half the saving. (c) **When this file passes
   ~140,000 chars, RESTRUCTURE rather than trimming** — split on LIFETIME (invariants and live work
   stay; reasoning trails go to purpose-named files under `docs/`), because the one-record rule
-  caps the RATE of growth, not the DIRECTION. Working limit 150,000. **Restructured 10 Aug 2026
-  and again 18 Aug 2026.**- **OPEN — STEP 7 / SELF-ATTACK DRILL (argued in `cron-sync-ical.ts` + commits):** `ok` = "no
+  caps the RATE of growth, not the DIRECTION. Working limit 150,000. **Restructured 10 Aug, 18 Aug
+  and 24 Aug 2026.** (d) **RESTRUCTURE TO REAL HEADROOM, NEVER TO 139,9xx** — the 24 Aug pass
+  took the file from 143.8K to ~135K precisely because stopping at the threshold buys one session
+  and then the whole exercise repeats. **The practical FLOOR under the split-on-lifetime rule is
+  ~130K**: Lessons alone is ~35K and every word of it is a rule, so past that point the only
+  lever left is deciding a lesson has stopped earning its place.- **OPEN — STEP 7 / SELF-ATTACK DRILL (argued in `cron-sync-ical.ts` + commits):** `ok` = "no
   failure recorded", NOT "work was done" — two in-code empty-success paths (deadline-adjacent,
   window = one **POOL-WIDTH**; the SILENT no-`https://` path), not exhaustive. Alarm is
   **single-success-suppressible**, never the sole iCal health signal. Cron ignores
   `result.capped`. ntfy is a third consumer of `deferred + ok + failed === apartments.length`.
   `PropertySetup.tsx`'s "Calendar synced" toast hides the strings (UI, mockup-first).
-- **OPEN — CITY COMPRESSION: THE MEASUREMENT IS SUPERSEDED BY UNPUBLISHING, NOT RE-DERIVED.** The
-  Aug 8 figure — 9 visible apartments across 8 cities, Helsinki the only city with more than one,
-  giving **8 units for 9 apartments ≈ 1.1x compression** — rested on a fleet that no longer
-  exists at the visible surface. **Since 23 Aug 2026 the visible fleet is THREE apartments, ALL
-  Helsinki** (the nine test apartments are `is_visible = false`, republishable per-experiment).
-  A compression number computed on three same-city rows would be arithmetic, not evidence, so it
-  is **deliberately NOT re-derived here.** **The caveat was always the point and now applies
-  doubly: this is a TEST fleet whose geography was CHOSEN, and it is now a chosen SUBSET of that.
-  Re-derive at >= 10 paying hosts** — that is when the card decision should be taken, not at the
-  50-host milestone.
-- **OPEN — THE LEAN-CONTEXT RULE IS NOW A MEASURED CONSTRAINT, not a design preference.** The
-  Aug 8 measured **`corpusChars` 15,102**; the Aug 9 run BILLED **7,079 tok** (prompt 5,031 +
-  maxTokens 2,048 RESERVED) — which was HALF of the then-12K TPM ceiling. **THAT HEADROOM IS GONE:
-  the ceiling is 8,000 TPM (VERIFIED 17-18 Aug 2026), so the same run would have been 88% of it.**
-  The events corpus is now bounded by a derived token budget rather than a snippet count
-  (`CORPUS_TOKEN_BUDGET`, `8fbb`-era commit `8619c5f`), which is what brought it back inside.
-  PILOT STEP 2's rule (b) — the router's ungrounded leg must not embed the guide — still binds,
-  and now binds on TPM as well as on the day pool.
+
 - **OPEN — THE SHARE MESSAGE AND `host_picks` ARE NOW COUPLED, and nothing enforces it.** The
   default welcome message promises "our own favourite places to eat and drink nearby", and
   `SharePanel` nags when a property has **zero `host_picks`** — the first time those two facts have
@@ -1021,51 +1029,19 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   does not keep. The nag is the only link; there is no gate, and none is proposed. **Design
   question, not a bug** — decide whether the message should soften when picks are empty, or the
   nag should be stronger.
-- **OPEN (new, 12 Aug 2026) — `city_events_cache` holds ONE row, last generated 7 Aug,** while
-  `city_events_by_city` refreshes daily (2 rows, 11 and 12 Aug). Either a dead legacy row or a
-  per-apartment path nothing feeds any more. **One look, not a build** — decide whether to delete
-  the row or the fallback path.
-- **OPEN (residual) — the per-apartment events-cache fallback has no `last_attempted_at`,** so a consistently-failing apartment can pin the head of the LRU queue. The city-keyed path was fixed by `73587d3`; this shrinks as apartments gain canonical keys.
-- **OPEN — `demo-create.ts` is a FOURTH writer bypassing the `eventsCacheRef` helper.** Safe today
-  ONLY because a demo apartment has no canonical key, and it **breaks QUIETLY** if that changes —
-  the seeded row stops being the one the guest page reads. **`backfill-canonical-city.ts` selects
-  on `is_visible` without excluding demos, so it could grant one.** Commented at the call site.
-- **OPEN — the shared 20h freshness gate is cross-tenant.** One host's write suppresses another
-  host's manual refresh for up to 20h. **Accepted** (correct and cheaper), but the `fresh_city`
-  copy must NEVER read as a refusal — same class as the B3.2 toast.
-- **OPEN — an empty first-fill from the PUBLIC lazy-fill is now visible CITY-WIDE** until
-  something non-empty replaces it. This is the B3.1 asymmetry (that path is deliberately exempt
-  from the empty-extraction guard, because its write is reachable only on a MISS so it can create
-  an empty row but never destroy a good one) — **widened by sharing.** Self-heals via the cron or
-  a host refresh, both of which overwrite an empty row with a non-empty extraction.
-- **OPEN — REMAINING EDGE, unchanged and accepted:** a host can move their REAL coordinates into
-  another city and be resolved there by the server. Key and content then AGREE, so the row gets a
-  **CORRECT** generation for the city claimed — **spend at someone else's credit, not content
-  poisoning.**
-- **OPEN — spend hardening.** Hoisted verbatim out of "SPEND-ABUSE ALARM + CALL COUNTER" when it
-  moved to docs/history.md. **The (a)/(b)/(c)/(ii) labels are the ones from their SOURCE lists
-  there, not a sequence** — they were kept so each item can be traced back; do not read them as
-  ordered or complete.
-  (b) COMPLIANCE: ntfy spend alerts now MAY include a host account UUID (pseudonymous).
-      NTFY_URL confirmed a PRIVATE topic. Update the Art. 30 ntfy row from "no personal
-      data" to "may include a host account UUID" (fbf58aa's blanket claim is now narrower).
-  (c) KEY-NAMING TRAP: shared key GEMINI_API_KEY is nicknamed "Arrivly guide"
-      (0819525902) but the PRIMARY guide spend goes to GEMINI_API_KEY_GUIDES
-      (0816353550, billed, no recorded console nickname). Consider renaming project
-      0816353550 to e.g. "bemgu-guides-billed" so an incident responder disables the
-      right project.
-  (a) NO ALERT ON VOLUME MINTED. Both alarms fire on RATE (5/h) and on CAP (100). An attacker
-      serving exactly 100 uids and stopping at 5 syncs/hour mints 500 passes/hour with BOTH
-      ALARMS SILENT. Cheapest fix: alert on `imported` per sync, not just request count.
-  (b) The capped alert is NOT one-shot (unlike the rate alert's strict `=== LIMIT + 1`), so a
-      capped host can fire up to 5 high-priority ntfy/hour. Give it the same dedupe.
-  (c) `MAX_ICAL_URLS = 20` x the 10s `safeFetchIcal` timeout = up to 200s against
-      `maxDuration: 150` — interactive: a self-inflicted 504 with the counter already spent;
-      CRON: with `mapPool` concurrency 4, one host's slow feeds can burn the window and starve
-      other hosts' syncs (a cross-tenant availability lever). Pre-existing and IMPROVED by the
-      URL cap, not introduced. Consider `MAX_ICAL_URLS ~= 10` and/or a cron wall-clock budget.
-  (ii) STILL OPEN: no cross-endpoint view — a host at 49% on all seven endpoints at once is
-  invisible.
+
+- **OPEN — spend hardening. SIX residual items, one-line each; full argument in docs/spend-hardening.md.**
+  (a) NO ALERT ON VOLUME MINTED — both alarms fire on RATE and CAP, so 100 uids x 5 syncs/hour
+  mints 500 passes/hour SILENTLY; alert on `imported`, not request count.
+  (b) The capped alert is NOT one-shot, so a capped host can fire 5 high-priority ntfy/hour.
+  (c) `MAX_ICAL_URLS = 20` x 10s timeout = 200s against `maxDuration: 150` — self-inflicted 504
+  interactively, and a cross-tenant availability lever in the cron.
+  (d) COMPLIANCE — ntfy spend alerts MAY carry a host account UUID; the Art. 30 ntfy row still
+  says "no personal data" and must be narrowed.
+  (e) KEY-NAMING TRAP — `GEMINI_API_KEY` is nicknamed "Arrivly guide" while the primary guide
+  spend goes to `GEMINI_API_KEY_GUIDES`; an incident responder would disable the wrong project.
+  (f) No cross-endpoint view — a host at 49% on all seven endpoints at once is invisible.
+
 - STILL OPEN on the detector: **NO CRON HEARTBEAT — "never ran" remains undetectable as a CLASS**,
   and that is what this item is for. **CORRECTION 18 Aug 2026: the guide cron HAS RUN — the earlier
   "has still never run" clause was FALSE.** `guide_recommendations` shows three apartments
@@ -1083,59 +1059,44 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 
 ### RESIDUALS FROM 14 Aug 2026 — recorded with enough detail to fix in ONE pass
 
-- **STARVATION IN `cron-refresh-guides` — BOTH GATES FOUND IT INDEPENDENTLY, and it is NOT a
-  one-line migration.** `guide_recommendations.generated_at` advances **only on a successful
-  upsert**, and `_lib/guide.ts` deliberately skips the upsert on `placeCount === 0`, on
-  `no centre`, and on the `described === 0 && matchable > 0` keep-existing guard. So a
-  consistently-failing apartment never advances its ordering key, is always stale, **sorts first
-  every run** and pins one of ~2 daily slots forever. `refreshed++` also counts the keep-existing
-  path, which wrote nothing — so the response reports a refresh that did not happen. The events
-  cron solved the identical defect with `last_attempted_at`. **WHY THE OBVIOUS FIX IS WRONG HERE:**
-  a never-generated apartment has **NO `guide_recommendations` row to stamp**, and a stub row
-  would be read by the guest page's `.maybeSingle()` — so the column probably belongs on
-  `apartments`, not on `guide_recommendations`. **Deferred deliberately: no apartment is currently
-  failing.** Decide the column's home before writing the migration.
-- **STILL OPEN from the guide-cron bounding (`ec66829`): skip EXPIRED HOSTS, and LOG
-  OUTCOMES.** Neither shipped with the deadline/freshness/oldest-first work, and the second
-  is the same gap as the missing failure alarm below — a run that does nothing is currently
-  indistinguishable from a run that did everything.
-- **The guide cron bypasses `generate-guide.ts`'s 6h atomic claim and its `bump_api_counter`**, so
-  cron guide spend is invisible to `cron-spend-audit` and a cron run can race a host's manual
-  regenerate on the same apartment. Pre-existing and documented at `generate-guide.ts:114` — but
-  the monthly→daily move multiplies its weight **~30x**.
-- **`cron-refresh-guides` has NO failure alarm and NO `console.*` at all** — an all-failed run, or
-  one whose pre-loop queries eat the budget so `processed === 0`, is completely silent.
-  `cron-refresh-events` has the ntfy shape to copy, including its argued
-  `attempted = units - deferred` denominator so a deadline-bounded run cannot claim wholesale
-  failure. This is also the one detector that would reveal the "never ran" condition this file
-  records as undetectable.
-- **Guide-cron capacity implied by the two constants: ~2 apartments/run x 25 days ≈ 50 apartments**
-  before the freshness gate can never be satisfied and the fleet enters permanent backlog.
-  Comfortable at 3 visible (23 Aug 2026), and it was comfortable at 9 — **but note the headroom
-  came from UNPUBLISHING, not from any change to the cron: republishing the nine test apartments
-  restores the old load in one step.** **Re-derive BOTH constants beyond ~50**, not one of them.
-- **The commission disclosure in `ExperiencesSheet.tsx` is unconditional BY DESIGN, and nothing in
-  the code says so.** Every neighbouring earnings surface IS tier-qualified (`EarningsPanel`,
-  `Landing`), so the pattern a future editor pattern-matches against is the conditional one —
-  and making this one conditional would reintroduce the exact defect `736a715` fixed. A one-line
-  comment above it would make a regression visible in a diff.
-- **The `code-reviewer` subagent wrote `.claude/agent-memory/` files on its own initiative
-  (14 Aug 2026), and they are NOT adopted.** They are gitignored, so they are invisible to
-  everyone but the machine that wrote them, which is precisely why they must not become a second
-  source of truth. **Project memory lives in CLAUDE.md + docs/history.md, nowhere else.** Do not
-  read from, cite, or maintain those files.
+- **STARVATION IN `cron-refresh-guides`** — `generated_at` advances only on a successful upsert,
+  which `_lib/guide.ts` skips on three paths, so a consistently-failing apartment sorts first
+  forever and pins a daily slot. **The obvious fix is WRONG: a never-generated apartment has no
+  row to stamp, so the column probably belongs on `apartments`.** Deferred deliberately — nothing
+  is currently failing. **Decide the column's home before writing the migration.**
+- **STILL OPEN from `ec66829`:** skip EXPIRED HOSTS, and LOG OUTCOMES.
+- **The guide cron bypasses `generate-guide.ts`'s 6h atomic claim and `bump_api_counter`** — cron
+  guide spend is invisible to `cron-spend-audit`, and the monthly→daily move multiplied its
+  weight ~30x.
+- **`cron-refresh-guides` has NO failure alarm and NO `console.*` at all** — copy
+  `cron-refresh-events`'s ntfy shape, including its `attempted = units - deferred` denominator.
+  This is also the one detector that would reveal the "never ran" condition.
+- **Guide-cron capacity ≈ 50 apartments** before permanent backlog. **RULE: re-derive BOTH
+  constants beyond that, not one of them.** Today's headroom came from UNPUBLISHING, not from any
+  change to the cron.
+- **The commission disclosure in `ExperiencesSheet.tsx` is unconditional BY DESIGN** — every
+  neighbouring earnings surface is tier-qualified, so the pattern a future editor matches against
+  is the conditional one, and making this one conditional would reintroduce the defect `736a715`
+  fixed. A one-line comment above it would make a regression visible in a diff.
+
+> Full detail for all of the above — the failing paths, the `refreshed++` miscount, the ~30x
+> argument and the capacity arithmetic — is in **docs/guide-cron-debt.md**.
+
 
 > ✓ Plan values confirmed (hard gate CLOSED): T1 €10/cap 2, T2 €15/cap 7, T3 €25/cap 12, T4 €49/unlimited; trial_days = 14.
 > **DECISION (S16, amended S19 cont.): flip-to-live is the LAST step. Build order reordered S19 cont. to G → H → I → F (Phase F / Tier-4 booking moved to the end).**
 > **DECIDED (Udy, Jul 28 2026): OPTION (b) — flip live on Tiers 1–3, build Phase F (Tier-4 booking) AFTER launch.** Rationale: G/H/I are complete, Tier 4 has no waiting customers, and launching sooner starts real revenue and real traffic. **Consequence for the pentest gate: it now runs on the Tiers 1–3 surface WITHOUT the Phase F booking/payment flow**, which reduces its scope and cost. When Phase F is later built, it introduces a payment-taking surface that did not exist at gate time — **a second security pass over Phase F is therefore required before Tier 4 is sold.**
 > **HARD PRE-LIVE GATE (Udy, S19 cont.): a pentest/"hacker" agent pass must run and pass before the live flip, on top of security-auditor.**
-> **DOMAIN MIGRATION GATES PHASE I STAGE 0 (decided Jul 10 2026):** Udy is buying a dedicated Arrivly domain (availability order `arrivly.com` → `arrivly.app` → `arrivly.io` / `getarrivly.com`) BEFORE any experience-provider registration, so affiliate applications carry the final domain and the one-QR-forever promise holds. Masking `anna-stays.fi` is not viable (breaks PWA/OAuth/hash flow). Full migration checklist lives in "PHASE I — EXPERIENCE CONNECTORS" → Stage 0 above.
-> **Apple Sign-in — PARKED (Jul 8 2026; do NOT build unless asked):** built + flag-hidden (`VITE_SOCIAL_APPLE` unset). Unblock when the Apple Developer account is accessible — create an App ID + a Services ID (Return URL = the Supabase callback `https://ptkabdelgxkgfslfialx.supabase.co/auth/v1/callback`; domain `ptkabdelgxkgfslfialx.supabase.co`) + a Sign-in-with-Apple `.p8` key (let Supabase generate + rotate the secret), enable Apple in Supabase Auth, then set `VITE_SOCIAL_APPLE=true` in Vercel. Matters for the future native iOS app (App Store guideline 4.8).
-> **Social sign-in — minor/cosmetic (Jul 8 2026; non-blocking):** the two active-demo "Start free trial" CTAs (sidebar + dashboard banner) both open `KeepDemoModal` with `tier=null` → `/choose-plan` (identical destination, only the wording differs). Leftover `user_metadata.is_demo='true'` after conversion is harmless (nothing reads it post-convert).
-> **LANDING — pre-launch facelift:** the S25 landing is shipped and good, but get a final visual facelift right before go-live (when all advertised features — esp. the experiences marketplace and full booking — are actually live), so marketing copy matches deployed reality. The "See a live demo" button is intentionally non-functional until then; wire it to a real demo (Sweet home `ARR-EVT777` is the candidate live guest page) as part of that facelift.
-> **LANDING — PARKED motif idea:** reuse the guest-page phone-mockup motif on the landing as a **live, accent-switching guest-page preview** hero/feature element (the Stage-A/B comp looked great). Not now — do it as part of the pre-launch landing facelift. Note: `Landing.tsx` already mocks a Casa Marco guest card with +€6.40 / +€18.60 revenue tiles — extend that motif.
-> **Marketing strategy — AI video ads (future session).** Ad-creative exploration was done OUTSIDE the repo (Higgsfield lifestyle hero ad with real screen-replacement of the guest page + a branded logo-grow finale using `public/icons/icon-512.png`; ~36s hero/brand cut, plus a reusable hero still). Decision: the landing page KEEPS its existing carousel / auto-cycling phone mockup for now — no landing hero-video swap. Next step (dedicated session): build the marketing strategy around the video ads — 15–30s paid-social cutdowns, 16:9 / 1:1 framings, placements, and where each asset lives. All video assets live outside the repo.
-
+> **Apple Sign-in — PARKED (do NOT build unless asked).** Built + flag-hidden
+> (`VITE_SOCIAL_APPLE` unset). Blocked on Apple Developer account access; matters for the future
+> native iOS app (App Store guideline 4.8). Setup steps in docs/design-backlog.md.
+> **Social sign-in — minor/cosmetic, non-blocking:** the two active-demo CTAs share a destination;
+> leftover `user_metadata.is_demo` after conversion is harmless.
+> **LANDING — pre-launch facelift** right before go-live, so copy matches deployed reality; wire
+> "See a live demo" to a real guest page as part of it. **PARKED motif idea** and the **AI video
+> ad strategy** (assets live outside the repo) are recorded with it in docs/design-backlog.md.
+> **DOMAIN MIGRATION GATES PHASE I STAGE 0** — settled by the move to bemgu.app; kept as history
+> in docs/design-backlog.md.
 
 > Scoped but NOT built — detail in docs/design-backlog.md:
 > **UX design conversations** (welcome-link vs QR placement, missing property name, no scroll reset) · **anon-read lockdown** for `guide_recommendations` + `host_picks` (needs the reader-migration-first pattern) ·
@@ -1333,55 +1294,36 @@ docs/spend-hardening.md. What stays here is only what a future change could BREA
 
 ### PRE-LIVE ADDITIONS from this session (add to the pre-live checklist)
 
-- **NEW 22 Aug 2026 — THE HELP-DRAWER REFRESH, deliberately LAST so it is written ONCE.**
-  `src/guide/content.ts` feeds **both the drawer AND the help chat**, so one edit updates both.
-  It still describes an older product. Bring it up to date with everything shipped since, in ONE
-  pass: the listing importer · `apartment_source_docs` guest-chat knowledge · AvailabilityPicker +
-  cancel-from-calendar + the cancelled-conversation chip · the city-events DB cache and host
-  refresh · the experience marketplaces and earnings · the welcome/share panel · PWA install · and
-  the pre-arrival link.
-  **THE SPLIT THAT AVOIDS DRIFT, and it is the point of doing it last:** the **SHARE PANEL holds
-  the authoritative STEPS** — they are DATA in `sharePlatforms.ts`, so they change with the
-  platform — while the **DRAWER explains WHAT the feature is, WHY the link is shaped that way,
-  what a finished link looks like, and what to do when it goes wrong.** Two copies of the steps
-  would drift within a session; this session proved that twice.
-- **NEW 22 Aug 2026 — A PASTE-BACK CHECKER. Proposed, NOT built.** A host pastes their finished
-  link and the app tells them whether it is right. **It catches the failure Airbnb's own forums
-  are full of:** a host who TYPED the tag instead of inserting it from the menu, whose messages
-  then go out reading "Dear guest first name". **HARD CONDITION, and it is not negotiable: it must
-  run ENTIRELY CLIENT-SIDE — never sent to the server, never stored, never logged — because a
-  RESOLVED paste contains a real guest's name AND their real booking credential.** A checker that
-  posts the link for validation would recreate, on purpose, the exact exposure the fragment design
-  exists to prevent.
-- **NEW 22 Aug 2026 — THE CHIP'S TIMING GAP.** `link_claimed_at` is written only in the ACTIVE
-  state, so **"Guest identified via link" appears on ARRIVAL DAY**, not when the guest first opens
-  the link. Its stated purpose is TEMPLATE HEALTH, which wants a signal at PASTE time — a host who
-  sets the template up in March learns nothing until someone arrives. **The earlier signal already
-  exists in the data and needs no new column: an iCal booking that suddenly HAS a name got it from
-  a link, because Airbnb iCal carries no names.** Not a defect; a follow-up.
+- **THE HELP-DRAWER REFRESH — deliberately LAST so it is written ONCE.** `src/guide/content.ts`
+  feeds BOTH the drawer and the help chat, so one edit updates both; it still describes an older
+  product. **RULE — THE SPLIT THAT AVOIDS DRIFT: the SHARE PANEL holds the authoritative STEPS**
+  (they are DATA in `sharePlatforms.ts`, so they change with the platform) **while the DRAWER
+  explains WHAT the feature is, WHY the link is shaped that way, and what to do when it goes
+  wrong.** Two copies of the steps drift within a session — this has been proved twice.
+- **A PASTE-BACK CHECKER — proposed, NOT built.** Catches the host who TYPED the tag instead of
+  inserting it, whose messages go out reading "Dear guest first name". **RULE, NOT NEGOTIABLE:
+  it must run ENTIRELY CLIENT-SIDE — never sent to the server, never stored, never logged —
+  because a RESOLVED paste contains a real guest's name AND their real booking credential.** A
+  checker that posts the link for validation would recreate, on purpose, the exposure the
+  fragment design exists to prevent.
+- **THE CHIP'S TIMING GAP** — `link_claimed_at` is written only in the ACTIVE state, so "Guest
+  identified via link" appears on ARRIVAL DAY, while its purpose (template health) wants a signal
+  at PASTE time. **The earlier signal already exists and needs no new column: an iCal booking
+  that suddenly HAS a name got it from a link.** Not a defect; a follow-up.
+- **GUIDE GROUNDING / GUIDE QUALITY — WORKSTREAM CLOSED.** No further prompt tuning; a thin
+  category is answered by host picks. The cost/model question was answered by the pilot — the
+  guide is rebuilt on POI data, so it needs no grounding at all.
+- **Minor: `coercePlaces` does not enforce the 5-per-category cap the prompt requests.** Harmless
+  — the post-retry total still cannot exceed `MAX_GEOCODE`.
+- **READ ALL THREE AFFILIATE AGREEMENTS FOR THEIR OWN CONTRACTUAL DISCLOSURE REQUIREMENTS,
+  SEPARATELY FROM STATUTE.** `736a715` met the Finnish statutory floor; a contract can demand
+  MORE, and none of the three has been read with this question in mind. **Pairs with the parked
+  multi-tenant confirmation emails** — same threads, same recipients, ask both at once. PARKED
+  until go-live per Udy.
 
-- **~~GUIDE GROUNDING / GUIDE QUALITY~~ — WORKSTREAM CLOSED (verified 30 Jul; see "SESSION
-  Aug 4 2026").** No further prompt tuning on this endpoint; a thin category is answered by
-  host picks, not by prompt work. **What REMAINS open is only the cost/model question:**
-  grounding is free on the 2.5 line (1,500 RPD) but **ZERO on Gemini 3**, so the grounded guide
-  is tied to `gemini-2.5-flash` and the 16 Oct 2026 shutdown — ~~re-test once billing is live~~
-  **ANSWERED Aug 5 2026 by the ZERO-GOOGLE AI PILOT: the guide is rebuilt on POI DATA (Geoapify /
-  LocationIQ) + a cheap LLM, so it needs no grounding at all — and because the coordinates come
-  from the POI data, that structurally kills both the fabricated-business problem and the
-  geocoding weakness.** See "MODEL-MIGRATION ANALYSIS" for the old framing.
-- **NEW, minor: `coercePlaces` does not enforce the 5-per-category cap the prompt requests.**
-  Harmless today — the post-retry total still cannot exceed `MAX_GEOCODE`.
-- **NEW (Aug 14 2026) — READ ALL THREE AFFILIATE AGREEMENTS FOR THEIR OWN CONTRACTUAL DISCLOSURE
-  REQUIREMENTS, SEPARATELY FROM STATUTE.** `736a715` fixed the commission disclosure against
-  **Finnish consumer law** — which requires marketing to make clear its commercial purpose AND on
-  whose behalf it is done, hence naming the beneficiary. **That is the statutory floor, not the
-  contractual one.** Viator, GetYourGuide and Tiqets each impose their own affiliate-disclosure
-  wording, placement and prominence terms, and a clause can demand MORE than the law does — none
-  of the three has been read with this specific question in mind. **Pairs with the parked
-  multi-tenant confirmation emails** (same threads, same recipients, so ask both questions at
-  once). **Tiqets and GYG remain PARKED until go-live per Udy** — this is a pre-live checklist
-  item, not a now item. Note the asymmetry already recorded: for Viator we hold a written ruling,
-  for the other two only our own reading.
+> Full argument for all six — including why the drawer is written last and why the checker's
+> client-side condition is not negotiable — is in **docs/pre-live-checklist.md**.
+
 
 > Full workstream, all ten gaps and the document status: docs/legal-workstream.md.
 
