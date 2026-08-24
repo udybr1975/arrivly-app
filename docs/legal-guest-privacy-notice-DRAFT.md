@@ -81,11 +81,14 @@ Notifications are sent only if you switch them on, and you can switch them off a
 | Google Search | Chat questions, and the property address, when the assistant looks something up | United States |
 | Cloudflare | An anti-abuse check when you use the pre-arrival chat | United States |
 | Apple / Google push services | A device registration, only if you enable notifications | United States |
+| ntfy.sh | A short message to Bemgu's own operator alerts when your page opens — see below | **[CONFIRM — operator and location]** |
 | wttr.in | **Your IP address** — see below | **[CONFIRM — operator and location]** |
 
 **About the chat assistant.** When you ask it something, your question is sent to Google's AI service, and may also be sent to Google Search so it can look up current information. Do not type anything into it you would not want handled that way.
 
 **About the weather.** The weather shown on your page is fetched **by your own browser, directly from a third-party weather service**. That means your IP address goes to them, not through us. We are telling you because it is not obvious, and because we cannot prevent it without removing the weather. **[BUILD — decide whether to route this through our own server, or keep it client-side and disclose it. Routing it server-side removes the guest's IP from the third party entirely and is the cleaner fix.]**
+
+**About the page-open ping.** When your page opens, Bemgu sends itself a short operational message so we can see the service is working. It contains the property name, its area, which version of the page you were shown and how you reached it. **It does not contain your name, your booking reference, your dates, your messages or your IP address.** It is not advertising and it is not shared with anyone else.
 
 **Nobody buys or sells your information.** There is no advertising here and no tracking across other websites.
 
