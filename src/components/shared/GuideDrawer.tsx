@@ -374,7 +374,16 @@ function AskPanel({ reportFocus }: { reportFocus?: (focused: boolean) => void })
          the next line, the attribute would vanish AND THE BUILD WOULD STAY GREEN. */
       aria-label="Ask Bemgu — AI assistant"
       tabIndex={0}
-      className="flex-1 min-h-0 flex flex-col focus:outline-none"
+      /* focusRing, NOT a bare focus:outline-none. This element is tabIndex={0}, i.e. IN the
+         tab order, so a sighted keyboard user Tabs into it from the "Ask" tab — and without a
+         replacement indicator nothing visibly happens (WCAG 2.4.7). Every button in this
+         drawer already uses focusRing; this one opted out of the outline without opting in.
+         THE TWO OTHER bare focus:outline-none SITES IN THIS FILE ARE DELIBERATE, not misses:
+         both are <h2 tabIndex={-1}> programmatic focus targets for drawer-open focus
+         management. They are not Tab-reachable, so a ring there would appear on an element
+         the user never navigated to. Suppressing it is the correct pattern — do not "fix"
+         them by symmetry with this line. */
+      className={`flex-1 min-h-0 flex flex-col ${focusRing}`}
     >
       {/* EU AI ACT ART. 50 — the THIRD and last AI chat surface, after ChatBot (/api/guest-chat)
           and WelcomePage (/api/welcome-chat). LABELLED DESPITE BEING HOST-FACING, because the
