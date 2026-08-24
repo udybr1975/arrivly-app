@@ -25,6 +25,8 @@ here.**
   platform — while the **DRAWER explains WHAT the feature is, WHY the link is shaped that way,
   what a finished link looks like, and what to do when it goes wrong.** Two copies of the steps
   would drift within a session; this session proved that twice.
+  **DONE — shipped `cc2aba6`, 24 Aug 2026. The SPLIT rule survives in CLAUDE.md as a standing
+  rule.**
 - **NEW 22 Aug 2026 — A PASTE-BACK CHECKER. Proposed, NOT built.** A host pastes their finished
   link and the app tells them whether it is right. **It catches the failure Airbnb's own forums
   are full of:** a host who TYPED the tag instead of inserting it from the menu, whose messages

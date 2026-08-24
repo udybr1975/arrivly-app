@@ -2556,3 +2556,29 @@ BINDING (reasoning: `3aaca7b`):
 - **"A plain link never self-transforms" binds the LINK, not the DEVICE.** The recipient's own bookmark transforming IS the feature; never delete persistence to "restore" it.
 - Entries expire at `check_in + 30`, the server's date — not a constant.
 - `api/welcome.ts` images deliberately NOT gated by `welcome_show_address`.
+
+## Session — 23 Aug 2026 (2) — pre-launch data state settled
+
+- **THE `is_test` SYSTEM SHIPPED** (three migrations + `e5b87e2`). The invariant is in DB TRAPS;
+  what belongs here is the DECISION: the answer to "wipe or flag the test data" was **FLAG**, and
+  nothing was deleted. **The fixtures are this project's only regression corpus** and several are
+  load-bearing, so wiping them to clean the launch surface would have destroyed the evidence that
+  past defects stay fixed.
+- **The five sandbox Stripe subscriptions were CANCELLED**, and the webhook rehearsal PASSED with
+  **zero host emails sent** — the `!is_test` email gate held on the path that would actually have
+  mailed. All 8 hosts now rest at **active + exempt, Stripe refs NULL**.
+- **Public surface cut 11 → 3 pages.** Visible fleet is now **3 apartments, ALL Helsinki**
+  (2 real + `Sweet home`, which is still flagged test); the other nine are `is_visible = false`
+  and republishable per-experiment. **Four sites in this file derived conclusions from the old
+  "nine visible across 8 cities" and were corrected — the city-compression figure is marked
+  SUPERSEDED BY UNPUBLISHING rather than re-derived**, because a compression number computed on
+  three same-city rows is arithmetic, not evidence.
+- **Rename + rebrand:** "importer test" → **"charming 1908 studio"** (welcome code `DX89PW3H`
+  unchanged), `brand_name` "Helsinki stays", new logo uploaded.
+- **`422cc65` — the guest-bootstrap coordinate gate**, confirmed by four live probes. Both gates
+  independently rejected the status-only version first drafted; see the Lessons entry.
+- **`20609c1` — the bulk-import credential scrub**, confirmed by a live paste whose fabricated
+  code sentence reached the DB scrubbed.
+- **`ARR-IMP301` DOES NOT EXIST IN `bookings`.** The fixture list over-claimed it. **Recorded here
+  so it is not "rediscovered" as a missing row and re-created** — nothing referenced it, and its
+  absence is the correct state, not drift.

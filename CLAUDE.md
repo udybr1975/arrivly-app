@@ -29,7 +29,7 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Current HEAD — `20609c1`** (23 Aug 2026), the bulk-import credential scrub; `422cc65` before it is the guest-bootstrap coordinate gate, `e5b87e2` the is_test flags. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
+> **Current HEAD — `401db9d`** (24 Aug 2026), Print relabelled "Print / Save as PDF"; `f3f49a9` the designed A5 guest card and `cc2aba6` the help-drawer refresh before it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -193,6 +193,10 @@ values — do not change without an explicit decision.**
   exempt admin account, kept as a fixture. **This is not drift; do not "correct" it.**
 - **`ARR-FUT001` (Casa Marco, 23-26 Aug) is the PRE-ARRIVAL fixture** — a future-dated valid token
   resolving to the public tier.
+- **`ARR-IMP301` DOES NOT EXIST in `bookings`, and its ABSENCE IS CORRECT.** The fixture list
+  over-claimed it; nothing references it. **Do not "rediscover" it as a missing row and
+  re-create it.** (Hoisted 24 Aug 2026 out of the 23 Aug (2) session record before that block
+  moved to docs/history.md — it existed at exactly one site.)
 - **`ARR-EVT777` / `ARR-PAR777` / `ARR-BCN777` are KEEP-PERMANENTLY** live/active/thank-you-state
   fixtures. Re-roll their dates when they lapse; never delete them.
 - **Roy's `property_cap_override` was set to 2 for D8 and REVERTED to null** — verified reverted.
@@ -852,11 +856,26 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
      navigations.
   3. **TEMPLATE COPY — add a reassurance line before the link in `sharePlatforms.ts`,** so a
      guest expects Airbnb's "You're leaving Airbnb" interstitial instead of bouncing off it.
-  4. **PRIVACY QUESTION — RECORD, DO NOT ACT.** The welcome page shows the property's STREET
-     ADDRESS, and that page is public to anyone holding the welcome code. **Pre-existing
-     behaviour, but the pre-arrival link makes that page far more widely shared.** Decide
-     deliberately rather than by drift.
-  5. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
+  4. **PRIVACY QUESTION — DECIDED 24 Aug 2026 (Udy): ACCEPTED, no product change.** A guest
+     holding the welcome link or a confirmed booking seeing the property address is fine — the
+     booking platforms (Airbnb / Vrbo / Booking.com) already show it to that same person.
+     `apartments.welcome_show_address` stays exactly as it is: NOT NULL DEFAULT true, no host
+     UI. **The question is closed — do not re-open it as drift.** What this does NOT license is
+     a documentation claim that the address is hidden; `cc2aba6` corrected one such claim, and
+     the truthful version is the one to keep.
+  5. **GREY-ON-CREAM CONTRAST SWEEP.** `#8a8276` on the cream card backgrounds FAILS 4.5:1 —
+     **measured 3.67:1 on `#fdfbf7`**, against `#6b6354` at 5.74:1 which is already in the
+     palette. **FOUND, NOT FROZEN — these are hits, not the surface.** In `SharePanel.tsx`
+     alone: 330, 352, 414, **961 (INTERACTIVE — the `GuestUrlFallback` trigger, so the same
+     class of defect, not inherited static text)**, 975, 1005, 1018, 1150. The print-template
+     occurrences at 673/680/697 are a **SEPARATE** decision — print CSS on paper backgrounds
+     with their own recorded ratios. **Also in scope: the four accent-independent pairs inside
+     the printed A5 card** — `.bd` and `.foot-2` 3.34:1, `.noapp` 3.72:1, `.promo-d` 3.73:1.
+     **THE SWEEP RULE APPLIES: enumerate repo-wide over the VALUE, freeze the surface, ONE
+     commit.** **WHY THIS IS A PATTERN AND NOT TWO INSTANCES:** two consecutive commits on this
+     one file each shipped a contrast defect that hid behind "it matches an existing style" —
+     the token being pre-existing is exactly what stops it being questioned.
+  6. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
      dependency vulnerabilities (8 high, 8 moderate) as of the 18 Aug push, UNREVIEWED.** Read the
      list before the gate — **earlier if any high is runtime-reachable**. NOTE this supersedes the
      earlier "7 total / 5 high / 2 moderate" `npm audit` measurement: those two tools count
@@ -901,6 +920,11 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
        shape this file records elsewhere as the thing that gets deprioritised.** Set `no-store`
        on all four in ONE pass, or the parity argument that justifies leaving each one bare
        stops being true the moment one of them changes.
+     - **ADDED 24 Aug 2026 — A CSP WOULD BREAK THE PRINT CARD SILENTLY.** The generated A5
+       document depends on an INLINE `<script>` (it self-prints on load, because nothing outside
+       it calls `print()` any more) and an INLINE `onerror` on the logo image. The repo has NO
+       Content-Security-Policy today. **Any future CSP must allow both, or printing dies with no
+       error and no dialog** — the host sees a blank tab and concludes the button is broken.
      - **ADDED 23 Aug 2026 — `bulk-import`'s SILENT ALL-SCRUBBED PASTE.** When the credential
        scrub (`20609c1`) empties every row, the endpoint returns `{ categories: [] }`,
        `PropertySetup.tsx` renders NOTHING for an empty list **and clears the paste box**, and
@@ -1202,31 +1226,38 @@ drill) remains a graduation prerequisite.**
 > 3aaca7b)". Its five BINDING rules moved WITH it: each is reasoning about a shipped
 > feature, not an open item, so nothing needed hoisting.
 
-## Session — 23 Aug 2026 (2) — pre-launch data state settled
+> Moved to docs/history.md — "Session — 23 Aug 2026 (2) — pre-launch data state
+> settled". Its `is_test` invariants already live in DB TRAPS; only the `ARR-IMP301`
+> non-existence note needed hoisting, and it is now in the Test Data fixture rules.
 
-- **THE `is_test` SYSTEM SHIPPED** (three migrations + `e5b87e2`). The invariant is in DB TRAPS;
-  what belongs here is the DECISION: the answer to "wipe or flag the test data" was **FLAG**, and
-  nothing was deleted. **The fixtures are this project's only regression corpus** and several are
-  load-bearing, so wiping them to clean the launch surface would have destroyed the evidence that
-  past defects stay fixed.
-- **The five sandbox Stripe subscriptions were CANCELLED**, and the webhook rehearsal PASSED with
-  **zero host emails sent** — the `!is_test` email gate held on the path that would actually have
-  mailed. All 8 hosts now rest at **active + exempt, Stripe refs NULL**.
-- **Public surface cut 11 → 3 pages.** Visible fleet is now **3 apartments, ALL Helsinki**
-  (2 real + `Sweet home`, which is still flagged test); the other nine are `is_visible = false`
-  and republishable per-experiment. **Four sites in this file derived conclusions from the old
-  "nine visible across 8 cities" and were corrected — the city-compression figure is marked
-  SUPERSEDED BY UNPUBLISHING rather than re-derived**, because a compression number computed on
-  three same-city rows is arithmetic, not evidence.
-- **Rename + rebrand:** "importer test" → **"charming 1908 studio"** (welcome code `DX89PW3H`
-  unchanged), `brand_name` "Helsinki stays", new logo uploaded.
-- **`422cc65` — the guest-bootstrap coordinate gate**, confirmed by four live probes. Both gates
-  independently rejected the status-only version first drafted; see the Lessons entry.
-- **`20609c1` — the bulk-import credential scrub**, confirmed by a live paste whose fabricated
-  code sentence reached the DB scrubbed.
-- **`ARR-IMP301` DOES NOT EXIST IN `bookings`.** The fixture list over-claimed it. **Recorded here
-  so it is not "rediscovered" as a missing row and re-created** — nothing referenced it, and its
-  absence is the correct state, not drift.
+## Session — 24 Aug 2026 — drawer refresh, the A5 guest card, privacy decided
+
+- **`cc2aba6` — help-drawer / help-chat content refresh** (`src/guide/content.ts`, one file, both
+  surfaces). **The SPLIT rule held — measured, zero step duplication from `sharePlatforms.ts`.**
+  Two gate-driven accuracy fixes beyond the authorised edits: tier qualifiers on the Earnings
+  copy, and a security-auditor **CRITICAL** — the **PRE-EXISTING** claim "the exact street is
+  never shown to guests" was false for every property in production. Corrected to the truth: the
+  street TEXT is not on the QR page, the **map pin is**, and the welcome link shows the full
+  address to whoever holds it. **Documentation only; product behaviour untouched.**
+- **PRIVACY QUESTION — DECIDED (Udy): ACCEPTED.** A guest with the welcome link or a confirmed
+  booking seeing the address is fine — **the platforms already show it to that same person.** No
+  product change; `welcome_show_address` unchanged. **Closed — not drift.**
+- **`f3f49a9` — the designed A5 guest card replaces the bare QR print** (`SharePanel.tsx`).
+  Per-property brand name, logo chip, neighbourhood→city fallback, accent `apartment ?? host ??
+  default`. **THE BRIEF'S OWN SPEC WAS WRONG AND THE GATES CAUGHT IT OVER TWO ROUNDS:**
+  "luminance > 0.5" is not the crossover (**0.2022 is**), and the first fix then scored only the
+  HEADLINE — hiding a failure in **Amber, a shipped preset** (6.15:1 headline, 3.53:1 sub). The
+  picker now scores each set by its **WORST role's headroom**. 720px QR; the child window
+  self-prints after `fonts.ready`; **no marketplace names** (Viator name-consent clause).
+  **Udy print-tested live: fits one A5 page, scans.**
+- **`401db9d` — Print relabelled "Print / Save as PDF"**, the primary path to the card as a file:
+  browser-native, vector, **zero drift from the printed output**. Bare-PNG download demoted to a
+  link. **html2canvas rejected** (a second renderer that can silently diverge, plus a dependency).
+  A contrast regression **in the demoted control** was caught and fixed (3.67→5.74:1). Closes the
+  "Download and Print differ in kind" residual.
+- **Copy ticket — DECIDED leave-as-is:** the imperative reading of "Download QR only (PNG)", and
+  the desktop-shaped "in the print window" caption (**iOS Safari uses the share sheet**). Revisit
+  only if a real host stumbles; the button label carries "Save as PDF".
 
 ## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
 
@@ -1294,12 +1325,14 @@ docs/spend-hardening.md. What stays here is only what a future change could BREA
 
 ### PRE-LIVE ADDITIONS from this session (add to the pre-live checklist)
 
-- **THE HELP-DRAWER REFRESH — deliberately LAST so it is written ONCE.** `src/guide/content.ts`
-  feeds BOTH the drawer and the help chat, so one edit updates both; it still describes an older
-  product. **RULE — THE SPLIT THAT AVOIDS DRIFT: the SHARE PANEL holds the authoritative STEPS**
-  (they are DATA in `sharePlatforms.ts`, so they change with the platform) **while the DRAWER
-  explains WHAT the feature is, WHY the link is shaped that way, and what to do when it goes
-  wrong.** Two copies of the steps drift within a session — this has been proved twice.
+- **STANDING RULE — THE SPLIT THAT AVOIDS DRIFT** (the help-drawer refresh itself shipped as
+  `cc2aba6`, 24 Aug 2026; this rule outlives it and binds every future edit to either file).
+  `src/guide/content.ts` feeds BOTH the drawer and the help chat, so one edit updates both.
+  **The SHARE PANEL holds the authoritative STEPS** (they are DATA in `sharePlatforms.ts`, so
+  they change with the platform) **while the DRAWER explains WHAT the feature is, WHY the link
+  is shaped that way, and what to do when it goes wrong.** Two copies of the steps drift within
+  a session — this has been proved twice. **Never write a numbered link-building step into
+  `content.ts`.**
 - **A PASTE-BACK CHECKER — proposed, NOT built.** Catches the host who TYPED the tag instead of
   inserting it, whose messages go out reading "Dear guest first name". **RULE, NOT NEGOTIABLE:
   it must run ENTIRELY CLIENT-SIDE — never sent to the server, never stored, never logged —
