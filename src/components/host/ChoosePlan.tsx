@@ -167,13 +167,13 @@ export default function ChoosePlan() {
         <div className="mb-7 text-center">
           <div className="font-mono text-[11px] text-[#a79e8e] uppercase tracking-[.2em] mb-3">Bemgu</div>
           <h1 className="text-[26px] font-['Fraunces'] font-light text-[#231d17] mb-1">Choose your plan</h1>
-          <p className="text-xs text-[#8a8276]">14-day free trial — no charge today.</p>
+          <p className="text-xs text-[#6b6354]">14-day free trial — no charge today.</p>
         </div>
 
         {/* Cancelled banner */}
         {cancelledBanner && (
           <div className="max-w-3xl mx-auto bg-[#fffdf9] border border-[#e4ddd0] rounded-[12px] p-4 mb-5">
-            <p className="text-[12px] text-[#8a8276]">No problem — choose a plan when you're ready.</p>
+            <p className="text-[12px] text-[#6b6354]">No problem — choose a plan when you're ready.</p>
           </div>
         )}
 
@@ -233,7 +233,7 @@ export default function ChoosePlan() {
         </div>
 
         {/* Disclosure block */}
-        <div className="max-w-3xl mx-auto bg-[#fffdf9] border border-[#e4ddd0] rounded-[12px] p-4 text-[11px] text-[#8a8276] leading-relaxed space-y-1.5">
+        <div className="max-w-3xl mx-auto bg-[#fffdf9] border border-[#e4ddd0] rounded-[12px] p-4 text-[11px] text-[#6b6354] leading-relaxed space-y-1.5">
           {disclosurePlan ? (
             <p>
               <span className="font-semibold text-[#231d17]">14-day free trial — no charge today.</span>{' '}

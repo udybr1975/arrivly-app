@@ -395,7 +395,7 @@ export default function BillingPanel() {
         )}
         {checkoutResult === 'cancelled' && (
           <div className="bg-[#fffdf9] border border-[#e4ddd0] rounded-[12px] p-4 mb-4">
-            <div className="text-[11px] text-[#8a8276]">Checkout cancelled — no changes were made.</div>
+            <div className="text-[11px] text-[#6b6354]">Checkout cancelled — no changes were made.</div>
           </div>
         )}
 
@@ -406,7 +406,7 @@ export default function BillingPanel() {
               <div className="text-[13px] font-semibold text-[#231d17]">Free trial</div>
               <span className="text-[10px] bg-[#f3ecdb] text-[#8a5a14] px-2 py-0.5 rounded-full font-medium">Trial</span>
             </div>
-            <div className="text-[11px] text-[#8a8276]">
+            <div className="text-[11px] text-[#6b6354]">
               {trialRemaining > 0
                 ? `${trialRemaining} day${trialRemaining !== 1 ? 's' : ''} left`
                 : 'Trial period complete'}
@@ -492,7 +492,7 @@ export default function BillingPanel() {
 
         {/* Upgrade processing indicator */}
         {upgradeProcessing && (
-          <div className="text-[11px] text-[#8a8276] mb-4">Upgrade processing — your plan will update shortly.</div>
+          <div className="text-[11px] text-[#6b6354] mb-4">Upgrade processing — your plan will update shortly.</div>
         )}
       </div>
 

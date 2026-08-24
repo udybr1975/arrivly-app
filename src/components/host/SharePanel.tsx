@@ -294,9 +294,10 @@ function SendStep({
       </p>
 
       <PlatformTabs value={platformId} onChange={setPlatformId} disabled={editing} />
-      {/* #6b6354 not the muted #8a8276: on this card's #f4f7ec that token computes 3.50:1
-          against a 4.5:1 floor, and these lines carry the card's structure rather than
-          decorating it. #6b6354 computes 5.47:1 and is already used here. */}
+      {/* #6b6354 is the muted token here, and since the 24 Aug 2026 sweep it is the muted
+          token everywhere on a light surface — the former #8a8276 computed 3.50:1 on this
+          card's #f4f7ec against a 4.5:1 floor. #6b6354 computes 5.47:1. This comment predates
+          the sweep and is kept because the measurement is the reason, not the history. */}
       <p className="mt-2 text-[11.5px] text-[#6b6354]">{platform.blurb}</p>
 
       {!apt.is_visible && (
@@ -327,7 +328,7 @@ function SendStep({
             className="mt-3 w-full resize-y rounded-[9px] border border-[#d7e2c2] bg-white px-3 py-2.5 text-[12.5px] leading-[1.6] text-[#3f3a32] focus:border-[#c8a24e] focus:outline-none"
           />
           {(draft.length >= counterFrom || overLimit) && (
-            <div className={`mt-1 text-right text-[11px] ${overLimit ? 'text-[#8a1a1a]' : 'text-[#8a8276]'}`}>
+            <div className={`mt-1 text-right text-[11px] ${overLimit ? 'text-[#8a1a1a]' : 'text-[#6b6354]'}`}>
               {draft.length} / {limit}
               {overLimit && <span className="ml-1.5">— too long to save</span>}
             </div>
@@ -349,7 +350,7 @@ function SendStep({
               Cancel
             </button>
           </div>
-          <p className="mt-2 text-[11px] text-[#8a8276]">
+          <p className="mt-2 text-[11px] text-[#6b6354]">
             {appendsUrl
               ? 'The link is added back automatically if you remove it.'
               : 'This message ends just before the link — you add the link itself afterwards.'}
@@ -411,7 +412,7 @@ function SendStep({
               Edit
             </button>
           </div>
-          <p className="mt-2 text-[11px] text-[#8a8276]">Edits are saved for this property only.</p>
+          <p className="mt-2 text-[11px] text-[#6b6354]">Edits are saved for this property only.</p>
 
           {/* PART 2 — the link. Separate from the message ON PURPOSE: the message ends where
               the link goes, so the paste leaves the cursor in exactly the right place. */}
@@ -918,10 +919,14 @@ function PrintStep({ apt, host }: { apt: ApartmentShare; host: HostBrand | null 
         </button>
       </div>
 
-      {/* #6b6354, NOT the #8a8276 muted token used elsewhere in this file: measured on this
-          card's #fdfbf7, #8a8276 is 3.67:1 and fails the 4.5:1 floor, while #6b6354 is 5.74:1.
-          This sentence is what teaches the Save-as-PDF route, so an unreadable version costs
-          the change its whole point. */}
+      {/* #6b6354: measured on this card's #fdfbf7, the former #8a8276 was 3.67:1 and failed
+          the 4.5:1 floor, while #6b6354 is 5.74:1. This site was fixed first, ahead of the
+          24 Aug 2026 sweep that moved every other light-surface text site the same way — so
+          #8a8276 is no longer "the muted token used elsewhere in this file". It survives here
+          ONLY inside the generated A5 print document, which is deliberately out of scope:
+          paper is not governed by WCAG and the card was live-print-tested and approved.
+          This sentence teaches the Save-as-PDF route, so an unreadable version costs the
+          change its whole point. */}
       <p className="mt-2 text-[11px] text-[#6b6354]">
         To save the card as a file, choose “Save as PDF” in the print window.
       </p>
@@ -958,7 +963,7 @@ function GuestUrlFallback({ apt }: { apt: ApartmentShare }) {
         onClick={() => setOpen(o => !o)}
         aria-expanded={open}
         aria-controls={panelId}
-        className="text-[11.5px] text-[#8a8276] underline underline-offset-2 transition-colors hover:text-[#231d17]"
+        className="text-[11.5px] text-[#6b6354] underline underline-offset-2 transition-colors hover:text-[#231d17]"
       >
         Guest can’t scan the code?
       </button>
@@ -972,7 +977,7 @@ function GuestUrlFallback({ apt }: { apt: ApartmentShare }) {
             type="button"
             onClick={() => copy(url)}
             aria-label={copied ? 'Copied' : 'Copy guest page URL'}
-            className="shrink-0 text-[#8a8276] transition-colors hover:text-[#231d17]"
+            className="shrink-0 text-[#6b6354] transition-colors hover:text-[#231d17]"
           >
             {copied ? <Check size={15} className="text-[#5d7c34]" /> : <Copy size={15} />}
           </button>
@@ -1002,7 +1007,7 @@ function PropertyShareCard({
             instead of reading "Step 1 / Step 2" once per property. */}
         <h2 className="text-[15px] font-semibold text-[#231d17]">{apt.name}</h2>
         {apt.neighborhood && (
-          <span className="inline-flex items-center gap-1 text-[12px] text-[#8a8276]">
+          <span className="inline-flex items-center gap-1 text-[12px] text-[#6b6354]">
             <MapPin size={12} className="shrink-0" />
             {apt.neighborhood}
           </span>
@@ -1015,7 +1020,7 @@ function PropertyShareCard({
         ) : (
           <div className="flex-1 min-w-0 rounded-[12px] border border-[#e4ddd0] bg-[#f7f3ec] p-4">
             <h3 className="text-[14px] font-['Fraunces'] font-normal text-[#231d17]">Send this before they travel</h3>
-            <p className="mt-1.5 text-[12px] text-[#8a8276]">
+            <p className="mt-1.5 text-[12px] text-[#6b6354]">
               The welcome link isn’t available for this property yet. The QR code works as usual — nothing
               is blocked by this.
             </p>
@@ -1147,7 +1152,7 @@ export default function SharePanel() {
     <div className="font-['Inter'] max-w-5xl">
       <header className="mb-7">
         <h1 className="text-[25px] font-['Fraunces'] font-light text-[#231d17]">Share</h1>
-        <p className="text-[13px] text-[#8a8276] mt-1">
+        <p className="text-[13px] text-[#6b6354] mt-1">
           Two things per property: a message you send before the trip, and a code you print for the wall.
           The code alone is enough — the message is an upgrade.
         </p>

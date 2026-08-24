@@ -119,7 +119,7 @@ export default function UpgradeWall({ onKeep, onSignOut }: { onKeep: (tier: numb
         <p className="text-[12px] text-[#b3aa9b] mb-2">14-day free trial · Card added at checkout · No charge today · Cancel anytime</p>
         <button
           onClick={onSignOut}
-          className="text-[12.5px] font-medium text-[#8a8276] hover:text-[#231d17] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/40 rounded px-2 py-1"
+          className="text-[12.5px] font-medium text-[#6b6354] hover:text-[#231d17] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/40 rounded px-2 py-1"
         >
           Sign out
         </button>

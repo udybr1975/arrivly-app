@@ -286,7 +286,7 @@ export default function AvailabilityPicker({ bookings, checkIn, checkOut, onChan
           className="w-7 h-7 flex items-center justify-center rounded-[8px] border border-[#e4ddd0] text-[#231d17] hover:bg-[#f0ede6] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
           aria-label="Previous month"
         >‹</button>
-        <div className="text-[11px] text-[#8a8276]">
+        <div className="text-[11px] text-[#6b6354]">
           {picking === 'in' ? 'Pick a check-in date' : `Pick a check-out date${maxCheckout ? ` — latest ${fmtShort(maxCheckout)}` : ''}`}
         </div>
         <button
@@ -303,7 +303,7 @@ export default function AvailabilityPicker({ bookings, checkIn, checkOut, onChan
         <div className="hidden sm:flex flex-1 min-w-0">{renderMonth(next, 'b')}</div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3 pt-3 border-t border-[#f0ede6] text-[10px] text-[#8a8276]">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3 pt-3 border-t border-[#f0ede6] text-[10px] text-[#6b6354]">
         <span className="inline-flex items-center gap-1.5">
           <span className="w-3 h-3 rounded-[3px] border border-[#e4ddd0]" /> Free
         </span>
@@ -328,7 +328,7 @@ export default function AvailabilityPicker({ bookings, checkIn, checkOut, onChan
           <button
             type="button"
             onClick={() => onChange({ checkIn: '', checkOut: '' })}
-            className="text-[11px] text-[#8a8276] underline hover:text-[#231d17] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e] rounded"
+            className="text-[11px] text-[#6b6354] underline hover:text-[#231d17] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e] rounded"
           >
             Clear dates
           </button>

@@ -180,7 +180,7 @@ function ComingSoonCard({ m }: { m: GuideModule }) {
           Coming soon
         </span>
       </div>
-      <p className="mt-1 text-[12px] leading-[1.45] text-[#8a8276]">{m.summary}</p>
+      <p className="mt-1 text-[12px] leading-[1.45] text-[#6b6354]">{m.summary}</p>
     </div>
   )
 }
@@ -205,13 +205,13 @@ function GuideBody({
       <div>
         <button
           onClick={onBack}
-          className={`inline-flex items-center gap-1 text-[12px] font-medium text-[#8a8276] hover:text-[#231d17] transition-colors ${focusRing} rounded`}
+          className={`inline-flex items-center gap-1 text-[12px] font-medium text-[#6b6354] hover:text-[#231d17] transition-colors ${focusRing} rounded`}
         >
           <ChevronLeft size={14} />
           Back
         </button>
         <h3 className="font-['Fraunces'] text-[20px] text-[#231d17] mt-3 mb-1">{selected.title}</h3>
-        <p className="text-[13px] text-[#8a8276] mb-3">{selected.summary}</p>
+        <p className="text-[13px] text-[#6b6354] mb-3">{selected.summary}</p>
         <div className="border-t border-[#e9e4d9] pt-2">{renderMarkdown(selected.body)}</div>
         {related.length > 0 && (
           <div className="mt-5 pt-3 border-t border-[#e9e4d9]">
@@ -247,7 +247,7 @@ function GuideBody({
             className={`w-full text-left rounded-[10px] border border-[#e4ddd0] bg-[#fffdf9] px-3 py-3 hover:border-[#c8a24e] transition-colors ${focusRing}`}
           >
             <div className="font-['Fraunces'] text-[15px] text-[#231d17]">{current.title}</div>
-            <p className="mt-0.5 text-[12.5px] leading-[1.45] text-[#8a8276]">{current.summary}</p>
+            <p className="mt-0.5 text-[12.5px] leading-[1.45] text-[#6b6354]">{current.summary}</p>
           </button>
         </div>
       )}
@@ -273,7 +273,7 @@ function GuideBody({
                       className={`w-full text-left rounded-[10px] border border-[#e9e4d9] bg-[#fffdf9] px-3 py-2.5 hover:border-[#c8a24e] transition-colors ${focusRing}`}
                     >
                       <div className="text-[13.5px] font-medium text-[#231d17]">{m.title}</div>
-                      <p className="mt-0.5 text-[12px] leading-[1.4] text-[#8a8276] line-clamp-2">
+                      <p className="mt-0.5 text-[12px] leading-[1.4] text-[#6b6354] line-clamp-2">
                         {m.summary}
                       </p>
                     </button>
@@ -294,7 +294,7 @@ function Tabs({ tab, onTab }: { tab: TabId; onTab: (t: TabId) => void }) {
     `pb-2 border-b-2 text-[13px] ${focusRing} rounded-t transition-colors ${
       active
         ? 'border-[#c8a24e] font-semibold text-[#231d17]'
-        : 'border-transparent font-medium text-[#8a8276] hover:text-[#231d17]'
+        : 'border-transparent font-medium text-[#6b6354] hover:text-[#231d17]'
     }`
   return (
     <div role="tablist" aria-label="Guide sections" className="flex items-end gap-4 border-b border-[#e9e4d9] px-4">
@@ -360,7 +360,7 @@ function AskPanel({ reportFocus }: { reportFocus?: (focused: boolean) => void })
       className="flex-1 min-h-0 flex flex-col focus:outline-none"
     >
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
-        <p className="text-[12.5px] leading-[1.5] text-[#8a8276] mb-3">
+        <p className="text-[12.5px] leading-[1.5] text-[#6b6354] mb-3">
           Ask anything about Bemgu — I answer only from the guide, so I won't invent features or give general advice.
         </p>
 
@@ -394,7 +394,7 @@ function AskPanel({ reportFocus }: { reportFocus?: (focused: boolean) => void })
           </div>
         )}
 
-        {loading && <div className="self-start mt-2 text-[12px] text-[#8a8276] px-1">Thinking…</div>}
+        {loading && <div className="self-start mt-2 text-[12px] text-[#6b6354] px-1">Thinking…</div>}
         {errored && (
           <div className="mt-2 text-[12px] text-[#8a1a1a] px-1">
             Something went wrong — please try again in a moment.
@@ -557,7 +557,7 @@ export default function GuideDrawer({ open, onClose, triggerRef, requestedModule
           <button
             onClick={onClose}
             aria-label="Close guide"
-            className={`p-1 rounded-[8px] text-[#8a8276] hover:text-[#231d17] hover:bg-[#f0ece3] transition-colors ${focusRing}`}
+            className={`p-1 rounded-[8px] text-[#6b6354] hover:text-[#231d17] hover:bg-[#f0ece3] transition-colors ${focusRing}`}
           >
             <X size={18} />
           </button>
@@ -579,7 +579,7 @@ export default function GuideDrawer({ open, onClose, triggerRef, requestedModule
             <button
               onClick={() => setMinimized(true)}
               aria-label="Minimize guide"
-              className={`flex items-center gap-1 text-[12px] font-medium text-[#8a8276] hover:text-[#231d17] transition-colors ${focusRing} rounded`}
+              className={`flex items-center gap-1 text-[12px] font-medium text-[#6b6354] hover:text-[#231d17] transition-colors ${focusRing} rounded`}
             >
               <ChevronDown size={16} />
               <span className="w-9 h-1 rounded-full bg-[#e0d8c8] block" aria-hidden="true" />
@@ -594,7 +594,7 @@ export default function GuideDrawer({ open, onClose, triggerRef, requestedModule
             <button
               onClick={onClose}
               aria-label="Close guide"
-              className={`p-1 rounded-[8px] text-[#8a8276] hover:text-[#231d17] hover:bg-[#f0ece3] transition-colors ${focusRing}`}
+              className={`p-1 rounded-[8px] text-[#6b6354] hover:text-[#231d17] hover:bg-[#f0ece3] transition-colors ${focusRing}`}
             >
               <X size={18} />
             </button>

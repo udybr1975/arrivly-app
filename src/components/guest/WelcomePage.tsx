@@ -340,10 +340,10 @@ function LockedTile({ Icon, label }: { Icon: typeof Wifi; label: string }) {
     // context and most screen readers drop it silently.
     <div className="bg-[#faf8f4] border border-dashed border-[#ded8cc] rounded-xl p-3 flex flex-col items-start gap-2 text-left">
       <span className="sr-only">{label} — unlocks on your check-in day</span>
-      <span className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#f0ece3] text-[#8a8276]">
+      <span className="w-8 h-8 rounded-lg flex items-center justify-center bg-[#f0ece3] text-[#6b6354]">
         <Icon size={15} />
       </span>
-      <span className="text-[10px] tracking-widest uppercase text-[#8a8276]">{label}</span>
+      <span className="text-[10px] tracking-widest uppercase text-[#6b6354]">{label}</span>
       <span className="text-[13px] font-medium text-[#5b5853] flex items-center gap-1">
         <Lock size={11} /> On arrival
       </span>

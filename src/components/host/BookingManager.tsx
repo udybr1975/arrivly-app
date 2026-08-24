@@ -88,7 +88,7 @@ const BTN_OUTLINE = 'bg-transparent border border-[#e4ddd0] text-[#231d17] px-4 
 
 const PILL_BASE = 'px-3.5 py-1.5 rounded-[9px] text-xs font-medium transition-colors border'
 function pill(active: boolean) {
-  return `${PILL_BASE} ${active ? 'bg-[#1c1c1a] text-[#f0ede6] border-[#1c1c1a]' : 'bg-transparent border-[#e4ddd0] text-[#8a8276] hover:bg-[#f0ede6]'}`
+  return `${PILL_BASE} ${active ? 'bg-[#1c1c1a] text-[#f0ede6] border-[#1c1c1a]' : 'bg-transparent border-[#e4ddd0] text-[#6b6354] hover:bg-[#f0ede6]'}`
 }
 
 function fmt(d: string) {
@@ -210,7 +210,7 @@ function CalendarView({
                   ? 'text-white font-semibold'
                   : isToday
                     ? 'ring-1 ring-[#1c1c1a] text-[#1c1c1a] font-semibold'
-                    : 'text-[#8a8276] hover:bg-[#f0ede6]'
+                    : 'text-[#6b6354] hover:bg-[#f0ede6]'
               }`}
               style={color ? { backgroundColor: color } : undefined}
             >
@@ -235,7 +235,7 @@ function CalendarView({
                 type="button"
                 onClick={() => setSelectedDay(null)}
                 aria-label="Close day details"
-                className="text-[11px] text-[#8a8276] hover:text-[#231d17] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e] rounded px-1"
+                className="text-[11px] text-[#6b6354] hover:text-[#231d17] transition-colors motion-reduce:transition-none focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e] rounded px-1"
               >
                 ✕
               </button>
@@ -251,8 +251,8 @@ function CalendarView({
                     {isBlockSource(b.source) ? 'Blocked' : b.guests?.first_name ?? 'Guest'}
                   </span>
                   {!isBlockSource(b.source) && b.link_claimed_at && <LinkClaimedChip compact />}
-                  <span className="text-[11px] text-[#8a8276]">{fmt(b.check_in)} → {fmt(b.check_out)}</span>
-                  <span className="text-[10px] text-[#8a8276] bg-[#f4f1ea] border border-[#e4ddd0] px-2 py-0.5 rounded-full">
+                  <span className="text-[11px] text-[#6b6354]">{fmt(b.check_in)} → {fmt(b.check_out)}</span>
+                  <span className="text-[10px] text-[#6b6354] bg-[#f4f1ea] border border-[#e4ddd0] px-2 py-0.5 rounded-full">
                     {sourceLabel(b.source)}
                   </span>
                   {b.reference_number?.startsWith('ARR-') && (
@@ -272,7 +272,7 @@ function CalendarView({
                         type="button"
                         onClick={() => onCancel(b)}
                         disabled={cancellingId === b.id}
-                        className="text-[10px] border border-[#e4ddd0] text-[#8a8276] px-2.5 py-1 rounded-[8px] font-medium hover:border-[#8a1a1a] hover:text-[#8a1a1a] transition-colors motion-reduce:transition-none disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8a1a1a]"
+                        className="text-[10px] border border-[#e4ddd0] text-[#6b6354] px-2.5 py-1 rounded-[8px] font-medium hover:border-[#8a1a1a] hover:text-[#8a1a1a] transition-colors motion-reduce:transition-none disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#8a1a1a]"
                       >
                         {cancellingId === b.id ? 'Cancelling…' : 'Cancel'}
                       </button>
@@ -289,7 +289,7 @@ function CalendarView({
       {legend.length > 0 && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mt-3 pt-3 border-t border-[#f0ede6]">
           {legend.map(({ label, color }) => (
-            <span key={label} className="inline-flex items-center gap-1.5 text-[10px] text-[#8a8276]">
+            <span key={label} className="inline-flex items-center gap-1.5 text-[10px] text-[#6b6354]">
               <span className="w-2.5 h-2.5 rounded-[3px]" style={{ backgroundColor: color }} />
               {label}
             </span>
@@ -485,7 +485,7 @@ Reference ${b.reference_number}` : ''
   if (!aptId) return (
     <div className="max-w-2xl font-['Inter']">
       <h1 className="text-[22px] font-['Fraunces'] font-light text-[#231d17] mb-4">Bookings</h1>
-      <p className="text-[12px] text-[#8a8276]">No properties yet. Set up a property in the Overview first.</p>
+      <p className="text-[12px] text-[#6b6354]">No properties yet. Set up a property in the Overview first.</p>
     </div>
   )
 
@@ -525,7 +525,7 @@ Reference ${b.reference_number}` : ''
       <div key={b.id} className="flex items-center gap-2.5 px-3 py-2 text-[11px] text-[#a79e8e]">
         <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: BLOCK_GREY }} />
         <span>{fmt(b.check_in)} → {fmt(b.check_out)}</span>
-        <span className="font-medium text-[#8a8276]">Blocked</span>
+        <span className="font-medium text-[#6b6354]">Blocked</span>
         <span className="ml-auto text-[10px] text-[#a79e8e] bg-[#f4f1ea] border border-[#e4ddd0] px-2 py-0.5 rounded-full shrink-0">
           {sourceLabel(b.source)}
         </span>
@@ -559,11 +559,11 @@ Reference ${b.reference_number}` : ''
                 </span>
               )}
               <span className={statusPill(b.status)}>{b.status}</span>
-              <span className="text-[10px] text-[#8a8276] bg-[#f4f1ea] border border-[#e4ddd0] px-2 py-0.5 rounded-full">
+              <span className="text-[10px] text-[#6b6354] bg-[#f4f1ea] border border-[#e4ddd0] px-2 py-0.5 rounded-full">
                 {sourceLabel(b.source)}
               </span>
             </div>
-            <div className="text-[11px] text-[#8a8276]">
+            <div className="text-[11px] text-[#6b6354]">
               {fmt(b.check_in)} → {fmt(b.check_out)}
               {b.reference_number?.startsWith('ARR-') && (
                 <span className="ml-2 font-mono text-[#a79e8e]">{b.reference_number}</span>
@@ -597,7 +597,7 @@ Reference ${b.reference_number}` : ''
               <button
                 onClick={() => cancelBooking(b)}
                 disabled={cancellingId === b.id}
-                className="text-[10px] border border-[#e4ddd0] text-[#8a8276] px-2.5 py-1 rounded-[8px] font-medium hover:border-[#8a1a1a] hover:text-[#8a1a1a] transition-colors disabled:opacity-50"
+                className="text-[10px] border border-[#e4ddd0] text-[#6b6354] px-2.5 py-1 rounded-[8px] font-medium hover:border-[#8a1a1a] hover:text-[#8a1a1a] transition-colors disabled:opacity-50"
               >
                 {cancellingId === b.id ? 'Cancelling…' : 'Cancel'}
               </button>
@@ -693,7 +693,7 @@ Reference ${b.reference_number}` : ''
 
       {/* Calendars pointer row — iCal management now lives in the property's Calendars tab */}
       <div className="bg-[#fffdf9] border border-[#e4ddd0] rounded-[14px] px-5 py-3.5 mb-4 flex items-center justify-between gap-3">
-        <span className="text-[12px] text-[#8a8276]">
+        <span className="text-[12px] text-[#6b6354]">
           {calCount > 0 ? `${calCount} calendar${calCount === 1 ? '' : 's'} connected` : 'No calendars connected'}
         </span>
         <Link
@@ -724,7 +724,7 @@ Reference ${b.reference_number}` : ''
           {bookings.length === 0 && !showAddForm && (
             <div className={`${CARD} text-center`}>
               <div className="text-[#cdc6b8] text-3xl mb-2">📅</div>
-              <div className="text-[12px] text-[#8a8276]">
+              <div className="text-[12px] text-[#6b6354]">
                 No bookings yet. Add one above, or connect a calendar in the property's Calendars tab.
               </div>
             </div>

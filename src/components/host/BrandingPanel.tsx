@@ -116,7 +116,7 @@ export default function BrandingPanel() {
   return (
     <div className="max-w-3xl font-['Inter']">
       <h1 className="text-[22px] font-['Fraunces'] font-light text-[#231d17] mb-1">Branding</h1>
-      <p className="text-[13px] text-[#8a8276] mb-5">
+      <p className="text-[13px] text-[#6b6354] mb-5">
         Your logo, name and default colour — applied across every guest page unless a property overrides it.
       </p>
 
@@ -142,7 +142,7 @@ export default function BrandingPanel() {
                 {logoUrl && (
                   <button onClick={removeLogo} disabled={uploadingLogo} className="text-[11px] text-[#8a1a1a] hover:underline bg-transparent border-none cursor-pointer text-left disabled:opacity-40">Remove</button>
                 )}
-                <p className="text-[10.5px] text-[#8a8276]">PNG, JPG or WebP · under 2 MB · shown in your guest page header.</p>
+                <p className="text-[10.5px] text-[#6b6354]">PNG, JPG or WebP · under 2 MB · shown in your guest page header.</p>
               </div>
             </div>
           </div>
@@ -158,7 +158,7 @@ export default function BrandingPanel() {
               placeholder="Your property or business name"
               maxLength={80}
             />
-            <p className="text-[10.5px] text-[#8a8276] mt-1.5">Signed at the bottom of every guest greeting.</p>
+            <p className="text-[10.5px] text-[#6b6354] mt-1.5">Signed at the bottom of every guest greeting.</p>
           </div>
 
           {/* Default colour */}
@@ -207,7 +207,7 @@ export default function BrandingPanel() {
               </div>
             </div>
 
-            <p className="text-[10.5px] text-[#8a8276] mt-3">
+            <p className="text-[10.5px] text-[#6b6354] mt-3">
               This is your account default. Any property can override it in its Look tab.
             </p>
           </div>

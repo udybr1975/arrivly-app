@@ -139,14 +139,14 @@ export default function Settings() {
           </div>
           <div className="flex-1 min-w-0">
             <div className="text-[15px] font-semibold text-[#231d17] truncate">{host?.brand_name ?? 'Bemgu'}</div>
-            <div className="text-[12px] text-[#8a8276] truncate">{email}</div>
+            <div className="text-[12px] text-[#6b6354] truncate">{email}</div>
           </div>
           {showTrial ? (
             <span className="shrink-0 text-[10px] px-2.5 py-1 rounded-full font-medium bg-[#e4f0da] text-[#2a5c0a]">
               Trial · {trialRemaining} days left
             </span>
           ) : (
-            <span className="shrink-0 text-[10px] px-2.5 py-1 rounded-full font-medium bg-[#efece5] text-[#8a8276]">
+            <span className="shrink-0 text-[10px] px-2.5 py-1 rounded-full font-medium bg-[#efece5] text-[#6b6354]">
               {statusLabel}
             </span>
           )}
@@ -182,7 +182,7 @@ export default function Settings() {
             {pushState === 'off' && (
               <>
                 <div className="text-[14px] font-semibold text-[#231d17] mb-1">Notifications are off</div>
-                <p className="text-[12px] text-[#8a8276] leading-relaxed mb-4">
+                <p className="text-[12px] text-[#6b6354] leading-relaxed mb-4">
                   Get alerted on this device when something happens in your account.
                 </p>
                 <button onClick={handleEnable} disabled={busy} className={BTN_SAVE}>
@@ -194,7 +194,7 @@ export default function Settings() {
             {pushState === 'on' && (
               <>
                 <div className="text-[14px] font-semibold text-[#231d17] mb-1">Notifications are on</div>
-                <p className="text-[12px] text-[#8a8276] leading-relaxed mb-4">
+                <p className="text-[12px] text-[#6b6354] leading-relaxed mb-4">
                   You'll receive alerts on this device for account activity.
                 </p>
                 <button onClick={handleDisable} disabled={busy} className={BTN_OUTLINE}>
@@ -206,7 +206,7 @@ export default function Settings() {
             {pushState === 'blocked' && (
               <>
                 <div className="text-[14px] font-semibold text-[#231d17] mb-1">Notifications are blocked</div>
-                <p className="text-[12px] text-[#8a8276] leading-relaxed">
+                <p className="text-[12px] text-[#6b6354] leading-relaxed">
                   Your browser is blocking notifications for this site. To turn them on, open your browser&apos;s site settings, find this address, and allow notifications. Then come back here.
                 </p>
               </>
@@ -217,7 +217,7 @@ export default function Settings() {
         <div className="border-t border-[#e4ddd0] mt-4 pt-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2">
             {NOTIFY_EVENTS.map(label => (
-              <div key={label} className="flex items-center gap-2 text-[12px] text-[#8a8276]">
+              <div key={label} className="flex items-center gap-2 text-[12px] text-[#6b6354]">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#c8a24e] shrink-0" />
                 {label}
               </div>
@@ -241,7 +241,7 @@ export default function Settings() {
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <div className="text-[14px] font-semibold text-[#231d17]">Sign out</div>
-            <p className="text-[12px] text-[#8a8276]">Sign out of Bemgu on this browser.</p>
+            <p className="text-[12px] text-[#6b6354]">Sign out of Bemgu on this browser.</p>
           </div>
           <button onClick={signOut} className={`${BTN_DANGER} shrink-0`}>Sign out</button>
         </div>
@@ -253,8 +253,8 @@ export default function Settings() {
 
       {/* ── 5) FOOTER ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between gap-3 px-1 mt-2">
-        <span className="text-[11px] text-[#8a8276]">Bemgu</span>
-        <div className="flex items-center gap-3 text-[11px] text-[#8a8276]">
+        <span className="text-[11px] text-[#6b6354]">Bemgu</span>
+        <div className="flex items-center gap-3 text-[11px] text-[#6b6354]">
           {/* TODO: real Terms/Privacy/Support URLs */}
           <a href="#" className="hover:text-[#231d17] transition-colors">Terms</a>
           <span className="text-[#cdc6b8]">·</span>

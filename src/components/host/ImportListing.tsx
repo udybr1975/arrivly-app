@@ -490,12 +490,12 @@ export default function ImportListing({
               If you already have a guest guide or house manual, upload it and we'll sort it into
               the right tabs for you. You review every field before anything is saved.
             </p>
-            <p className="text-[12px] text-[#8a8276] mt-2">
+            <p className="text-[12px] text-[#6b6354] mt-2">
               Importing for <span className="font-medium text-[#231d17]">{propertyName}</span> — one
               file, one property. A guest guide works best; a booking-platform export will fill in less.
             </p>
           </div>
-          <button onClick={dismiss} className="text-[11px] text-[#8a8276] hover:text-[#231d17] shrink-0">
+          <button onClick={dismiss} className="text-[11px] text-[#6b6354] hover:text-[#231d17] shrink-0">
             No thanks
           </button>
         </div>
@@ -527,10 +527,10 @@ export default function ImportListing({
               {fileName}
             </span>
           )}
-          <span className="text-[11px] text-[#8a8276]">.docx or .pdf</span>
+          <span className="text-[11px] text-[#6b6354]">.docx or .pdf</span>
         </div>
 
-        <p className="text-[11px] text-[#8a8276] mt-2.5 max-w-[70ch]">
+        <p className="text-[11px] text-[#6b6354] mt-2.5 max-w-[70ch]">
           Your file is read on your device and never uploaded — only the text below is sent to
           Bemgu, to sort it into your tabs. You choose at the end whether we also keep it for your
           guest chat. Nothing is saved until you review it.
@@ -651,10 +651,10 @@ export default function ImportListing({
               return (
                 <div key={tab} className="mt-5">
                   <div className="flex items-center gap-2 mb-2">
-                    <span className="text-[11px] text-[#8a8276]">goes into →</span>
+                    <span className="text-[11px] text-[#6b6354]">goes into →</span>
                     {tabPill(tab)}
                   </div>
-                  <p className="text-[12px] text-[#8a8276] pl-1">
+                  <p className="text-[12px] text-[#6b6354] pl-1">
                     {tab === 'wifi'
                       ? "No WiFi details in this file. Booking-platform exports never include them — add yours in the WiFi tab."
                       : "No check-in times or door code in this file. These are usually sent to guests separately — add yours in the Check-in tab."}
@@ -665,7 +665,7 @@ export default function ImportListing({
             return (
               <div key={tab} className="mt-5">
                 <div className="flex items-center gap-2 mb-2">
-                  <span className="text-[11px] text-[#8a8276]">goes into →</span>
+                  <span className="text-[11px] text-[#6b6354]">goes into →</span>
                   {tabPill(tab)}
                 </div>
                 <div className="space-y-2">
@@ -709,7 +709,7 @@ export default function ImportListing({
                                   careful — this would be visible to ALL guests
                                 </span>
                               )}
-                              {same && <span className="text-[11px] text-[#8a8276]">same as you have</span>}
+                              {same && <span className="text-[11px] text-[#6b6354]">same as you have</span>}
                             </div>
 
                             <div className="grid sm:grid-cols-2 gap-2.5 mt-2">
@@ -744,7 +744,7 @@ export default function ImportListing({
                                 instead.
                               </p>
                             )}
-                            {r.note && <p className="text-[11px] text-[#8a8276] mt-2">{r.note}</p>}
+                            {r.note && <p className="text-[11px] text-[#6b6354] mt-2">{r.note}</p>}
                           </div>
                         </div>
                       </div>
@@ -766,7 +766,7 @@ export default function ImportListing({
                 ))}
               </div>
               {skipped.some(s => s.toLowerCase().includes('host contact')) && (
-                <p className="text-[11px] text-[#8a8276] mt-2">
+                <p className="text-[11px] text-[#6b6354] mt-2">
                   We haven't put your phone number or email into your tabs, so they won't appear on
                   your guest page. If you keep your document for the guest chat below, note it is
                   stored as you wrote it — anything in it can be quoted to a guest with a booking.

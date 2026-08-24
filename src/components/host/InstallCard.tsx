@@ -15,14 +15,14 @@ export default function InstallCard() {
       {isIOSSafari ? (
         <>
           <div className="text-[14px] font-semibold text-[#231d17] mb-1">Install Bemgu on this device</div>
-          <p className="text-[12px] text-[#8a8276] leading-relaxed">
+          <p className="text-[12px] text-[#6b6354] leading-relaxed">
             Tap the Share icon in Safari, then choose &lsquo;Add to Home Screen&rsquo;.
           </p>
         </>
       ) : canInstall ? (
         <>
           <div className="text-[14px] font-semibold text-[#231d17] mb-1">Install Bemgu on this device</div>
-          <p className="text-[12px] text-[#8a8276] leading-relaxed mb-4">
+          <p className="text-[12px] text-[#6b6354] leading-relaxed mb-4">
             Install it like an app — faster access and reliable notifications.
           </p>
           <button
@@ -36,14 +36,14 @@ export default function InstallCard() {
       ) : installed ? (
         <>
           <div className="text-[14px] font-semibold text-[#231d17] mb-1">Bemgu is installed on this device</div>
-          <p className="text-[12px] text-[#8a8276] leading-relaxed">
+          <p className="text-[12px] text-[#6b6354] leading-relaxed">
             You&rsquo;re all set — open Bemgu from your home screen. You can turn on notifications below.
           </p>
         </>
       ) : isChromium ? (
         <>
           <div className="text-[14px] font-semibold text-[#231d17] mb-1">Install Bemgu on this device</div>
-          <p className="text-[12px] text-[#8a8276] leading-relaxed mb-4">
+          <p className="text-[12px] text-[#6b6354] leading-relaxed mb-4">
             If you don&rsquo;t see an install prompt here, open the browser menu (&lsquo;⋮&rsquo;, top-right) and
             choose &lsquo;Add to Home screen&rsquo; or &lsquo;Install app&rsquo;. That installs Bemgu the same way.
           </p>
@@ -63,7 +63,7 @@ export default function InstallCard() {
       ) : (
         <>
           <div className="text-[14px] font-semibold text-[#231d17] mb-1">Install Bemgu on this device</div>
-          <p className="text-[12px] text-[#8a8276] leading-relaxed mb-4">
+          <p className="text-[12px] text-[#6b6354] leading-relaxed mb-4">
             For one-tap install, open this dashboard in Chrome or Edge, then use the browser menu → Install.
           </p>
           <button

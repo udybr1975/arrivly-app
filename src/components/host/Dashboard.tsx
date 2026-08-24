@@ -68,7 +68,7 @@ function CardMenu({ apt, toggling, discarding, canDiscard, onToggle, onDiscard }
         aria-expanded={open}
         aria-label="More actions"
         onClick={() => setOpen(o => !o)}
-        className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-[#e4ddd0] text-[#8a8276] hover:bg-[#f0ede6] transition-colors"
+        className="flex h-[34px] w-[34px] items-center justify-center rounded-[9px] border border-[#e4ddd0] text-[#6b6354] hover:bg-[#f0ede6] transition-colors"
       >
         <MoreHorizontal size={16} />
       </button>
@@ -421,7 +421,7 @@ export default function Dashboard() {
             </button>
             <button
               onClick={() => void dismissWelcome()}
-              className="w-full text-[12px] text-center text-[#8a8276] hover:text-[#231d17] py-1.5 bg-transparent border-none cursor-pointer transition-colors"
+              className="w-full text-[12px] text-center text-[#6b6354] hover:text-[#231d17] py-1.5 bg-transparent border-none cursor-pointer transition-colors"
             >
               Maybe later
             </button>
@@ -434,7 +434,7 @@ export default function Dashboard() {
         <header className="mb-7">
           <div className="text-[10.5px] uppercase tracking-[.1em] text-[#a79e8e]">{todayLabel}</div>
           <h1 className="text-[25px] font-['Fraunces'] font-light text-[#231d17] mt-1">{greeting}</h1>
-          <p className="text-[13px] text-[#8a8276] mt-1.5">
+          <p className="text-[13px] text-[#6b6354] mt-1.5">
             {summaryClauses.length === 0
               ? 'No arrivals or departures today.'
               : summaryClauses.map((c, i) => (
@@ -479,7 +479,7 @@ export default function Dashboard() {
                 <BeYourGuestCard url={`${ARRIVLY_CONFIG.appUrl}/guest?apt=${demoToken.aptId}&token=${demoToken.token}`} />
               </div>
             ) : (
-              <div className="mb-8 rounded-[14px] border border-dashed border-[#e4ddd0] bg-[#fffdf9] p-5 text-[12.5px] text-[#8a8276]">
+              <div className="mb-8 rounded-[14px] border border-dashed border-[#e4ddd0] bg-[#fffdf9] p-5 text-[12.5px] text-[#6b6354]">
                 Your live guest page is being prepared — refresh in a moment to preview it.
               </div>
             )}
@@ -523,7 +523,7 @@ export default function Dashboard() {
                     <div className="text-[14px] font-semibold text-[#231d17]">
                       {nextStep.apt.name} is {stepsLeft} step{stepsLeft === 1 ? '' : 's'} from ready
                     </div>
-                    <div className="text-[12px] text-[#8a8276] mt-0.5 truncate">
+                    <div className="text-[12px] text-[#6b6354] mt-0.5 truncate">
                       Still to add: {nextStep.missing.join(', ')}
                     </div>
                   </div>
@@ -558,7 +558,7 @@ export default function Dashboard() {
                       <t.Icon size={16} />
                     </div>
                     <div className={`text-[26px] font-['Fraunces'] font-light leading-none ${zero ? 'text-[#cdc6b8]' : 'text-[#231d17]'}`}>{t.value}</div>
-                    <div className="text-[11px] text-[#8a8276] mt-1.5">{t.label}</div>
+                    <div className="text-[11px] text-[#6b6354] mt-1.5">{t.label}</div>
                   </Link>
                 )
               })}
@@ -608,7 +608,7 @@ export default function Dashboard() {
                         <QrCode size={14} />
                       </span>
                       <span className={`absolute top-2.5 right-2.5 text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                        apt.is_visible ? 'bg-[#eaf0dd] text-[#5d7c34]' : 'bg-[#ece7dc] text-[#8a8276]'
+                        apt.is_visible ? 'bg-[#eaf0dd] text-[#5d7c34]' : 'bg-[#ece7dc] text-[#6b6354]'
                       }`}>
                         {apt.is_visible ? 'Live' : 'Draft'}
                       </span>
@@ -618,7 +618,7 @@ export default function Dashboard() {
                     <div className="flex flex-1 flex-col p-4">
                       <div className="text-[14px] font-semibold text-[#231d17] truncate">{apt.name}</div>
                       {apt.neighborhood && (
-                        <div className="mt-0.5 flex items-center gap-1 text-[12px] text-[#8a8276]">
+                        <div className="mt-0.5 flex items-center gap-1 text-[12px] text-[#6b6354]">
                           <MapPin size={12} className="shrink-0" />
                           <span className="truncate">{apt.neighborhood}</span>
                         </div>
@@ -630,7 +630,7 @@ export default function Dashboard() {
                       {/* readiness */}
                       <div className="mt-3.5">
                         <div className="flex items-center justify-between text-[11px] mb-1">
-                          <span className={ready ? 'inline-flex items-center gap-1 font-medium text-[#5d7c34]' : 'text-[#8a8276]'}>
+                          <span className={ready ? 'inline-flex items-center gap-1 font-medium text-[#5d7c34]' : 'text-[#6b6354]'}>
                             {ready && <Check size={12} />}
                             {ready ? 'Ready' : 'Setup'}
                           </span>
@@ -716,7 +716,7 @@ export default function Dashboard() {
                   <span className="flex h-11 w-11 items-center justify-center rounded-full bg-[rgba(200,162,78,0.14)] text-[#a8842f]">
                     <Plus size={20} />
                   </span>
-                  <span className="text-[13px] font-medium text-[#8a8276]">Add another property</span>
+                  <span className="text-[13px] font-medium text-[#6b6354]">Add another property</span>
                   {effectiveCap !== null && (
                     <span className="text-[11px] text-[#b3aa9b]">{list.length} of {effectiveCap} used</span>
                   )}

@@ -193,7 +193,7 @@ export default function KeepDemoModal({ open, onClose, tier }: Props) {
             type="button"
             onClick={onClose}
             disabled={loading || done}
-            className="w-full text-center text-[13px] font-medium text-[#8a8276] hover:text-[#231d17] transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/40 rounded py-1"
+            className="w-full text-center text-[13px] font-medium text-[#6b6354] hover:text-[#231d17] transition-colors disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/40 rounded py-1"
           >
             Not yet
           </button>

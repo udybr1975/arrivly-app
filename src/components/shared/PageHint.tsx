@@ -39,7 +39,7 @@ export default function PageHint() {
       <div className={`mb-4 ${enterClass}`}>
         <button
           onClick={() => restoreHint(module.id)}
-          className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#8a8276] hover:text-[#a8842f] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e] rounded px-1 py-0.5"
+          className="inline-flex items-center gap-1.5 text-[12px] font-medium text-[#6b6354] hover:text-[#a8842f] transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e] rounded px-1 py-0.5"
         >
           <span aria-hidden="true">💡</span>
           Show page tips
@@ -60,7 +60,7 @@ export default function PageHint() {
           <div className="font-['Fraunces'] text-[15px] text-[#231d17] leading-tight">
             {module.title}
           </div>
-          <p className="mt-1 text-[12.5px] leading-[1.45] text-[#8a8276]">{module.summary}</p>
+          <p className="mt-1 text-[12.5px] leading-[1.45] text-[#6b6354]">{module.summary}</p>
           <div className="mt-2.5 flex items-center gap-2">
             <button
               onClick={() => openGuide(module.id)}
@@ -70,7 +70,7 @@ export default function PageHint() {
             </button>
             <button
               onClick={() => dismissHint(module.id)}
-              className="inline-flex items-center rounded-[8px] border border-[#e7d6ad] text-[#8a8276] hover:text-[#231d17] hover:border-[#c8a24e] text-[12px] font-medium px-3 py-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
+              className="inline-flex items-center rounded-[8px] border border-[#e7d6ad] text-[#6b6354] hover:text-[#231d17] hover:border-[#c8a24e] text-[12px] font-medium px-3 py-1.5 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
             >
               Got it
             </button>

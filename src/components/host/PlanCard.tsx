@@ -78,11 +78,13 @@ export default function PlanCard({
           // the name's `tracking-[.14em]` emits a trailing letter-space, so a raw `gap-2`
           // reads ~9.5px before the descriptor against a true 8px before the pill.
           //
-          // COLOUR — a DELIBERATE departure from this file's usual `#8a8276` muted token,
-          // which is 3.73:1 on the `#fffdf9` card and so ALREADY below WCAG AA (4.5:1)
-          // where it carries `valueProp` at 12.5px — a pre-existing residual, since 12.5px
-          // never qualified for the 3:1 large-text allowance either. At 10.5px there is
-          // not even an argument to make. `#6b6354` is 5.84:1 and already in the palette
+          // COLOUR — `#6b6354`, which is now this file's muted token rather than a departure
+          // from it. It was chosen here first, ahead of the 24 Aug 2026 sweep: the former
+          // `#8a8276` is 3.73:1 on the `#fffdf9` card, below WCAG AA (4.5:1), and 12.5px
+          // never qualified for the 3:1 large-text allowance either. At 10.5px there was not
+          // even an argument to make. THE RESIDUAL THIS COMMENT ONCE NAMED — `valueProp`
+          // carrying the failing token at 12.5px — WAS CLOSED BY THAT SWEEP.
+          // `#6b6354` is 5.84:1 and already in the palette
           // (`src/components/demo/UpgradeWall.tsx:62`). This is the string that explains
           // the €49 tier, so it has to be readable.
           // Ratios measured, not estimated; the tier NAME beside it (`#a8842f`, 3.44:1)
@@ -132,7 +134,7 @@ export default function PlanCard({
       {/* Value prop */}
       <p
         className={`text-[12.5px] leading-[1.5] min-h-[38px] mb-3 ${
-          featured ? 'text-[#b9b2a4]' : 'text-[#8a8276]'
+          featured ? 'text-[#b9b2a4]' : 'text-[#6b6354]'
         }`}
       >
         {valueProp}

@@ -31,7 +31,7 @@ export default function BeYourGuestCard({ url }: { url: string }) {
           <div className="rounded-[12px] border border-[#e4ddd0] bg-white p-3">
             <canvas ref={canvasRef} aria-label="QR code for your demo guest page" style={{ width: 132, height: 132 }} />
           </div>
-          <span className="inline-flex items-center gap-1 text-[11px] text-[#8a8276]">
+          <span className="inline-flex items-center gap-1 text-[11px] text-[#6b6354]">
             <Smartphone size={12} className="shrink-0" />
             Scan with your phone
           </span>

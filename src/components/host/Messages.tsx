@@ -62,7 +62,7 @@ const BTN_SAVE = 'bg-[#c8a24e] text-[#16100d] px-5 py-2.5 rounded-[10px] text-xs
 
 const PILL_BASE = 'px-3.5 py-1.5 rounded-[9px] text-xs font-medium transition-colors border'
 function pill(active: boolean) {
-  return `${PILL_BASE} ${active ? 'bg-[#1c1c1a] text-[#f0ede6] border-[#1c1c1a]' : 'bg-transparent border-[#e4ddd0] text-[#8a8276] hover:bg-[#f0ede6]'}`
+  return `${PILL_BASE} ${active ? 'bg-[#1c1c1a] text-[#f0ede6] border-[#1c1c1a]' : 'bg-transparent border-[#e4ddd0] text-[#6b6354] hover:bg-[#f0ede6]'}`
 }
 
 function isBlockSource(source: string | null): boolean {
@@ -139,9 +139,9 @@ function StatusChip({ temporal, status }: { temporal: Temporal; status?: string 
     return <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#e4f0da] text-[#2a5c0a]">In-house</span>
   }
   if (temporal === 'past') {
-    return <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#efece5] text-[#8a8276]">Checked out</span>
+    return <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#efece5] text-[#6b6354]">Checked out</span>
   }
-  return <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#efece5] text-[#8a8276]">Upcoming</span>
+  return <span className="text-[10px] px-2 py-0.5 rounded-full font-medium bg-[#efece5] text-[#6b6354]">Upcoming</span>
 }
 
 export default function Messages() {
@@ -516,7 +516,7 @@ export default function Messages() {
           <div className="flex flex-col gap-2">
             <div className={`${CARD} text-center`}>
               <div className="text-[#cdc6b8] text-3xl mb-2">💬</div>
-              <div className="text-[12px] text-[#8a8276]">
+              <div className="text-[12px] text-[#6b6354]">
                 {tab === 'open'
                   ? 'No open conversations right now.'
                   : tab === 'past'
@@ -581,9 +581,9 @@ export default function Messages() {
                         {!c.hasMessages ? (
                           <span className="text-[#b3aa9b] italic">No messages yet — start the chat</span>
                         ) : c.lastSenderRole === 'host' ? (
-                          <span className="text-[#8a8276]"><span className="font-semibold text-[#a79e8e]">You:</span> {c.lastBody}</span>
+                          <span className="text-[#6b6354]"><span className="font-semibold text-[#a79e8e]">You:</span> {c.lastBody}</span>
                         ) : (
-                          <span className="text-[#8a8276]">{c.lastBody}</span>
+                          <span className="text-[#6b6354]">{c.lastBody}</span>
                         )}
                       </div>
                     </div>
@@ -604,7 +604,7 @@ export default function Messages() {
           <div className={`${CARD} flex items-center justify-center min-h-[300px]`}>
             <div className="text-center">
               <div className="text-[#cdc6b8] text-3xl mb-2">✉️</div>
-              <div className="text-[12px] text-[#8a8276]">Select a conversation to read and reply.</div>
+              <div className="text-[12px] text-[#6b6354]">Select a conversation to read and reply.</div>
             </div>
           </div>
         ) : (
@@ -622,7 +622,7 @@ export default function Messages() {
                   setThread([])
                   setMobileView('list')
                 }}
-                className="md:hidden text-[11px] text-[#8a8276] hover:text-[#231d17] transition-colors shrink-0 mt-1"
+                className="md:hidden text-[11px] text-[#6b6354] hover:text-[#231d17] transition-colors shrink-0 mt-1"
               >
                 ← Back
               </button>

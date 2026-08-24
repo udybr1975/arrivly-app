@@ -1455,7 +1455,7 @@ export default function PropertySetup() {
     <div className="max-w-3xl font-['Inter']">
       <Link
         to="/dashboard"
-        className="inline-flex items-center gap-1 text-[12px] text-[#8a8276] hover:text-[#231d17] transition-colors mb-3"
+        className="inline-flex items-center gap-1 text-[12px] text-[#6b6354] hover:text-[#231d17] transition-colors mb-3"
       >
         ← Back to properties
       </Link>
@@ -1578,7 +1578,7 @@ export default function PropertySetup() {
               className={`px-3.5 py-1.5 rounded-[9px] text-xs font-medium transition-colors border ${
                 tab === t.key
                   ? 'bg-[#1c1c1a] text-[#f0ede6] border-[#1c1c1a]'
-                  : 'bg-transparent border-[#e4ddd0] text-[#8a8276] hover:bg-[#f0ede6]'
+                  : 'bg-transparent border-[#e4ddd0] text-[#6b6354] hover:bg-[#f0ede6]'
               }${locked ? ' opacity-40 cursor-not-allowed' : ''}`}
             >
               <span className="inline-flex items-center gap-1.5">
@@ -1651,7 +1651,7 @@ export default function PropertySetup() {
               Keep the current address
             </button>
           </div>
-          <p className="mt-2.5 text-[11.5px] text-[#8a8276]">
+          <p className="mt-2.5 text-[11.5px] text-[#6b6354]">
             Moved this property for good?{' '}
             <a
               href="mailto:hello@bemgu.app?subject=Moved%20property%20address"
@@ -1727,7 +1727,7 @@ export default function PropertySetup() {
                 {heroImageUrl && (
                   <button type="button" onClick={removeHero} disabled={uploadingHero} className="text-[11px] text-[#8a1a1a] hover:underline bg-transparent border-none cursor-pointer text-left disabled:opacity-40">Remove</button>
                 )}
-                <p className="text-[10.5px] text-[#8a8276] max-w-[200px] leading-snug">PNG, JPG or WebP · under 5 MB · shown as the banner at the top of your guest page. Leave empty and we'll use a photo of your city.</p>
+                <p className="text-[10.5px] text-[#6b6354] max-w-[200px] leading-snug">PNG, JPG or WebP · under 5 MB · shown as the banner at the top of your guest page. Leave empty and we'll use a photo of your city.</p>
               </div>
             </div>
           </div>
@@ -1855,7 +1855,7 @@ export default function PropertySetup() {
             <h2 className={HEADING}>Check-in info</h2>
             <span className="text-[10px] bg-[#f7e3e3] text-[#8a1a1a] px-2 py-0.5 rounded-full font-medium">Private</span>
           </div>
-          <p className="text-[11px] text-[#8a8276]">Only shown to guests with a verified booking token.</p>
+          <p className="text-[11px] text-[#6b6354]">Only shown to guests with a verified booking token.</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={LABEL}>Check-in from</label>
@@ -1905,7 +1905,7 @@ export default function PropertySetup() {
       {tab === 'rules' && (
         <div className={`${CARD} space-y-4`}>
           <h2 className={HEADING}>House rules</h2>
-          <p className="text-[11px] text-[#8a8276]">
+          <p className="text-[11px] text-[#6b6354]">
             Paste your house rules. When you save, they're automatically rewritten in a warm, friendly tone (no bullet points) and stored.
           </p>
           <div>
@@ -1929,7 +1929,7 @@ export default function PropertySetup() {
         <div className="space-y-3.5">
           <div className={`${CARD} space-y-3.5`}>
             <h2 className={HEADING}>Extras</h2>
-            <p className="text-[11px] text-[#8a8276]">
+            <p className="text-[11px] text-[#6b6354]">
               Paste everything at once — AI identifies topics and splits into categories.{' '}
               <strong className="text-[#6b6354]">Importing replaces your current extras.</strong>
             </p>
@@ -1987,14 +1987,14 @@ export default function PropertySetup() {
       {/* ── Tab 6: My picks ───────────────────────────────────────────────── */}
       {tab === 'picks' && (
         <div className="space-y-3.5">
-          <p className="text-[11px] text-[#8a8276]">
+          <p className="text-[11px] text-[#6b6354]">
             Add your favourite local places. They appear in the Explore tab on the guest page with a Navigate button.
           </p>
 
           {/* AI enrichment card */}
           <div className={`${CARD} space-y-3.5`}>
             <h2 className={HEADING}>✦ Add places with AI</h2>
-            <p className="text-[11px] text-[#8a8276] leading-relaxed">
+            <p className="text-[11px] text-[#6b6354] leading-relaxed">
               Paste your favourites in free text — AI identifies each place, locates it on the map, and categorises it for you.
             </p>
             <textarea
@@ -2107,7 +2107,7 @@ export default function PropertySetup() {
                       <span className="text-[10px] bg-[#f0e8ff] text-[#4a0e8f] px-2 py-0.5 rounded-full">{pick.category}</span>
                       {pick.lat !== null && <span className="text-[10px] text-[#4a6128]">📍</span>}
                     </div>
-                    {pick.address && <div className="text-[11px] text-[#8a8276]">{pick.address}</div>}
+                    {pick.address && <div className="text-[11px] text-[#6b6354]">{pick.address}</div>}
                     {pick.note && <div className="text-[11px] text-[#b3aa9b] italic">{pick.note}</div>}
                   </div>
                   <button
@@ -2138,7 +2138,7 @@ export default function PropertySetup() {
                       ? `Updated ${timeAgo(guideGeneratedAt)}`
                       : 'Not generated yet'}
                 </div>
-                <p className="text-[11px] text-[#8a8276] mt-0.5">Refreshes automatically every month.</p>
+                <p className="text-[11px] text-[#6b6354] mt-0.5">Refreshes automatically every month.</p>
               </div>
               <button
                 onClick={refreshGuide}
@@ -2169,7 +2169,7 @@ export default function PropertySetup() {
                       : 'Could not refresh — please try again'
                     : 'This week’s events for your city'}
                 </div>
-                <p className="text-[11px] text-[#8a8276] mt-0.5">Refreshes automatically while guests are staying.</p>
+                <p className="text-[11px] text-[#6b6354] mt-0.5">Refreshes automatically while guests are staying.</p>
               </div>
               <button
                 onClick={refreshEvents}
@@ -2189,7 +2189,7 @@ export default function PropertySetup() {
           {/* Calendar sync */}
           <div className={`${CARD} space-y-3.5`}>
             <h2 className={HEADING}>Calendar sync</h2>
-            <p className="text-[11px] text-[#8a8276]">
+            <p className="text-[11px] text-[#6b6354]">
               Paste your Airbnb or Vrbo calendar links, one per line. We check them daily and block those dates automatically.
             </p>
             <textarea
@@ -2208,7 +2208,7 @@ export default function PropertySetup() {
               </button>
             </div>
             {syncMsg && (
-              <p className={`text-[11px] ${syncMsg === SYNC_ERR ? 'text-[#8a1a1a]' : 'text-[#8a8276]'}`}>
+              <p className={`text-[11px] ${syncMsg === SYNC_ERR ? 'text-[#8a1a1a]' : 'text-[#6b6354]'}`}>
                 {syncMsg}
               </p>
             )}
@@ -2217,7 +2217,7 @@ export default function PropertySetup() {
           {/* Guest names from Airbnb */}
           <div className={`${CARD} space-y-3.5`}>
             <h2 className={HEADING}>Guest names from Airbnb</h2>
-            <p className="text-[11px] text-[#8a8276]">
+            <p className="text-[11px] text-[#6b6354]">
               Airbnb calendars don't include guest names. Download your reservations CSV from Airbnb and upload it here — we'll add each guest's first name to the matching booking. Names then stay put through every future sync.
             </p>
             <div>
@@ -2227,7 +2227,7 @@ export default function PropertySetup() {
               </label>
             </div>
             {csvMsg && (
-              <p className={`text-[11px] ${csvMsg === CSV_ERR ? 'text-[#8a1a1a]' : 'text-[#8a8276]'}`}>
+              <p className={`text-[11px] ${csvMsg === CSV_ERR ? 'text-[#8a1a1a]' : 'text-[#6b6354]'}`}>
                 {csvMsg}
               </p>
             )}
@@ -2254,7 +2254,7 @@ export default function PropertySetup() {
                         <div className="w-9 h-9 rounded-[8px] border border-[#e4ddd0] shrink-0" style={{ backgroundColor: brandDefaultColor }} />
                         <div className="min-w-0">
                           <div className="text-[13px] text-[#231d17] font-medium">Using your brand default</div>
-                          <div className="text-[11px] text-[#8a8276] font-mono">{brandDefaultColor}</div>
+                          <div className="text-[11px] text-[#6b6354] font-mono">{brandDefaultColor}</div>
                         </div>
                       </div>
                       <button onClick={() => setOverrideOpen(true)} className={BTN_OUTLINE}>
@@ -2265,7 +2265,7 @@ export default function PropertySetup() {
                     /* OVERRIDE editor (either an existing override, or just revealed from inherit) */
                     <>
                       {!isOverriding && (
-                        <p className="text-[11px] text-[#8a8276] -mt-1">
+                        <p className="text-[11px] text-[#6b6354] -mt-1">
                           Pick a colour just for this property. It won't change your brand default.
                         </p>
                       )}
@@ -2347,7 +2347,7 @@ export default function PropertySetup() {
                     </>
                   )}
 
-                  <p className="text-[10.5px] text-[#8a8276] pt-1 border-t border-[#f0ede6]">
+                  <p className="text-[10.5px] text-[#6b6354] pt-1 border-t border-[#f0ede6]">
                     Logo, brand name and your default colour live in{' '}
                     <Link to="/dashboard/branding" className="text-[#a8842f] underline underline-offset-2 hover:text-[#c8a24e]">Branding</Link>.
                   </p>

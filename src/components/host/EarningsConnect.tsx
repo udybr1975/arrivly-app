@@ -154,11 +154,11 @@ export default function EarningsConnect() {
 
   return (
     <div className="max-w-2xl font-['Inter']">
-      <Link to="/dashboard/earnings" className="inline-flex items-center gap-1 text-[12px] text-[#8a8276] hover:text-[#231d17] transition-colors mb-3">
+      <Link to="/dashboard/earnings" className="inline-flex items-center gap-1 text-[12px] text-[#6b6354] hover:text-[#231d17] transition-colors mb-3">
         <ArrowLeft size={14} /> Back to Earnings
       </Link>
       <h1 className="text-[22px] font-['Fraunces'] font-light text-[#231d17]">Connect your marketplaces</h1>
-      <p className="text-[12px] text-[#8a8276] mt-1 mb-5 max-w-lg leading-relaxed">
+      <p className="text-[12px] text-[#6b6354] mt-1 mb-5 max-w-lg leading-relaxed">
         Connect your own GetYourGuide and Tiqets accounts and those marketplaces pay you directly.
         Viator experiences stay on your pages and earn for Bemgu. Until you connect one, your pages
         keep working on Bemgu's links — nothing breaks.
@@ -243,7 +243,7 @@ function ProviderSection({
             <Check size={11} /> Connected
           </span>
         ) : (
-          <span className="text-[9.5px] font-semibold uppercase tracking-[.06em] bg-[#efece5] text-[#8a8276] px-2 py-0.5 rounded-full">
+          <span className="text-[9.5px] font-semibold uppercase tracking-[.06em] bg-[#efece5] text-[#6b6354] px-2 py-0.5 rounded-full">
             Not connected
           </span>
         )}
@@ -261,7 +261,7 @@ function ProviderSection({
               Open portal <ExternalLink size={11} />
             </a>
           </div>
-          <p className="text-[11px] text-[#8a8276] mt-2.5">
+          <p className="text-[11px] text-[#6b6354] mt-2.5">
             Your guest links now carry this ID and {meta.label} pays you directly.
           </p>
           {!confirmDisconnect ? (
@@ -291,7 +291,7 @@ function ProviderSection({
         <div className="flex flex-col gap-4">
           {/* Step 1 — Apply */}
           <Step n={1} title="Apply to the affiliate programme">
-            <p className="text-[11.5px] text-[#8a8276] leading-relaxed mb-2">
+            <p className="text-[11.5px] text-[#6b6354] leading-relaxed mb-2">
               Approval usually takes 2–5 business days. You can come back and finish this once you're approved.
             </p>
             <div className="flex items-center gap-3 flex-wrap">
@@ -310,7 +310,7 @@ function ProviderSection({
 
           {/* Step 2 — Find your ID */}
           <Step n={2} title="Find your partner ID">
-            <p className="text-[11.5px] text-[#8a8276] leading-relaxed">{meta.findIdCopy}</p>
+            <p className="text-[11.5px] text-[#6b6354] leading-relaxed">{meta.findIdCopy}</p>
           </Step>
 
           {/* Step 3 — Paste & connect */}
