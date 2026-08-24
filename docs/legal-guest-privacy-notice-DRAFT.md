@@ -111,6 +111,7 @@ To keep the service working and stop it being abused, we keep short-lived server
 | Stay dates and booking reference | Kept in your host's calendar, **with no name attached** once the above is erased |
 | The booking reference and first name your browser keeps on your device | **Cleared when your stay ends; expires 30 days after check-in** |
 | Server logs | **[CONFIRM]** |
+| The page-open ping sent to our alerts service (§4) | **[CONFIRM — how long messages persist on ntfy.sh. NOT covered by the server-logs row above: it is a different service with its own retention, so answering that row does not answer this one.]** |
 
 "Permanently erased" means the record is deleted, not hidden. Encrypted backups run on a rolling cycle, so a deleted record may briefly persist in a backup. **[CONFIRM — state the backup window as a number]**
 
