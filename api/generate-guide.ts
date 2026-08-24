@@ -18,6 +18,10 @@ const GUIDE_COOLDOWN_MS = 6 * 60 * 60 * 1000  // 6h server floor; UI shows 24h
 const isoNoMs = (d: Date): string => d.toISOString().replace(/\.\d{3}Z$/, 'Z')
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // Stamped FIRST so the blurb's verification legs can be skipped when the guide has already
+  // eaten the budget. 140s, not 150s: the deadline has to be reached BEFORE the platform kills
+  // the function, or it protects nothing. Derivation in _lib/greeting.ts and _lib/guide.ts.
+  const deadlineMs = Date.now() + 140_000
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
   const authHeader = req.headers.authorization
@@ -188,7 +192,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         neighborhood: apt.neighborhood,
         city: apt.city,
         country: apt.country,
-      })
+        // REQUIRED by the blurb's proximity check — without coordinates every named place is
+        // unverifiable and the blurb falls back to naming none. Already in the select above.
+        lat: apt.lat,
+        lng: apt.lng,
+      }, deadlineMs)
     } catch (e) {
       console.warn('[generate-guide] blurb failed (non-fatal)', scrubErr(e, 120))
     }

@@ -25,6 +25,12 @@ const MAX_PLACE_KM = 25
 // Worst case with the retry (44.9s main + 25s retry + ~18s geocoding + generate-guide.ts's
 // ~24.6s blurb call) ≈ 112.5s; without it (2×40s + 0.6s + 18s + 24.6s) ≈ 123.2s. Both inside
 // the 150s maxDuration. A slow main call skips the bonus pass rather than risking a timeout.
+// RE-DERIVED 24 Aug 2026 — the blurb leg is NO LONGER a flat 24.6s. It now verifies the places
+// it names: worst case 24.6s (call) + 10.65s (3 geocodes x geo.ts's 550ms gate + 3s abort) +
+// 12s (single-shot regeneration) = 47.25s, i.e. +22.65s, giving ~145.9s against the 150s
+// ceiling. THE ARITHMETIC ALONE IS NOT THE PROTECTION — ~4s of margin is too thin to trust, so
+// generate-guide.ts stamps a 140s deadline and _lib/greeting.ts SKIPS both extra legs when the
+// budget is gone, degrading to a single place-free call. Re-derive both comments together.
 const RETRY_MAX_ELAPSED_MS = 45000
 const RETRY_TIMEOUT_MS = 25000
 // UTC, day-granular — deterministic regardless of server locale (mirrors city-events.ts).
@@ -525,7 +531,11 @@ async function generateGuideGemini(
  *
  * TIMING (B2.1, Sight is now tiered): WORST case 8 sequential POI queries — five untiered
  * categories plus all three Sight tiers — x (3s timeout + 250ms gate) ~= 26s, + Groq prose
- * 2 attempts x 25s, + the caller's blurb 2 x 12s ~= 100s, still inside the 150s maxDuration.
+ * 2 attempts x 25s, + the caller's blurb ~= 100s, still inside the 150s maxDuration.
+ * RE-DERIVED 24 Aug 2026 with the rest of this file: the blurb leg is no longer 2 x 12s. Its
+ * worst case is 24.6s + 10.65s verification + 12s single-shot regeneration = 47.25s, giving
+ * ~122.7s here — still inside 150s, and this is the DEFAULT path (resolveProvider('guide')
+ * falls through to groq), so it is the one that matters most.
  * COMMON case stays 6-7 queries, because Tiers 2-3 are skipped once Tier 1 fills the five slots.
  *
  * Failure contract is identical to the Gemini path: placeCount === 0 means NO upsert, so a bad

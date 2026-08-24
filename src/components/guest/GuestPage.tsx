@@ -941,7 +941,8 @@ export default function GuestPage() {
             </div>
           )}
 
-          {/* Message host directly — same trigger as the More-tab messages button */}
+          {/* Message host directly. NOT "the same trigger as the More-tab button" — that card is
+              preview-only and disabled; this is one of only two live entry points. */}
           {tokenParam && (
             <div className="max-w-lg mx-auto px-6 pb-2">
               <button
@@ -1683,7 +1684,14 @@ export default function GuestPage() {
           accentColor={accentColor}
           brandName={brandName}
           guestName={guestName}
-          onClose={() => { setShowMessages(false); setActiveTab('more') }}
+          // CLOSE RETURNS TO HOME. This used to set 'more', which is the reported bug. MEASURED,
+          // not assumed: `setShowMessages(true)` occurs at exactly TWO live sites — the Home-tab
+          // card ABOVE and the `&msg=1` push deep-link — and NEITHER is the More tab. (The
+          // "Message your host" card in the More tab exists only inside the `preview &&` branch
+          // and is `disabled`, so it is an owner-facing mock, not an entry point.) The Home card
+          // opens the overlay WITHOUT changing tabs, so a guest arriving from Home was dropped on
+          // Settings — a tab they never chose. Home is correct from both real entry points.
+          onClose={() => { setShowMessages(false); setActiveTab('home') }}
         />
       )}
 

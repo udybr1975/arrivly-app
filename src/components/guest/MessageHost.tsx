@@ -174,12 +174,21 @@ export default function MessageHost({ apartmentId, token, accentColor, brandName
             </p>
           </div>
         </div>
+        {/* CLOSE — LABELLED, NOT A BARE ICON, and deliberately a CREAM PILL rather than the
+            header's white-on-accent treatment. Reported: guests could not find the way out.
+            CONTRAST IS COMPUTED, NOT EYEBALLED, and the cream is chosen precisely BECAUSE it
+            can be computed: `accentColor` is host-configurable to any hex, so white-on-accent
+            has no verifiable ratio at build time — measured, white on a pale accent such as
+            #e7d6ad is 1.44:1, i.e. invisible, which is the very failure being fixed. Ink
+            #231d17 on cream #fffdf9 is 16.41:1 whatever the host picks, and the pill also
+            reads as the one non-accent element in the header. Tap target 44px (h-11 / min-w-11),
+            the WCAG 2.5.5 floor. */}
         <button
           onClick={onClose}
-          aria-label="Close"
-          className="w-8 h-8 rounded-full bg-white/15 flex items-center justify-center border-none cursor-pointer hover:bg-white/25 transition-colors"
+          aria-label="Close messages"
+          className="h-11 min-w-11 px-3.5 inline-flex items-center justify-center gap-1.5 rounded-full bg-[#fffdf9] text-[#231d17] text-[13px] font-semibold border-none cursor-pointer hover:bg-white transition-colors"
         >
-          <X size={16} className="text-white" />
+          <X size={16} /> Close
         </button>
       </div>
 
