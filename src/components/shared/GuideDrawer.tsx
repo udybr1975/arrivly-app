@@ -355,7 +355,24 @@ function AskPanel({ reportFocus }: { reportFocus?: (focused: boolean) => void })
   return (
     <div
       role="tabpanel"
-      aria-label="Ask Bemgu"
+      /* The REGION's accessible name carries the disclosure too, not just the visible label at
+         the top of the panel. Without this a screen-reader user focusing the panel heard "Ask
+         Bemgu, tab panel" while sighted users read "AI assistant" pinned above the thread — the
+         obligation was discharged in one modality and not the other.
+         WHY `aria-label` AND NOT `aria-labelledby`, which is what the ARIA APG prescribes for a
+         tabpanel: under APG the panel takes its name from its controlling tab, which here would
+         be the bare word "Ask" — a name that cannot carry the disclosure, which is the entire
+         point. (The tab and panel are not id/aria-controls wired anyway, so aria-labelledby is
+         not currently reachable.) DO NOT "correct" this back to the APG shape: that silently
+         deletes the Art. 50 name.
+         DELIBERATELY NOT REPEATED on the input below (aria-label="Ask Bemgu a question"): the
+         panel is itself in the tab order and precedes the input, so a keyboard user cannot reach
+         the field without passing the named region, and a virtual-cursor user reads the visible
+         label first. Doubling it would cost every AT user a repetition to buy nothing.
+         BLOCK COMMENT, NOT `//`, ON PURPOSE: both are valid in JSX attribute position, but a
+         `//` here runs to end of line — if a formatter or a careless edit ever joined it with
+         the next line, the attribute would vanish AND THE BUILD WOULD STAY GREEN. */
+      aria-label="Ask Bemgu — AI assistant"
       tabIndex={0}
       className="flex-1 min-h-0 flex flex-col focus:outline-none"
     >
