@@ -450,6 +450,17 @@ values — do not change without an explicit decision.**
 
 ### Client & API conventions
 
+- **EVERY AI CHAT SURFACE CARRIES A PERSISTENT "AI assistant" LABEL IN FIXED INK** — never the
+  host accent and never white-on-accent, because a host-typed hex has no verifiable ratio
+  (measured: 1.44:1 white on a pale accent, 1.38:1 accent-as-text). Three surfaces are labelled
+  (`guest-chat`, `welcome-chat`, `guide-assistant`); **a fourth inherits the obligation, and
+  "host-facing" is NOT an Art. 50 carve-out.**
+- **BLURB PLACE-CLAIMS ARE GEOCODE-VERIFIED, FAIL-CLOSED** — every place named in a
+  `greeting_blurb` is geocoded and distance-checked at ≤1.5km, a geocode failure counts as a
+  failure, and the fallback names no places. **Do not bypass this in a future `greeting.ts`
+  edit:** two shipped blurbs claimed ~3km and ~2.5km landmarks as "a stone's throw" and "just
+  steps".
+
 - **Supabase Storage rejects the host's gotrue user JWT on this project.** Never upload with an anon/host session — mint a server-side signed upload URL via `api/create-upload-url.ts` (service-role) and use `uploadToSignedUrl`. Also lifts the Vercel 4.5 MB body limit. Evidence in docs/learnings.md.
 
 - **Calendar/date math must use device-LOCAL `YYYY-MM-DD`, not `toISOString()`.** `new Date(y,m,d)`
@@ -831,6 +842,12 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 5. **Written multi-tenant confirmation from GetYourGuide and Tiqets.** Tier 3 sells "connect your own account" for both. That clearance is currently OUR terms reading, not theirs. Viator ruled NO on the identical question on 4 Aug 2026 after the same self-assessment said probably yes. Selling a tier on an unconfirmed permission is the risk; asking costs one email each.
 6. **Stripe LIVE flip — LAST.** Also then: enable Supabase leaked-password protection.
 
+**COUNSEL-PENDING, opened 24 Aug 2026 by the ntfy heartbeat — all three are `[CONFIRM]`s in the
+drafted notice, not code work:** ntfy RETENTION for notice §6 (no period invented — every other
+row there is a promise backed by a cron); ntfy.sh OPERATOR/LOCATION in §4 and DPA Annex 2; and
+whether the heartbeat belongs in §5 (Bemgu's own processing) as well as §4 (recipients) — it is
+recorded in both today.
+
 > Full workstream, all ten gaps and the document status: docs/legal-workstream.md.
 
 ## On the horizon / next steps
@@ -854,8 +871,9 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
      claim event, so it spends its latch on the NEXT deploy's worker and picks up the one after.
      **Bounded, never permanent** — nothing serves stale, `sw.js` being network-first for
      navigations.
-  3. **TEMPLATE COPY — add a reassurance line before the link in `sharePlatforms.ts`,** so a
-     guest expects Airbnb's "You're leaving Airbnb" interstitial instead of bouncing off it.
+  3. **TEMPLATE COPY / Airbnb interstitial line — CLOSED WITHOUT CHANGE (Udy, 24 Aug 2026).**
+     Guests understand platform interstitials; a warning about a warning reads as a disclaimer
+     and costs trust. Revisit only if a real guest is observed bouncing off it.
   4. **PRIVACY QUESTION — DECIDED 24 Aug 2026 (Udy): ACCEPTED, no product change.** A guest
      holding the welcome link or a confirmed booking seeing the property address is fine — the
      booking platforms (Airbnb / Vrbo / Booking.com) already show it to that same person.
@@ -863,19 +881,18 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
      UI. **The question is closed — do not re-open it as drift.** What this does NOT license is
      a documentation claim that the address is hidden; `cc2aba6` corrected one such claim, and
      the truthful version is the one to keep.
-  5. **GREY-ON-CREAM CONTRAST SWEEP.** `#8a8276` on the cream card backgrounds FAILS 4.5:1 —
-     **measured 3.67:1 on `#fdfbf7`**, against `#6b6354` at 5.74:1 which is already in the
-     palette. **FOUND, NOT FROZEN — these are hits, not the surface.** In `SharePanel.tsx`
-     alone: 330, 352, 414, **961 (INTERACTIVE — the `GuestUrlFallback` trigger, so the same
-     class of defect, not inherited static text)**, 975, 1005, 1018, 1150. The print-template
-     occurrences at 673/680/697 are a **SEPARATE** decision — print CSS on paper backgrounds
-     with their own recorded ratios. **Also in scope: the four accent-independent pairs inside
-     the printed A5 card** — `.bd` and `.foot-2` 3.34:1, `.noapp` 3.72:1, `.promo-d` 3.73:1.
-     **THE SWEEP RULE APPLIES: enumerate repo-wide over the VALUE, freeze the surface, ONE
-     commit.** **WHY THIS IS A PATTERN AND NOT TWO INSTANCES:** two consecutive commits on this
-     one file each shipped a contrast defect that hid behind "it matches an existing style" —
-     the token being pre-existing is exactly what stops it being questioned.
-  6. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
+  5. **GREY-ON-CREAM CONTRAST SWEEP — DONE (`d93c2d9`).** `#8a8276` -> `#6b6354`, 132 sites /
+     21 files. Print-card colours EXCLUDED by decision (live-print approved; paper is not
+     governed by WCAG) — the old scope text claiming otherwise is deleted, not struck through.
+  6. **NEXT SESSION, IN ORDER.** (1) **LESSONS RETIREMENT PASS** — Task 2; proposal table
+     first, Udy approves per item; this is what shrinks the file back under the trigger.
+     (2) **AA-FLOOR SESSION:** the `#9a958c` sweep (73 occurrences / 8 files, enumeration
+     PENDING) and the FOCUS-RING TOKEN REFACTOR (62 declarations / 11 colour-alpha variants /
+     7 offset colours — **NOT a value sweep**: backgrounds must be determined per site and
+     `Landing.tsx` mixes light and dark. Both design decisions are pre-settled — two tokens,
+     `#7a5c00` light / `#c8a24e` dark, alpha variants dropped). (3) **`gemini-2.5-flash`
+     repoint before 16 Oct 2026.** (4) the pentest gate below.
+  7. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
      dependency vulnerabilities (8 high, 8 moderate) as of the 18 Aug push, UNREVIEWED.** Read the
      list before the gate — **earlier if any high is runtime-reachable**. NOTE this supersedes the
      earlier "7 total / 5 high / 2 moderate" `npm audit` measurement: those two tools count
@@ -920,6 +937,13 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
        shape this file records elsewhere as the thing that gets deprioritised.** Set `no-store`
        on all four in ONE pass, or the parity argument that justifies leaving each one bare
        stops being true the moment one of them changes.
+     - **ADDED 24 Aug 2026 — ntfy SILENT 429.** `_lib/ntfy.ts` logs a 429 in the same shape as
+       a 200, so a DROPPED priority-high alarm is indistinguishable from a delivered one.
+     - **ADDED 24 Aug 2026 — split the heartbeat and alarm topics** if heartbeat volume ever
+       threatens the detector: they share one NTFY_URL today.
+     - **ADDED 24 Aug 2026 — ring-inset / viewport-edge check** on the GuideDrawer Ask panel
+       (`2d7985b`): the ring has no offset and the panel is flush to the drawer edge. Needs a
+       browser; neither a gate nor Claude can render it.
      - **ADDED 24 Aug 2026 — A CSP WOULD BREAK THE PRINT CARD SILENTLY.** The generated A5
        document depends on an INLINE `<script>` (it self-prints on load, because nothing outside
        it calls `print()` any more) and an INLINE `onerror` on the logo image. The repo has NO
@@ -1320,6 +1344,12 @@ docs/spend-hardening.md. What stays here is only what a future change could BREA
 - **A BRAKE IS UNFINISHED UNTIL ITS KEY IS IN `cron-spend-audit.ts`'s `ROLLING_LIMITS`** —
   unlisted endpoints are ignored by BOTH detectors, so the 429 fires while nothing alarms. This
   has now been missed three times.
+
+- **OPERATOR NTFY HEARTBEAT ON GUEST-PAGE OPENS (`a4a35bd`).** Payload is PROPERTY / STATE /
+  DOOR only — **never the guest name, token, confirmation code, IP, stay dates or any host
+  id**; the Art. 30 record says so, so a payload change is a two-sided change. Off switch is
+  unsetting `NTFY_URL`. Known and accepted: redirect paths DOUBLE-COUNT, so the feed counts
+  redirects, not humans — see the enumerated cases at `notifyOpen`.
 
 > Full mechanism and history: docs/spend-hardening.md.
 

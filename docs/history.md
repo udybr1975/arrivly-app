@@ -2582,3 +2582,65 @@ BINDING (reasoning: `3aaca7b`):
 - **`ARR-IMP301` DOES NOT EXIST IN `bookings`.** The fixture list over-claimed it. **Recorded here
   so it is not "rediscovered" as a missing row and re-created** — nothing referenced it, and its
   absence is the correct state, not drift.
+
+## Session — 24 Aug 2026 — the ntfy heartbeat, three AI labels, grounded blurbs, contrast
+
+ELEVEN COMMITS, in order:
+- **`a4a35bd`** — operator ntfy heartbeat on guest page opens (`guest-state` + `welcome-claim`),
+  host-authored fields sanitised, Art. 30-clean payload: property / state / door ONLY. Shipped
+  WITH its documents (two-sided rule): legal-data-inventory §7.1 + B4, DPA Annex 2, the
+  superseded-topic annotation in this file, and a stale `is_test` comment fix in
+  `cron-refresh-guides` — that comment had already misled a gate during its own review.
+- **`880be4c` / `c54a630` / `adea262`** — guest privacy notice §4 (ntfy.sh as recipient) / §5
+  (claimed as Bemgu's OWN processing, basis widened from "not misused" to cover monitoring) /
+  §6 (ntfy retention recorded as `[CONFIRM]` — NO period invented, because every other row in
+  that table is a promise backed by a running cron).
+- **`d93c2d9`** — grey-on-cream contrast sweep, `#8a8276` → `#6b6354`, **132 sites / 21 files**.
+  Print-card colours excluded by decision. CLAUDE.md's muted-token line updated in the same
+  commit.
+- **`4c97644`** — MessageHost close returns to Home (was hardcoded `'more'`); labelled 44px
+  Close control in ink-on-cream, because a host-set accent has NO verifiable ratio at build
+  time (measured: white on a pale accent = 1.44:1). ChatBot Art. 50 label — the old eyebrow
+  read "Ask your host". GROUNDED BLURBS: JSON `{blurb, places[]}`, LocationIQ geocode +
+  haversine ≤1.5km against the apartment's coords, geocode-failure counts as FAIL, ONE
+  place-free regeneration, deadline-gated at 140s (the guide chain re-derived to ~145.9s
+  against `maxDuration` 150), fan-out 6→3, `MAX_BLURB_PLACE_KM` deliberately named apart from
+  guide.ts's 25km `MAX_PLACE_KM`.
+- **`6458b80`** — WelcomePage pre-arrival chat labelled, fixed ink (accent-as-text measured
+  1.38:1). "Ask {brandName}" eyebrow removed; the `brandName` prop went with it, its only use.
+- **`69e6520`** — GuideDrawer, the third AI surface, labelled. **"Host-facing" is NOT an
+  Art. 50 carve-out** — the obligation attaches to natural persons and a host is one; the only
+  carve-out is obviousness, which that surface failed (zero "AI" in user-visible copy, a
+  first-person intro). Label sits OUTSIDE the scroll container, so it is persistent.
+- **`8dd87c0`** — tabpanel `aria-label` parity ("Ask Bemgu — AI assistant"): the disclosure had
+  been discharged visually but not in the announced name. Comment converted to a BLOCK comment
+  in attribute position — `//` is valid there but runs to end of line, so a formatter joining
+  lines would delete the attribute AND KEEP THE BUILD GREEN.
+- **`2d7985b`** — focus ring on the `tabIndex={0}` chat panel. Enumeration went **50 sites → 3
+  bare → 1 defect**; the two `tabIndex={-1}` suppressions are recorded as deliberate, not
+  missed.
+
+DB-SIDE DATA FIXES WITH NO COMMIT — **this record is their only durable trace**:
+- `apartments.greeting_blurb` rewritten for **Cozy Studio `51a8b817`** (false "a stone's throw
+  … Sibelius Park" — Kallio to Töölö is ~3km; Hakaniemi kept, genuinely adjacent) and for
+  **charming 1908 studio `8ad00130`** (false "just steps … Hakaniemi" from Ullanlinna, ~2.5km;
+  now Kaivopuisto + Old Market Hall, verified true).
+- `apartment_details` **`b3cee8c1`** (Recycling & Bins, Cozy Studio) reworded to reality: there
+  are no sorting bins in the apartment; sorting is in the backyard room.
+- `apartment_source_docs` for the same apartment: the "Finland is very strict about recycling"
+  sentence replaced with the same truth. **That doc is `chat_enabled`, so leaving it would have
+  resurrected the tip through the bot** — fixing the details row alone would have looked done.
+- TRIGGER FOR ALL FOUR: Udy's real-apartment walkthrough of Cozy Studio. **Real-property
+  testing found what code review did not** — the blurb defect is what produced the grounded-
+  blurb mechanism in `4c97644`.
+
+DECIDED, so none of it is re-litigated:
+- The ntfy topic named in this file is the RETIRED June topic. The current one exists only in
+  Vercel and on Udy's phone, never in the repo. **No rotation needed; not a leak.**
+- Print-card colours are OUT of contrast work — live-print tested and approved, and **paper is
+  not governed by WCAG**.
+- Queue item 3, the Airbnb interstitial reassurance line: **CLOSED without change.**
+- For the parked focus-ring refactor: the ring MAY change colour on light surfaces — a
+  two-token design, `#7a5c00` light (the existing Amber preset) and `#c8a24e` dark — and the
+  ALPHA ring variants are DROPPED. Both settled 24 Aug so the refactor starts from a decision
+  rather than a debate.
