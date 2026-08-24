@@ -2547,3 +2547,12 @@ future reader will otherwise assume the brake is the control. **The 8-character 
 validator accepts is only 1e8, so no second writer of `platform_ref` may be added without
 redoing that analysis.**
 
+
+## Session — 23 Aug 2026 (Phase H pre-arrival parity, 3aaca7b)
+
+BINDING (reasoning: `3aaca7b`):
+- WelcomePage IS the guest-page shell pre-arrival. Private data renders **LOCKED, never absent**. `GuestPage.tsx` untouched; markup COPIED.
+- Storage keys are `arrivly:`, never `bemgu:` — a post-ship rename strands live entries.
+- **"A plain link never self-transforms" binds the LINK, not the DEVICE.** The recipient's own bookmark transforming IS the feature; never delete persistence to "restore" it.
+- Entries expire at `check_in + 30`, the server's date — not a constant.
+- `api/welcome.ts` images deliberately NOT gated by `welcome_show_address`.

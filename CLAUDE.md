@@ -20,7 +20,7 @@ in any of them** — every rule stayed here; those files hold only the reasoning
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Current HEAD (code) — `60a4c2b`** (19 Aug 2026), the four UI items — availability picker, cancel from the calendar view, generic policy-block toast, cancelled-conversation chip. **PUSHED and verified live** (`dpl_FG7LrLidcSRwsaW4738YTWoDkfQu`). `fc35d69` before it is the BookingManager overlap guard + soft cancel; `c4981b2`/`8619c5f`/`1a2ed59` the Groq migration. **Two DOCS-ONLY commits sit on top — `057da82` and `eb13715` — both verified to touch zero files under `src/` or `api/`, both PUSHED and ancestors of the remote tip (measured, not recalled). They are listed for DRIFT DETECTION, not as outstanding work:** a docs tip above the code HEAD is the normal state here, never a mismatch. Docs-only commits land on top of it; a docs tip is not a mismatch. Full commit ancestry is in git — do not restate it here.
+> **Current HEAD — `20609c1`** (23 Aug 2026), the bulk-import credential scrub; `422cc65` before it is the guest-bootstrap coordinate gate, `e5b87e2` the is_test flags. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -104,6 +104,19 @@ docs/schema.md.
   Always call `sendPushToHost(db, hostId, payload)` WITHOUT the optional `apartmentId`
   argument when notifying the host — passing one filters the lookup to zero rows and
   delivers nothing silently.
+- **THE `is_test` SYSTEM (23 Aug 2026) — FIXTURES ARE FLAGGED, NEVER DELETED.** `hosts.is_test`
+  and `apartments.is_test`, both **NOT NULL DEFAULT false** and **server-only for WRITE**
+  (`anon`/`authenticated` hold SELECT and nothing else — verified via `has_column_privilege`).
+  **TRIGGER-MAINTAINED, and the asymmetry is deliberate:** an apartment created or updated under
+  a test host is FORCED test, and flagging a host test CASCADES true to its apartments — but
+  **never false**, so a mixed account keeps its apartment-level flags. Consumers: every cron
+  filters `.eq('is_test', false)`; every HOST-FACING email is gated `!is_test` (admin
+  email / ntfy / audit still fire, deliberately — the operator must still see the machinery run);
+  admin-overview metrics exclude test hosts. **A test host RESTS AT active + exempt with NULL
+  Stripe refs — that is the SANCTIONED state, not a phantom subscription to be reconciled.**
+  Live state 23 Aug 2026: **1 real host, 2 real properties** (`8ad00130` charming 1908 studio,
+  `d273d7d4` Beautiful private space). **NOTHING WAS DELETED** — the fixtures are the only
+  regression corpus this project has, several are load-bearing, and they stay, flagged.
 - **`hosts` server-only columns** — `hosts` has 14 client-updatable profile columns only; `tier`, `is_exempt`, `price_override_cents`, `discount_percent`, `discount_until`, `property_cap_override`, `subscription_status`, `billing_notice`, `pending_tier`, `cancel_at_period_end`, `current_period_end`, `last_billing_notice_sig` are server-only for WRITE (column-level UPDATE revoked from authenticated+anon; verified via `role_column_grants` in Task 2 for `pending_tier` and `cancel_at_period_end`; `last_billing_notice_sig` UPDATE confirmed granted to `service_role` + `postgres` only, NOT authenticated/anon — F-05 verified safe S24). `billing_notice`, `pending_tier`, `cancel_at_period_end`, and `current_period_end` ARE SELECT-readable by authenticated (needed for BillingPanel). Never write server-only columns from the client — only via admin endpoints, `change-plan.ts`, `cancel-subscription.ts`, or the stripe-webhook (service-role).
 - **`city_events_cache` is service-role-only (RLS ON, ZERO policies)** — hosts CANNOT read it, including its `generated_at` timestamp. The property editor's "Guide & events" tab therefore derives events freshness from the **`/api/refresh-events` JSON response** (`refreshed` / `reason` / `generated_at`), NEVER a direct cache SELECT. (The city-guide row, by contrast, reads `guide_recommendations.generated_at` directly — that table IS host-readable.)
 - **`apartments.accent_color` is NULLABLE (S27 2a, Migration A):** the old NOT NULL + default were dropped. NULL = inherit `hosts.accent_color` (account default); non-null = per-property override. The "Look" tab writes a validated hex on override and `NULL` on "reset to brand default", scoped `.eq('id', aptId).eq('host_id', hostId)`. Backfill state after Migration A: 7 inheriting (NULL) / 4 explicit overrides / 11 total.
@@ -154,6 +167,9 @@ within days; only the rules below are durable.**
   `9b03a763-3ca6-4d1f-946c-d4e1f977d614` · Anna Stays `eab1e358-…` (Vantaa/Hakunila).
 - **Test guest URL:** `/guest?apt=aaaaaaaa-0000-0000-0000-000000000001&token=ARR-TEST01`
 - **Welcome codes:** Sweet home `XJ8SSKFH` · Casa Marco `962SM37Y` · Penthouse `3RV23Y2C`.
+  **Casa Marco and Penthouse are UNPUBLISHED since 23 Aug 2026** (`is_visible = false`), so their
+  guest and welcome pages resolve to the unavailable/neutral screens until republished. The codes
+  are unchanged and still correct — republish the apartment before using either.
 
 **Live plan values (confirmed S12, hard gate CLOSED):** Tier 1 €10/cap 2, Tier 2 €15/cap 7,
 Tier 3 €25/cap 12, Tier 4 €49/unlimited; `app_settings.trial_days` = 14. **The official base
@@ -166,15 +182,13 @@ values — do not change without an explicit decision.**
   cancelled-conversation-survives rule. **It must survive every cleanup; do not "fix" it.**
 - **Test Apartment 1 is DELIBERATELY geocoded to Vantaa** — a side effect of running D9 from the
   exempt admin account, kept as a fixture. **This is not drift; do not "correct" it.**
-- **`ARR-SWE001` (Elena, 13-17 Aug) HAS ALREADY LAPSED** — checked out 17 Aug, verified in the DB
-  18 Aug 2026. The ten `ARR-***001` rows seeded 18 Aug were dated 17-21 Aug and **are stale after
-  21 Aug 2026.**
 - **`ARR-FUT001` (Casa Marco, 23-26 Aug) is the PRE-ARRIVAL fixture** — a future-dated valid token
   resolving to the public tier.
 - **`ARR-EVT777` / `ARR-PAR777` / `ARR-BCN777` are KEEP-PERMANENTLY** live/active/thank-you-state
   fixtures. Re-roll their dates when they lapse; never delete them.
 - **Roy's `property_cap_override` was set to 2 for D8 and REVERTED to null** — verified reverted.
-- **THE THREE PRE-ARRIVAL CLAIM FIXTURES, on "importer test" (welcome code `DX89PW3H`). ALL
+- **THE THREE PRE-ARRIVAL CLAIM FIXTURES, on "charming 1908 studio" (renamed from "importer
+  test" 23 Aug 2026; welcome code `DX89PW3H` UNCHANGED). ALL
   CREDENTIALS FABRICATED — shape only, no entropy from any real feed. Udy keeps all test data;
   never suggest deleting these.** Verified in the DB 23 Aug 2026:
   - **`ARR-ACT501` / `TESTACTIVE1` — KEEP PERMANENTLY.** 22-26 Aug. **Its dates are MOVED BY HAND**
@@ -318,6 +332,19 @@ values — do not change without an explicit decision.**
 
 - **Anything the guest page must show from `is_private=true` rows needs a server endpoint with the booking token as the credential.** Anon RLS on `apartment_details` blocks private rows at the DB layer (`apt_details_guest_read USING (is_private = false)`), so client-side filtering after an anon query can never surface them — the rows simply aren't in the HTTP response. The only safe pattern is a token-verified server endpoint (using `resolveGuestAccess`) that calls the service-role client and returns only the private rows for the verified booking.
 
+- **THE COORDINATE GATE (`422cc65`, 23 Aug 2026) — EXACT COORDINATES *ARE* THE STREET ADDRESS.**
+  `api/guest-bootstrap.ts` includes `lat`/`lng` **iff** `apartments.welcome_show_address = true`
+  **OR** the request carries a token `resolveGuestAccess` rates `verified` (confirmed/completed
+  **AND** in dates). Otherwise both fields are **OMITTED — absent, not null**, mirroring
+  `api/welcome.ts`'s omission style; a wrong token is byte-identical to no token.
+  **THE DATE BOUND IS THE WHOLE POINT AND BOTH GATES INDEPENDENTLY DEMANDED IT:**
+  `api/_lib/welcome-claim.ts` hands the `ARR-` token to ANY confirmation-code holder BEFORE
+  arrival, and `api/welcome.ts` refuses that same person the address and the coordinates — so a
+  STATUS-ONLY gate reopens the bypass through the token door instead of the anonymous one, and a
+  completed booking would stay a coordinate credential forever. **Reuse `resolveGuestAccess`;
+  never re-implement a looser copy.** Verified by four live probes 23 Aug 2026. Measured the
+  same day: `anon` has NO SELECT on `apartments`, so no RLS path routes around this.
+
 - **Guest booking-state is resolved server-side via `api/guest-state.ts` (S19), never by reading `bookings`/`guests` from the client.** The anon `bookings_guest_read` policy is gone. GuestPage calls `/api/guest-state` (plain fetch — guests have no auth session) in two stages: token path, then a KEYED date path gated by the per-apartment `apartment_qr_secrets.qr_secret` carried in the QR URL as `?key=`. An apt-only URL with no token and no valid key resolves to the neutral page by design. Every non-active outcome returns an identical flat neutral body so the endpoint leaks nothing.
 
 - **When a function's EXECUTE comes from the DEFAULT PUBLIC grant (ACL `=X/owner`), `REVOKE EXECUTE ... FROM anon, authenticated` is a SILENT NO-OP** (S24). Those roles inherit EXECUTE via PUBLIC, not a direct grant, so there is nothing to revoke from them. `REVOKE EXECUTE ... FROM PUBLIC` instead — owner (`postgres`) + `service_role` keep their explicit grants, and trigger functions fire as owner regardless. ALWAYS confirm a function-privilege change against the LIVE ACL (`pg_proc.proacl` / `has_function_privilege`), not just that the statement executed without error. (Same trap applies to table grants via PUBLIC — check `relacl`.)
@@ -325,6 +352,17 @@ values — do not change without an explicit decision.**
 - **`guests` is server-write-only (`api/create-booking`) with a host-scoped SELECT policy (S24).** Never reintroduce a client-side `guests` insert/read, or a `USING(true)` policy. One guest row per booking; no cross-host first-name dedup. The host-scoped SELECT (`id IN (select b.guest_id from bookings b join apartments a on a.id=b.apartment_id where a.host_id = auth.uid())`) keeps the bookings-list and Messages `guests(...)` embedded joins working because they only ever surface the host's own bookings' guests.
 
 - **`hosts` uses COLUMN-LEVEL UPDATE grants as a defence layer — new columns do NOT inherit them (Stage 4B, Jul 26 2026).** `authenticated` has UPDATE on a specific allowlist of host columns only (brand_name, accent_color, ui_state, …); server-only columns (tier, plan, subscription_status, stripe_*, trial_ends_at, the notice/pending/cancel columns) have UPDATE deliberately withheld. **Any migration adding a host-writable column MUST include an explicit column-scoped `GRANT UPDATE (col) ON public.hosts TO authenticated`** — RLS `hosts_update_own` (`auth.uid()=id`) alone is NOT sufficient because PostgREST also needs the column privilege. Stage 2 missed this for the three `*_partner_id` columns (they were granted SELECT/INSERT but not UPDATE), so the client Connect write silently 403'd; corrective migration **`grant_host_partner_id_column_update`** fixed it (verified: the three partner-id columns writable by `authenticated`; tier/plan/stripe/trial columns still read-only). ALWAYS confirm with `information_schema.column_privileges` after the grant.
+
+- **`apartments` NOW USES THE SAME COLUMN-ALLOWLIST AS `hosts` (23 Aug 2026) — THE TRAP IS NOW ON
+  BOTH TABLES.** Table-level INSERT and UPDATE were REVOKED from `authenticated`, `anon` and
+  PUBLIC, then re-granted **per column**, excluding `is_test`. Verified at source: for
+  `authenticated`, `has_table_privilege(... 'UPDATE')` is **false**, 29 columns carry a column
+  UPDATE grant, `name` is writable and `is_test` is not. **ANY migration adding a
+  client-writable `apartments` column MUST include an explicit column-scoped
+  `GRANT UPDATE (col) ON public.apartments TO authenticated`, or the property editor silently
+  403s** — RLS alone is not sufficient, because PostgREST also needs the column privilege. This
+  is the IDENTICAL trap recorded above for `hosts`, and it has now bitten on one table already;
+  confirm with `information_schema.column_privileges` after every such migration.
 
 - **WORKFLOW — migrations belong to Claude-in-chat via Supabase MCP, NOT to Claude Code mid-build.** In Stage 4B a needed corrective migration was applied by Claude Code during the build. The fix was correct and verified, but the rule is: **if a migration turns out to be needed mid-build, STOP and report back** rather than applying it. Future code prompts must state this explicitly (reader-migration-first sequencing stays a chat-side responsibility).
 
@@ -778,9 +816,8 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 2. **Legal review — the only external dependency, so start it earliest.** Four documents DRAFTED and committed under `docs/`, NOT published, NOT in force; **eight of ten inventory gaps open**; a Finnish lawyer must review. Every `[CONFIRM]`/`[BUILD]` marker in those files IS the to-do list — never resolve, tidy, renumber or remove one. Roles are THREE-WAY: Bemgu controller for host data, PROCESSOR for guest data, controller in its own right for logs and anti-abuse.
 3. **Dependency triage — the current figure is GitHub's 16 (8 high, 8 moderate) as of the 18 Aug push**, unreviewed; the runtime-reachability analysis is in queue item 4. **Older counts in this file (Known notes' 8, and a since-deleted 7 on `d254df9`) are SUPERSEDED, and the gap between them was never drift** — GitHub counts one alert per advisory per manifest path while `npm audit` dedupes per package, so the two tools measure different things. Precedes the pentest gate.
 4. **Pentest / "hacker" agent gate** — runs once on the Tiers 1-3 surface. Phase F needs its own second pass before Tier 4 is sold.
-5. **~~Sandbox subscriptions mail real people~~ — NOT A BLOCKER. CLOSED 18 Aug 2026:** none of the five addresses belongs to a real person (confirmed by Udy), so there is no one to mail. The measured dates are kept in OPEN ITEMS as fact; the exposure they described does not exist. **It was carried for weeks on the strength of an address LOOKING personal.** With it closed, the **16 Oct 2026 `gemini-2.5-flash` shutdown is now the file's only live dated deadline** — and unlike this one it has a decided route (option A).
-6. **Written multi-tenant confirmation from GetYourGuide and Tiqets.** Tier 3 sells "connect your own account" for both. That clearance is currently OUR terms reading, not theirs. Viator ruled NO on the identical question on 4 Aug 2026 after the same self-assessment said probably yes. Selling a tier on an unconfirmed permission is the risk; asking costs one email each.
-7. **Stripe LIVE flip — LAST.** Also then: enable Supabase leaked-password protection.
+5. **Written multi-tenant confirmation from GetYourGuide and Tiqets.** Tier 3 sells "connect your own account" for both. That clearance is currently OUR terms reading, not theirs. Viator ruled NO on the identical question on 4 Aug 2026 after the same self-assessment said probably yes. Selling a tier on an unconfirmed permission is the risk; asking costs one email each.
+6. **Stripe LIVE flip — LAST.** Also then: enable Supabase leaked-password protection.
 
 > Full workstream, all ten gaps and the document status: docs/legal-workstream.md.
 
@@ -794,57 +831,24 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 - **WATCH `src/lib/tierCopy.ts` — it feeds `/choose-plan`, the actual point of payment, and today carries NO earnings claim.** Any earnings bullet added there lands directly on the payment page and would need the tier qualifier in the string itself. The precise form to copy is `Landing.tsx:64` — "Keep 100% of GetYourGuide &amp; Tiqets commissions — paid to you directly" (both axes scoped in one string). Related residual: `EarningsPanel.tsx ~301` is unqualified but sits in `confirmedCard`, which renders only when `confirmedCount > 0` — never in production today.
 - **Welcome share panel shipped (`8ff40e5`); Part 2's STAY TIMELINE was not built** — see
   docs/design-backlog.md.
-- **RUN `api/backfill-canonical-city` BY HAND** — GET with `Authorization: Bearer <CRON_SECRET>`. Idempotent. On no schedule. Watch `resolvedNoKey`: a city that resolves with no valid country code stays on the per-apartment path. **HALF DONE — RE-COUNTED AGAINST THE LIVE DB 18 Aug 2026: the fleet is NINE visible apartments, not ten.** 4 of 9 carry a `canonical_city_key` and 4 have been attempted, across 8 distinct cities; the rest have `canonical_resolved_at` NULL = never attempted. **⚠ BUT THIS IS NOT CURRENTLY DOABLE:** `CRON_SECRET` is flagged **Sensitive** in Vercel, so its value cannot be read back and the Bearer header cannot be reconstructed — see the CRON_SECRET lesson below. This item is blocked on that decision, not on effort.
+- **RUN `api/backfill-canonical-city` BY HAND** — GET with `Authorization: Bearer <CRON_SECRET>`. Idempotent. On no schedule. Watch `resolvedNoKey`: a city that resolves with no valid country code stays on the per-apartment path. **HALF DONE, AND THE DENOMINATOR MOVED — RE-COUNTED AGAINST THE LIVE DB 23 Aug 2026: the VISIBLE fleet is THREE apartments, all Helsinki.** The nine test apartments were deliberately UNPUBLISHED (`is_visible = false`) for launch and are republishable per-experiment, so the earlier "nine visible across 8 cities" count is superseded by unpublishing, not by drift. The backfill's remaining work therefore shrank to almost nothing at the visible surface and is still entirely present behind it — **re-count before running it, because the number moves whenever a fixture is republished.** **⚠ BUT THIS IS NOT CURRENTLY DOABLE:** `CRON_SECRET` is flagged **Sensitive** in Vercel, so its value cannot be read back and the Bearer header cannot be reconstructed — see the CRON_SECRET lesson below. This item is blocked on that decision, not on effort.
 - **PRE-LIVE — OBTAIN WRITTEN CONFIRMATION FROM GYG AND TIQETS ON MULTI-TENANT HOST-OWN-ID.** Udy's own terms review (11 Aug 2026) cleared BOTH to keep host-own-partner-ID on Tier 3, and the code ships that way. **But note the EVIDENCE CLASS: that is a self-assessment, not a provider ruling.** For Viator we hold a written answer from Partner Support; for GYG and Tiqets we hold our own reading. **Viator is the proof that the two differ** — the terms were read carefully, the risk was spotted, the question was asked anyway, and the answer came back NO. Send the same question to both **before the Stripe live flip**, so a paying Tier-3 host is never sold a connection a provider later refuses. **Tiqets first — it uses the same partner-ID substitution shape (`partner=`) that Viator prohibited.** Contacts parked in PHASE I. If either answers no, Tier 3 needs repositioning, not just a code change.
-- **~~SANDBOX SUBSCRIPTIONS MAIL REAL PEOPLE~~ — CLOSED 18 Aug 2026**, on the ground that
-  none of the five addresses belongs to a real person. The measured `current_period_end`
-  dates and the reasoning moved to **docs/resolved-debt.md**. The lesson it produced — an
-  address is not evidence of a human — is in Lessons and stays there.
-- **THE QUEUE (updated 22 Aug 2026). In order:**
-  1. **~~The four UI items~~ (`60a4c2b`), ~~the category cleanup migration~~, ~~the listing
-     importer~~ (`3417e01`), ~~the PRE-ARRIVAL PERSONAL GUEST LINK~~ (`13eaaf3` / `c0848d8` /
-     `ed92ad2`) and ~~bulk-import's offering-routing clause~~ (`f113943`) — ALL DONE, pushed and
-     deploy-verified. **~~The service-worker reload that aborted the claim~~ (`118d05f`) — DONE,
-     and its acceptance test has since PASSED on the controlled path.****
-  2. **NEXT — `bulk-import` HAS NO CREDENTIAL SCRUB, AND THIS CLASS OF FAILURE HAS ALREADY
-     OCCURRED ONCE.** MEASURED at source 22 Aug 2026, not inferred: `api/bulk-import.ts` matches
-     `scrubCredentialSentences` exactly TWICE and **both matches are COMMENTS** — zero real calls —
-     while `api/_lib/import-listing.ts` calls it THREE times (lines 350, 394, 429). bulk-import
-     writes **`is_private: false` on EVERY row**, so a door code that slips past the model on the
-     old paste-a-wall-of-text path is **anon-readable on the guest page**.
-     **`993fa3d` EXISTS BECAUSE A CODE LEAKED INTO PUBLIC EXTRAS ON A LIVE RUN — and the scrub
-     written in response was wired into ONE DOOR ONLY.** `f113943` added a generalised CODES
-     sentence to bulk-import's prompt, and that helps, but **A PROMPT SENTENCE IS A HINT, NOT A
-     MECHANISM.** The fix is **one import and one call before the insert** (the function is already
-     exported), and the disposition is **SUPPRESSION, not relocation**, because this path never
-     writes `entry_instructions`. **It currently lives ONLY in `f113943`'s commit message, which is
-     the weakest place for it — that is why it is here.**
-  3. **RESIDUALS FROM `118d05f`, recorded so they are not rediscovered as bugs.** (a) A genuine
+- **THE QUEUE (updated 24 Aug 2026). In order:**
+  1. **Items through `f113943` / `118d05f`: DONE, deploy-verified.** (Full commit ancestry is in git.)
+  2. **RESIDUALS FROM `118d05f`, recorded so they are not rediscovered as bugs.** (a) A genuine
      worker UPDATE arriving mid-claim still reloads and still aborts the POST — seconds long,
      only after a deploy; closing it means coupling `main.tsx` to `WelcomePage`, which is why it
      was not. (b) A tab loaded via HARD RELOAD bypasses the SW and starts uncontrolled with no
      claim event, so it spends its latch on the NEXT deploy's worker and picks up the one after.
      **Bounded, never permanent** — nothing serves stale, `sw.js` being network-first for
      navigations.
-  4. **PHASE H — PRE-ARRIVAL / GUEST PAGE VISUAL PARITY. The two pages read as different
-     products.** Measured, not impressionistic: `GuestPage` has a full-bleed photo hero
-     (`hero_image_url`, scrim, Unsplash credit, the host-upload → city-image → default fallback
-     chain) and `WelcomePage` has **NO IMAGE** — a centred logo on cream. **That is the biggest
-     gap, and the data is already loaded.** `GuestPage` also has the bottom tab bar
-     (Home/Chat/Explore/Settings) where `WelcomePage` is one long scroll · quick-access tiles
-     (WIFI/DOOR/HOME) where it has none · and the PWA install prompt, which `WelcomePage` does
-     NOT offer — **arguably backwards, since the pre-arrival page is the one a guest holds for
-     weeks.** Accent branding IS already consistent across both.
-     **OPEN DESIGN QUESTION, not a bug:** does `WelcomePage` adopt the tab shell (Home/Explore/
-     Chat all work pre-arrival, with WIFI/DOOR rendering LOCKED), or stay a single scroll?
-     **Mockup-first.**
-  5. **TEMPLATE COPY — add a reassurance line before the link in `sharePlatforms.ts`,** so a
+  3. **TEMPLATE COPY — add a reassurance line before the link in `sharePlatforms.ts`,** so a
      guest expects Airbnb's "You're leaving Airbnb" interstitial instead of bouncing off it.
-  6. **PRIVACY QUESTION — RECORD, DO NOT ACT.** The welcome page shows the property's STREET
+  4. **PRIVACY QUESTION — RECORD, DO NOT ACT.** The welcome page shows the property's STREET
      ADDRESS, and that page is public to anyone holding the welcome code. **Pre-existing
      behaviour, but the pre-arrival link makes that page far more widely shared.** Decide
      deliberately rather than by drift.
-  7. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
+  5. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
      dependency vulnerabilities (8 high, 8 moderate) as of the 18 Aug push, UNREVIEWED.** Read the
      list before the gate — **earlier if any high is runtime-reachable**. NOTE this supersedes the
      earlier "7 total / 5 high / 2 moderate" `npm audit` measurement: those two tools count
@@ -880,6 +884,25 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
        falls back to `x-forwarded-for`. **The IP keys BOTH anti-enumeration controls on that
        endpoint**, so an unmeasured assumption sits underneath them. **One measurement closes it**
        — and until it is taken, the honest control is `platform_ref` entropy, not the brakes.
+     - **ADDED 23 Aug 2026 — `no-store` PARITY ACROSS THE FOUR TOKEN-VARYING GUEST ENDPOINTS.**
+       `guest-state`, `guest-bootstrap`, `guest-details` and `welcome` all vary their body by a
+       booking token or a welcome code, and **all four set NO `Cache-Control` at all.** Nothing
+       is cached today (Vercel does not CDN-cache a function response absent one), so this is a
+       latent gap, not a live leak — **but `guest-bootstrap` now carries only a COMMENT
+       forbidding a future `s-maxage`, and a comment standing in for a mechanism is the exact
+       shape this file records elsewhere as the thing that gets deprioritised.** Set `no-store`
+       on all four in ONE pass, or the parity argument that justifies leaving each one bare
+       stops being true the moment one of them changes.
+     - **ADDED 23 Aug 2026 — `bulk-import`'s SILENT ALL-SCRUBBED PASTE.** When the credential
+       scrub (`20609c1`) empties every row, the endpoint returns `{ categories: [] }`,
+       `PropertySetup.tsx` renders NOTHING for an empty list **and clears the paste box**, and
+       the handler returns before the delete so the host's unchanged extras re-render. **The
+       host concludes it worked; their text is gone, nothing was saved, and the code they pasted
+       now exists nowhere** — this path cannot write `entry_instructions` either. The other door
+       returns `redacted` and renders "We left N sentence(s) out of the public sections". **Fix
+       is one response field plus one component line** — a response-shape change, which is why
+       it was not folded into the scrub commit. Transparency, not a boundary — but it is the
+       residual most likely to cost a real host real content.
 
 
 ### PRE-ARRIVAL PERSONAL GUEST LINK — the binding rules (SHIPPED `13eaaf3`/`c0848d8`/`ed92ad2`)
@@ -973,13 +996,16 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   **single-success-suppressible**, never the sole iCal health signal. Cron ignores
   `result.capped`. ntfy is a third consumer of `deferred + ok + failed === apartments.length`.
   `PropertySetup.tsx`'s "Calendar synced" toast hides the strings (UI, mockup-first).
-- **OPEN — CITY COMPRESSION MEASURED, NOT PROJECTED (Aug 8 2026), and it is WEAK EVIDENCE.** The
-  fleet is **NINE VISIBLE apartments across 8 cities** (re-counted live 18 Aug 2026 — the earlier
-  "10" was wrong), Helsinki the only city with more than one. Fully backfilled the cron would run
-  **8 units for 9 apartments — about 1.1x compression, NOT a multiple.** **CAVEAT, and it is the
-  whole point: this is a TEST fleet whose geography was CHOSEN**, so it says almost nothing about
-  real host clustering — which is the entire lever. **Re-derive at >= 10 paying hosts; that is
-  when the card decision should be taken**, not at the 50-host milestone.
+- **OPEN — CITY COMPRESSION: THE MEASUREMENT IS SUPERSEDED BY UNPUBLISHING, NOT RE-DERIVED.** The
+  Aug 8 figure — 9 visible apartments across 8 cities, Helsinki the only city with more than one,
+  giving **8 units for 9 apartments ≈ 1.1x compression** — rested on a fleet that no longer
+  exists at the visible surface. **Since 23 Aug 2026 the visible fleet is THREE apartments, ALL
+  Helsinki** (the nine test apartments are `is_visible = false`, republishable per-experiment).
+  A compression number computed on three same-city rows would be arithmetic, not evidence, so it
+  is **deliberately NOT re-derived here.** **The caveat was always the point and now applies
+  doubly: this is a TEST fleet whose geography was CHOSEN, and it is now a chosen SUBSET of that.
+  Re-derive at >= 10 paying hosts** — that is when the card decision should be taken, not at the
+  50-host milestone.
 - **OPEN — THE LEAN-CONTEXT RULE IS NOW A MEASURED CONSTRAINT, not a design preference.** The
   Aug 8 measured **`corpusChars` 15,102**; the Aug 9 run BILLED **7,079 tok** (prompt 5,031 +
   maxTokens 2,048 RESERVED) — which was HALF of the then-12K TPM ceiling. **THAT HEADROOM IS GONE:
@@ -1044,8 +1070,10 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   and that is what this item is for. **CORRECTION 18 Aug 2026: the guide cron HAS RUN — the earlier
   "has still never run" clause was FALSE.** `guide_recommendations` shows three apartments
   refreshed **15 Aug 10:00:18-10:00:29 UTC**, matching the `0 10 * * *` schedule, and it has
-  correctly IDLED since: all nine visible apartments now sit inside the 25-day freshness gate
-  (oldest 29 July against a 24 July cutoff). **THE 15 AUG RUN COMPLETED ITS QUEUE rather than
+  correctly IDLED since: every visible apartment sat inside the 25-day freshness gate
+  (oldest 29 July against a 24 July cutoff). **The fleet that was measured against was NINE
+  visible; since 23 Aug 2026 it is THREE, all Helsinki, the other nine unpublished — so the
+  idle is now over-determined and proves less than it did.** **THE 15 AUG RUN COMPLETED ITS QUEUE rather than
   stopping at the deadline, so 3/run is a LOWER BOUND on throughput, not a capacity measurement**
   — the "~2/run x 25 days ≈ 50 apartments" figure in RESIDUALS therefore stays an ESTIMATE and must
   NOT be upgraded to a measured value. The failure ntfy still covers "ran and failed",
@@ -1083,7 +1111,9 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
   records as undetectable.
 - **Guide-cron capacity implied by the two constants: ~2 apartments/run x 25 days ≈ 50 apartments**
   before the freshness gate can never be satisfied and the fleet enters permanent backlog.
-  Comfortable at 9. **Re-derive BOTH constants beyond that**, not one of them.
+  Comfortable at 3 visible (23 Aug 2026), and it was comfortable at 9 — **but note the headroom
+  came from UNPUBLISHING, not from any change to the cron: republishing the nine test apartments
+  restores the old load in one step.** **Re-derive BOTH constants beyond ~50**, not one of them.
 - **The commission disclosure in `ExperiencesSheet.tsx` is unconditional BY DESIGN, and nothing in
   the code says so.** Every neighbouring earnings surface IS tier-qualified (`EarningsPanel`,
   `Landing`), so the pattern a future editor pattern-matches against is the conditional one —
@@ -1122,7 +1152,7 @@ Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live
 > Moved to docs/history.md — "SECURITY — cross-tenant anon leak FOUND AND CLOSED (Jul 28 2026)".
 
 ## AI MODELS — provider assignment, keys, and the one dated fact
-`gemini-2.5-flash` shuts down **16 Oct 2026** and is already refused to new Google Cloud projects. **ONE SURFACE STILL DEPENDS ON IT, so the deadline is REAL and dated** — the older "no surface depends on it" claim was FALSE. `api/guest-chat.ts:9` runs `gemini-2.5-flash` on `GEMINI_API_KEY_CHAT`, verified in source; it is the only Google dependency left, on the AI Studio FREE tier with no card, so it cannot bill.
+`gemini-2.5-flash` shuts down **16 Oct 2026** and is already refused to new Google Cloud projects. **ONE SURFACE STILL DEPENDS ON IT, so the deadline is REAL and dated — and it is the FILE'S ONLY LIVE DATED DEADLINE** (that clause used to live in the sandbox-subscriptions Launch Blocker, deleted 23 Aug 2026; it existed nowhere else) — the older "no surface depends on it" claim was FALSE. `api/guest-chat.ts:9` runs `gemini-2.5-flash` on `GEMINI_API_KEY_CHAT`, verified in source; it is the only Google dependency left, on the AI Studio FREE tier with no card, so it cannot bill.
 
 **DECIDED 18 Aug 2026 — OPTION A, and this supersedes the "unresolved tension" recorded in `057da82`:** repoint guest-chat to a **current Gemini model**, and make the model an **ENV-CONFIGURABLE value** rather than the hardcoded `const MODEL` it is today — so the *next* model retirement is a dashboard change and a redeploy, not a code change and a gate cycle. **OPTION B (`groq/compound`, which ships built-in web search and would take Google to zero) stays PARKED WITHOUT A DEADLINE — option A buys the time to evaluate it properly.** Pilot Step 6 (the chat router) was never built and is no longer what clears this date. Grounding is 1,500 RPD free on the 2.5 line and **ZERO on Gemini 3** — that is what made graduation-to-Google expensive. Quota measurements, the per-project model and the migration analysis are in docs/pilot-history.md.
 
@@ -1207,14 +1237,35 @@ drill) remains a graduation prerequisite.**
 > link, shipped in three commits, plus the bulk-import offering clause)". Its binding
 > rules already live in "PRE-ARRIVAL PERSONAL GUEST LINK"; nothing needed hoisting.
 
-## Session — 23 Aug 2026 (Phase H pre-arrival parity, 3aaca7b)
+> Moved to docs/history.md — "Session — 23 Aug 2026 (Phase H pre-arrival parity,
+> 3aaca7b)". Its five BINDING rules moved WITH it: each is reasoning about a shipped
+> feature, not an open item, so nothing needed hoisting.
 
-BINDING (reasoning: `3aaca7b`):
-- WelcomePage IS the guest-page shell pre-arrival. Private data renders **LOCKED, never absent**. `GuestPage.tsx` untouched; markup COPIED.
-- Storage keys are `arrivly:`, never `bemgu:` — a post-ship rename strands live entries.
-- **"A plain link never self-transforms" binds the LINK, not the DEVICE.** The recipient's own bookmark transforming IS the feature; never delete persistence to "restore" it.
-- Entries expire at `check_in + 30`, the server's date — not a constant.
-- `api/welcome.ts` images deliberately NOT gated by `welcome_show_address`.
+## Session — 23 Aug 2026 (2) — pre-launch data state settled
+
+- **THE `is_test` SYSTEM SHIPPED** (three migrations + `e5b87e2`). The invariant is in DB TRAPS;
+  what belongs here is the DECISION: the answer to "wipe or flag the test data" was **FLAG**, and
+  nothing was deleted. **The fixtures are this project's only regression corpus** and several are
+  load-bearing, so wiping them to clean the launch surface would have destroyed the evidence that
+  past defects stay fixed.
+- **The five sandbox Stripe subscriptions were CANCELLED**, and the webhook rehearsal PASSED with
+  **zero host emails sent** — the `!is_test` email gate held on the path that would actually have
+  mailed. All 8 hosts now rest at **active + exempt, Stripe refs NULL**.
+- **Public surface cut 11 → 3 pages.** Visible fleet is now **3 apartments, ALL Helsinki**
+  (2 real + `Sweet home`, which is still flagged test); the other nine are `is_visible = false`
+  and republishable per-experiment. **Four sites in this file derived conclusions from the old
+  "nine visible across 8 cities" and were corrected — the city-compression figure is marked
+  SUPERSEDED BY UNPUBLISHING rather than re-derived**, because a compression number computed on
+  three same-city rows is arithmetic, not evidence.
+- **Rename + rebrand:** "importer test" → **"charming 1908 studio"** (welcome code `DX89PW3H`
+  unchanged), `brand_name` "Helsinki stays", new logo uploaded.
+- **`422cc65` — the guest-bootstrap coordinate gate**, confirmed by four live probes. Both gates
+  independently rejected the status-only version first drafted; see the Lessons entry.
+- **`20609c1` — the bulk-import credential scrub**, confirmed by a live paste whose fabricated
+  code sentence reached the DB scrubbed.
+- **`ARR-IMP301` DOES NOT EXIST IN `bookings`.** The fixture list over-claimed it. **Recorded here
+  so it is not "rediscovered" as a missing row and re-created** — nothing referenced it, and its
+  absence is the correct state, not drift.
 
 ## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
 
@@ -1320,14 +1371,6 @@ docs/spend-hardening.md. What stays here is only what a future change could BREA
   geocoding weakness.** See "MODEL-MIGRATION ANALYSIS" for the old framing.
 - **NEW, minor: `coercePlaces` does not enforce the 5-per-category cap the prompt requests.**
   Harmless today — the post-retry total still cannot exceed `MAX_GEOCODE`.
-- **`subscription_status` is DECOUPLED from the access gate.** `PrivateRoute` uses
-  `needsPlan = !is_exempt && !is_demo && !stripe_subscription_id`. **Setting a host to
-  'active' in the superadmin panel grants no access.** The operator set `is_exempt = true` on
-  host `1d5a3b9c` (udy@tlv.capital) to work around this. **Either reconcile the two or make
-  the admin panel warn.**
-- **ALL DATABASE CONTENT IS TEST DATA created by the operator. There are no real users.**
-  Decide before the Stripe flip whether to wipe or flag it — **this interacts with the
-  retention gaps in the legal workstream below.**
 - **NEW (Aug 14 2026) — READ ALL THREE AFFILIATE AGREEMENTS FOR THEIR OWN CONTRACTUAL DISCLOSURE
   REQUIREMENTS, SEPARATELY FROM STATUTE.** `736a715` fixed the commission disclosure against
   **Finnish consumer law** — which requires marketing to make clear its commercial purpose AND on

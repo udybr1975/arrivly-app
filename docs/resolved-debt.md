@@ -60,3 +60,18 @@ method is named on each entry.
 - **`PropertySetup.tsx`'s load effect has no cancellation guard** — same class as the recorded
   `BookingManager.tsx` `arrivly:messages-read` note: a tiny stale-overwrite race on rapid
   apartment switching. Fold into the next change to that file.
+
+## - **`bulk-import` HAS NO CREDENTIAL SCRUB** — CLOSED (`20609c1`, 23 Aug 2026)
+
+**HOW IT WAS VERIFIED:** RESOLVED — VERIFIED AT SOURCE AND LIVE 23 Aug 2026. `api/bulk-import.ts` now carries one real import (`./_lib/import-listing.js`) and one real call inside the exported pure `buildRows`, which scrubs each row's content, DROPS any row that collapses to empty, and derives the response `categories` from the rows actually inserted. Confirmed live with a paste containing a FABRICATED code sentence: the row reached the DB scrubbed. The queue entry's measurement ("matches twice and both matches are COMMENTS — zero real calls") was true when written on 22 Aug and is false as of this commit.
+
+- **The gap:** the endpoint wrote `is_private: false` on EVERY row — anon-readable on the guest page — with only prompt sentences defending it, while `api/_lib/import-listing.ts` called the scrub three times. `993fa3d` exists because a door code leaked into public extras on a live run, and the belt written in response was wired into ONE door. A PROMPT SENTENCE IS A HINT, NOT A MECHANISM.
+- **Deliberately NOT changed, and argued in-code at the delete site:** the wholesale delete of all eight extras categories stays. security-auditor raised narrowing it to the surviving categories as a must-fix and WITHDREW it on re-derivation — narrowing would leave standing a row that may hold a PREVIOUS run's leaked code, and a re-paste is the host's only self-service remediation on this path.
+- **Residual, still open:** the host is never told content was removed. `redacted` reaches the operator log only; `PropertySetup.tsx` renders nothing for an empty `categories` list AND clears the paste box, so an all-scrubbed run is indistinguishable from success. Closing it needs a response field plus one component line. Now in the pentest-gate list.
+
+## - **ALL DATABASE CONTENT IS TEST DATA — decide whether to wipe or flag before the Stripe flip** — CLOSED (23 Aug 2026)
+
+**HOW IT WAS VERIFIED:** RESOLVED — the decision was taken and BUILT, not merely made. The answer was FLAG, never wipe: `hosts.is_test` + `apartments.is_test` (three migrations plus `e5b87e2`) mark every fixture, trigger-maintained, server-only for WRITE. Crons filter `.eq('is_test', false)`, host-facing email is gated `!is_test`, and admin-overview metrics exclude test hosts. The live DB is launch-clean — 1 real host, 2 real properties — with NOTHING DELETED: the fixtures stay, flagged. The invariant lives in CLAUDE.md's DB TRAPS; this entry records only that the open question is answered.
+
+- **Why "wipe" was the wrong half of the question:** the fixtures are the only regression corpus this project has, and several are load-bearing (the C8 cancelled-conversation fixture, the deliberate Vantaa geocode, the three pre-arrival claim fixtures). Deleting them to clean the launch surface would have destroyed the evidence that past defects stay fixed.
+- **Closed with it:** the `subscription_status` DECOUPLED-from-the-access-gate item. Its workaround — `is_exempt = true` on host `1d5a3b9c` — is now the SANCTIONED resting state for a test host (active + exempt, NULL Stripe refs), not a workaround awaiting reconciliation.
