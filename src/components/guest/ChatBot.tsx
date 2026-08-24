@@ -71,13 +71,19 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
               a header component, so there is no prop to mis-set and no path by which this label
               can reach the human thread. If the headers are ever unified, this MUST become an
               explicit prop defaulting to OFF.
-              INCOMPLETE, AND SAID HERE RATHER THAN ONLY IN A COMMIT MESSAGE: this is ONE of TWO
-              guest-facing AI chats. WelcomePage's pre-arrival concierge (/api/welcome-chat) is
-              the other, and its eyebrow still reads "Ask {brandName}" — the exact construction
-              removed here for implying a human. It is the surface a guest holds for WEEKS before
-              arrival. Deferred to its own commit only because that file was outside this change's
-              scope; the obligation attaches to every AI surface, so the fix is a site
-              ENUMERATION, not an edit to whichever surface you happen to be in. */}
+              THE OTHER GUEST-FACING AI CHAT IS LABELLED TOO: WelcomePage's pre-arrival concierge
+              (/api/welcome-chat) carries the same disclosure as of 24 Aug 2026. Its label is fixed
+              INK rather than this cream pill, because its header is already light — the shared
+              rule is that the disclosure must not read `accent`, not that the markup matches.
+              A THIRD AI chat exists and is NOT YET labelled: GuideDrawer (/api/guide-assistant).
+              DO NOT READ THAT AS "INTERNAL SURFACES ARE EXEMPT" — Art. 50 attaches to natural
+              persons, and a host is one, so "host-facing" is NOT a carve-out. The only carve-out
+              is OBVIOUSNESS to a reasonably well-informed person, and GuideDrawer scores WEAKLY
+              on it: measured, the string "AI" appears ZERO times in that file's user-visible
+              copy, and its intro speaks in the FIRST PERSON ("I answer only from the guide"),
+              which is the same construction removed from the two guest surfaces. It is queued as
+              its own commit, not settled as exempt. The obligation attaches to every AI surface,
+              so the fix is a site ENUMERATION — never an edit to whichever one you have open. */}
           {/* INK ON CREAM, NOT white-on-accent at 70% opacity. `accentColor` is any host-typed
               hex (PropertySetup validates only /^#[0-9a-fA-F]{6}$/), so white-on-accent has NO
               verifiable ratio — MessageHost's close control in this same change measures white

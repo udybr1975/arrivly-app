@@ -638,7 +638,7 @@ function LiveWelcome({
 
       {activeTab === 'chat' && (
         <div style={{ height: 'calc(100vh - 64px)' }}>
-          <WelcomeChat accent={accent} brandName={brandName} code={code} />
+          <WelcomeChat accent={accent} code={code} />
         </div>
       )}
 
@@ -743,8 +743,8 @@ function LiveWelcome({
             {picks.length === 0 && guideEntries.length === 0 && !showExperiencesEntry && !hasCoords && (
               <div className={`${card} p-5`}>
                 <p className="text-[13.5px] text-[#5b5853] leading-relaxed">
-                  {brandName} is still putting their local favourites together. Ask in the Chat tab in the
-                  meantime — it knows the area.
+                  {brandName} is still putting their local favourites together. Ask the AI assistant
+                  in the Chat tab meanwhile — it knows the area.
                 </p>
               </div>
             )}
@@ -891,7 +891,11 @@ function KeepThisPageCard({ accent }: { accent: string }) {
 // ── The public concierge (Turnstile-gated, /api/welcome-chat) ──
 // Full-height chat column so the composer sits above the tab bar, matching the guest page's
 // chat tab. The transport, history cap and Turnstile handling are unchanged.
-function WelcomeChat({ accent, brandName, code }: { accent: string; brandName: string; code: string }) {
+// `brandName` was dropped from the props on 24 Aug 2026, not merely left unused: its ONLY use
+// was the "Ask {brandName}" eyebrow that implied a human, and noUnusedParameters would have
+// caught it anyway. If a future header wants the brand back, it must not sit where a guest
+// reads it as the author of the replies.
+function WelcomeChat({ accent, code }: { accent: string; code: string }) {
   const [messages, setMessages] = useState<ChatMsg[]>([])
   const [input, setInput] = useState('')
   const [sending, setSending] = useState(false)
@@ -947,9 +951,25 @@ function WelcomeChat({ accent, brandName, code }: { accent: string; brandName: s
   return (
     <div className="h-full flex flex-col bg-[#fbfaf7]">
       <div className="shrink-0 px-5 pt-5 pb-3 border-b border-[#e9e4d9]">
-        <p className="text-[10px] tracking-widest uppercase font-semibold" style={{ color: accent }}>Ask {brandName}</p>
+        {/* EU AI ACT ART. 50 TRANSPARENCY — the second of the two guest-facing AI chats, and the
+            one a guest holds for WEEKS before arrival. This replaces an eyebrow that read
+            "Ask {brandName}", which told the guest they were talking to their host.
+            THE TREATMENT DIFFERS IN FORM FROM ChatBot's AND FOR A MEASURED REASON, so do not
+            "unify" them by copying the pill here: ChatBot's header is the ACCENT colour, so its
+            label is a cream pill to escape it. THIS header is already light (#fbfaf7), where a
+            cream pill would be invisible AS a pill — so the label is fixed INK instead. The
+            shared principle is the only thing that matters and it holds in both: THE DISCLOSURE
+            MUST NOT READ `accent`. Measured on this panel, accent-as-text is 1.38:1 for a pale
+            host hex and 1.04:1 for white, against 15.97:1 for #231d17 ON THIS PANEL. (Not
+            16.41 — that is ChatBot's ink-on-#fffdf9 pill. Re-derived against #fbfaf7 rather
+            than carried across, which is the whole reason a measurement is quoted here.)
+            A disclosure whose
+            visibility depends on the host's colour picker is not "persistent, always visible",
+            which is the whole obligation. */}
+        <p className="text-[10px] tracking-widest uppercase font-semibold text-[#231d17]">AI assistant</p>
         <p className="text-[12.5px] text-[#5b5853] mt-1">
-          Planning ahead? Ask about the neighbourhood, getting around, or what&apos;s worth booking early.
+          An AI assistant that knows this area — not your host. Planning ahead? Ask about the
+          neighbourhood, getting around, or what&apos;s worth booking early.
         </p>
       </div>
 
