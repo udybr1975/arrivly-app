@@ -901,24 +901,44 @@ function PrintStep({ apt, host }: { apt: ApartmentShare; host: HostBrand | null 
         </div>
       )}
 
-      <div className="mt-3 flex gap-2">
-        <button
-          type="button"
-          onClick={download}
-          disabled={!canPrint}
-          className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-[9px] bg-[#c8a24e] px-3 py-2 text-[12.5px] font-semibold text-[#16100d] transition-colors hover:bg-[#e7d6ad] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#c8a24e]"
-        >
-          <Download size={14} /> Download
-        </button>
+      {/* PRINT IS THE PRIMARY PATH TO A FILE, and deliberately so: the browser's own
+          "Save as PDF" destination renders the SAME document the printer gets, so the saved
+          file cannot drift from the printed card, it stays vector, and it costs no new
+          dependency. An HTML-to-image renderer was explicitly rejected. The bare-PNG
+          download stays for hosts who want the raw code for their own artwork — demoted,
+          not removed. */}
+      <div className="mt-3">
         <button
           type="button"
           onClick={printCard}
           disabled={!canPrint}
-          className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-[9px] border border-[#e4ddd0] px-3 py-2 text-[12.5px] text-[#6b6354] transition-colors hover:bg-[#f0ede6] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
+          className="w-full inline-flex items-center justify-center gap-1.5 rounded-[9px] bg-[#c8a24e] px-3 py-2 text-[12.5px] font-semibold text-[#16100d] transition-colors hover:bg-[#e7d6ad] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[#c8a24e]"
         >
-          <Printer size={14} /> Print
+          <Printer size={14} /> Print / Save as PDF
         </button>
       </div>
+
+      {/* #6b6354, NOT the #8a8276 muted token used elsewhere in this file: measured on this
+          card's #fdfbf7, #8a8276 is 3.67:1 and fails the 4.5:1 floor, while #6b6354 is 5.74:1.
+          This sentence is what teaches the Save-as-PDF route, so an unreadable version costs
+          the change its whole point. */}
+      <p className="mt-2 text-[11px] text-[#6b6354]">
+        To save the card as a file, choose “Save as PDF” in the print window.
+      </p>
+
+      <button
+        type="button"
+        onClick={download}
+        disabled={!canPrint}
+        className="mt-1.5 inline-flex items-center gap-1 text-[11.5px] text-[#6b6354] transition-colors hover:text-[#231d17] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:text-[#6b6354]"
+      >
+        {/* The icon is kept (not dropped) because removing it would orphan the `Download`
+            lucide import, and `noUnusedLocals` would then force an edit outside this render
+            region. Only the TEXT carries the underline, so the rule does not run under the
+            glyph. */}
+        <Download size={12} />
+        <span className="underline underline-offset-2">Download QR only (PNG)</span>
+      </button>
     </div>
   )
 }
