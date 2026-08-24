@@ -64,14 +64,21 @@ export const GUIDE_MODULES: GuideModule[] = [
     status: 'live',
     page: '/dashboard/property',
     related: ['branding', 'bookings', 'guest-page-qr'],
-    tags: ['editor', 'wifi', 'check-in', 'house rules', 'extras', 'picks', 'guide', 'events', 'calendars', 'look'],
+    tags: ['editor', 'wifi', 'check-in', 'house rules', 'extras', 'picks', 'guide', 'events', 'calendars', 'look', 'import', 'house manual', 'upload'],
     body: `Opened from the **Edit / Finish setup** button on your property card on Home. The editor is a row of tabs. **Only Basics is open at first** — the others unlock the moment you save the basics, because every later tab needs a saved property to attach to.
 
 > **Why the locked tabs?** Until the property is saved, there's nothing to store WiFi or a door code *against*. Saving Basics creates the property; that's why it comes first.
 
+### Import from a file — "Have it all in one file?"
+If you already have a guest guide or house manual, the editor offers to sort it for you (the card appears while a property is still mostly empty).
+- **Choose a file / paste text** — upload a .docx or .pdf, or paste the text. *Why:* one document instead of seven forms. **Your file is read on your device and never uploaded** — only the text you see in the box is sent, and you can edit or delete anything before sending.
+- **Sort it into my tabs** — AI proposes where each piece belongs, then shows you a review screen. *Why:* nothing is saved until you review it.
+- **The review screen** — every field shows what was found next to what's in your tab now, with a tick per field. Public fields start ticked; **WiFi and Check-in always need your tick**, because they're private and you should confirm them deliberately. If something public looks like it contains a code, it's unticked with a red warning — codes belong only in WiFi and Check-in.
+- **Let the guest chat use this document** (tick at the end) — keeps your document so the chat can answer from it, not just from the tabs ("where do I find picnic bags?"). *Why:* your own words answer better than a summary. Stored with this property, read only by guests with a confirmed booking. **To turn it off later or delete it, use the "Imported document" row in this tab** (the import card itself disappears once a property is filled in) — and note that text already sent to the AI in past chats can't be taken back.
+
 ### Tab: Basics
 - **Property name** — the apartment's name. *Why:* labels it across the dashboard and on the guest page header.
-- **Country / City / Neighbourhood / Street / Street number** — the full address. *Why:* it's used to place the apartment on the map (for guest walking directions), and to generate the **hyper-local** city guide and events. The exact street is **never shown to guests** on the public page — only verified guests in their stay see it.
+- **Country / City / Neighbourhood / Street / Street number** — the full address. *Why:* it's used to place the apartment on the map (for guest walking directions), and to generate the **hyper-local** city guide and events. **What guests actually see:** the street *text* isn't printed on the scan-in-the-flat guest page, but the **map pin is** — and a pin is the address. Your **welcome link** shows the full street address to whoever holds it, which is how a guest finds the door before they arrive. So treat the address as something you're deliberately sharing with guests, not as a secret the page keeps for you.
 - **Floor note** (e.g. "3rd floor, no lift") — a short access note. *Why:* helps guests find the door; optional.
 - **Max guests** — how many the place sleeps. *Why:* sets expectations and supports later booking features.
 - **Cover photo · Upload / Remove** — your own hero image for the guest page. *Why:* a real photo makes the page feel like *your* place; if you skip it, Bemgu uses a tasteful city image automatically.
@@ -138,20 +145,23 @@ export const GUIDE_MODULES: GuideModule[] = [
     id: 'guest-page-qr',
     category: 'guest-page',
     title: 'Share',
-    summary: 'Two things per property: a link you send before the trip, and a code you print for the wall.',
+    summary: 'A message with the welcome link you send before the trip, and a QR code you print for the wall.',
     status: 'live',
     page: '/dashboard/share',
     related: ['property', 'branding'],
-    tags: ['qr', 'guest page', 'share', 'print', 'url', 'welcome link', 'message'],
-    body: `- **Step 1 — send this** — the message you paste into Airbnb, Booking.com or WhatsApp once a booking is confirmed. *Why:* it carries the welcome link, which opens your guide *before* the guest travels — early enough for them to book tables and tours.
-- **Copy message** — copies the whole message, not just the link. *Why:* one tap and it's ready to paste; the link is already inside it.
-- **Edit** — rewrite the message in your own words, then Save. *Why:* say it your way. Edits are saved for that property only, and if you delete the link it's added back automatically.
-- **Step 2 — print this** — the QR code for the wall. *Why:* guests scan it once they've arrived; one code per property, forever. **Don't send this one to guests** — it opens the in-stay page, not the pre-arrival guide.
-- **Download** (PNG) — saves the QR as an image. *Why:* drop it into a welcome card, sign, or printout.
-- **Print** — prints a ready-made QR card. *Why:* a physical code to leave in the apartment.
-- **Guest can't scan the code?** — reveals the plain guest page URL with a copy button. *Why:* a fallback for a guest whose camera won't cooperate.
+    tags: ['qr', 'guest page', 'share', 'print', 'url', 'welcome link', 'message', 'pre-arrival', 'airbnb', 'template'],
+    body: `- **Step 1 — send this before they travel** — a message carrying your **welcome link**, which opens the guide *before* the guest travels — early enough to book tables and tours. Optional: the QR alone is enough.
+- **Platform tabs (Airbnb / Anywhere else / Booking.com & Vrbo)** — the card adapts to where you're sending it. *Why:* Airbnb works differently from email or WhatsApp, so the instructions differ.
+  - **Anywhere else** (email, WhatsApp, your own system): one **Copy message** — the link is already inside, and it's added back automatically if you remove it while editing.
+  - **Airbnb**: two parts — paste the message, then build a **personalised link** using Airbnb's own tags for the guest's name and confirmation code. Personalised means the guest's page greets them by name and knows their booking, weeks before arrival. The exact steps are on the card itself; the key thing to know is that **Airbnb's tags must be inserted from its "Add details" menu — typing or pasting them produces dead text**. The card shows an "It should end up looking like this" line — compare your finished message against it before saving your template.
+  - **Booking.com & Vrbo**: not tested yet, and the card says so honestly rather than guessing instructions. The QR does the whole job meanwhile.
+- **Edit / Save** — rewrite the message in your own words, per property.
+- **Step 2 — print this for the wall** — the QR for inside the flat. Guests scan it on arrival. **Treat the printed code like a key** — anyone who gets a photo of it gets the same access, so put it inside the flat rather than anywhere public. **Don't send this one to guests** — it's the in-stay code, not the pre-arrival guide. **Download** (PNG) and **Print** as before.
+- **Guest can't scan the code?** — reveals the plain guest page URL with a copy button.
 
-> **What guests see when they scan:** their name and a welcome, WiFi, house rules, the live city guide and local events, a chatbot that knows your apartment, and — during their stay only — the private check-in details. After checkout the page becomes a friendly "till next time" goodbye; with no valid booking it shows a neutral page (no private data ever leaks).`,
+> **How you'll know the template works:** when a guest arrives having used their personalised link, their booking shows a green **"Guest identified via link"** chip in Bookings. An even earlier signal: a calendar-synced booking that suddenly *has* a name got it from the link — synced calendars never carry names on their own.
+
+> **What guests see when they scan:** their name and a welcome, WiFi, house rules, the live city guide and local events, a chatbot that knows your apartment (and, if you kept your imported document, answers from your own words), and — during their stay only — the private check-in details. After checkout the page becomes a friendly "till next time" goodbye; with no valid booking it shows a neutral page — no check-in details, no WiFi, no guest name.`,
   },
   {
     id: 'branding',
@@ -170,13 +180,21 @@ export const GUIDE_MODULES: GuideModule[] = [
   {
     id: 'earning-more',
     category: 'guest-page',
-    title: 'Earning more',
+    title: 'Earnings',
     summary:
-      'Surface tours, tickets and restaurant reservations on your guest page — and, on Portfolio, earn from what guests book. (Preview — not live yet.)',
-    status: 'coming-soon',
-    related: ['billing'],
-    tags: ['experiences', 'affiliate', 'monetisation'],
-    body: `This module exists now so the structure is ready. When it ships, it explains the experiences your guests can book from Explore, how earnings work, and which plan unlocks them. Until then it shows as a preview, and the assistant will say it's not yet available rather than promise it.`,
+      'Your guest pages show bookable tours & tickets — see how often guests tap through, and on Portfolio, connect your own marketplace accounts.',
+    status: 'live',
+    page: '/dashboard/earnings',
+    related: ['billing', 'guest-page-qr'],
+    tags: ['earnings', 'experiences', 'marketplaces', 'commission', 'getyourguide', 'tiqets', 'viator'],
+    body: `Your guest pages already show tours & tickets from the experience marketplaces — guests can book straight from the Explore tab. This page shows how often they do.
+
+- **Taps · last 30 days** — how many times guests tapped an experience. *Why:* a helpful signal of guest interest — a tap is a click-through, not a confirmed booking.
+- **Estimated bookings / commission** (on Starter & Growth) — an illustration of what those taps could be worth, with the assumptions stated under it. *Why:* estimates only, clearly labelled — never actual earnings.
+- **Confirmed bookings** (on Starter & Growth, when there are any) — real commission reported by Tiqets from your guests' bookings, currently paid to Bemgu because those plans don't connect your own accounts. *Why:* real data is marked apart from estimates.
+- **Connect marketplaces** (Portfolio and above) — connect your own **GetYourGuide** and **Tiqets** partner accounts, and those marketplaces pay *you* directly; Bemgu never touches your money. **Viator can't be connected** — Viator does not permit host accounts on our pages, so Viator bookings earn for Bemgu. That's stated on the page itself, not hidden.
+- **Taps by property** (Portfolio and above) — the same numbers per listing. *Why:* it tells you which place is actually earning the taps.
+- **Reported in your dashboard** links (Portfolio and above) — actual bookings, commission and payouts are reported in each marketplace's own partner dashboard; Bemgu shows taps. *Why:* the marketplace pays you, so the marketplace is the source of truth for money.`,
   },
   {
     id: 'bookings',
@@ -186,18 +204,21 @@ export const GUIDE_MODULES: GuideModule[] = [
     status: 'live',
     page: '/dashboard/bookings',
     related: ['property', 'guest-page-qr'],
-    tags: ['bookings', 'calendar', 'manual booking', 'ical', 'blocks'],
+    tags: ['bookings', 'calendar', 'manual booking', 'ical', 'blocks', 'cancel', 'availability', 'link'],
     body: `- **List / Cal** toggle — switch between the booking list and the month calendar. *Why:* scan details as a list, or see occupancy at a glance.
 - **+ Add booking** → **New manual booking** — opens a small form. *Why:* for direct guests not coming from a connected calendar.
   - **Guest first name** (required) — who's staying. *Why:* greets them by name on their page.
-  - **Check-in** / **Check-out** (required) — the dates. *Why:* these decide when the guest page is live and when it flips to the goodbye state.
+  - **Dates** — picked on a small availability calendar that greys out dates that clash with existing bookings and blocks, and explains why on hover. *Why:* you see a clash before saving instead of discovering it on an error. (The server still double-checks — a calendar sync can land while the form is open.)
   - *A booking reference (ARR-XXXXXX) is generated automatically* and becomes the guest's QR token. *Why:* it's the secure key that ties a guest to their page; you don't create it yourself.
 - **Filters: All / Guests / Blocks** — narrow the list. *Why:* separate real guests from channel-blocked dates.
 - **Search guest name** — find a stay fast. *Why:* useful once the list grows.
 - **Card colours / left edge** — colour-coded by source (Airbnb, Vrbo, manual, block). A green **In-house** pill = staying right now. *Why:* read the source and status of a stay at a glance.
 - **+ add name** (on an unnamed stay) — attach a guest name. *Why:* synced Airbnb stays arrive without names; this fills the gap so their page personalises.
 - **Guest page ↗** (on an active stay) — open that guest's live page. *Why:* see exactly what your current guest sees, or grab their link.
-- **Manage calendars →** — jumps to the property's Calendars tab. *Why:* connect or fix feeds without hunting for them.`,
+- **Manage calendars →** — jumps to the property's Calendars tab. *Why:* connect or fix feeds without hunting for them.
+- **Cancel** (on a manual booking) — soft-cancels the stay after a confirmation; the guest's page link stops working. *Why:* mistakes and no-shows happen. Only **manual** bookings can be cancelled here — a booking from a connected calendar belongs to that channel, so cancel it there and the next sync picks it up. The conversation with that guest stays in Messages.
+- **Click a day on the calendar** — opens a panel listing every booking covering that day, each with its details and (for manual bookings) a Cancel button. *Why:* one calendar cell can hold more than one booking, so actions live on the row, not the cell.
+- **"Guest identified via link" chip** — appears on a booking once the guest has arrived using the personalised link from your booking-platform message. *Why:* it's proof your template works, without a test booking. It appears from arrival day — a guest opening the link weeks early gets their name attached, but the chip waits for arrival.`,
   },
   {
     id: 'messages',
@@ -213,7 +234,8 @@ export const GUIDE_MODULES: GuideModule[] = [
 - **Search guest name** — find a thread. *Why:* jump straight to a conversation.
 - **A conversation row** — shows the guest, an in-house / checked-out chip, an "Awaiting reply" flag, and unread count. *Why:* triage at a glance; rows sort attention-first.
 - **Reply box** (send with the button or ⌘/Ctrl+Enter) — answer the guest. *Why:* the reply lands on their guest page. Opening a thread marks it read.
-- **Open guest page ↗** — open the guest's page from the thread. *Why:* check context while you reply.`,
+- **Open guest page ↗** — open the guest's page from the thread. *Why:* check context while you reply.
+- **Cancelled stays keep their thread** — cancelling a booking doesn't delete its conversation. *Why:* you may still need to reach the guest, or keep the record.`,
   },
   {
     id: 'full-booking',
@@ -279,7 +301,9 @@ export const GUIDE_MODULES: GuideModule[] = [
 - **"The city guide came back empty."** A one-off hiccup. *Fix:* press **Refresh guide** once more — it almost always fills on the second try.
 - **"Notifications won't turn on."** They're blocked at the browser/OS level. *Fix:* re-allow notifications for the site in your browser settings, then toggle Enable again. On iPhone, install the app to your home screen first.
 - **"My Airbnb stays have no guest names."** iCal feeds don't carry names. *Fix:* use **Calendars → Import names** with your Airbnb CSV; names then stick through future syncs.
-- **"An old blocked range I don't recognise is on my calendar."** It's a synced channel block, not a guest. *Fix:* it's harmless; if it's stale, remove the block in the source channel and re-sync.`,
+- **"An old blocked range I don't recognise is on my calendar."** It's a synced channel block, not a guest. *Fix:* it's harmless; if it's stale, remove the block in the source channel and re-sync.
+- **"My guest's page says 'Dear guest' even though I set up the Airbnb template."** The name and confirmation-code tags were typed instead of inserted — Airbnb tags only work when inserted from its "Add details" menu, and typed ones arrive as dead text. *Fix:* open the template in Airbnb, delete the typed tags, insert them from the menu, and compare against the "It should end up looking like this" line on the Share page.
+- **"How do I know my pre-arrival template is working?"** Watch for the green **"Guest identified via link"** chip in Bookings — it appears when a guest arrives via their personalised link. Earlier still: a calendar-synced booking that suddenly shows a guest name got it from the link.`,
   },
 ]
 
