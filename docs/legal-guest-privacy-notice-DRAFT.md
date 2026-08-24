@@ -96,7 +96,7 @@ Notifications are sent only if you switch them on, and you can switch them off a
 
 ## 5. The part we are responsible for ourselves
 
-To keep the service working and stop it being abused, we keep short-lived server logs and run an automated check on the pre-arrival chat to tell real visitors from bots. This may involve your IP address. We do this on our own initiative for security, which makes us the controller for it, and our basis is our legitimate interest in a service that is not misused. **[CONFIRM — log retention periods]**
+To keep the service working and stop it being abused, we keep short-lived server logs and run an automated check on the pre-arrival chat to tell real visitors from bots. This may involve your IP address. We also send ourselves a short operational message each time a guest page opens, so we can see the service is working — it carries the property and how the page was reached, and never your name, your booking reference, your dates or your IP address (see §4). We do this on our own initiative, both for security and to know the service is running, which makes us the controller for it, and our basis is our legitimate interest in a service that works and is not misused. **[CONFIRM — log retention periods]**
 
 ---
 
