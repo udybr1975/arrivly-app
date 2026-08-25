@@ -1257,10 +1257,9 @@ examples (PropertySetup hints, help-drawer content.ts, host-guide doc) KEEP real
 they show what to type. 24 Aug decisions carried unchanged (no ntfy rotation; print colours out
 of contrast work; interstitial closed; ring two-token, alpha dropped).
 
-OPEN: AuthShell tagline 2.96:1 mobile + lift-out 4.26:1 → AA session · demo QR of `ARR-EVT777`
-(dates lapsed; refresh first) BLOCKED on a spend-cap decision → pentest gate · `€25` hardcoded
-twice vs `plans` · `sagrada.jpg` licence undocumented · competitor facts dated 25 Aug, re-check at
-marketing pass · phone/tablet browser checks (h2 wrap 375px, ring-inset, ticket at real 768/1024).
+OPEN: AuthShell tagline 2.96:1 mobile + lift-out 4.26:1 → AA session · `€25` hardcoded twice vs
+`plans` · `sagrada.jpg` licence undocumented · competitor facts dated 25 Aug, re-check at marketing
+pass · phone/tablet browser checks (h2 wrap 375px, ring-inset, ticket at real 768/1024).
 
 QUEUE: 1 THE DEMO (approved 25 Aug, below) · 2 gemini-2.5-flash repoint (deadline 16 Oct 2026 —
 must ship before it) · 3 pentest gate (incl. demo-sandbox limits) · 4 AA-floor session · 5
