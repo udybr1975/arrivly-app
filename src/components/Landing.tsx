@@ -249,7 +249,7 @@ const COMPS_ROWS: CompRow[] = [
     label: 'Bookable experiences on the page',
     bemgu: { mark: 'brass', text: 'Viator · GetYourGuide · Tiqets' },
     hostfully: { mark: 'muted', text: 'Own upsells, referrals & partner services' },
-    touchstay: { mark: 'muted', text: 'Tiqets + 4 experience & service partners' },
+    touchstay: { mark: 'muted', text: 'Tiqets and 4 other experience & service partners' },
   },
   {
     label: 'Marketplace commissions paid to you',
@@ -812,8 +812,13 @@ export default function Landing() {
 
           <Reveal delay={120}>
             <div className="grid gap-4 sm:grid-cols-2">
-              <div className="overflow-hidden rounded-2xl border border-[#ddd8ce] bg-white shadow-sm">
-                <div className="flex h-full flex-col justify-end p-5">
+              {/* self-start: without it this grid item stretches to the row height set by the
+                  taller, offset sibling and reopens the blank area p-4 alone cannot close. */}
+              <div className="self-start overflow-hidden rounded-2xl border border-[#ddd8ce] bg-white shadow-sm">
+                <div className="flex h-32 w-full items-center justify-center bg-[#f7f5f0]" aria-hidden="true">
+                  <TicketIcon className="h-14 w-14 text-[#c8a24e]" />
+                </div>
+                <div className="p-4">
                   <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#a8842f]">
                     <TicketIcon className="h-3.5 w-3.5" /> Tickets booked
                   </div>

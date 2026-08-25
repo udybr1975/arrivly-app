@@ -81,9 +81,11 @@ export default function Logo({
   // Contrast measured on FLAT surfaces: on #1c1c1a muted is 5.28:1 and brass
   // 7.10:1; on #f7f3ec muted is 5.16:1 and brass 5.65:1 — all clear of the
   // 4.5:1 floor that 10px text needs. That covers the Landing nav and footer.
-  // It does NOT cover AuthShell's dark panel, where the lockup sits over a
-  // photograph under a partial scrim and every neighbouring string carries a
-  // textShadow this one does not — treat that surface as unmeasured.
+  // AuthShell's dark panel is a different surface and it has now been MEASURED,
+  // not left unknown: over the photograph under a partial scrim the muted tone
+  // is 4.11:1 on desktop and 2.96:1 on the h-[300px] mobile banner, i.e. it
+  // FAILS. That call site now passes the panel's TEXT_SHADOW, which helps
+  // perceptually but does not change the formal ratio.
   const mutedClass = taglineTone === 'dark' ? 'text-[#f0ede6]/55' : 'text-[#6b665c]'
   const brassClass = taglineTone === 'dark' ? 'font-semibold text-[#c8a24e]' : 'font-semibold text-[#7a5c00]'
 

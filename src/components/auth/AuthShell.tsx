@@ -79,7 +79,17 @@ export default function AuthShell({ headline, sub, points = DEFAULT_POINTS, chil
 
         <div className="relative z-10 flex h-full flex-col justify-between p-9 md:p-10">
           {/* top: wordmark */}
-          <Logo size={30} withWordmark withTagline taglineTone="dark" wordmarkClassName="text-[#f0ede6] text-[19px]" />
+          {/* The lockup sits over the photograph like every string in this panel, so it
+              takes the same TEXT_SHADOW — the 10px tagline is the thinnest text here.
+              THIS DOES NOT CLOSE THE AA GAP, and must not be recorded as if it does:
+              text-shadow is not an input to the WCAG 2.x contrast formula, so the formal
+              ratio is unchanged at 4.11:1 desktop / 2.96:1 mobile against a 4.5:1 floor.
+              It is a perceptual improvement and restores parity with the four neighbouring
+              strings. The real closers are dropping withTagline on this one surface,
+              lightening the dark muted tone above /55, or deepening the scrim's top stops. */}
+          <div style={{ textShadow: TEXT_SHADOW }}>
+            <Logo size={30} withWordmark withTagline taglineTone="dark" wordmarkClassName="text-[#f0ede6] text-[19px]" />
+          </div>
 
           {/* bottom: headline + checklist */}
           <div>
