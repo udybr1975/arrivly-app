@@ -79,7 +79,7 @@ export default function AuthShell({ headline, sub, points = DEFAULT_POINTS, chil
 
         <div className="relative z-10 flex h-full flex-col justify-between p-9 md:p-10">
           {/* top: wordmark */}
-          <Logo size={30} withWordmark wordmarkClassName="text-[#f0ede6] text-[19px]" />
+          <Logo size={30} withWordmark withTagline taglineTone="dark" wordmarkClassName="text-[#f0ede6] text-[19px]" />
 
           {/* bottom: headline + checklist */}
           <div>
@@ -131,7 +131,7 @@ export default function AuthShell({ headline, sub, points = DEFAULT_POINTS, chil
         <div className="w-full max-w-[368px]">
           {/* mobile-only brand row */}
           <div className="mb-8 md:hidden">
-            <Logo size={26} withWordmark wordmarkClassName="text-[#1c1c1a] text-[17px]" />
+            <Logo size={26} withWordmark withTagline taglineTone="light" wordmarkClassName="text-[#1c1c1a] text-[17px]" />
           </div>
           {children}
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import Logo from './shared/Logo'
 import {
   QrIcon,
   PinIcon,
@@ -629,8 +630,14 @@ export default function Landing() {
       {/* ─────────────────────────── Sticky nav ─────────────────────────── */}
       <header className="sticky top-0 z-50 border-b border-[#2c2925] bg-[#1c1c1a]/90 backdrop-blur supports-[backdrop-filter]:bg-[#1c1c1a]/75">
         <nav className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5 sm:px-8">
-          <a href="#top" className="font-['Fraunces'] text-[19px] font-medium tracking-tight text-[#f0ede6]">
-            Bemgu
+          <a href="#top" aria-label="Bemgu — back to top" className="inline-flex">
+            <Logo
+              size={28}
+              withWordmark
+              withTagline
+              taglineTone="dark"
+              wordmarkClassName="text-[19px] tracking-tight text-[#f0ede6]"
+            />
           </a>
           <div className="hidden items-center gap-7 md:flex">
             <a href="#how" className="text-[13px] text-[#f0ede6]/60 transition-colors hover:text-[#f0ede6]">How it works</a>
@@ -1140,7 +1147,7 @@ export default function Landing() {
       <footer className="border-t border-[#2c2925] bg-[#1c1c1a]">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-5 px-5 py-9 sm:px-8 md:flex-row">
           <div className="text-center md:text-left">
-            <div className="font-['Fraunces'] text-[17px] font-medium text-[#f0ede6]">Bemgu</div>
+            <Logo size={24} withWordmark withTagline taglineTone="dark" wordmarkClassName="text-[17px] text-[#f0ede6]" />
             <div className="mt-1 text-[12px] text-[#f0ede6]/40">© 2026 Bemgu. A separate product from Anna&apos;s Stays.</div>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-[13px] text-[#f0ede6]/55">
