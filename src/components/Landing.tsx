@@ -398,7 +398,7 @@ function PhoneMockup() {
               <span className="text-[8px] font-semibold uppercase tracking-[.14em]" style={{ color: EXAMPLE_ACCENT }}>Right now · Evening</span>
               <span className="shrink-0 rounded-full border border-[#e9e4d9] bg-[#fbfaf7] px-1.5 py-0.5 text-[8px] text-[#9a958c]">18°C · Clear</span>
             </div>
-            <p className="mt-1 text-[10px] leading-snug text-[#36322c]">Bar Cañete pours the best vermut at this hour — go before eight to get a stool.</p>
+            <p className="mt-1 text-[10px] leading-snug text-[#36322c]">Vermuteria Rúfol pours the best vermut at this hour — go before eight to get a stool.</p>
           </div>
         </div>
         <div className="overflow-hidden rounded-[10px] border border-[#e9e4d9] bg-[#fffdf9]">
@@ -436,7 +436,7 @@ function PhoneMockup() {
       </div>
       <div className="mt-2.5 space-y-2">
         {[
-          { tag: 'Host pick · Dinner', name: 'Bar Cañete', meta: '3 min walk' },
+          { tag: 'Host pick · Bar', name: 'Vermuteria Rúfol', meta: '3 min walk' },
           { tag: 'Guide · Sight', name: 'Basílica de Santa Maria', meta: '4 min walk' },
         ].map(c => (
           <div key={c.name} className="rounded-[10px] border border-[#e9e4d9] bg-[#fffdf9] p-2.5">
