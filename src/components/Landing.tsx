@@ -235,38 +235,38 @@ const COMPS_ROWS: CompRow[] = [
   {
     label: 'Pricing model',
     bemgu: { text: 'Flat tier / one price, whole portfolio tier' },
-    hostfully: { text: 'Per guidebook / jumps at 1 → 5 → 10' },
+    hostfully: { text: 'Per guidebook / Free for 1, Pro up to 199' },
     touchstay: { text: 'Per property / every unit adds cost' },
   },
   {
-    label: '10–12 properties, per month',
+    label: 'What you pay as you grow',
     bemgu: { text: '€25 / Portfolio — up to 12 properties' },
-    hostfully: { text: '~$75+ / Professional tier' },
-    touchstay: { text: '~$150+ / ~$12–15 × each property' },
+    hostfully: { text: 'Priced per guidebook — see their calculator' },
+    touchstay: { text: 'From ~$12.50 per property, per month' },
   },
   {
-    label: 'Guests can book tours & tickets on the page',
+    label: 'Bookable experiences on the page',
     bemgu: { mark: 'brass', text: 'Viator · GetYourGuide · Tiqets' },
-    hostfully: { mark: 'muted', text: 'Viator only' },
-    touchstay: { mark: 'dash' },
+    hostfully: { mark: 'muted', text: 'Own upsells, referrals & partner services' },
+    touchstay: { mark: 'muted', text: 'Viator, Tiqets + 3 service partners' },
   },
   {
-    label: 'You keep 100% of the commission',
-    bemgu: { mark: 'brass', text: 'on Portfolio — GetYourGuide & Tiqets, paid to you directly' },
-    hostfully: { mark: 'dash' },
-    touchstay: { mark: 'dash' },
+    label: 'Marketplace commissions paid to you',
+    bemgu: { mark: 'brass', text: '100% on Portfolio — GetYourGuide & Tiqets pay you directly' },
+    hostfully: { mark: 'muted', text: 'Referral revenue' },
+    touchstay: { mark: 'muted', text: 'Commission share' },
   },
   {
     label: 'AI concierge that answers guest questions',
-    bemgu: { mark: 'brass', text: 'with live local knowledge — not just your guidebook' },
-    hostfully: { mark: 'muted', text: 'Trip planner; host-side inbox AI' },
-    touchstay: { mark: 'muted', text: 'answers from your guidebook only' },
+    bemgu: { mark: 'brass', text: 'plus a live, street-level city guide' },
+    hostfully: { mark: 'muted', text: 'AI itinerary planner' },
+    touchstay: { mark: 'muted', text: 'AI chatbot' },
   },
   {
     label: 'City guide writes and refreshes itself',
     bemgu: { mark: 'brass', text: 'AI-built, hyper-local, auto-refreshed' },
     hostfully: { text: 'Host-curated' },
-    touchstay: { mark: 'muted', text: 'AI draft at setup' },
+    touchstay: { mark: 'muted', text: 'AI guidebook generator' },
   },
   {
     label: 'Live local events, updated automatically',
@@ -277,8 +277,8 @@ const COMPS_ROWS: CompRow[] = [
   {
     label: 'Direct host ↔ guest messaging',
     bemgu: { mark: 'brass' },
-    hostfully: { mark: 'dash' },
-    touchstay: { mark: 'muted' },
+    hostfully: { mark: 'muted', text: 'Unified inbox (PMS)' },
+    touchstay: { mark: 'muted', text: 'Message hub' },
   },
   {
     label: 'Installs like an app, works offline',
@@ -290,7 +290,7 @@ const COMPS_ROWS: CompRow[] = [
 
 const COMPS_STATS = [
   { stat: '3–4 bookings', desc: 'Roughly what it takes per month, on Portfolio, for guest tour commissions to cover the whole fee' },
-  { stat: '2 marketplaces pay you', desc: 'GetYourGuide and Tiqets — commissions paid to you directly on Portfolio' },
+  { stat: '€25 flat', desc: 'One price for up to 12 properties on Portfolio — not a bill that grows per unit' },
   { stat: '100% on Portfolio', desc: 'GetYourGuide and Tiqets pay commissions to you directly — Bemgu never touches your money' },
 ]
 
@@ -978,7 +978,7 @@ export default function Landing() {
             </h2>
             <p className="mx-auto mt-4 max-w-[560px] text-[15px] leading-[1.7] text-[#1c1c1a]/65">
               Every Bemgu guest page already sells real, bookable tours &amp; tickets from three marketplaces —
-              live today. Here's how that stacks up against the well-known guidebook tools.
+              live today, on every plan. Here's how that stacks up against the well-known guidebook tools.
             </p>
           </Reveal>
 
@@ -1057,7 +1057,7 @@ export default function Landing() {
               <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
             <p className="mx-auto mt-6 max-w-[640px] text-[11px] leading-[1.6] text-[#1c1c1a]/40">
-              Competitor pricing from their public pricing pages, July 2026 — plans and prices may change; check
+              Competitor features and pricing from their public websites, August 2026 — plans and prices may change; check
               each provider for current terms. Commission rates are set by each marketplace and typically around
               ~8%; actual earnings vary. &ldquo;Bookings to cover the fee&rdquo; is illustrative, based on typical
               rates and an average booking value.
