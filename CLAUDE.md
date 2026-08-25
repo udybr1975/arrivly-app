@@ -123,8 +123,8 @@ docs/schema.md.
   email / ntfy / audit still fire, deliberately — the operator must still see the machinery run);
   admin-overview metrics exclude test hosts. **A test host RESTS AT active + exempt with NULL
   Stripe refs — that is the SANCTIONED state, not a phantom subscription to be reconciled.**
-  Live state 23 Aug 2026: **1 real host, 2 real properties** (`8ad00130` charming 1908 studio,
-  `d273d7d4` Beautiful private space). **NOTHING WAS DELETED** — the fixtures are the only
+  Live state 23 Aug 2026: **1 real host, 3 real properties** (`8ad00130` charming 1908 studio,
+  `d273d7d4` Beautiful private space, `51a8b817` Cozy Studio in central Helsinki). **NOTHING WAS DELETED** — the fixtures are the only
   regression corpus this project has, several are load-bearing, and they stay, flagged.
 - **`hosts` server-only columns** — `hosts` has 14 client-updatable profile columns only; `tier`, `is_exempt`, `price_override_cents`, `discount_percent`, `discount_until`, `property_cap_override`, `subscription_status`, `billing_notice`, `pending_tier`, `cancel_at_period_end`, `current_period_end`, `last_billing_notice_sig` are server-only for WRITE (column-level UPDATE revoked from authenticated+anon; verified via `role_column_grants` in Task 2 for `pending_tier` and `cancel_at_period_end`; `last_billing_notice_sig` UPDATE confirmed granted to `service_role` + `postgres` only, NOT authenticated/anon — F-05 verified safe S24). `billing_notice`, `pending_tier`, `cancel_at_period_end`, and `current_period_end` ARE SELECT-readable by authenticated (needed for BillingPanel). Never write server-only columns from the client — only via admin endpoints, `change-plan.ts`, `cancel-subscription.ts`, or the stripe-webhook (service-role).
 - **`city_events_cache` is service-role-only (RLS ON, ZERO policies)** — hosts CANNOT read it, including its `generated_at` timestamp. The property editor's "Guide & events" tab therefore derives events freshness from the **`/api/refresh-events` JSON response** (`refreshed` / `reason` / `generated_at`), NEVER a direct cache SELECT. (The city-guide row, by contrast, reads `guide_recommendations.generated_at` directly — that table IS host-readable.)
@@ -285,41 +285,26 @@ values — do not change without an explicit decision.**
 
 ### Supabase, RLS & the database
 
-- **SECURITY DEFINER MAKES `current_user` THE FUNCTION OWNER, SO ANY GATE THAT INSPECTS ITS CALLER
-  MUST BE INVOKER RIGHTS (Aug 14 2026).** The first version of `enforce_property_address_swap()`
-  was SECURITY DEFINER and carried a `service_role` exemption. Under DEFINER, `current_user` is the
-  OWNER on every call, so that exemption matched **EVERY** call and **the gate was completely
-  inert** — it looked correct, it ran without error, and it blocked nothing. **READING THE FUNCTION
-  DID NOT CATCH IT; only a behaviour test did** — one that tried a blocked swap as an ordinary host
-  and observed that it succeeded. **Rule: DEFINER is for functions that need to ACT beyond the
-  caller's rights; INVOKER is for functions that need to JUDGE the caller.** A function doing both
-  is a design error. Any exemption keyed on `current_user`, `session_user`, `auth.uid()` or a role
-  check must be proved by a behaviour test from each side of the boundary — never by inspection.
+- **SECURITY DEFINER MAKES `current_user` THE FUNCTION OWNER — A GATE THAT INSPECTS ITS CALLER MUST
+  BE INVOKER RIGHTS (Aug 14 2026).** Under DEFINER any exemption keyed on `current_user` /
+  `session_user` / `auth.uid()` / a role check matches EVERY call, so the gate is inert while
+  looking correct and running clean. **DEFINER is for functions that ACT beyond the caller's rights;
+  INVOKER is for functions that JUDGE the caller** — a function doing both is a design error. Prove
+  any caller-keyed exemption by a behaviour test from each side of the boundary, never by reading
+  the function.
 
-- **REVOKE ... FROM PUBLIC IS A SILENT NO-OP WHEN THE GRANT IS HELD BY NAME — AND THE CONVERSE IS
-  ALSO TRUE. BOTH DIRECTIONS HAVE NOW BITTEN (Aug 14 2026).** This file already recorded that
-  `REVOKE ... FROM PUBLIC` cannot remove a grant `anon`/`authenticated` hold BY NAME (the entry
-  below), and separately that `REVOKE ... FROM anon, authenticated` cannot remove one inherited via
-  PUBLIC. **They are one rule: a REVOKE only removes the grant at the level it was made, and you
-  cannot tell which level that was without looking.** Neither the statement succeeding nor the
-  wording looking right is evidence. **ALWAYS verify from `pg_proc.proacl` / `relacl` /
-  `has_function_privilege` AFTER the revoke**, and diff against a known-good object.
-
-- **A REVOKE MUST NAME THE ROLES THAT HOLD THE GRANT, AND THE CATALOG MUST CONFIRM IT.** Supabase default privileges grant EXECUTE to `anon` and `authenticated` BY NAME on every new function in `public`, so `REVOKE ... FROM PUBLIC` is a SILENT NO-OP against them. Four new SECURITY DEFINER retention functions shipped with `anon` holding EXECUTE — and SECURITY DEFINER bypasses RLS, so any holder of the public anon key could have called `cleanup_guest_identities(0)` and erased every guest name. Caught only by querying `pg_proc.proacl` afterwards. **Same class as the column-vs-table REVOKE trap already recorded here, and that record did not prevent it.** Always revoke from `anon, authenticated` explicitly and diff the ACL against a known-good function.
+- **A REVOKE ONLY REMOVES A GRANT AT THE LEVEL IT WAS MADE, AND YOU CANNOT TELL WHICH LEVEL WITHOUT
+  LOOKING — BOTH DIRECTIONS HAVE BITTEN (Aug 14 2026).** Supabase grants EXECUTE to `anon` and
+  `authenticated` BY NAME on every new public function, so `REVOKE … FROM PUBLIC` is a silent no-op
+  against them; a grant inherited via PUBLIC (ACL `=X/owner`) is untouched by `REVOKE … FROM anon,
+  authenticated`. A SECURITY DEFINER writer (e.g. `reconcile_ical_bookings`) or retention function
+  left callable by `anon` is a service-role write path behind the public key. **Revoke from `anon,
+  authenticated, public` explicitly; then confirm from `pg_proc.proacl` / `relacl` /
+  `has_function_privilege` (anon=false, authenticated=false, service_role=true) and diff against a
+  known-good object.** Owner + `service_role` keep their grants; trigger functions fire as owner
+  regardless. Statement success is not evidence.
 
 - **Record the RLS policy PREDICATE, never the app's query.** The app's `.eq()` is a convention; the predicate is the boundary. Describing policies by app behaviour is what hid a cross-tenant leak through a full security audit.
-
-- **anon/authenticated hold blanket TRUNCATE/TRIGGER/REFERENCES on every new table, and
-  TRUNCATE BYPASSES RLS (Jul 28 2026).** The `experience_clicks` hardening set this right on
-  one table and was never backfilled to the rest. Now revoked everywhere. **Apply to every
-  new table** — same class as the PUBLIC-grant trap below: check the live ACL, don't assume
-  the default is safe.
-
-- **Supabase default privileges auto-grant EXECUTE to anon+authenticated on every new public
-  function.** A SECURITY DEFINER *writer* (e.g. `reconcile_ical_bookings`) MUST
-  `REVOKE EXECUTE … FROM anon, authenticated, public` — confirm with `has_function_privilege`
-  (anon=false, authenticated=false, service_role=true). Otherwise any anon/authenticated caller
-  can invoke a service-role write path.
 
 - **iCal reconcile invariants (`reconcile_ical_bookings`).** Airbnb iCal carries **no guest
   names** and exports **only current+future events** (past events age out of the feed → soft-
@@ -335,39 +320,37 @@ values — do not change without an explicit decision.**
   editor's **Calendars** tab (`?tab=calendars` deep-link); the old BookingManager sync card was
   removed.
 
-- **Anything the guest page must show from `is_private=true` rows needs a server endpoint with the booking token as the credential.** Anon RLS on `apartment_details` blocks private rows at the DB layer (`apt_details_guest_read USING (is_private = false)`), so client-side filtering after an anon query can never surface them — the rows simply aren't in the HTTP response. The only safe pattern is a token-verified server endpoint (using `resolveGuestAccess`) that calls the service-role client and returns only the private rows for the verified booking.
+- **Anything the guest page must show from `is_private=true` rows needs a server endpoint with the
+  booking token as the credential.** Anon RLS on `apartment_details` (`USING (is_private = false)`)
+  means private rows never reach the browser, so client-side filtering cannot surface them. The only
+  pattern: a token-verified endpoint (`resolveGuestAccess`) using the service-role client, returning
+  private rows only for the verified booking.
 
 - **THE COORDINATE GATE (`422cc65`, 23 Aug 2026) — EXACT COORDINATES *ARE* THE STREET ADDRESS.**
-  `api/guest-bootstrap.ts` includes `lat`/`lng` **iff** `apartments.welcome_show_address = true`
-  **OR** the request carries a token `resolveGuestAccess` rates `verified` (confirmed/completed
-  **AND** in dates). Otherwise both fields are **OMITTED — absent, not null**, mirroring
-  `api/welcome.ts`'s omission style; a wrong token is byte-identical to no token.
-  **THE DATE BOUND IS THE WHOLE POINT AND BOTH GATES INDEPENDENTLY DEMANDED IT:**
-  `api/_lib/welcome-claim.ts` hands the `ARR-` token to ANY confirmation-code holder BEFORE
-  arrival, and `api/welcome.ts` refuses that same person the address and the coordinates — so a
-  STATUS-ONLY gate reopens the bypass through the token door instead of the anonymous one, and a
-  completed booking would stay a coordinate credential forever. **Reuse `resolveGuestAccess`;
-  never re-implement a looser copy.** Verified by four live probes 23 Aug 2026. Measured the
-  same day: `anon` has NO SELECT on `apartments`, so no RLS path routes around this.
+  `api/guest-bootstrap.ts` includes `lat`/`lng` **iff** `apartments.welcome_show_address = true` OR
+  the request carries a token that `resolveGuestAccess` rates `verified` (confirmed/completed **AND
+  in dates**). Otherwise both fields are OMITTED (absent, not null, like `api/welcome.ts`); a wrong
+  token is byte-identical to no token. **The date bound is the whole point:** `welcome-claim` hands
+  the `ARR-` token to any confirmation-code holder before arrival, and `welcome.ts` refuses that
+  same person the address — a status-only gate reopens the bypass through the token door and makes a
+  completed booking a coordinate credential forever. **Reuse `resolveGuestAccess`; never
+  re-implement a looser copy.** `anon` has no SELECT on `apartments`, so no RLS path routes around
+  this.
 
 - **Guest booking-state is resolved server-side via `api/guest-state.ts` (S19), never by reading `bookings`/`guests` from the client.** The anon `bookings_guest_read` policy is gone. GuestPage calls `/api/guest-state` (plain fetch — guests have no auth session) in two stages: token path, then a KEYED date path gated by the per-apartment `apartment_qr_secrets.qr_secret` carried in the QR URL as `?key=`. An apt-only URL with no token and no valid key resolves to the neutral page by design. Every non-active outcome returns an identical flat neutral body so the endpoint leaks nothing.
 
-- **When a function's EXECUTE comes from the DEFAULT PUBLIC grant (ACL `=X/owner`), `REVOKE EXECUTE ... FROM anon, authenticated` is a SILENT NO-OP** (S24). Those roles inherit EXECUTE via PUBLIC, not a direct grant, so there is nothing to revoke from them. `REVOKE EXECUTE ... FROM PUBLIC` instead — owner (`postgres`) + `service_role` keep their explicit grants, and trigger functions fire as owner regardless. ALWAYS confirm a function-privilege change against the LIVE ACL (`pg_proc.proacl` / `has_function_privilege`), not just that the statement executed without error. (Same trap applies to table grants via PUBLIC — check `relacl`.)
-
 - **`guests` is server-write-only (`api/create-booking`) with a host-scoped SELECT policy (S24).** Never reintroduce a client-side `guests` insert/read, or a `USING(true)` policy. One guest row per booking; no cross-host first-name dedup. The host-scoped SELECT (`id IN (select b.guest_id from bookings b join apartments a on a.id=b.apartment_id where a.host_id = auth.uid())`) keeps the bookings-list and Messages `guests(...)` embedded joins working because they only ever surface the host's own bookings' guests.
 
-- **`hosts` uses COLUMN-LEVEL UPDATE grants as a defence layer — new columns do NOT inherit them (Stage 4B, Jul 26 2026).** `authenticated` has UPDATE on a specific allowlist of host columns only (brand_name, accent_color, ui_state, …); server-only columns (tier, plan, subscription_status, stripe_*, trial_ends_at, the notice/pending/cancel columns) have UPDATE deliberately withheld. **Any migration adding a host-writable column MUST include an explicit column-scoped `GRANT UPDATE (col) ON public.hosts TO authenticated`** — RLS `hosts_update_own` (`auth.uid()=id`) alone is NOT sufficient because PostgREST also needs the column privilege. Stage 2 missed this for the three `*_partner_id` columns (they were granted SELECT/INSERT but not UPDATE), so the client Connect write silently 403'd; corrective migration **`grant_host_partner_id_column_update`** fixed it (verified: the three partner-id columns writable by `authenticated`; tier/plan/stripe/trial columns still read-only). ALWAYS confirm with `information_schema.column_privileges` after the grant.
-
-- **`apartments` NOW USES THE SAME COLUMN-ALLOWLIST AS `hosts` (23 Aug 2026) — THE TRAP IS NOW ON
-  BOTH TABLES.** Table-level INSERT and UPDATE were REVOKED from `authenticated`, `anon` and
-  PUBLIC, then re-granted **per column**, excluding `is_test`. Verified at source: for
-  `authenticated`, `has_table_privilege(... 'UPDATE')` is **false**, 29 columns carry a column
-  UPDATE grant, `name` is writable and `is_test` is not. **ANY migration adding a
-  client-writable `apartments` column MUST include an explicit column-scoped
-  `GRANT UPDATE (col) ON public.apartments TO authenticated`, or the property editor silently
-  403s** — RLS alone is not sufficient, because PostgREST also needs the column privilege. This
-  is the IDENTICAL trap recorded above for `hosts`, and it has now bitten on one table already;
-  confirm with `information_schema.column_privileges` after every such migration.
+- **`hosts` AND `apartments` USE COLUMN-LEVEL INSERT/UPDATE ALLOWLISTS — NEW COLUMNS DO NOT INHERIT
+  THEM (Jul 26 / Aug 23 2026).** Table-level INSERT and UPDATE are REVOKED from `authenticated`,
+  `anon` and PUBLIC on both tables and re-granted per column; server-only columns (`tier`, `plan`,
+  `subscription_status`, `stripe_*`, `trial_ends_at`, the notice/pending/cancel columns, `is_test`)
+  are deliberately withheld. **Any migration adding a client-writable column on either table MUST
+  include `GRANT UPDATE (col) ON public.<table> TO authenticated`** (and INSERT where the client
+  inserts) — RLS alone is not sufficient because PostgREST also needs the column privilege, and the
+  symptom is a silent 403 in the editor. It has bitten on both tables (three `*_partner_id` columns
+  on `hosts`, corrective migration `grant_host_partner_id_column_update`). Confirm with
+  `has_column_privilege()` / `information_schema.column_privileges` after every such migration.
 
 - **WORKFLOW — migrations belong to Claude-in-chat via Supabase MCP, NOT to Claude Code mid-build.** In Stage 4B a needed corrective migration was applied by Claude Code during the build. The fix was correct and verified, but the rule is: **if a migration turns out to be needed mid-build, STOP and report back** rather than applying it. Future code prompts must state this explicitly (reader-migration-first sequencing stays a chat-side responsibility).
 
@@ -384,28 +367,27 @@ values — do not change without an explicit decision.**
 
 - **`api/cancel-subscription.ts` release-then-cancel (S15, replaces the old 409 guard).** If a subscription schedule is attached, RELEASE it first (`subscriptionSchedules.release`) and clear `pending_tier`, THEN set `cancel_at_period_end`. Releasing before the cancel flag is mandatory — a live schedule and `cancel_at_period_end` on the same period end produce undefined Stripe behaviour. The host no longer has to undo a pending change before cancelling; the cancellation email notes the scheduled change was also cancelled when one existed.
 
-- **Stripe secret key and webhook secret MUST point at the same Stripe environment.** A mismatch passes `constructEvent()` signature verification but fails `subscriptions.retrieve()` → the webhook 500s on every event and the DB never updates (symptom: 500 "subscription retrieve error", not 400). The real env is the sandbox with `cus_UfOVHv9hahCr78` + the Arrivly product's 3 prices. After any Stripe key change, replay one subscription event and confirm webhook 200 AND host-row update.
+- **Stripe secret key and webhook secret MUST point at the same Stripe environment.** A mismatch
+  passes `constructEvent()` but fails `subscriptions.retrieve()` — the webhook 500s on every event
+  ("subscription retrieve error", not a 400) and the DB never updates. After any Stripe key change,
+  replay one subscription event and confirm webhook 200 AND a host-row update.
 
 - **`plans.price_cents` is DISPLAY-ONLY; it does NOT control what Stripe charges.** The charged amount comes from the Stripe Price objects in env `STRIPE_PRICE_TIER_1/2/3` (`api/_lib/stripe.ts`). Editing the DB price only changes what the landing + plan cards SHOW. To change a price for real: (1) create a NEW Stripe Price (immutable), (2) update `STRIPE_PRICE_TIER_n` in Vercel + redeploy, (3) update `plans.price_cents` for display — Stripe first/together. Existing subscribers stay on the old price unless migrated. `app_settings.trial_days` needs NO Stripe action (trial applied per-sub at creation via `trial_end`; new signups only). Tier 4 has no Stripe price env; `create-subscription` returns `booking_tier_unavailable`.
 
-- **Stripe `metadata.app` check is case-sensitive.** The webhook ignores any subscription whose `metadata.app !== 'arrivly'` (exact lowercase) with a silent 200. Test/clock subs need `metadata.app = arrivly` AND `metadata.host_id = <uuid>`.
+- **Test/clock subscriptions need `metadata.app = arrivly` (exact lowercase — see BRAND vs CODENAME)
+  AND `metadata.host_id = <uuid>`**, or the webhook ignores them with a silent 200.
 
 - **Signup does NOT create a Stripe subscription.** `Signup.tsx` only fires `/send-welcome`. A subscription exists only after a completed Checkout (`create-subscription`). Subscribing during the trial carries the remaining trial via `trial_end` → status stays `'trial'` (no charge) until the trial date, then converts to active.
 
 ### AI providers & spend
 
 - **BUDGET PARITY COVERS RETRIES AND TIMEOUTS. IT NEVER COVERS TOKEN COUNTS (Aug 18 2026).**
-  `_lib/greeting.ts` passed `maxTokens: 128` to Groq because the Gemini branch beside it used
-  `maxOutputTokens: 128` — but that branch also sets `thinkingConfig: { thinkingBudget: 0 }`. **THE
-  NUMBER WAS INHERITED AND THE CONDITION WAS NOT.** On gpt-oss, reasoning is billed INSIDE
-  `completion_tokens`, so thinking and answering share one allowance; the first production run
-  measured **156 reasoning tokens**, which alone exceeds 128. **A token budget is sized per
-  provider from that provider's token semantics — parity applies only to attempt count and
-  per-attempt timeout, which is what makes one counter unit cost the same on both paths.**
-  **AND THE FAILURE IS SILENT:** `groqGenerate` returns `content ?? ''` on a **200**, so a
-  reasoning-starved call yields an empty string with **no throw** — `withRetry` never fires and
-  retries cannot help. Only the budget can, and only a log can reveal it (which is why the empty
-  path had to gain a `console.error` in the same commit).
+  `_lib/greeting.ts` inherited `maxTokens: 128` from the Gemini branch, whose 128 only works because
+  it also sets `thinkingBudget: 0`. On gpt-oss, reasoning is billed INSIDE `completion_tokens`, so
+  thinking and answering share one allowance and 128 is starved. **Size a token budget per provider
+  from that provider's token semantics; parity applies only to attempt count and per-attempt
+  timeout.** The failure is silent: `groqGenerate` returns `content ?? ''` on a 200, so `withRetry`
+  never fires — only the budget and a `console.error` on the empty path can reveal it.
 
 - **gemini-2.5-flash thinking is ON by default** and consumes the output token budget, returning
   empty text on large/JSON generations. Always set `thinkingConfig: { thinkingBudget: 0 }`.
@@ -423,23 +405,31 @@ values — do not change without an explicit decision.**
 
 - **Gemini throws transient 5xx errors intermittently.** Wrap all `ai.models.generateContent()` calls with `withRetry` (`api/_lib/retry.ts`). Size the per-attempt AbortController timeout and retry count to fit within the function's `maxDuration` (e.g. 3 × 10s for rewrite-rules, 2 × 20s for guide).
 
-- **Public guest-facing AI endpoints are spend-gated by verifying the booking token BEFORE calling the model, not by rate-limiting alone.** `api/guest-chat.ts` (S21) returns `403 verify_required` for the public tier before any Gemini/brand/prompt work, so only a verified in-dates booking can spend tokens — the same gate `daily-greeting` uses. The added per-instance rate limiter (15/60s, keyed apartmentId+IP) is a second layer but BEST-EFFORT: Vercel spreads requests across lambda instances, each with its own in-memory Map, so the 429 can't be observed reliably from outside and is NOT a hard cross-instance cap. Treat verify-gating (not the limiter) as the real spend control.
+- **Public guest-facing AI endpoints are spend-gated by verifying the booking token BEFORE the model
+  is called, not by rate-limiting.** `api/guest-chat.ts` returns `403 verify_required` for the
+  public tier before any Gemini/brand/prompt work (same gate as `daily-greeting`). The per-instance
+  limiter (15/60s, apartmentId+IP) is a second, BEST-EFFORT layer: Vercel spreads requests across
+  lambda instances with separate in-memory Maps, so the 429 is not a hard cross-instance cap.
+  Verify-gating is the real spend control.
 
-- **Keep every high-volume or public AI surface on its OWN key/project.** A shared key means one surface exhausting its daily quota takes down the others — this actually happened (25 Jun 2026: the events cron 429'd every apartment on the shared key and fired the "all refreshes failed" alarm; closed by `acd16f4`). The isolation is provider-independent and outlives Gemini. Key table under "ZERO-GOOGLE AI PILOT -> MECHANISM"; the superseded billing-flip and "Groq cannot replace guest-chat" annotations are dropped — both are false under the pilot.
+- **Keep every high-volume or public AI surface on its OWN key/project.** A shared key lets one
+  surface's daily quota exhaustion take down the others — it happened (25 Jun 2026: the events cron
+  429'd every apartment on the shared key and fired the "all refreshes failed" alarm; closed by
+  `acd16f4`). Provider-independent; key table under "ZERO-GOOGLE AI PILOT -> MECHANISM".
 
-- **Gemini free-tier quota is a DAILY cap; exhausting it surfaces as intermittent guest-facing 500s — not a code bug.** In S21 testing an 18-call burst exhausted the free-tier daily quota; later chats returned Gemini `429 "exceeded your current quota"` (plus transient `503 "high demand"`), surfaced as a 500. The daily cap does NOT reset within a minute, so "wait a moment" is wrong advice for a quota 429. Before blaming app code for guest-chat failures, check the Vercel runtime logs for the upstream Gemini status code; a dedicated/billed key is the fix, not a code change.
+- **Gemini free-tier quota is a DAILY cap; exhausting it surfaces as intermittent guest-facing 500s,
+  not a code bug.** A burst of ~18 calls can exhaust it; later calls return `429 "exceeded your
+  current quota"` (plus transient `503`), surfaced as 500. The cap does not reset within minutes.
+  Before blaming app code, read the upstream Gemini status in Vercel runtime logs; a
+  dedicated/billed key is the fix.
 
 ### PWA, push & service worker
 
 - **`public/sw.js` must NEVER cache cross-origin requests.** Guard at the top of the `fetch`
-  handler: `if (url.origin !== self.location.origin) return`. Returning without calling
-  `event.respondWith` passes the request to the browser natively — no caching, no interception.
-  Bump `CACHE_NAME` on EVERY `sw.js` change so the activate handler purges stale caches. Current value: `'arrivly-v4'` (bumped in `c294bda`).
-
-- **Host push subscriptions are stored account-level (`apartment_id = NULL`).** Always call
-  `sendPushToHost(db, hostId, payload)` without the optional `apartmentId` argument when
-  notifying the host. Passing one narrows the subscription lookup to zero rows and delivers
-  nothing silently.
+  handler: `if (url.origin !== self.location.origin) return` — returning without `event.respondWith`
+  hands the request to the browser natively. **Bump `CACHE_NAME` (`arrivly-v*`) on EVERY `sw.js`
+  change** so the activate handler purges stale caches; read the current value from the file, never
+  from a note.
 
 - **Host app-icon badge is numeric and owned by `Layout.tsx`** (`navigator.setAppBadge(count)`). It updates only while the dashboard app is open — the SW deliberately does NOT badge host (/dashboard) pushes, so a closed dashboard icon lags until reopened. The in-app sidebar count pill is the live indicator.
 
@@ -472,13 +462,6 @@ values — do not change without an explicit decision.**
   glob** — Vercel rejects overlapping patterns and the build fails. Use one glob, raise its
   `maxDuration`.
 
-- **api/ relative imports MUST end in `.js`** (e.g. `./_lib/push.js`, `./_lib/ical.js`,
-  `./_lib/cron.js`). `package.json` `"type":"module"` makes Vercel run every api/ function as
-  native Node ESM; extensionless imports compile fine (`tsc` uses bundler moduleResolution and
-  `vite build` only builds the frontend — neither runs api/ through Node's ESM resolver) but
-  throw `ERR_MODULE_NOT_FOUND` at Lambda startup. `tsc` maps `.js` specifiers back to `.ts`
-  source at build time, so the fix is zero-friction. Imports from node_modules are unaffected.
-
 - **`src/lib/api.ts` already prefixes `BASE = '/api'`** — callers must pass the path **without** a leading `/api` (e.g. `api.post('/send-welcome')`). Passing `/api/send-welcome` produces `/api/api/send-welcome` (404) — silently swallowed by a `.catch(() => {})`. Always check the helper before writing a new call.
 
 - **A Vercel environment-variable change only takes effect after a redeploy.** Adding or rotating a secret in the Vercel dashboard does not hot-reload running functions. Trigger a redeploy (push a commit, or use the Vercel dashboard "Redeploy" button) immediately after any env-var change and confirm the new deployment is READY before testing.
@@ -493,68 +476,64 @@ values — do not change without an explicit decision.**
 
 - **Vercel strips `s-maxage`/`stale-while-revalidate` from the browser-facing `Cache-Control`** (edge honours them; client sees only `public`). The authenticated Vercel MCP fetch ALSO bypasses the CDN cache (always MISS) — verify caching from a real browser. A new deploy purges the edge cache. With `s-maxage=60`, admin edits surface on the landing within ~1 min.
 
-- **Windows PowerShell dev-env gotchas (setting Vercel env vars locally).** `npx` can fail with `npx.ps1 cannot be loaded` (unsigned script) — fix once with `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`, or call `npx.cmd`. In PowerShell `curl` is an alias for `Invoke-WebRequest` (different flags) — use `curl.exe` for real curl. Inline `-d '{json}'` mangles quotes in PowerShell — write the body to a file and pass `--data "@file"`. A Vercel env-var add needs a redeploy (`npx vercel redeploy <url>`) to take effect. **(Jul 27 2026 addendum)** `npx.ps1` can STILL be blocked under `RemoteSigned` when the file carries the downloaded-from-internet flag — use `npx.cmd` or `Unblock-File`.
+- **Windows PowerShell dev-env gotchas.** `npx` can fail with `npx.ps1 cannot be loaded` (unsigned,
+  or downloaded-from-internet flag) — use `npx.cmd`, or `Unblock-File` / `Set-ExecutionPolicy -Scope
+  CurrentUser RemoteSigned`. `curl` is an alias for `Invoke-WebRequest` — use `curl.exe`. Inline `-d
+  '{json}'` mangles quotes — write the body to a file and pass `--data "@file"`.
 
-- **Vercel "sensitive"-flagged env vars cannot be pulled — `vercel env pull` returns them EMPTY (Jul 27 2026).** So a manual cron trigger that needs `CRON_SECRET` (marked sensitive) is NOT possible from a fresh machine — you cannot reconstruct the `Authorization: Bearer <CRON_SECRET>` header the cron guard requires. **Verify a scheduled cron ran by reading its RUNTIME LOGS (Vercel MCP / dashboard), not by manually curling the endpoint.** Same trap applies to any sensitive secret (Viator/Tiqets keys) — they're write-only once set.
+- **`CRON_SECRET` AND EVERY OTHER SENSITIVE-FLAGGED VERCEL VAR CANNOT BE READ BACK — MANUAL CRON
+  INVOCATION IS IMPOSSIBLE, STOP PLANNING IT (Jul 27 / Aug 14 2026).** `vercel env pull` writes them
+  EMPTY and the dashboard hides them (Stripe, Viator, Tiqets keys included — write-only once set).
+  The `Authorization: Bearer <CRON_SECRET>` header a cron guard needs cannot be reconstructed
+  without rotating the secret, which invalidates running crons until the redeploy lands. Two
+  sessions planned "trigger it by hand" as a verification step and it was never available. **Verify
+  crons from their RUNTIME LOGS (Vercel MCP / dashboard). The alternative is a deliberate decision
+  to unset Sensitive on this one variable — drifting into planning manual invocation a third time is
+  not.** (`api/backfill-canonical-city` is blocked on this decision.)
 
-- **`overflow-auto` DOES NOT MEAN THAT ELEMENT SCROLLS (Aug 12 2026).** An element scrolls only
-  if it can be SHORTER than its content. `Layout`'s root is `flex min-h-screen` — a **MINIMUM** —
-  so `<main class="flex-1 overflow-auto">` stretches to at least its content height and its
-  `scrollTop` is permanently 0. A `<main>`-targeted route scroll-reset SHIPPED and was a silent
-  no-op; `window.scrollTo(0, 0)` is correct here. **The tell was in the same file:** a SIBLING
-  sidebar with `md:sticky md:top-0` can only pin the way this dashboard actually behaves if the
-  DOCUMENT scrolls. Checking that `overflow-auto` is present is not checking who scrolls.
+- **`overflow-auto` DOES NOT MEAN THAT ELEMENT SCROLLS (Aug 12 2026).** An element scrolls only if
+  it can be SHORTER than its content. `Layout`'s root is `flex min-h-screen` (a MINIMUM), so `<main
+  class="flex-1 overflow-auto">` stretches to its content and its `scrollTop` is permanently 0 — a
+  `<main>`-targeted scroll-reset shipped as a silent no-op; `window.scrollTo(0, 0)` is correct,
+  because the DOCUMENT scrolls (the `md:sticky` sidebar only works that way). Checking that
+  `overflow-auto` is present is not checking who scrolls.
 
 ### Method & process
 
 - **FIXTURE DATA INVENTED FOR A MOCKUP IS NOT EVIDENCE ABOUT PRODUCTION (Aug 18 2026).** A comp's
-  sample bookings were described to Udy as "the real Sweet home calendar". **They were invented.**
-  No booking named Maria has ever existed, and Sweet home's 21 Aug is FULLY booked rather than the
-  half-day the claim implied. **The comp itself was fine — a mockup needs fixtures.** The defect was
-  the SENTENCE around it, which made a checkable claim about live data that was never checked, and
-  which a reader would reasonably act on. **LABEL COMP FIXTURES AS FIXTURES, and derive any "try
-  this on <apartment>" instruction from a QUERY, never from the picture.** Same class as the
-  address-is-not-a-human error closed the same day: both dressed an assumption as an observation.
+  invented sample bookings were described as "the real Sweet home calendar"; the comp was fine, the
+  SENTENCE around it made a checkable claim about live data that was never checked. **Label comp
+  fixtures as fixtures, and derive any "try this on <apartment>" instruction from a QUERY, never
+  from the picture.** Same class as "an address is not evidence of a human": an assumption dressed
+  as an observation.
 
-- **A MIRROR'S EXISTENCE IS EVIDENCE THAT THE GATE GUARDING IT PASSED (Aug 18 2026).** The
-  stripe-webhook ignores any subscription whose `metadata.app !== 'arrivly'`, and that metadata
-  could not be read — every Stripe var is Sensitive-flagged in Vercel and pulls EMPTY, the
-  `CRON_SECRET` trap again. But `hosts.current_period_end`, `tier` and `subscription_status` are
-  written ONLY by that webhook, and all five sandbox rows carry them — **so the gate passed for all
-  five, proved without ever reading the field it tests.** **Generalise: when an upstream check is
-  unreadable, look for a downstream artefact that only exists if it passed.** Weaker than reading
-  the source, and it must be stated as inference — but it is a real answer where "unverifiable"
-  would otherwise stand.
+- **A MIRROR'S EXISTENCE IS EVIDENCE THAT THE GATE GUARDING IT PASSED (Aug 18 2026).** The webhook's
+  `metadata.app` gate could not be read (Sensitive-flagged vars), but `hosts.current_period_end` /
+  `tier` / `subscription_status` are written ONLY by that webhook — rows carrying them prove the
+  gate passed without reading the field it tests. **When an upstream check is unreadable, look for a
+  downstream artefact that only exists if it passed.** State it as inference; it is a real answer
+  where "unverifiable" would otherwise stand.
 
-- **TEST FIXTURES THAT COMMIT MID-SESSION INVERT LATER TEST RESULTS (Aug 14 2026).** Behaviour-
-  testing the address-swap gate MUTATED the fixtures it was testing with, so a later case ran
-  against state an earlier case had written and produced the opposite verdict — the gate looked
-  broken when it was the baseline that had moved. **Restore from a known baseline before re-running
-  a case, and RE-MEASURE rather than reusing a number from earlier in the same session.** This is
-  the same failure as the recorded re-measure rule, one layer down: there the stale thing was a
-  count, here it was the fixture the count described.
+- **TEST FIXTURES THAT COMMIT MID-SESSION INVERT LATER TEST RESULTS (Aug 14 2026).**
+  Behaviour-testing the address-swap gate mutated its own fixtures, so a later case ran against
+  state an earlier case wrote and returned the opposite verdict — the baseline had moved, not the
+  gate. **Restore from a known baseline before re-running a case, and re-measure rather than reusing
+  a number from earlier in the session** (the re-measure rule, one layer down).
 
-- **`CRON_SECRET` IS FLAGGED SENSITIVE IN VERCEL, SO MANUAL CRON INVOCATION IS IMPOSSIBLE — STOP
-  PLANNING IT (Aug 14 2026).** Its value cannot be read back: not in the dashboard, and
-  `vercel env pull` writes `CRON_SECRET=""`. The `Authorization: Bearer <CRON_SECRET>` header a
-  cron guard requires therefore **cannot be reconstructed without rotating the secret**, which
-  invalidates the running crons until the redeploy lands. **TWO SESSIONS HAVE NOW PLANNED "trigger
-  it by hand" AS A VERIFICATION STEP** — for the guide cron and for `api/backfill-canonical-city` —
-  and it was never available either time. **Either stop proposing manual invocation and verify
-  crons from their RUNTIME LOGS, or take the deliberate decision to unset Sensitive on this one
-  variable.** Both are defensible; drifting into planning it a third time is not.
+- **THE REPO IS PUBLIC, AND HAS BEEN SINCE IT WAS CREATED ON 5 JUNE 2026 — VERIFIED AT THE GITHUB
+  API, NOT BELIEVED (Aug 14 2026).** Nothing is exposed: no secret has ever been committed, server
+  keys have no `VITE_` prefix and live only in Vercel, `.gitignore` covers `.env*`. **The lesson is
+  the CLASS of claim:** repo visibility is an environment fact no build, test or gate checks, so a
+  wrong belief about it persists silently and mis-prices every decision about what may be written
+  down. Check it at the API when it matters; never carry it forward from a note.
 
-- **THE REPO IS PUBLIC, AND HAS BEEN SINCE IT WAS CREATED ON 5 JUNE 2026 — VERIFIED AT SOURCE,
-  NOT BELIEVED (Aug 14 2026).** GitHub API: `"private": false`, `"visibility": "public"`,
-  `created_at 2026-06-05`. **Nothing is exposed** — no secret has ever been committed, server-side
-  keys have no `VITE_` prefix and live only in Vercel, and `.gitignore` carries five `.env` ignore
-  patterns. **The lesson is about the CLASS of claim:** repo visibility is an environment fact that
-  no build, test or gate ever checks, so a wrong belief about it can persist indefinitely and
-  silently mis-price every decision about what may be written down. **Check it at the API when it
-  matters; never carry it forward from a note.** Same class as "the guide cron has never run and is
-  structurally unable to" — plausible, load-bearing, and wrong for want of one lookup.
-
-- **A QUALIFIER BELONGS INSIDE THE CLAIM STRING, NOT IN THE PROSE AROUND IT (Aug 11 2026).** `Landing.tsx` scopes its hero earnings figures with a 15px parent that precedes them in DOM order; `AuthShell`'s DOM order is reversed, so the claim was made **self-qualifying** instead — "and on Portfolio, you earn", qualifier and claim in the SAME text node at the same font size. **Prominence parity then holds by construction and cannot decouple under a later CSS change**, which a parent-prose or caption qualifier can. Prefer this form for any quantified claim. Corollary from the same commit: fixing the shared `AUTH_POINTS` default covered all **five** AuthShell render surfaces (Login, Signup, ResetPassword, Demo, CompleteProfile); a per-caller fix would have left four stale.
+- **A QUALIFIER BELONGS INSIDE THE CLAIM STRING, NOT IN THE PROSE AROUND IT (Aug 11 2026).**
+  `AuthShell`'s earnings claim was made self-qualifying — "and on Portfolio, you earn" in the SAME
+  text node at the same size — so prominence parity holds by construction and cannot decouple under
+  a later CSS change, which a parent-prose or caption qualifier can. Prefer this form for any
+  quantified claim. Corollary: fixing the shared `AUTH_POINTS` default covered all five AuthShell
+  surfaces (Login, Signup, ResetPassword, Demo, CompleteProfile); a per-caller fix would have left
+  four stale.
 
 - **WHEN A FACT LIVES IN N PLACES, ENUMERATE THE SITES — DO NOT GREP FOR A PHRASING.** Grep finds the copies you wrote and misses the ones you didn't. Failed FOUR times in two sessions: three partial Gemini key maps; "messages 90 days" missed by three search variants; a table row containing neither the number nor the searched phrase; and `RETENTION CRONS` skipped by a `[Rr]etention` search because it was uppercase. **Three of four table rows updated is the signature.** List the assertion sites first, tick each individually.
 
@@ -578,83 +557,67 @@ values — do not change without an explicit decision.**
   accepted set (`guest-access.ts` / `guest-state.ts`) is the only form that stays correct when a
   new status is added.
 
-- **A SCRIPT THAT MUTATES IN MEMORY AND WRITES ONCE AT THE END LOSES EVERYTHING IF A LATER
-  ASSERTION THROWS (Aug 19 2026, AND AGAIN Aug 20 2026).** `eb13715` left two run-together bullets
-  because the script carrying their fix aborted on an unrelated assertion before its single write.
-  **It recurred the very next session** — a batch of six edits was discarded by one stale match
-  string, after four of them had already been computed. The assertion is doing its job; the WRITE
-  PATTERN defeats it. **Write after each independent edit, or accept that one failure discards the
-  batch.**
+- **A SCRIPT THAT MUTATES IN MEMORY AND WRITES ONCE AT THE END LOSES EVERYTHING IF A LATER ASSERTION
+  THROWS (Aug 19–20 2026, twice).** `eb13715` left two run-together bullets, and the next session
+  discarded six computed edits on one stale match string, because the single write came after the
+  assertion that aborted. The assertion is doing its job; the WRITE PATTERN defeats it. **Write
+  after each independent edit, or accept that one failure discards the batch.**
 
 - **CONTRAST IS COMPUTED, NEVER EYEBALLED — and the states that carry a component's POINT are the
-  ones to check (Aug 19 2026).** In the availability picker the two failing states were DEPARTURE
-  and ARRIVAL, i.e. the ENABLED ones a host must actually click, at **1.45:1** against a 4.5:1
-  floor; the always-disabled FULL cells were WCAG-exempt and fine. Eyeballing had passed all of
-  them. Compute the ratio and quote it.
+  ones to check (Aug 19 2026).** In the availability picker the failing states were the ENABLED
+  arrival/departure cells a host must click (1.45:1 against 4.5:1); the disabled cells were
+  WCAG-exempt and fine. Eyeballing passed all of them. Compute the ratio and quote it.
 
-- **AN ADDRESS IS NOT EVIDENCE OF A HUMAN (Aug 18 2026).** `anna.humalainen@gmail.com` reads like a
-  person, so five sandbox subscriptions were carried for weeks as the file's only live deadline on
-  the strength of that impression, and nobody asked. **Before recording an exposure that turns on
-  who is on the other end, ask who is on the other end.**
+- **AN ADDRESS IS NOT EVIDENCE OF A HUMAN (Aug 18 2026).** An email that reads like a person carried
+  five sandbox subscriptions as the file's only live deadline for weeks, and nobody asked. **Before
+  recording an exposure that turns on who is on the other end, ask who is on the other end.**
 
-- **iCAL FOLDS LONG LINES AT 75 OCTETS, CONTINUING THEM WITH A LEADING SPACE — SO A LINE-BY-LINE
-  PARSER SILENTLY CAPTURES A FRAGMENT (Aug 21 2026).** `parseIcal` matched `/^KEY:(.+)$/m` and
-  never unfolded, so Airbnb's DESCRIPTION — which folds mid-URL on every real reservation — yielded
-  `…/hosting/reservations/de` and lost the confirmation code. **THE TRUNCATION WAS NEVER
-  DESCRIPTION-SPECIFIC: it was cutting ANY folded field, and had been all along.** Nobody noticed
-  because Airbnb's SUMMARY values are short enough never to fold. **AND THE DEFECT SHIPS LOOKING
-  CORRECT: a short hand-written fixture does not fold, so it passes while every real feed fails.**
-  A fixture that does not fold proves nothing — fold it on purpose, mid-token.
+- **iCAL FOLDS LONG LINES AT 75 OCTETS WITH A LEADING-SPACE CONTINUATION (Aug 21 2026).**
+  `parseIcal` now unfolds before matching (the un-unfolded parser silently captured a fragment of
+  ANY folded field, and Airbnb's DESCRIPTION folds mid-URL on every real reservation). **The defect
+  shipped looking correct because a short hand-written fixture never folds — fold every iCal fixture
+  on purpose, mid-token, or it proves nothing.**
 
 - **A QUERY STRING CANNOT SATISFY A "NEVER LOGGED" REQUIREMENT ON THIS PROJECT (Aug 21 2026).**
-  `vercel.json` rewrites `/(.*)` to `index.html`, so the full query string is written into Vercel's
-  EDGE ACCESS LOG **before a line of our JavaScript runs**. Client-side stripping afterwards is
-  theatre — it cleans the address bar and nothing else. **A URL FRAGMENT is the only structural
-  answer:** browsers never transmit it to a server and never place it in a `Referer`. When a
-  requirement is "this value must never reach a log", the question is not what our code does with
-  it, but **whether the value ever crosses the boundary at all.**
+  `vercel.json` rewrites `/(.*)` to `index.html`, so the full query string reaches Vercel's EDGE
+  ACCESS LOG before any of our JavaScript runs; client-side stripping cleans the address bar and
+  nothing else. **A URL FRAGMENT is the only structural answer** — browsers never send it to a
+  server or place it in a `Referer`. The question is whether the value ever crosses the boundary,
+  not what our code does with it afterwards.
 
 - **NEVER COPY LIVE FEED OR BOOKING OUTPUT FROM CHAT INTO A PROMPT, FIXTURE, DOC OR MEMORY — THE
-  REPO IS PUBLIC (Aug 21 2026).** A real Airbnb VEVENT, carrying a live confirmation code, real
-  last-4 phone digits, a real UID and real stay dates, was pasted into a build prompt this session
-  and became a test fixture. The security gate blocked the commit. **Then the FIRST replacement was
-  a CASE-FOLDED version of the real code — and case-folding is NOT de-identification: the full
-  entropy is preserved and it is reversed by typing it in upper case.** The tell is that the value
-  still looks random beside fixtures that look invented. **Fabricate the whole thing; keep only the
-  SHAPE.** git objects do not expire, and a committed fixture is a permanent carve-out from the
-  published 30-day guest-identity retention promise.
+  REPO IS PUBLIC (Aug 21 2026).** A real VEVENT with a live confirmation code became a test fixture
+  and was stopped only by the security gate. **Case-folding a real value is NOT de-identification**
+  — full entropy preserved, reversed by upper-casing; the tell is a value that still looks random
+  beside invented ones. **Fabricate the whole thing; keep only the SHAPE.** git objects never
+  expire, so a committed fixture is a permanent carve-out from the published 30-day guest-identity
+  retention promise.
 
 - **A WRITE-BOUNDARY FIX MUST BE REPEATED AT EVERY WRITER, FOREVER — INCLUDING WRITERS THAT DO NOT
-  EXIST YET. A READ-BOUNDARY FIX IS DONE ONCE (Aug 22 2026).** `guests.first_name` is interpolated
-  raw into the guest-chat system instruction at `guest-access.ts:200`, outside the nonce fence.
-  `c0848d8` constrained the name at the NEW write path — correct and necessary, because that path
-  moved the write from "authenticated host" to "anyone holding a confirmation code" — but two other
-  writers remain and any future one starts unprotected by default. **Prefer the read boundary;
-  keep the write-boundary check as defence in depth.** The same asymmetry decides where every
-  future sanitiser belongs.
+  EXIST YET; A READ-BOUNDARY FIX IS DONE ONCE (Aug 22 2026).** `guests.first_name` is interpolated
+  raw into the guest-chat system instruction (`guest-access.ts:200`, outside the nonce fence).
+  `c0848d8` constrained it at the NEW write path — necessary, since that path moved the write to
+  "anyone holding a confirmation code" — but other writers remain and any future one starts
+  unprotected. **Prefer the read boundary; keep write-side checks as defence in depth.** This
+  asymmetry decides where every future sanitiser belongs.
 
-- **A PROMPT SENTENCE IS A HINT, NOT A MECHANISM (Aug 22 2026).** `f113943` added a generalised
-  CODES rule to `bulk-import`'s prompt, which lowers the FREQUENCY of a code reaching a public
-  extras row and changes the BOUND not at all. The mechanism is `scrubCredentialSentences`, applied
-  in code before the insert — and that endpoint still has none. **Record the difference explicitly
-  wherever a prompt rule stands in for a missing check**, because the realistic failure is not a
-  reader believing the path is safe: it is someone triaging the queue, seeing a shipped rule with a
-  passing test, and deprioritising the mechanism.
+- **A PROMPT SENTENCE IS A HINT, NOT A MECHANISM (Aug 22 2026).** A prompt rule lowers the FREQUENCY
+  of a bad output and changes the BOUND not at all; the mechanism is the code check before the write
+  (e.g. `scrubCredentialSentences` before insert, now present in both importer doors). **Wherever a
+  prompt rule stands in for a missing check, record the difference explicitly** — the realistic
+  failure is a triager seeing a shipped rule with a passing test and deprioritising the mechanism.
 
 - **VERIFY THE PALETTE AGAINST SHIPPED SOURCE, NEVER AGAINST A REMEMBERED SPEC (Aug 22 2026).** A
-  build prompt this session specified a DARK host card (`#1c1c1a`, `bg-white/10`); the shipped
-  dashboard is the CREAM workspace, exactly as this file's Design System records. Claude Code
-  checked the neighbouring components, overrode the brief and said so. **NEITHER GATE COULD HAVE
-  CAUGHT THIS** — a wrong palette is not a security finding and not a correctness bug, so it would
-  have shipped as the only dark surface in the workspace. **Design-system claims need the same
-  "check it at the source" discipline as environment facts.**
+  build prompt specified a DARK host card; the shipped dashboard is the CREAM workspace, as the
+  Design System records. Claude Code checked neighbouring components and overrode the brief.
+  **Neither gate could have caught it** — a wrong palette is neither a security nor a correctness
+  finding. Design-system claims need the same check-at-source discipline as environment facts.
 
-- **TWO PROMPTS TEACHING THE SAME CONCEPT WILL DRIFT, AND THE DRIFT STARTS IMMEDIATELY
-  (Aug 22 2026).** In `f113943` a clause diverged **on day one** — "never a code or A utility"
-  against the importer's "never a code or utility" — inside a paragraph whose own comment declared
-  it copied verbatim. **The fix that holds is a WHOLE-BLOCK equality test against the other
-  prompt's LIVE value.** Sampling sentences is blind to the failure shape that actually occurs,
-  which is "added to one side only" — precisely how `3417e01` left this gap in the first place.
+- **TWO PROMPTS TEACHING THE SAME CONCEPT WILL DRIFT, AND THE DRIFT STARTS IMMEDIATELY (Aug 22
+  2026).** In `f113943` a "copied verbatim" clause diverged on day one ("a code or A utility" vs "a
+  code or utility"). **The fix that holds is a WHOLE-BLOCK equality test against the other prompt's
+  LIVE value** — sampling sentences is blind to "added to one side only", which is exactly how
+  `3417e01` opened the gap.
 
 - **TEST GUEST-FACING FIRST-VISIT FLOWS IN A FRESH PROFILE (Aug 22 2026).** `118d05f` was
   invisible for hours because every browser in use already had the service worker installed AND a
@@ -760,7 +723,8 @@ Pricing/plan values are DB-driven (`plans` + `app_settings.trial_days`). `config
 Node ESM. ALL relative imports inside api/ MUST include the `.js` extension
 (e.g. `./_lib/push.js`, `./_lib/ical.js`, `./_lib/cron.js`). Extensionless relative
 imports compile fine but throw `ERR_MODULE_NOT_FOUND` at runtime. Imports from
-node_modules are unaffected.
+node_modules are unaffected. `tsc` maps `.js` specifiers back to `.ts` source at
+build time, so the fix is zero-friction.
 
 ---
 
