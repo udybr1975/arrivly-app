@@ -248,7 +248,7 @@ const COMPS_ROWS: CompRow[] = [
     label: 'Bookable experiences on the page',
     bemgu: { mark: 'brass', text: 'Viator · GetYourGuide · Tiqets' },
     hostfully: { mark: 'muted', text: 'Own upsells, referrals & partner services' },
-    touchstay: { mark: 'muted', text: 'Viator, Tiqets + 3 service partners' },
+    touchstay: { mark: 'muted', text: 'Tiqets + 4 experience & service partners' },
   },
   {
     label: 'Marketplace commissions paid to you',
@@ -974,7 +974,7 @@ export default function Landing() {
           <Reveal className="mx-auto max-w-2xl text-center">
             <div className="text-[12px] uppercase tracking-[.16em] text-[#a8842f]">Compare</div>
             <h2 className="mt-3 font-['Fraunces'] text-[32px] font-light leading-tight text-[#1c1c1a] sm:text-[40px]">
-              Guidebook apps charge per property. Bemgu pays you back.
+              Guidebook apps charge per property. Bemgu charges one price — and on Portfolio, pays you back.
             </h2>
             <p className="mx-auto mt-4 max-w-[560px] text-[15px] leading-[1.7] text-[#1c1c1a]/65">
               Every Bemgu guest page already sells real, bookable tours &amp; tickets from three marketplaces —
