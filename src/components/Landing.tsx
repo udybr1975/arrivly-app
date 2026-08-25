@@ -830,7 +830,7 @@ export default function Landing() {
                     {/* main stub */}
                     <div className="relative px-3 pb-2.5 pt-[11px]">
                       <div className="text-[7.5px] font-semibold uppercase tracking-[.22em] text-[#7a5c00]">Museum · Entry</div>
-                      <div className="mt-[3px] whitespace-nowrap font-['Fraunces'] text-[14.5px] font-medium leading-[1.05] text-[#1c1c1a]">Design Museum<br />Helsinki</div>
+                      <div className="mt-[3px] whitespace-nowrap font-['Fraunces'] text-[14.5px] font-medium leading-[1.05] text-[#1c1c1a]">Northlight<br />Design Museum</div>
                       <div className="mt-[5px] whitespace-nowrap text-[8px] tracking-[.04em] text-[#6b665c]">SAT 12 SEP · 14:00 · ×2</div>
                     </div>
                     {/* tear-off stub */}
