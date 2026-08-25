@@ -642,6 +642,19 @@ values — do not change without an explicit decision.**
   misdiagnosed as Airbnb's linkifier mangling the URL. **The composer screenshot falsified it.**
   Verify against the SOURCE SURFACE, never a transcription of it.
 
+- **RENDERED OUTPUT IS THE TEST FOR VISUAL WORK; THE NUMBERS ARE THE PRE-CHECK (Aug 25 2026, four
+  times).** A screenshot of the built page is part of the gate for any UI diff, and the question is
+  "what is the narrowest this element's container gets?", not "do the named widths look right?".
+
+- **`text-shadow` IS NOT AN INPUT TO WCAG CONTRAST (Aug 25 2026).** It is a perceptual aid; the
+  ratio is unchanged by definition. Never record a shadow as closing an AA gap.
+
+- **MARKETING COPY NAMES NO REAL BUSINESS; HOST-FACING PLACEHOLDER EXAMPLES MAY (Aug 25 2026, three
+  passes).** On Landing/Auth mockups fabricate the name and verify it resolves NOWHERE (Nominatim
+  structured lookup with controls — web search alone passed two real names); landmarks without
+  endorsement or hours/price claims may stay. Placeholder hints in host setup screens demonstrate
+  what to type and keep real places — decided, not a gap.
+
 > Full narrative evidence for these, and the B3.5 events analysis and greeting-system detail, is in docs/learnings.md.
 
 ## Workflow
@@ -1219,34 +1232,39 @@ drill) remains a graduation prerequisite.**
 > settled". Its `is_test` invariants already live in DB TRAPS; only the `ARR-IMP301`
 > non-existence note needed hoisting, and it is now in the Test Data fixture rules.
 
-## Session — 24 Aug 2026 — drawer refresh, the A5 guest card, privacy decided
+> Moved to docs/history.md — "Session — 24 Aug 2026 — drawer refresh, the A5 guest card, privacy
+> decided". Its decisions are restated under DECIDED in the 25 Aug block.
 
-- **`cc2aba6` — help-drawer / help-chat content refresh** (`src/guide/content.ts`, one file, both
-  surfaces). **The SPLIT rule held — measured, zero step duplication from `sharePlatforms.ts`.**
-  Two gate-driven accuracy fixes beyond the authorised edits: tier qualifiers on the Earnings
-  copy, and a security-auditor **CRITICAL** — the **PRE-EXISTING** claim "the exact street is
-  never shown to guests" was false for every property in production. Corrected to the truth: the
-  street TEXT is not on the QR page, the **map pin is**, and the welcome link shows the full
-  address to whoever holds it. **Documentation only; product behaviour untouched.**
-- **PRIVACY QUESTION — DECIDED (Udy): ACCEPTED.** A guest with the welcome link or a confirmed
-  booking seeing the address is fine — **the platforms already show it to that same person.** No
-  product change; `welcome_show_address` unchanged. **Closed — not drift.**
-- **`f3f49a9` — the designed A5 guest card replaces the bare QR print** (`SharePanel.tsx`).
-  Per-property brand name, logo chip, neighbourhood→city fallback, accent `apartment ?? host ??
-  default`. **THE BRIEF'S OWN SPEC WAS WRONG AND THE GATES CAUGHT IT OVER TWO ROUNDS:**
-  "luminance > 0.5" is not the crossover (**0.2022 is**), and the first fix then scored only the
-  HEADLINE — hiding a failure in **Amber, a shipped preset** (6.15:1 headline, 3.53:1 sub). The
-  picker now scores each set by its **WORST role's headroom**. 720px QR; the child window
-  self-prints after `fonts.ready`; **no marketplace names** (Viator name-consent clause).
-  **Udy print-tested live: fits one A5 page, scans.**
-- **`401db9d` — Print relabelled "Print / Save as PDF"**, the primary path to the card as a file:
-  browser-native, vector, **zero drift from the printed output**. Bare-PNG download demoted to a
-  link. **html2canvas rejected** (a second renderer that can silently diverge, plus a dependency).
-  A contrast regression **in the demoted control** was caught and fixed (3.67→5.74:1). Closes the
-  "Download and Print differ in kind" residual.
-- **Copy ticket — DECIDED leave-as-is:** the imperative reading of "Download QR only (PNG)", and
-  the desktop-shaped "in the print window" caption (**iOS Safari uses the share sheet**). Revisit
-  only if a real host stumbles; the button label carries "Save as PDF".
+## Session — 25 Aug 2026 — Lessons retired, landing made true, the mark became a B
+
+HEAD at close: c9e2753. Twelve commits; detail lives in their commit bodies, not here.
+
+SHIPPED: `4bfa0f2` Lessons retirement pass (140,328 → 131,277). `a3ad688` `168b0f4` `80c0160`
+`7e57492` landing + AuthShell copy made true (no tables/transfers; "pick is bookable" corrected;
+"pays you back" scoped inside the same string). `9c82af4` comps table re-verified against the
+competitors' own sites 25 Aug — a competitor cell states a PRESENCE or nothing. `3068757` mark
+A→B, `withTagline` lockup on landing/auth only, icons via `scripts/gen-icons.mjs`. `a7a35a6`
+`1e53163` ticket-stub earnings card; `md:scale-[0.62] lg:scale-[0.92]` exists because the fixed
+ticket clipped 768–1080px — re-derive if that section's gaps/max-w change. `71fc9e3` `67a76d4`
+`c9e2753` marketing fixtures: real venues → invented, geocoder-verified-absent names.
+
+VERIFIED 25 Aug: `VITE_EXPERIENCES_ENABLED` is true in the production bundle (flag-gated call
+present ×2 in prod, ×0 in a flag-off build). Re-verify after any env edit + redeploy.
+
+DECIDED (Udy), do not reopen: Viator stays named only as Bemgu's own guest-facing marketplace,
+never in earnings copy or competitor cells (clause-14 observation closed). Host-facing placeholder
+examples (PropertySetup hints, help-drawer content.ts, host-guide doc) KEEP real place names —
+they show what to type. 24 Aug decisions carried unchanged (no ntfy rotation; print colours out
+of contrast work; interstitial closed; ring two-token, alpha dropped).
+
+OPEN: AuthShell tagline 2.96:1 mobile + lift-out 4.26:1 → AA session · demo QR of `ARR-EVT777`
+(dates lapsed; refresh first) BLOCKED on a spend-cap decision → pentest gate · `€25` hardcoded
+twice vs `plans` · `sagrada.jpg` licence undocumented · competitor facts dated 25 Aug, re-check at
+marketing pass · phone/tablet browser checks (h2 wrap 375px, ring-inset, ticket at real 768/1024).
+
+QUEUE: 1 gemini-2.5-flash repoint (deadline 16 Oct 2026) · 2 pentest gate (+ demo-QR spend cap)
+· 3 AA-floor session · 4 cosmetic tail (€25 from plans, sagrada licence, Founding Hosts prep).
+Stripe LIVE flip ABSOLUTE LAST.
 
 ## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
 

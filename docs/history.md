@@ -2644,3 +2644,32 @@ DECIDED, so none of it is re-litigated:
   two-token design, `#7a5c00` light (the existing Amber preset) and `#c8a24e` dark — and the
   ALPHA ring variants are DROPPED. Both settled 24 Aug so the refactor starts from a decision
   rather than a debate.
+
+## Session — 24 Aug 2026 — drawer refresh, the A5 guest card, privacy decided
+
+- **`cc2aba6` — help-drawer / help-chat content refresh** (`src/guide/content.ts`, one file, both
+  surfaces). **The SPLIT rule held — measured, zero step duplication from `sharePlatforms.ts`.**
+  Two gate-driven accuracy fixes beyond the authorised edits: tier qualifiers on the Earnings
+  copy, and a security-auditor **CRITICAL** — the **PRE-EXISTING** claim "the exact street is
+  never shown to guests" was false for every property in production. Corrected to the truth: the
+  street TEXT is not on the QR page, the **map pin is**, and the welcome link shows the full
+  address to whoever holds it. **Documentation only; product behaviour untouched.**
+- **PRIVACY QUESTION — DECIDED (Udy): ACCEPTED.** A guest with the welcome link or a confirmed
+  booking seeing the address is fine — **the platforms already show it to that same person.** No
+  product change; `welcome_show_address` unchanged. **Closed — not drift.**
+- **`f3f49a9` — the designed A5 guest card replaces the bare QR print** (`SharePanel.tsx`).
+  Per-property brand name, logo chip, neighbourhood→city fallback, accent `apartment ?? host ??
+  default`. **THE BRIEF'S OWN SPEC WAS WRONG AND THE GATES CAUGHT IT OVER TWO ROUNDS:**
+  "luminance > 0.5" is not the crossover (**0.2022 is**), and the first fix then scored only the
+  HEADLINE — hiding a failure in **Amber, a shipped preset** (6.15:1 headline, 3.53:1 sub). The
+  picker now scores each set by its **WORST role's headroom**. 720px QR; the child window
+  self-prints after `fonts.ready`; **no marketplace names** (Viator name-consent clause).
+  **Udy print-tested live: fits one A5 page, scans.**
+- **`401db9d` — Print relabelled "Print / Save as PDF"**, the primary path to the card as a file:
+  browser-native, vector, **zero drift from the printed output**. Bare-PNG download demoted to a
+  link. **html2canvas rejected** (a second renderer that can silently diverge, plus a dependency).
+  A contrast regression **in the demoted control** was caught and fixed (3.67→5.74:1). Closes the
+  "Download and Print differ in kind" residual.
+- **Copy ticket — DECIDED leave-as-is:** the imperative reading of "Download QR only (PNG)", and
+  the desktop-shaped "in the print window" caption (**iOS Safari uses the share sheet**). Revisit
+  only if a real host stumbles; the button label carries "Save as PDF".
