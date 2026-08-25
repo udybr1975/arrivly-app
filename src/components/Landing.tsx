@@ -464,7 +464,7 @@ function PhoneMockup() {
         <div className="ml-auto max-w-[78%] rounded-[12px] rounded-br-sm px-2.5 py-1.5 text-[10px] leading-snug text-white" style={{ background: EXAMPLE_ACCENT }}>What&apos;s the door code?</div>
         <div className="mr-auto max-w-[82%] rounded-[12px] rounded-bl-sm border border-[#e9e4d9] bg-[#fffdf9] px-2.5 py-1.5 text-[10px] leading-snug text-[#36322c]">It&apos;s 4-7-2-9 # on the keypad — you&apos;re on the 2nd floor, door on the right.</div>
         <div className="ml-auto max-w-[78%] rounded-[12px] rounded-br-sm px-2.5 py-1.5 text-[10px] leading-snug text-white" style={{ background: EXAMPLE_ACCENT }}>Late-night food near here?</div>
-        <div className="mr-auto max-w-[82%] rounded-[12px] rounded-bl-sm border border-[#e9e4d9] bg-[#fffdf9] px-2.5 py-1.5 text-[10px] leading-snug text-[#36322c]">El Xampanyet does pintxos till midnight, two minutes away on Carrer de Montcada.</div>
+        <div className="mr-auto max-w-[82%] rounded-[12px] rounded-bl-sm border border-[#e9e4d9] bg-[#fffdf9] px-2.5 py-1.5 text-[10px] leading-snug text-[#36322c]">Bar Tramús does pintxos late, two minutes away on Carrer de les Beceroles.</div>
       </div>
       <div className="mt-2 flex items-center justify-between rounded-full border border-[#e9e4d9] bg-[#fffdf9] px-3 py-1.5">
         <span className="text-[10px] text-[#9a958c]">Message…</span>
