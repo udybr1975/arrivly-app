@@ -71,7 +71,7 @@ export default function AuthShell({ headline, sub, points = DEFAULT_POINTS, chil
               <span className="absolute inline-flex h-full w-full rounded-full bg-[#c8a24e] opacity-60 motion-safe:animate-ping" />
               <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#c8a24e]" />
             </span>
-            <span className="text-[9px] uppercase tracking-[.14em] text-[#f0ede6]/55">Table booked</span>
+            <span className="text-[9px] uppercase tracking-[.14em] text-[#f0ede6]/55">Tickets booked</span>
           </div>
           <div className="mt-1 font-['Fraunces'] text-[22px] font-light text-[#e7d6ad]">+€6.40</div>
           <div className="text-[10px] leading-tight text-[#f0ede6]/60">example earning · Portfolio · from a guest tap</div>
