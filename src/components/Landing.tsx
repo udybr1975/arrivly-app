@@ -782,8 +782,8 @@ export default function Landing() {
                   d: 'Tours, attraction tickets, day trips, workshops — the experiences a guest taps can earn.',
                 },
                 {
-                  t: 'When a pick is bookable',
-                  d: 'Your editorial recommendations turn reservable in a single tap, without the guest ever leaving the page.',
+                  t: 'Right beside your picks',
+                  d: 'Bookable tours and tickets sit right beside your own picks on the Explore tab, one tap from the guide.',
                 },
                 {
                   t: 'Never the middleman',
@@ -806,8 +806,7 @@ export default function Landing() {
           <Reveal delay={120}>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="overflow-hidden rounded-2xl border border-[#ddd8ce] bg-white shadow-sm">
-                <img src="/landing/sagrada.jpg" alt="The Sagrada Família façade in Barcelona" className="h-32 w-full object-cover" loading="lazy" />
-                <div className="p-4">
+                <div className="flex h-full flex-col justify-end p-5">
                   <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#a8842f]">
                     <TicketIcon className="h-3.5 w-3.5" /> Tickets booked
                   </div>
