@@ -197,7 +197,7 @@ const FEATURES = [
   {
     Icon: PinIcon,
     title: 'An experiences marketplace',
-    desc: 'Tours, tables and tickets your guests can book — turning your guide into a revenue stream (rolling out by tier).',
+    desc: 'Tours, tickets and activities your guests can book — turning your guide into a revenue stream (earnings on Portfolio).',
   },
 ]
 
@@ -290,7 +290,7 @@ const COMPS_ROWS: CompRow[] = [
 
 const COMPS_STATS = [
   { stat: '3–4 bookings', desc: 'Roughly what it takes per month, on Portfolio, for guest tour commissions to cover the whole fee' },
-  { stat: '3 marketplaces', desc: 'Viator, GetYourGuide and Tiqets — live on every guest page from day one' },
+  { stat: '2 marketplaces pay you', desc: 'GetYourGuide and Tiqets — commissions paid to you directly on Portfolio' },
   { stat: '100% on Portfolio', desc: 'GetYourGuide and Tiqets pay commissions to you directly — Bemgu never touches your money' },
 ]
 
@@ -558,14 +558,14 @@ function PhoneMockup() {
         ))}
       </div>
 
-      {/* lift-out callout — booked a table (illustrative example earning) */}
+      {/* lift-out callout — museum tickets booked (illustrative example earning) */}
       <div className="absolute -right-5 top-[42%] w-[150px] rounded-[12px] border border-[#2c2925] bg-[#23211d] p-3 shadow-2xl sm:-right-8">
         <div className="flex items-center gap-1.5">
           <span className="relative flex h-1.5 w-1.5">
             <span className="absolute inline-flex h-full w-full rounded-full bg-[#c8a24e] opacity-60 motion-safe:animate-ping" />
             <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#c8a24e]" />
           </span>
-          <span className="text-[9px] uppercase tracking-wide text-white/50">Booked a table</span>
+          <span className="text-[9px] uppercase tracking-wide text-white/50">Museum tickets booked</span>
         </div>
         <div className="mt-1 font-['Fraunces'] text-[20px] font-light text-[#e7d6ad]">+€6.40</div>
         <div className="text-[10px] leading-tight text-white/60">example earning · Portfolio</div>
@@ -772,14 +772,14 @@ export default function Landing() {
               Your guide becomes a revenue stream.
             </h2>
             <p className="mt-5 max-w-[460px] text-[15px] leading-[1.7] text-[#1c1c1a]/65">
-              Guests already book tours, tables and tickets during their stay. With Bemgu they
+              Guests already book tours, tickets and activities during their stay. With Bemgu they
               book them from your page — and on Portfolio, a share comes back to you.
             </p>
             <ul className="mt-8 space-y-5">
               {[
                 {
                   t: 'Earn across the catalogue',
-                  d: 'Tours, restaurant tables, attraction tickets, transfers — the experiences a guest taps can earn.',
+                  d: 'Tours, attraction tickets, day trips, workshops — the experiences a guest taps can earn.',
                 },
                 {
                   t: 'When a pick is bookable',
@@ -806,10 +806,10 @@ export default function Landing() {
           <Reveal delay={120}>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="overflow-hidden rounded-2xl border border-[#ddd8ce] bg-white shadow-sm">
-                <img src="/landing/restaurant.jpg" alt="A restaurant table set for dinner" className="h-32 w-full object-cover" loading="lazy" />
+                <img src="/landing/sagrada.jpg" alt="The Sagrada Família façade in Barcelona" className="h-32 w-full object-cover" loading="lazy" />
                 <div className="p-4">
                   <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#a8842f]">
-                    <TicketIcon className="h-3.5 w-3.5" /> Table booked
+                    <TicketIcon className="h-3.5 w-3.5" /> Tickets booked
                   </div>
                   <div className="mt-1 font-['Fraunces'] text-[24px] font-light text-[#1c1c1a]">+€6.40</div>
                   <div className="text-[11px] text-[#1c1c1a]/45">example earning</div>

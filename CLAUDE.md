@@ -778,8 +778,9 @@ must display all Travel Product Information provided and may not add to, alter o
 it; **3.2** — no systematic analysis/extraction of the Viator Marketplace incl. reviews;
 **14 (Publicity)** — no press release, advertisement or public statement about the
 existence/contents of the Agreement or the parties' relationship without Viator's prior
-written consent. **Flag:** the landing page comps table's "3 earning marketplaces"
-framing brushes against clause 14 — review the marketing copy against it before launch.
+written consent. **Closed 25 Aug 2026 (Udy):** Viator stays named on the landing page as GUEST value only
+(comps row + intro); it is removed from every host-earnings statement, since Viator is
+Bemgu-attributed at every tier and hosts earn only on GetYourGuide and Tiqets (Portfolio).
 
 ## PHASE I — EXPERIENCE CONNECTORS (Stages 0/4A/4B SHIPPED + verified live, Jul 26 2026; scoped S29, Jul 10 2026)
 
