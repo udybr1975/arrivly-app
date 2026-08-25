@@ -812,11 +812,37 @@ export default function Landing() {
 
           <Reveal delay={120}>
             <div className="grid gap-4 sm:grid-cols-2">
-              {/* self-start: without it this grid item stretches to the row height set by the
-                  taller, offset sibling and reopens the blank area p-4 alone cannot close. */}
-              <div className="self-start overflow-hidden rounded-2xl border border-[#ddd8ce] bg-white shadow-sm">
-                <div className="flex h-32 w-full items-center justify-center bg-[#f7f5f0]" aria-hidden="true">
-                  <TicketIcon className="h-14 w-14 text-[#c8a24e]" />
+              <div className="overflow-hidden rounded-2xl border border-[#ddd8ce] bg-white shadow-sm">
+                <div className="relative h-32 w-full overflow-hidden bg-[#1c1c1a]" aria-hidden="true">
+                  {/* soft brass glow, top-right and bottom-left */}
+                  <div className="absolute inset-0 bg-[radial-gradient(120%_90%_at_80%_10%,rgba(200,162,78,.28),transparent_55%),radial-gradient(80%_60%_at_10%_100%,rgba(200,162,78,.12),transparent_60%)]" />
+                  {/* the ticket: 208x80, rotated -5deg, perforation at 152px. The responsive
+                      scale is load-bearing, not decoration: md:grid-cols-2 on the SECTION squeezes
+                      each card to ~146px at 768px against a fixed 214px rotated ticket, so it is
+                      clipped from md up to ~1080px without this. Measured card widths: ~140 @768,
+                      169 @860, 194 @960, 210 @1024, 229 @1100, 258 @1280. */}
+                  <div className="absolute left-1/2 top-1/2 grid h-20 w-[208px] -translate-x-1/2 -translate-y-1/2 rotate-[-5deg] grid-cols-[1fr_56px] md:scale-[0.62] lg:scale-[0.92] xl:scale-100 rounded-lg bg-[#f7f5f0] shadow-[0_10px_24px_rgba(0,0,0,.35),inset_0_1px_0_rgba(255,255,255,.4)]">
+                    {/* brass edge */}
+                    <div className="absolute inset-y-0 left-0 w-1.5 rounded-l-lg bg-[#c8a24e]" />
+                    {/* punch holes on the perforation */}
+                    <div className="absolute -top-2 left-[144px] h-4 w-4 rounded-full bg-[#1c1c1a]" />
+                    <div className="absolute -bottom-2 left-[144px] h-4 w-4 rounded-full bg-[#1c1c1a]" />
+                    {/* main stub */}
+                    <div className="relative px-3 pb-2.5 pt-[11px]">
+                      <div className="text-[7.5px] font-semibold uppercase tracking-[.22em] text-[#7a5c00]">Museum · Entry</div>
+                      <div className="mt-[3px] whitespace-nowrap font-['Fraunces'] text-[14.5px] font-medium leading-[1.05] text-[#1c1c1a]">Design Museum<br />Helsinki</div>
+                      <div className="mt-[5px] whitespace-nowrap text-[8px] tracking-[.04em] text-[#6b665c]">SAT 12 SEP · 14:00 · ×2</div>
+                    </div>
+                    {/* tear-off stub */}
+                    <div className="relative flex flex-col items-center justify-center gap-[5px] py-2 pl-[7px] pr-1.5 before:absolute before:bottom-2.5 before:left-0 before:top-2.5 before:border-l-[1.5px] before:border-dashed before:border-[#c9c2b4] before:content-['']">
+                      <div className="text-[7px] font-semibold uppercase tracking-[.25em] text-[#7a5c00] [writing-mode:vertical-rl] rotate-180">Admit two</div>
+                      <div className="flex h-[22px] items-end gap-[1.5px]">
+                        {Array.from({ length: 16 }, (_, i) => (
+                          <i key={i} className={`block bg-[#1c1c1a] ${i % 2 ? 'w-px opacity-70' : 'w-0.5'} ${i % 3 === 0 ? 'h-4/5' : 'h-full'}`} />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div className="p-4">
                   <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#a8842f]">
@@ -826,7 +852,7 @@ export default function Landing() {
                   <div className="text-[11px] text-[#1c1c1a]/45">example earning</div>
                 </div>
               </div>
-              <div className="overflow-hidden rounded-2xl border border-[#ddd8ce] bg-white shadow-sm sm:mt-8">
+              <div className="overflow-hidden rounded-2xl border border-[#ddd8ce] bg-white shadow-sm">
                 <img src="/landing/sailing.jpg" alt="A sailing trip on the water" className="h-32 w-full object-cover" loading="lazy" />
                 <div className="p-4">
                   <div className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-[#a8842f]">
