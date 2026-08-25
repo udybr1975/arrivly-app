@@ -1262,9 +1262,28 @@ OPEN: AuthShell tagline 2.96:1 mobile + lift-out 4.26:1 → AA session · demo Q
 twice vs `plans` · `sagrada.jpg` licence undocumented · competitor facts dated 25 Aug, re-check at
 marketing pass · phone/tablet browser checks (h2 wrap 375px, ring-inset, ticket at real 768/1024).
 
-QUEUE: 1 gemini-2.5-flash repoint (deadline 16 Oct 2026) · 2 pentest gate (+ demo-QR spend cap)
-· 3 AA-floor session · 4 cosmetic tail (€25 from plans, sagrada licence, Founding Hosts prep).
-Stripe LIVE flip ABSOLUTE LAST.
+QUEUE: 1 THE DEMO (approved 25 Aug, below) · 2 gemini-2.5-flash repoint (deadline 16 Oct 2026 —
+must ship before it) · 3 pentest gate (incl. demo-sandbox limits) · 4 AA-floor session · 5
+cosmetic tail (€25 from plans, sagrada licence, Founding Hosts prep). Stripe LIVE flip ABSOLUTE LAST.
+
+DEMO — APPROVED DESIGN (Udy, 25 Aug 2026). Two tiers, not one:
+- PUBLIC PEEK — a QR/link on the landing page to the Sweet home fixture (`d9614d11`, token
+  `ARR-EVT777`; refresh its dates first). Guest page ONLY. NO AI: chat shows scripted question
+  bubbles with pre-written answers; the free-text input is disabled and says, in the box, that in
+  a live guest page the assistant answers any question. Messaging OFF for demo apartments (a
+  public token must not reach a host inbox). Marketplaces (Viator/GYG/Tiqets) stay LIVE and
+  clickable — outbound links cost nothing; the fixture has no partner IDs so any sale is Bemgu's;
+  exclude the demo apartment from `experience_clicks` earnings/admin metrics. Zero spend surface
+  → NOT a pentest item. Mockup-first.
+- SANDBOX — the EXISTING `/demo` flow (`api/demo-create.ts`, `VITE_DEMO_ENABLED`): signed-up
+  host, Turnstile-gated, 48h, own dashboard + own guest page with the seeded "Alex" booking; real
+  AI and real two-way messaging in their own sandbox. This is the two-sided demo. Its abuse bound
+  is signup + Turnstile; demo-create cooldown never built → pentest gate.
+- A public QR CANNOT be two-sided (one shared apartment → shared or fake inbox); do not try.
+NEXT SESSION, in order: (a) verify `VITE_DEMO_ENABLED` in the production bundle (same method as
+the experiences flag); (b) audit the sandbox seed against features shipped since (pre-arrival
+link, drawer refresh, A5 card) and list gaps; (c) public peek: mockup → approval → build;
+(d) flip the landing "Live demo coming soon" CTAs to the two real entry points.
 
 ## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
 
