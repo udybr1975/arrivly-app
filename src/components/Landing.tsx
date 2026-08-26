@@ -279,9 +279,10 @@ function CompCellContent({ cell, dark }: { cell: CompCell; dark?: boolean }) {
 
 const FEATURES = [
   {
+    // CAVEAT SITE 3 of 8 — the closing "Verified on Airbnb." sentence.
     Icon: HandIcon,
-    title: 'A welcome with their name',
-    desc: 'Guests land on a page that greets them by name, with your branding, their dates, and a warm note for the city.',
+    title: 'Their page, before they arrive',
+    desc: 'From your Airbnb confirmation message, guests open a personal page the day they book: a greeting by name, a countdown, the guide, tours to book ahead. It becomes their full guest page on check-in day. Verified on Airbnb.',
   },
   {
     Icon: CityMapIcon,
@@ -323,11 +324,18 @@ const FEATURES = [
 const FAQS = [
   {
     q: 'Do my guests need to download an app?',
-    a: 'No. Bemgu opens in any browser straight from the QR code — nothing to install, no app store. Guests can optionally add it to their home screen for one-tap access and push messages, but that is entirely their choice.',
+    a: 'No. Bemgu opens in any browser — from your Airbnb link or from the QR in the apartment. Nothing to install, no app store. Guests can optionally add it to their home screen for one-tap access and push messages, but that is entirely their choice.',
   },
   {
+    // CAVEAT SITE 5 of 8. "One QR code covers them all" was REMOVED, not softened: it was true
+    // of the QR and false of the pre-arrival link the page now leads with, and left in place
+    // beside the new sentence it would have read as a four-platform claim for the feature.
     q: 'Does it work with Airbnb, Vrbo and Booking.com?',
-    a: 'Yes. Paste in your calendar links and bookings sync automatically, whichever platform a guest booked through — or add direct bookings yourself. One QR code covers them all.',
+    a: 'Yes. Paste in your calendar links and bookings sync automatically, whichever platform a guest booked through — or add direct bookings yourself. The pre-arrival link is verified on Airbnb messages today. Vrbo and Booking.com guests get the same page from the QR on arrival. We haven’t tested the pre-arrival link on either yet, so the setup steps cover Airbnb today.',
+  },
+  {
+    q: 'Do guests have to scan the QR?',
+    a: 'Only if they didn’t open your Airbnb link. Guests who did already have the page — it unlocks on check-in day by itself. The QR in the apartment is the backup, and the way in for everyone else.',
   },
   {
     q: 'How does the AI city guide work?',
@@ -343,8 +351,9 @@ const FAQS = [
   },
 ]
 
-// ── Comparison ("comps") data. Competitor claims are worded exactly as approved and
-// are sourced from public pricing pages (see the fine print in the section). Marks:
+// ── Comparison ("comps") data. Competitor claims are worded exactly as approved and are
+// sourced from the vendors' own sites — public pricing pages for the pricing rows, and their
+// help centres for the feature rows (each cited above the row that needs it). Marks:
 // 'brass' = yes (Bemgu accent), 'muted' = partial/yes on a comp, 'dash' = no.
 type CompMark = 'brass' | 'muted' | 'dash'
 type CompCell = { mark?: CompMark; text?: string }
@@ -356,6 +365,19 @@ const COMPS_ROWS: CompRow[] = [
     bemgu: { text: 'Flat tier / one price, whole portfolio tier' },
     hostfully: { text: 'Per guidebook / Free for 1, Pro up to 199' },
     touchstay: { text: 'Per property / every unit adds cost' },
+  },
+  // SOURCES, read 26 Aug 2026 from the vendors' own help centres — a competitor cell states a
+  // PRESENCE or nothing (the 25 Aug comps rule), so both read as "via", which is what the
+  // sources support: neither offers it from the booking platform's own message without a PMS or
+  // an integration in between.
+  //   Touch Stay: help.touchstay.com/article/124 and help.touchstay.com/article/102
+  //   Hostfully:  help.hostfully.com/en/articles/2108793
+  // CAVEAT SITE 4 of 8 — the Bemgu cell names Airbnb and nothing else.
+  {
+    label: 'Personal guest page before arrival, from the booking platform’s message',
+    bemgu: { mark: 'brass', text: 'From Airbnb’s own message variables — no integration to connect. Unlocks WiFi and door on check-in day by itself.' },
+    hostfully: { mark: 'muted', text: 'Via Hostfully PMS templates' },
+    touchstay: { mark: 'muted', text: 'Via its Airbnb integration or a PMS — per-reservation link' },
   },
   {
     label: 'What you pay as you grow',
@@ -413,24 +435,31 @@ const COMPS_STATS = [
   { stat: '100% on Portfolio', desc: 'GetYourGuide and Tiqets pay commissions to you directly — Bemgu never touches your money' },
 ]
 
+// STEP 01 CARRIES CAVEAT SITE 2 of 8 — the parenthetical `aside`. It is rendered SMALLER than
+// the sentence it qualifies, at the SAME /55 opacity, and that pairing is deliberate: it is a
+// scope note, not a second instruction, and a host reading the step must not think there are
+// two setups. It was drafted DIMMER, at /40, and that failed AA at 3.38:1 — see the computed
+// note at the render site. Subordination here comes from type size ALONE; do not restore the
+// dimness, which is the one change that would make this line fail again.
 const STEPS = [
   {
     Icon: QrIcon,
     n: '01',
-    title: 'Print one QR code',
-    desc: 'Generate it once and place it in the apartment. The link never changes, so you never reprint it.',
+    title: 'Set up once',
+    desc: 'Print the QR for the apartment, and add one line to your Airbnb welcome message. Two minutes, never repeated.',
+    aside: '(Airbnb today; other platforms use the QR.)',
   },
   {
-    Icon: PinIcon,
+    Icon: HandIcon,
     n: '02',
-    title: 'Guests scan on arrival',
-    desc: 'They land on a page branded to you, personalised with their name and stay dates — no login, no friction.',
+    title: 'They get their page when they book',
+    desc: 'Weeks before arrival: their name, a countdown, your picks, the neighbourhood guide, and tours they can book ahead. WiFi and entry stay locked.',
   },
   {
-    Icon: SparkleIcon,
+    Icon: KeyIcon,
     n: '03',
-    title: 'They get everything',
-    desc: 'WiFi, check-in, house rules, a live city guide, what’s-on this week, and a 24/7 concierge chatbot.',
+    title: 'Check-in day unlocks itself',
+    desc: 'The same page becomes their guest page — WiFi, door code, house rules, messaging. Already on their phone. The QR in the apartment is there for anyone who didn’t use the link.',
   },
 ]
 
@@ -440,6 +469,12 @@ const TRUST = ['Airbnb', 'Vrbo', 'Booking.com', 'Direct']
 // HOST's own accent; this is fixed terracotta marketing chrome — change it here only.
 const EXAMPLE_ACCENT = '#a8542e'
 const PHONE_MS = 3400
+// The mockup screens, in cycle order. SCREEN_COUNT drives the modulo and SCREEN_LABELS the
+// manual picker, so adding a screen is ONE edit here rather than three scattered literals —
+// a 4-vs-5 mismatch would silently strand the last screen, reachable only by waiting out the
+// cycle, and that is exactly the bug this prevents.
+const SCREEN_LABELS = ['Before arrival', 'Home', 'Explore', 'Chat', 'Settings'] as const
+const SCREEN_COUNT = SCREEN_LABELS.length
 
 // Two tiny nav glyphs the shared landing-icons set doesn't cover (home, gear). Decorative,
 // stroke = currentColor so they inherit the nav item's colour. No new imports.
@@ -448,6 +483,14 @@ function HomeGlyph({ className }: { className?: string }) {
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden className={className}>
       <path d="M4 11.5 12 5l8 6.5" />
       <path d="M6 10.5V19h12v-8.5" />
+    </svg>
+  )
+}
+function LockGlyph({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden className={className}>
+      <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+      <path d="M8.5 10.5V7.75a3.5 3.5 0 0 1 7 0v2.75" />
     </svg>
   )
 }
@@ -461,7 +504,8 @@ function GearGlyph({ className }: { className?: string }) {
 }
 
 // ── The phone mockup: an auto-cycling, presentational recreation of the real guest page
-// (Home → Explore → Chat → Settings). Decorative + aria-hidden; not wired to any data.
+// (Before arrival → Home → Explore → Chat → Settings). Decorative + aria-hidden; not wired
+// to any data.
 function PhoneMockup() {
   const [index, setIndex] = useState(0)
   // Bumping restartKey tears down + rebuilds the interval, giving a manually-picked screen
@@ -470,9 +514,12 @@ function PhoneMockup() {
   const pausedRef = useRef(false)
 
   useEffect(() => {
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return // stay on Home
+    // Reduced motion parks on index 0 — BEFORE ARRIVAL, not Home. That is deliberate now
+    // rather than incidental: it is the screen the hero copy leads with, so a visitor who
+    // never sees the cycle still sees the frame the page is selling.
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
     const id = setInterval(() => {
-      if (!pausedRef.current) setIndex(i => (i + 1) % 4)
+      if (!pausedRef.current) setIndex(i => (i + 1) % SCREEN_COUNT)
     }, PHONE_MS)
     return () => clearInterval(id)
   }, [restartKey])
@@ -480,17 +527,71 @@ function PhoneMockup() {
   const goTo = (i: number) => { setIndex(i); setRestartKey(k => k + 1) }
 
   // Bottom nav in the real on-screen order (Home, Chat, Explore, Settings); each maps to its
-  // screen index (Home=0, Explore=1, Chat=2, Settings=3).
+  // screen index. THE PRE-ARRIVAL SCREEN IS A HOME-TAB SCREEN — on the real guest page it is the
+  // same tab, before check-in — so Home is lit for BOTH 0 and 1, while TAPPING Home goes to the
+  // arrived state (1), which is what someone demoing the phone expects. `activeFor` exists
+  // because that is a one-to-many mapping the old `index === item.idx` could not express.
   const nav = [
-    { label: 'Home', idx: 0, Icon: HomeGlyph },
-    { label: 'Chat', idx: 2, Icon: ChatIcon },
-    { label: 'Explore', idx: 1, Icon: PinIcon },
-    { label: 'Settings', idx: 3, Icon: GearGlyph },
+    { label: 'Home', idx: 1, activeFor: [0, 1], Icon: HomeGlyph },
+    { label: 'Chat', idx: 3, activeFor: [3], Icon: ChatIcon },
+    { label: 'Explore', idx: 2, activeFor: [2], Icon: PinIcon },
+    { label: 'Settings', idx: 4, activeFor: [4], Icon: GearGlyph },
   ]
 
-  // Screens, ordered by index: 0 Home, 1 Explore, 2 Chat, 3 Settings.
+  // Screens, ordered by index: 0 Pre-arrival, 1 Home, 2 Explore, 3 Chat, 4 Settings.
   const screens = [
-    // 0 — HOME
+    // 0 — PRE-ARRIVAL: the page as it exists between booking and check-in. Same hero, scrim and
+    // height contract as HOME below, so the crossfade does not jump.
+    // WiFi and Door are DASHED AND LOCKED. That lock IS the claim the copy above now leads with
+    // ("WiFi and entry stay locked"); a future edit that makes these live tiles makes the
+    // marketing copy false, so they are not decoration.
+    <div key="prearrival" className="h-full overflow-hidden">
+      <div className="relative h-[150px]">
+        <img src="/landing/sagrada.jpg" alt="" className="h-full w-full object-cover" loading="lazy" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#120e0b]/85 via-[#120e0b]/25 to-transparent" />
+        <div className="absolute inset-x-3.5 bottom-2.5 text-white">
+          <div className="text-[8px] uppercase tracking-[.18em] text-white/75">Barcelona, Spain</div>
+          <div className="font-['Fraunces'] text-[19px] font-light leading-tight">See you soon, Marco.</div>
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <span className="min-w-0 font-['Fraunces'] text-[10px] italic text-white/85">Casa Marco — El Born is getting ready for you.</span>
+            <span className="shrink-0 rounded-full bg-white/15 px-1.5 py-0.5 text-[8px] font-medium text-white ring-1 ring-white/40">12 days to go</span>
+          </div>
+        </div>
+      </div>
+      <div className="space-y-2 px-3.5 pb-[56px] pt-2.5">
+        <div className="font-['Fraunces'] text-[13px] text-[#1c1c1a]">Dear Marco,</div>
+        <p className="text-[10px] leading-snug text-[#36322c]">
+          Everything for your stay lives here — I&apos;ll keep adding to it before you arrive.
+        </p>
+        <div className="grid grid-cols-3 gap-1.5">
+          {/* Both tiles render LockGlyph, never a per-tile icon — the lock IS the state
+              being shown. Carrying an unused `Icon` key here invited the opposite reading. */}
+          {[{ label: 'WiFi' }, { label: 'Door' }].map(t => (
+            <div key={t.label} className="rounded-[9px] border border-dashed border-[#d8d2c6] bg-[#f4f1ea] px-1.5 py-2 text-center">
+              <LockGlyph className="mx-auto h-3 w-3 text-[#b3aa9b]" />
+              <div className="mt-1 text-[8px] font-medium text-[#6b6354]">{t.label}</div>
+              <div className="text-[7px] text-[#9a958c]">On arrival</div>
+            </div>
+          ))}
+          <div className="rounded-[9px] border bg-[#fffdf9] px-1.5 py-2 text-center" style={{ borderColor: EXAMPLE_ACCENT + '55' }}>
+            <PinIcon className="mx-auto h-3 w-3" style={{ color: EXAMPLE_ACCENT }} />
+            <div className="mt-1 text-[8px] font-medium text-[#1c1c1a]">Directions</div>
+            <div className="text-[7px]" style={{ color: EXAMPLE_ACCENT }}>Open</div>
+          </div>
+        </div>
+        <div className="overflow-hidden rounded-[10px] border border-[#e9e4d9] bg-[#fffdf9]">
+          <div className="h-[3px]" style={{ background: EXAMPLE_ACCENT }} />
+          <div className="flex items-center gap-2 px-2.5 py-2">
+            <TicketIcon className="h-3.5 w-3.5 shrink-0" style={{ color: EXAMPLE_ACCENT }} />
+            <div className="min-w-0">
+              <div className="text-[10px] font-medium text-[#1c1c1a]">Tours &amp; tickets to book ahead</div>
+              <div className="text-[8px] leading-snug text-[#6b6354]">Plan the highlights before you arrive</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    // 1 — HOME
     <div key="home" className="h-full overflow-hidden">
       <div className="relative h-[150px]">
         <img src="/landing/sagrada.jpg" alt="" className="h-full w-full object-cover" loading="lazy" />
@@ -531,7 +632,7 @@ function PhoneMockup() {
         </div>
       </div>
     </div>,
-    // 1 — EXPLORE
+    // 2 — EXPLORE
     <div key="explore" className="h-full overflow-hidden px-3.5 pb-[56px] pt-3.5">
       <div className="text-[8px] uppercase tracking-[.18em]" style={{ color: EXAMPLE_ACCENT }}>Explore</div>
       <div className="font-['Fraunces'] text-[17px] font-light text-[#1c1c1a]">Around you</div>
@@ -574,7 +675,7 @@ function PhoneMockup() {
       </div>
       <div className="mt-2 text-center text-[7.5px] text-[#9a958c]">© OpenStreetMap · Geocoding by LocationIQ</div>
     </div>,
-    // 2 — CHAT
+    // 3 — CHAT
     <div key="chat" className="flex h-full flex-col px-3.5 pb-[56px] pt-3.5">
       <div className="text-[8px] uppercase tracking-[.18em]" style={{ color: EXAMPLE_ACCENT }}>Assistant</div>
       <div className="font-['Fraunces'] text-[17px] font-light text-[#1c1c1a]">Ask anything</div>
@@ -589,7 +690,7 @@ function PhoneMockup() {
         <span className="text-[11px]" style={{ color: EXAMPLE_ACCENT }}>➤</span>
       </div>
     </div>,
-    // 3 — SETTINGS
+    // 4 — SETTINGS
     <div key="settings" className="h-full overflow-hidden px-3.5 pb-[56px] pt-3.5">
       <div className="text-[8px] uppercase tracking-[.18em]" style={{ color: EXAMPLE_ACCENT }}>Settings</div>
       <div className="font-['Fraunces'] text-[17px] font-light text-[#1c1c1a]">Your stay</div>
@@ -644,7 +745,7 @@ function PhoneMockup() {
           {/* persistent frosted bottom nav */}
           <div className="absolute inset-x-2.5 bottom-2.5 flex items-stretch justify-around rounded-2xl border border-[#e9e4d9] bg-[#fbfaf7]/85 py-1.5 backdrop-blur">
             {nav.map(item => {
-              const active = index === item.idx
+              const active = item.activeFor.includes(index)
               return (
                 <button
                   key={item.label}
@@ -665,11 +766,12 @@ function PhoneMockup() {
 
       {/* dot pager (brass on the dark marketing chrome) */}
       <div className="mt-4 flex items-center justify-center gap-1.5">
-        {[0, 1, 2, 3].map(i => (
+        {SCREEN_LABELS.map((label, i) => (
           <button
-            key={i}
+            key={label}
             type="button"
             tabIndex={-1}
+            title={label}
             onClick={() => goTo(i)}
             className="h-1.5 rounded-full transition-all"
             style={i === index ? { width: 16, background: '#c8a24e' } : { width: 6, background: '#c8a24e55' }}
@@ -799,9 +901,10 @@ export default function Landing() {
               <span className="italic text-[#c8a24e]">Your new revenue stream.</span>
             </h1>
             <p className="mx-auto mt-6 max-w-[480px] text-[15px] leading-[1.7] text-[#f0ede6]/60 md:mx-0">
-              One QR code in the apartment. Your guest scans it and gets WiFi, check-in, a live
-              city guide, events and a 24/7 chatbot — branded to you. Then they book experiences,
-              and on Portfolio, you earn.
+              Your guest gets their own page the day they book — from your Airbnb message — with a
+              live city guide, events, a 24/7 chatbot and tours to book ahead, branded to you. On
+              check-in day, WiFi and the door code unlock on their phone. Nothing to scan, nothing
+              to install. And on Portfolio, you earn.
             </p>
             <p className="mx-auto mt-5 max-w-[480px] font-['Fraunces'] italic text-[17px] leading-snug text-[#e7d6ad] md:mx-0">
               Made by hosts, for hosts who care about their guests.
@@ -852,17 +955,41 @@ export default function Landing() {
 
       {/* ─────────────────────────── Trust strip ─────────────────────────── */}
       <section className="border-y border-[#2c2925] bg-[#16100d]">
-        <div className="mx-auto flex max-w-6xl flex-col items-center gap-5 px-5 py-7 sm:px-8 md:flex-row md:justify-between">
-          <span className="text-[12px] uppercase tracking-[.16em] text-[#f0ede6]/35">
-            Works with the booking sites you already use
-          </span>
-          <div className="flex flex-wrap items-center justify-center gap-x-9 gap-y-3">
-            {TRUST.map(name => (
-              <span key={name} className="font-['Fraunces'] text-[17px] font-medium text-[#f0ede6]/55">
-                {name}
-              </span>
-            ))}
+        <div className="mx-auto max-w-6xl px-5 py-7 sm:px-8">
+          <div className="flex flex-col items-center gap-5 md:flex-row md:justify-between">
+            <span className="text-[12px] uppercase tracking-[.16em] text-[#f0ede6]/35">
+              Works with the booking sites you already use
+            </span>
+            <div className="flex flex-wrap items-center justify-center gap-x-9 gap-y-3">
+              {TRUST.map(name => (
+                <span key={name} className="font-['Fraunces'] text-[17px] font-medium text-[#f0ede6]/55">
+                  {name}
+                </span>
+              ))}
+            </div>
           </div>
+          {/* CAVEAT SITE 1 of 8. The four names above are all true of CALENDAR SYNC; the
+              pre-arrival link is verified on Airbnb ALONE. Without this line the strip reads as
+              a four-platform claim for the feature the hero now leads with.
+
+              THE FULL SET, ENUMERATED — if Vrbo or Booking.com is ever verified, ALL EIGHT
+              change together. Five carry a numbered marker; three are Airbnb-scoped sentences
+              with no marker of their own, and they are the ones a grep for "CAVEAT" would miss,
+              which is exactly how "three of four rows updated" happens:
+                1. this trust-strip line
+                2. STEPS[0] `aside` + its "your Airbnb welcome message" desc
+                3. FEATURES card 1, "Verified on Airbnb."
+                4. the comps row's Bemgu cell
+                5. the "Airbnb, Vrbo and Booking.com" FAQ
+                6. THE HERO PARAGRAPH — "from your Airbnb message"          (unmarked)
+                7. the "Do guests have to scan the QR?" FAQ answer          (unmarked)
+                8. the "download an app" FAQ — "from your Airbnb link"      (unmarked)
+              Do not treat the five markers as the list. */}
+          <p className="mx-auto mt-6 max-w-[620px] text-center text-[13px] leading-[1.6] text-[#f0ede6]/55">
+            Calendar sync works with all of them.{' '}
+            <span className="font-medium text-[#e7d6ad]">The pre-arrival link is verified on Airbnb;</span>{' '}
+            on other platforms, the QR in the apartment opens the same page on arrival.
+          </p>
         </div>
       </section>
 
@@ -872,7 +999,7 @@ export default function Landing() {
           <Reveal className="mx-auto max-w-2xl text-center">
             <div className="text-[12px] uppercase tracking-[.16em] text-[#c8a24e]">How it works</div>
             <h2 className="mt-3 font-['Fraunces'] text-[32px] font-light leading-tight text-[#f0ede6] sm:text-[40px]">
-              Set it up once. It runs itself.
+              Set up once. It runs itself.
             </h2>
           </Reveal>
           <div className="mt-14 grid gap-6 md:grid-cols-3">
@@ -887,6 +1014,15 @@ export default function Landing() {
                   </div>
                   <h3 className="mt-5 font-['Fraunces'] text-[20px] font-normal text-[#f0ede6]">{s.title}</h3>
                   <p className="mt-2 text-[14px] leading-[1.7] text-[#f0ede6]/55">{s.desc}</p>
+                  {s.aside && (
+                    // /55 on #23211d = 5.12:1, COMPUTED. It was drafted at /40, which measures
+                    // 3.38:1 and fails AA for 13px normal text — and being a parenthetical is
+                    // not an exemption: this line carries the Airbnb-only scope for the whole
+                    // section, so it is the last text on the page that may be the dimmest.
+                    // (/50 is 4.48:1 — just under. Do not "split the difference" back to it.)
+                    // Subordination comes from the smaller type, not from lower contrast.
+                    <p className="mt-1.5 text-[13px] leading-[1.6] text-[#f0ede6]/55">{s.aside}</p>
+                  )}
                 </div>
               </Reveal>
             ))}
@@ -913,8 +1049,8 @@ export default function Landing() {
                   d: 'Tours, attraction tickets, day trips, workshops — the experiences a guest taps can earn.',
                 },
                 {
-                  t: 'Right beside your picks',
-                  d: 'Bookable tours and tickets sit right beside your own picks on the Explore tab, one tap from the guide.',
+                  t: 'The planning window',
+                  d: 'Guests decide what to see in the weeks before a trip. Your page is on their phone from the day they book, so the tours they tap are booked while they’re still planning — not on the last evening. Earnings on Portfolio.',
                 },
                 {
                   t: 'Never the middleman',
