@@ -71,6 +71,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       stayDay = Math.max(1, Math.floor(diffMs / 86_400_000) + 1)
     }
 
+    // THE PUBLIC PEEK SPENDS NOTHING — checked ABOVE the cache read, not below it. A row
+    // cached for this booking before the demo existed would otherwise still be served, so the
+    // hero would be AI-written on some days and static on others for the same public page.
+    // It runs on EVERY verified request, cache hits included — one extra PK read on the real
+    // host's hit path that did not exist before. Deliberate: below the cache read it would have
+    // been free, but a row cached before the demo existed would still have been served, so the
+    // public hero would be AI-written on some days and static on others.
+    {
+      const { data: demoRow } = await db
+        .from('apartments')
+        .select('is_public_demo')
+        .eq('id', apt)
+        .maybeSingle()
+      if (demoRow?.is_public_demo === true) {
+        return res.status(200).json({ suggestion: null })
+      }
+    }
+
     // Cache read — keyed per booking now (booking_id, local_date, day_part)
     const { data: cached } = await db
       .from('daily_greetings')

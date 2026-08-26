@@ -50,7 +50,30 @@ export async function resolveGuestAccess(
     .maybeSingle()
   if (!booking) return PUBLIC
   const today = helsinkiToday()
-  if (today < booking.check_in || today > booking.check_out) return PUBLIC
+  if (today < booking.check_in || today > booking.check_out) {
+    // THE PUBLIC PEEK IS THE ONE STAY THAT NEVER ENDS. `apartments.is_public_demo` is TRUE on
+    // exactly one apartment, whose booking token is printed on the landing page; that page
+    // must show the whole product (private check-in rows, the map) on any day of the year, so
+    // for that apartment ONLY the date bound is skipped.
+    //
+    // CENTRALISED HERE ON PURPOSE. Four endpoints gate on this function — guest-details,
+    // guest-bootstrap, daily-greeting and guest-chat — and a per-endpoint copy would expire
+    // the demo one surface at a time, silently: the page would still render 'active' (that
+    // rule lives in guest-state) while quietly losing the door code and the directions. The
+    // FIRST review of this change caught exactly that.
+    //
+    // WHAT IS NOT SKIPPED, and must never be: the token must still be the reference_number of
+    // a CONFIRMED/COMPLETED booking on THIS apartment. Only the calendar moves.
+    //
+    // The lookup costs one PK read and runs ONLY on the path that was about to return PUBLIC,
+    // so no in-dates guest ever pays for it.
+    const { data: aptRow } = await db
+      .from('apartments')
+      .select('is_public_demo')
+      .eq('id', apartmentId)
+      .maybeSingle()
+    if (aptRow?.is_public_demo !== true) return PUBLIC
+  }
   let guestName: string | null = null
   if (booking.guest_id) {
     const { data: g } = await db.from('guests').select('first_name').eq('id', booking.guest_id).maybeSingle()

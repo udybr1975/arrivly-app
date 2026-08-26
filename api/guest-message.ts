@@ -18,10 +18,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Authoritative apartment from DB — client is trusted only for id + token.
   const { data: apt } = await supabase
     .from('apartments')
-    .select('id, name, host_id, is_visible')
+    .select('id, name, host_id, is_visible, is_public_demo')
     .eq('id', apartmentId)
     .maybeSingle()
   if (!apt || apt.is_visible === false) return res.status(404).json({ error: 'not_found' })
+
+  // THE PUBLIC PEEK IS ONE-SIDED BY CONSTRUCTION. Its booking token is published on the
+  // landing page, so ANY visitor holds it — resolveMessagingAccess would rate every one of
+  // them verified and drop their text into a real host's inbox, all against the same
+  // booking, so they would also read each other's messages. Refused at BOTH doors (see
+  // api/host-message.ts) so no inbox write is possible for the fixture in either direction.
+  // The two-sided demo is the /demo SANDBOX, where the host is real and the inbox is theirs.
+  if (apt.is_public_demo === true) return res.status(403).json({ error: 'demo_messaging_off' })
 
   const cleanToken = typeof token === 'string' && token !== 'null' && token.trim() ? token.trim() : null
   const access = await resolveMessagingAccess(supabase, apt.id, cleanToken)

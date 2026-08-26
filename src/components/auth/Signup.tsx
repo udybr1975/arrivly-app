@@ -118,7 +118,7 @@ export default function Signup() {
       </div>
 
       <h1 className="font-['Fraunces'] font-light text-[31px] leading-tight text-[#1c1c1a]">Create your account</h1>
-      <p className="mt-2 text-sm text-[#6f6757]">Start your 14-day free trial. No card needed to begin.</p>
+      <p className="mt-2 text-sm text-[#6f6757]">Start your 14-day free trial. Card added at checkout — no charge today.</p>
 
       <SocialAuthButtons />
 
@@ -220,7 +220,7 @@ export default function Signup() {
           )}
         </button>
 
-        <p className="text-center text-[12px] text-[#8a8170]">14-day free trial · No card needed · Cancel anytime</p>
+        <p className="text-center text-[12px] text-[#8a8170]">14-day free trial · No charge today · Cancel anytime</p>
       </form>
 
       <p className="mt-6 text-center text-sm text-[#6f6757]">

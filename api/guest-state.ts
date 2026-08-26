@@ -2,6 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { sendNtfy } from './_lib/ntfy.js'
+import { decideDemoTokenState } from './_lib/public-demo.js'
 
 // Service-role resolver for a guest's booking STATE. This moves the booking
 // reads off the client (which previously queried the `bookings` table with the
@@ -159,7 +160,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // --- 2. Apartment must exist AND be visible ---
     const { data: apartment, error: aptErr } = await db
       .from('apartments')
-      .select('id, name, neighborhood, city, country, is_test, is_visible')
+      .select('id, name, neighborhood, city, country, is_test, is_visible, is_public_demo')
       .eq('id', apt)
       .maybeSingle()
     if (aptErr) {
@@ -169,6 +170,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (!apartment || apartment.is_visible !== true) {
       return res.status(200).json(NEUTRAL)
     }
+
+    // THE PUBLIC PEEK. One apartment carries is_public_demo and its token is published on
+    // the landing page, so it must never expire into a thank-you screen and must never
+    // reach the operator's arrival feed. Both effects are confined to this flag; a real
+    // apartment's date rule and heartbeat are byte-for-byte what they were. See
+    // _lib/public-demo.ts for the decision and its tests.
+    const isPublicDemo = apartment.is_public_demo === true
 
     // --- 3. TOKEN PATH ---
     if (tokenProvided) {
@@ -182,14 +190,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         .maybeSingle()
 
       if (booking) {
-        const checkoutCutoff = booking.check_out + ' 11:00:00'
-        if (helsinkiNow >= checkoutCutoff) {
+        const state = decideDemoTokenState(isPublicDemo, booking, helsinkiNow)
+        if (state === 'thankyou') {
           const guestName = await resolveGuestName(db, booking.guest_id)
           return res.status(200).json({ state: 'thankyou', token, guestName })
         }
-        if (helsinkiToday >= booking.check_in && helsinkiToday <= booking.check_out) {
+        if (state === 'active') {
           const guestName = await resolveGuestName(db, booking.guest_id)
-          await notifyOpen(apartment, 'QR (token)')
+          // HEARTBEAT SUPPRESSED FOR THE DEMO. The feed exists so the operator sees REAL
+          // arrivals; a public link anyone can tap would make every landing-page visitor
+          // look like a guest checking in, and the alarm value of the feed is exactly its
+          // signal-to-noise. Not a privacy measure — a measurement one.
+          if (!isPublicDemo) await notifyOpen(apartment, 'QR (token)')
           return res.status(200).json({ state: 'active', token, guestName })
         }
         // future/other → fall through to keyed date path
@@ -225,7 +237,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         if (dateBooking?.reference_number) {
           const guestName = await resolveGuestName(db, dateBooking.guest_id)
-          await notifyOpen(apartment, 'QR (date)')
+          // Same suppression as the token path: the demo apartment never pings the feed,
+          // by whichever door it was opened.
+          if (!isPublicDemo) await notifyOpen(apartment, 'QR (date)')
           return res.status(200).json({ state: 'active', token: dateBooking.reference_number, guestName })
         }
       }

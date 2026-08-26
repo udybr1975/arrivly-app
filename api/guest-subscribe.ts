@@ -26,10 +26,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Authoritative apartment — client is trusted only for id + token.
   const { data: apt } = await supabase
     .from('apartments')
-    .select('id, host_id, is_visible')
+    .select('id, host_id, is_visible, is_public_demo')
     .eq('id', apartmentId)
     .maybeSingle()
   if (!apt || apt.is_visible === false) return res.status(404).json({ error: 'not_found' })
+
+  // THE THIRD DOOR, and the only one of the three that WRITES. resolveMessagingAccess below
+  // uses a WIDER window than the canonical gate, so every holder of the landing page's
+  // published token is authorised here — meaning any visitor could upsert a push_subscriptions
+  // row against a real host and the shared demo booking, anonymously and unbounded. Nothing
+  // could ever be delivered to those rows (the demo's only guest-push writer, host-message, is
+  // 403 too), which is exactly why it must be closed HERE rather than relied on downstream: a
+  // future guest-push writer would resurrect a fan-out to every visitor's device.
+  // Same refusal as guest-message and host-message — messaging is off on the public peek in
+  // all directions, notifications included.
+  if (apt.is_public_demo === true) return res.status(403).json({ error: 'demo_messaging_off' })
 
   const cleanToken = typeof token === 'string' && token !== 'null' && token.trim() ? token.trim() : null
   const access = await resolveMessagingAccess(supabase, apt.id, cleanToken)

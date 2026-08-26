@@ -28,7 +28,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       { data: settingsRow, error: settingsErr  },
     ] = await Promise.all([
       db.from('hosts')
-        .select('id, brand_name, name, contact_email, city, subscription_status, tier, is_exempt, is_test, trial_ends_at, created_at, price_override_cents, discount_percent, discount_until, property_cap_override')
+        .select('id, brand_name, name, contact_email, city, subscription_status, tier, is_exempt, is_test, is_demo, trial_ends_at, created_at, price_override_cents, discount_percent, discount_until, property_cap_override')
         .order('created_at', { ascending: false }),
       db.from('plans').select('*').order('tier'),
       db.from('apartments').select('id, host_id'),
@@ -80,6 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         ...h,
         is_exempt: !!h.is_exempt,
         is_test: !!h.is_test,
+        is_demo: !!h.is_demo,
         apartments_count:  aptCountByHost.get(h.id)     ?? 0,
         bookings_count:    bookingCountByHost.get(h.id)  ?? 0,
         effective_price_cents,
@@ -91,7 +92,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // each row carrying is_test, for a LATER UI pass — SuperAdmin.tsx does not render the flag
     // yet, so until it does the operator sees `totals` excluding hosts that the list below still
     // shows, with no on-screen cue. Deliberate; the greying-out is the next change, not this one.
-    const realHosts = hosts.filter(h => !h.is_test)
+    // TWO exclusions now, and they are different populations: is_test is the operator's own
+    // fixture accounts, is_demo is a 48-hour SANDBOX signup. A sandbox host is a stranger
+    // trying the product, not a customer — counting them would inflate total_hosts and
+    // on_trial on the one dashboard the launch is read from, and every one of them expires.
+    // MRR is untouched by the second filter in practice (a demo host has no subscription),
+    // but it is applied to the same list on purpose: one definition of "a real host".
+    const realHosts = hosts.filter(h => !h.is_test && !h.is_demo)
 
     const mrr_cents = realHosts
       .filter(h => h.subscription_status === 'active' && !h.is_exempt)

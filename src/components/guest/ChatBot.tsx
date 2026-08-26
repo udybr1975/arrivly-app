@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { Send, RefreshCw } from 'lucide-react'
+import { DEMO_STARTERS } from './demoStarters'
 
 interface Msg { role: 'user' | 'assistant'; text: string }
 interface Props {
@@ -9,18 +10,32 @@ interface Props {
   brandName: string
   guestName: string | null
   city: string
+  /** THE PUBLIC PEEK (apartments.is_public_demo). Scripted chips only, no free typing.
+      Nothing here decides anything: /api/guest-chat scripts its own reply from the same
+      flag server-side, so a visitor who flips this prop in devtools gets the same four
+      answers. This exists to make the UI honest about what it is, not to enforce it. */
+  isPublicDemo?: boolean
 }
 
 const STARTERS = ['How does check-in work?', "What's the Wi-Fi?", 'Good food nearby', 'Getting around']
 
-export default function ChatBot({ apartmentId, token, accentColor, brandName, guestName, city }: Props) {
+
+export default function ChatBot({ apartmentId, token, accentColor, brandName, guestName, city, isPublicDemo = false }: Props) {
   const [msgs, setMsgs] = useState<Msg[]>([
     // Says plainly what it is, in the guest's first line of contact. The header label is the
     // PERSISTENT disclosure; this is the plain-language one. Both are required, not either/or.
-    { role: 'assistant', text: `Hi${guestName ? ' ' + guestName : ''} — I'm an AI assistant for this stay. I know this apartment${city ? ' and ' + city : ''}, so ask me anything. To reach a person, use Message host.` },
+    // The demo variant drops "use Message host" — messaging is OFF on the public peek, so the
+    // real greeting would point at a control that is not on the page.
+    {
+      role: 'assistant',
+      text: isPublicDemo
+        ? `Hi — I'm the AI assistant for this stay, and I know this apartment${city ? ' and ' + city : ''}. On this demo page I answer the four sample questions below.`
+        : `Hi${guestName ? ' ' + guestName : ''} — I'm an AI assistant for this stay. I know this apartment${city ? ' and ' + city : ''}, so ask me anything. To reach a person, use Message host.`,
+    },
   ])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [usedDemoChips, setUsedDemoChips] = useState<string[]>([])
   const bottomRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [msgs, loading])
@@ -48,6 +63,10 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
       const reply = (data.reply || '').trim()
       if (!reply) throw new Error('empty')
       setMsgs(p => [...p, { role: 'assistant', text: reply }])
+      // Burn the demo chip only on a REAL answer. Marking it before the fetch meant one flaky
+      // request left that question un-askable for the session — and on the demo the chips are
+      // the only affordance, because the composer is a sign rather than an input.
+      setUsedDemoChips(p => (p.includes(trimmed) ? p : [...p, trimmed]))
     } catch {
       setMsgs(p => [...p, { role: 'assistant', text: 'Something went wrong on my end — please try again in a moment.' }])
     } finally {
@@ -114,15 +133,84 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
       </div>
 
       {showStarters && (
-        <div className="px-5 pb-2 flex flex-wrap gap-2">
-          {STARTERS.map(s => (
-            <button key={s} onClick={() => sendMessage(s)} className="text-xs px-3 py-1.5 rounded-full border bg-transparent cursor-pointer" style={{ borderColor: `${accentColor}55`, color: accentColor }}>
-              {s}
-            </button>
-          ))}
-        </div>
+        isPublicDemo ? (
+          <div className="px-5 pb-2">
+            <div className="flex flex-wrap gap-2">
+              {DEMO_STARTERS.map(c => {
+                const used = usedDemoChips.includes(c.send)
+                // USED STATE IS FIXED INK, NOT accent-at-40%. The used/unused distinction is
+                // the state carrying this control's point, and `accentColor` is any host-typed
+                // hex, so an opacity on it has no verifiable ratio (the same argument as the
+                // AI-assistant pill). #b3aa9b on the #fbfaf7 chat ground is 2.32:1 — below the
+                // text floor, which is CORRECT and deliberate here: WCAG 1.4.3 and 1.4.11 both
+                // exempt disabled controls, and a used chip that still read at full strength
+                // would not communicate "answered". The LIVE chips are what must be legible,
+                // and they keep the host accent at full opacity.
+                return (
+                  <button
+                    key={c.send}
+                    onClick={() => sendMessage(c.send)}
+                    disabled={used}
+                    className="text-xs px-3 py-1.5 rounded-full border bg-transparent cursor-pointer disabled:cursor-default"
+                    style={
+                      used
+                        ? { borderColor: '#e9e4d9', color: '#b3aa9b' }
+                        : { borderColor: `${accentColor}55`, color: accentColor }
+                    }
+                  >
+                    {c.label}
+                  </button>
+                )
+              })}
+            </div>
+            {/* Fixed ink, not the accent: this line explains the demo, and its legibility must
+                not depend on a host-chosen hex (the same argument as the AI-assistant pill). */}
+            <p className="mt-2 text-[11px] leading-snug text-[#6b6354]">
+              {usedDemoChips.length >= DEMO_STARTERS.length
+                ? "That's the scripted part. Everything else on this page is live — try Explore."
+                : 'Demo: pick a question to see how the assistant answers.'}
+            </p>
+          </div>
+        ) : (
+          <div className="px-5 pb-2 flex flex-wrap gap-2">
+            {STARTERS.map(s => (
+              <button key={s} onClick={() => sendMessage(s)} className="text-xs px-3 py-1.5 rounded-full border bg-transparent cursor-pointer" style={{ borderColor: `${accentColor}55`, color: accentColor }}>
+                {s}
+              </button>
+            ))}
+          </div>
+        )
       )}
 
+      {isPublicDemo ? (
+        /* THE DEMO COMPOSER IS A SIGN, NOT AN INPUT. A disabled text field invites a tap and
+           then does nothing, which reads as a broken page; a dashed box that says what would
+           happen here reads as a demo. Non-focusable (a div, no tabindex) so keyboard users
+           are not dropped into a dead control either. The real gate is server-side — this is
+           the explanation, not the enforcement. */
+        <div className="border-t border-[#e9e4d9] px-4 py-3 flex items-center gap-2 bg-[#fffdf9]">
+          <div
+            /* #6b6354, NOT the #7a7364 this was drafted with — COMPUTED, not eyeballed:
+               #7a7364 on #f4f1ea is 4.17:1 at 12.5px, under the 4.5:1 AA floor for normal
+               text. #6b6354 is the project's muted token (the d93c2d9 sweep) and measures
+               5.28:1 on the same ground. The dashed BORDER stays #cfc7b6 at 1.49:1 — it is
+               decoration around a box that is not interactive, so 1.4.11 does not attach,
+               and the box explains itself in text. */
+            className="flex-1 rounded-2xl border border-dashed border-[#cfc7b6] bg-[#f4f1ea] px-4 py-2.5 text-[12.5px] leading-snug text-[#6b6354]"
+          >
+            In a real guest page, guests type anything here and the assistant answers from the
+            host&apos;s own details.
+          </div>
+          <button
+            disabled
+            aria-label="Send"
+            className="shrink-0 w-10 h-10 rounded-full flex items-center justify-center text-white border-none cursor-default opacity-[0.35]"
+            style={{ background: accentColor }}
+          >
+            <Send size={16} />
+          </button>
+        </div>
+      ) : (
       <div className="border-t border-[#e9e4d9] px-4 py-3 flex items-center gap-2 bg-[#fffdf9]">
         {/* Placeholder is NOT `Ask ${brandName}…` — that is the same implies-a-human
             construction the header eyebrow was changed away from; leaving it would have made
@@ -138,6 +226,7 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
           <Send size={16} />
         </button>
       </div>
+      )}
     </div>
   )
 }

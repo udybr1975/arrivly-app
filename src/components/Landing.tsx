@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
+import QRCode from 'qrcode'
 import Logo from './shared/Logo'
+import { ARRIVLY_CONFIG } from '../config'
 import {
   QrIcon,
   PinIcon,
@@ -81,6 +83,22 @@ const TIER_META: Record<number, { name: string; descriptor?: string; badge?: str
 // "See a live demo" button keeps its current inert behaviour.
 const DEMO_ENABLED = import.meta.env.VITE_DEMO_ENABLED === 'true'
 
+// The public-peek guest page, built from ONE constant so the QR and the link beside it can
+// never encode different URLs (see ARRIVLY_CONFIG.publicDemo).
+const PUBLIC_DEMO_URL =
+  `${ARRIVLY_CONFIG.appUrl}/guest?apt=${ARRIVLY_CONFIG.publicDemo.apartmentId}` +
+  `&token=${ARRIVLY_CONFIG.publicDemo.token}`
+
+// Smooth-scroll to the live-demo section. prefers-reduced-motion gets an INSTANT jump rather
+// than no jump at all — the reduced-motion request is about animation, not about staying put.
+function scrollToLiveDemo(e: React.MouseEvent<HTMLAnchorElement>) {
+  const el = document.getElementById('live-demo')
+  if (!el) return // no section (flag off) → let the href do whatever it would have done
+  e.preventDefault()
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+}
+
 // Scroll-reveal wrapper: fades + lifts children into view once. Respects
 // prefers-reduced-motion (shows immediately, no animation) and is SSR-safe
 // (window only touched inside the client-only effect).
@@ -120,6 +138,106 @@ function Reveal({ children, className = '', delay = 0 }: { children: ReactNode; 
     >
       {children}
     </div>
+  )
+}
+
+// ── Live demo — the two doors, side by side. LEFT is the public peek (a real guest page,
+// nothing to sign up for); RIGHT is the 48-hour sandbox with your own place in it. They are
+// deliberately not ranked: "be the guest" is the 30-second sell and "be the host" is the
+// conversion, and a visitor who only ever does the first one has still seen the product.
+// Rendered only when DEMO_ENABLED, same constant-fold as the CTAs — with the flag off the
+// section does not exist and the CTAs stay inert, so there is never a link to nothing.
+function LiveDemoSection() {
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+
+  useEffect(() => {
+    if (!canvasRef.current) return
+    QRCode.toCanvas(canvasRef.current, PUBLIC_DEMO_URL, {
+      width: 148,
+      margin: 2,
+      color: { dark: '#1a1a1a', light: '#ffffff' },
+    }).catch(() => { /* render failure is non-fatal — the link below still works */ })
+  }, [])
+
+  return (
+    <section id="live-demo" className="scroll-mt-20 border-y border-[#2c2925] bg-[#1c1c1a] py-16 sm:py-20">
+      <div className="mx-auto max-w-6xl px-5 sm:px-8">
+        <Reveal className="mx-auto max-w-2xl text-center">
+          <div className="text-[12px] uppercase tracking-[.16em] text-[#c8a24e]">Live demo</div>
+          <h2 className="mt-3 font-['Fraunces'] text-[32px] font-light leading-tight text-[#f0ede6] sm:text-[40px]">
+            Be the guest, then be the host.
+          </h2>
+        </Reveal>
+
+        <div className="mt-12 grid gap-6 md:grid-cols-2">
+          {/* LEFT — Look */}
+          <Reveal>
+            <div className="flex h-full flex-col rounded-2xl border border-[#2c2925] bg-[#23211d] p-6 sm:p-7">
+              <div className="text-[12px] uppercase tracking-[.16em] text-[#c8a24e]">Look</div>
+              <h3 className="mt-2 font-['Fraunces'] text-[22px] font-light text-[#f0ede6]">
+                30 seconds, nothing to sign up for.
+              </h3>
+
+              {/* The QR is a fixed 148px block inside a padded white card. `shrink-0` plus the
+                  column-at-mobile layout is what keeps it off the 320px squeeze — the card
+                  never has to be narrower than the code it contains. */}
+              <div className="mt-5 flex flex-col items-start gap-5 sm:flex-row">
+                <div className="shrink-0 rounded-[12px] border border-[#2c2925] bg-white p-3">
+                  <canvas
+                    ref={canvasRef}
+                    aria-label="QR code for the Bemgu demo guest page"
+                    style={{ width: 148, height: 148 }}
+                  />
+                </div>
+                <p className="min-w-0 text-[14px] leading-[1.65] text-[#f0ede6]/60">
+                  {/* NOT "you're Alex" — MEASURED, not assumed: the ARR-EVT777 booking has a
+                      NULL guest_id, so the page renders no name at all and the sentence would
+                      have been false on arrival. If a guest row is ever attached, this copy
+                      may name them; until then it must not. */}
+                  Scan and you&apos;re checked into a Helsinki studio: WiFi, door code, the
+                  neighbourhood guide, tours to book, and the assistant. Real page, real links.
+                  Only the chat is scripted.
+                </p>
+              </div>
+
+              <div className="mt-6">
+                <a
+                  href={PUBLIC_DEMO_URL}
+                  className="text-[14px] font-medium text-[#e7d6ad] underline underline-offset-4 transition-colors hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
+                >
+                  {/* Same href either way — only the wording changes, because "or open it here"
+                      is nonsense on a phone that cannot scan its own screen. */}
+                  <span className="md:hidden">Open the demo guest page →</span>
+                  <span className="hidden md:inline">Or open it here →</span>
+                </a>
+              </div>
+            </div>
+          </Reveal>
+
+          {/* RIGHT — Try */}
+          <Reveal delay={90}>
+            <div className="flex h-full flex-col rounded-2xl border border-[#2c2925] bg-[#23211d] p-6 sm:p-7">
+              <div className="text-[12px] uppercase tracking-[.16em] text-[#c8a24e]">Try</div>
+              <h3 className="mt-2 font-['Fraunces'] text-[22px] font-light text-[#f0ede6]">
+                Your own place, 48 hours, free.
+              </h3>
+              <p className="mt-5 text-[14px] leading-[1.65] text-[#f0ede6]/60">
+                Sign up, we build a page for your neighbourhood. Open it on your phone, message
+                yourself, edit it from your dashboard.
+              </p>
+              <div className="mt-auto pt-6">
+                <Link
+                  to="/demo"
+                  className="inline-flex items-center gap-2 rounded-xl border border-[#2c2925] bg-[#23211d] px-6 py-3.5 text-[15px] text-[#f0ede6]/80 transition-colors hover:border-[#c8a24e]/40 hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
+                >
+                  Start the sandbox →
+                </Link>
+              </div>
+            </div>
+          </Reveal>
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -221,7 +339,7 @@ const FAQS = [
   },
   {
     q: 'Can I cancel anytime?',
-    a: 'Yes. Start with a free trial — no card needed to begin — and cancel whenever you like from your dashboard. No lock-in.',
+    a: 'Yes. Start with a free trial — card added at checkout, no charge today — and cancel whenever you like from your dashboard. No lock-in.',
   },
 ]
 
@@ -696,14 +814,17 @@ export default function Landing() {
                 {startLabel}
                 <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
-              {/* "See a live demo" → /demo when the flag is on; inert otherwise. */}
+              {/* "See a live demo" → the #live-demo section when the flag is on; inert
+                  otherwise. It scrolls rather than navigating to /demo because there are now
+                  TWO demos and this button must not choose for the visitor. */}
               {DEMO_ENABLED ? (
-                <Link
-                  to="/demo"
-                  className="rounded-xl border border-[#2c2925] bg-[#23211d] px-6 py-3.5 text-[15px] text-[#f0ede6]/80 transition-colors hover:border-[#c8a24e]/40 hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
+                <a
+                  href="#live-demo"
+                  onClick={scrollToLiveDemo}
+                  className="rounded-xl border border-[#2c2925] bg-[#23211d] px-6 py-3.5 text-[15px] text-[#f0ede6]/80 no-underline transition-colors hover:border-[#c8a24e]/40 hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
                 >
                   See a live demo
-                </Link>
+                </a>
               ) : (
                 <button
                   type="button"
@@ -716,7 +837,7 @@ export default function Landing() {
               )}
             </div>
             <div className="mt-4 text-[12px] text-[#f0ede6]/35">
-              {pricing.trialDays}-day free trial · No card needed to start · Cancel anytime
+              {pricing.trialDays}-day free trial · No charge today · Cancel anytime
             </div>
           </div>
 
@@ -725,6 +846,9 @@ export default function Landing() {
           </div>
         </div>
       </section>
+
+      {/* ─────────────────────────── Live demo ─────────────────────────── */}
+      {DEMO_ENABLED && <LiveDemoSection />}
 
       {/* ─────────────────────────── Trust strip ─────────────────────────── */}
       <section className="border-y border-[#2c2925] bg-[#16100d]">
@@ -1000,7 +1124,7 @@ export default function Landing() {
 
           <Reveal delay={120}>
             <p className="mt-8 text-center text-[13px] text-[#f0ede6]/45">
-              {pricing.trialDays}-day free trial on every plan — no card needed. Cancel anytime.
+              {pricing.trialDays}-day free trial on every plan — no charge today. Cancel anytime.
             </p>
           </Reveal>
         </div>
@@ -1142,7 +1266,7 @@ export default function Landing() {
             Ready to give every guest their own page?
           </h2>
           <p className="mx-auto mt-5 max-w-md text-[15px] leading-[1.7] text-[#f0ede6]/55">
-            Set up your first property in minutes. No card needed to start your free trial.
+            Set up your first property in minutes. {pricing.trialDays}-day free trial — no charge today.
           </p>
           <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
             <Link
@@ -1152,14 +1276,15 @@ export default function Landing() {
               {startLabel}
               <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
             </Link>
-            {/* "See a live demo" → /demo when the flag is on; inert otherwise. */}
+            {/* Same as the hero CTA — scrolls back up to the two demo doors. */}
             {DEMO_ENABLED ? (
-              <Link
-                to="/demo"
-                className="rounded-xl border border-[#2c2925] bg-[#23211d] px-7 py-4 text-[15px] text-[#f0ede6]/80 transition-colors hover:border-[#c8a24e]/40 hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
+              <a
+                href="#live-demo"
+                onClick={scrollToLiveDemo}
+                className="rounded-xl border border-[#2c2925] bg-[#23211d] px-7 py-4 text-[15px] text-[#f0ede6]/80 no-underline transition-colors hover:border-[#c8a24e]/40 hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
               >
                 See a live demo
-              </Link>
+              </a>
             ) : (
               <button
                 type="button"

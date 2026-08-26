@@ -25,6 +25,18 @@ export const ARRIVLY_CONFIG = {
   // App
   appUrl: import.meta.env.VITE_APP_URL ?? 'https://bemgu.app',
 
+  // THE PUBLIC PEEK — the landing page's scriptless demo guest page. ONE constant, so the QR
+  // and the "open it here" link can never drift apart (they encode the same URL, and a QR
+  // that goes somewhere else than the link beside it is undebuggable from a screenshot).
+  // The apartment carries `apartments.is_public_demo` server-side — THAT flag, not this
+  // value, is what makes the page behave as a demo. Changing the id here without moving the
+  // flag gives you an ordinary guest page with a demo banner and no banner at all.
+  // The token is a published booking reference and is meant to be public.
+  publicDemo: {
+    apartmentId: 'd9614d11-d573-4ff0-961a-54c5ea37c2bd',
+    token: 'ARR-EVT777',
+  },
+
   // Experiences marketplace (Phase I). `experiencesTierGate` MIRRORS the server-side
   // EXPERIENCES_TIER_GATE in api/_lib/affiliate-config.ts — hosts at/above this tier
   // connect their OWN GetYourGuide and Tiqets partner IDs and keep those commissions;

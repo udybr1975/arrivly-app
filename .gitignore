@@ -14,3 +14,5 @@ dist/
 # Security audit report — names exploitable weaknesses; never commit (public repo)
 security-audit-report.md
 .claude/agent-memory/
+
+dist-demo/

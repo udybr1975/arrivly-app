@@ -41,10 +41,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const { data: apt } = await admin
     .from('apartments')
-    .select('host_id')
+    .select('host_id, is_public_demo')
     .eq('id', booking.apartment_id)
     .maybeSingle()
   if (!apt || apt.host_id !== userId) return res.status(403).json({ error: 'forbidden' })
+
+  // The public-peek fixture has messaging off in BOTH directions (see api/guest-message.ts).
+  // Closed here too, after the ownership check, because a thread the guest side can never
+  // read is not a message — and the owner is a real host whose dashboard should not grow a
+  // conversation with the landing page.
+  if (apt.is_public_demo === true) return res.status(403).json({ error: 'demo_messaging_off' })
 
   // apartment_id is server-derived from the booking row — never from client body.
   const { error: insertError } = await admin

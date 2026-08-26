@@ -4,6 +4,7 @@ import { GoogleGenAI } from '@google/genai'
 import { scrubErr } from './_lib/scrub.js'
 import { resolveGuestAccess, buildGuestSystemInstruction } from './_lib/guest-access.js'
 import { sendNtfy } from './_lib/ntfy.js'
+import { scriptedReply } from './_lib/public-demo.js'
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 const MODEL = 'gemini-2.5-flash'
@@ -53,10 +54,31 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Authoritative apartment from DB; client is trusted only for the id + token.
   const { data: apt } = await supabase
     .from('apartments')
-    .select('id, name, city, country, neighborhood, street, street_number, host_id, is_visible')
+    .select('id, name, city, country, neighborhood, street, street_number, host_id, is_visible, is_public_demo')
     .eq('id', apartmentId)
     .maybeSingle()
   if (!apt || apt.is_visible === false) return res.status(404).json({ error: 'not_found' })
+
+  // THE PUBLIC PEEK — scripted, and it returns BEFORE anything that costs money or state.
+  // Placed here, above resolveGuestAccess deliberately: the demo apartment's published
+  // booking has real dates, so a tier gate would silently turn the landing page's assistant
+  // into a 403 the day that booking lapses. The four answers are the whole surface (see
+  // _lib/public-demo.ts); anything else gets the one fallback line.
+  // ZERO SPEND, and that is the property to preserve — NO model call and NO bump_api_counter,
+  // so the demo can never consume a real host's hourly chat reserve or a Gemini quota. (The
+  // per-instance limiter DOES run, just below — it costs nothing and it is what stops this
+  // token-free branch being a free query amplifier.) A future edit that moves this below the
+  // counter bump gives away the property.
+  if (apt.is_public_demo === true) {
+    // The per-instance limiter DOES apply here, and is applied before the reply. There is no
+    // model spend to cap, but this branch takes no token at all, so without it an
+    // unauthenticated script could drive unlimited POSTs, each costing one Supabase read —
+    // a free amplifier against our own DB. Same key as the verified path.
+    if (rateLimited(`${apt.id}:${clientIp(req)}`, Date.now())) {
+      return res.status(429).json({ error: 'rate_limited' })
+    }
+    return res.status(200).json({ reply: scriptedReply(message) })
+  }
 
   // Normalise + validate the booking token before resolving access.
   const rawToken = (typeof token === 'string' && token !== 'null') ? token.trim() : ''

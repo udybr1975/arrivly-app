@@ -170,6 +170,20 @@ export default function GuestPage() {
   const [gygCityLink, setGygCityLink] = useState<string | null>(null)
   const [experiencesLoading, setExperiencesLoading] = useState(false)
   const [showMessages, setShowMessages] = useState(false)
+  // THE PUBLIC PEEK (apartments.is_public_demo), returned by /api/guest-bootstrap. Drives the
+  // banner, the scripted ChatBot and the removal of every Message-host entry. Presentation
+  // only: the server enforces all three independently (scripted replies in guest-chat, a 403
+  // in guest-message), so nothing here is a control.
+  const [isPublicDemo, setIsPublicDemo] = useState(false)
+  // THE BANNER'S OWN HEIGHT, MEASURED. The Chat tab sizes itself `calc(100vh - 64px)` — 64px
+  // being the fixed bottom nav — which silently assumes nothing sits ABOVE it. The demo banner
+  // does, so the pane overflowed the nav by exactly the banner's height and clipped the
+  // composer. Caught in a rendered screenshot, not in the numbers: every named height was
+  // correct in isolation.
+  // MEASURED rather than a constant, because the banner WRAPS to two lines on a narrow phone
+  // and any hardcoded px would be right at 390 and wrong at 320.
+  const [bannerH, setBannerH] = useState(0)
+  const bannerRef = useRef<HTMLDivElement>(null)
 
   const [guestName, setGuestName] = useState<string | null>(null)
   const [thankYouName, setThankYouName] = useState<string | null>(null)
@@ -286,8 +300,13 @@ export default function GuestPage() {
       // completed booking, so sending an unverified candidate here is safe and costs
       // nothing when the toggle is on. Stage A below still resolves booking STATE via
       // /api/guest-state; that flow order is unchanged.
-      let boot: { apartment: Apartment | null; details: Detail[]; picks: HostPick[]; guide: GuideCategories | null } =
-        { apartment: null, details: [], picks: [], guide: null }
+      let boot: {
+        apartment: Apartment | null
+        details: Detail[]
+        picks: HostPick[]
+        guide: GuideCategories | null
+        isPublicDemo?: boolean
+      } = { apartment: null, details: [], picks: [], guide: null }
       try {
         // Trim before testing, exactly as both endpoints do — otherwise a token with
         // stray whitespace fails here, is accepted by /api/guest-state after ITS trim,
@@ -327,6 +346,7 @@ export default function GuestPage() {
       }
       const apt = boot.apartment as Apartment
       setApartment(apt)
+      setIsPublicDemo(boot.isPublicDemo === true)
       setDetails(bootDetails.filter(d => !d.is_private))
       // Stash picks + guide for the Explore tab to reuse (no second request).
       bootstrapExtrasRef.current = { picks: (boot.picks ?? []) as HostPick[], guide: boot.guide ?? null }
@@ -495,11 +515,33 @@ export default function GuestPage() {
   useEffect(() => {
     if (msgOpenedRef.current) return
     if (pageState !== 'active' || !tokenParam || msgParam !== '1') return
+    // Messaging is off on the public peek, so the &msg=1 deep-link must not open an overlay
+    // whose only endpoint returns 403. (No host push can produce this URL for the demo — this
+    // closes the hand-typed case.)
+    if (isPublicDemo) return
     msgOpenedRef.current = true
     setActiveTab('more')
     setShowMessages(true)
     if ('clearAppBadge' in navigator) void (navigator as any).clearAppBadge()
-  }, [pageState, tokenParam, msgParam])
+  }, [pageState, tokenParam, msgParam, isPublicDemo])
+
+  // Keep the measured banner height in sync with wrapping / rotation. Runs only on the demo.
+  // `pageState` IN THE DEPS IS LOAD-BEARING — do NOT prune it as unused. setIsPublicDemo commits
+  // several awaits BEFORE setPageState('active'), so there is a render where the flag is true
+  // and the banner is still unmounted (the page is showing the spinner): that pass measures
+  // null and sets 0. The pageState transition is what re-runs the effect once the banner
+  // actually exists. Without it the banner renders permanently unmeasured and the composer
+  // clips again.
+  useEffect(() => {
+    const el = bannerRef.current
+    if (!isPublicDemo || !el) { setBannerH(0); return }
+    const measure = () => setBannerH(el.getBoundingClientRect().height)
+    measure()
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(measure)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [isPublicDemo, pageState])
 
   // Capture beforeinstallprompt for the More-tab 'needs-install' CTA.
   // Both this and InstallPrompt capture the event — a deferred prompt can only be
@@ -629,7 +671,14 @@ export default function GuestPage() {
     if (navigator.share) {
       navigator.share({ title: brandName, url: shareUrl }).catch(() => {})
     } else {
-      const wa = host?.whatsapp?.replace(/\D/g, '') ?? ''
+      // THE SECOND WHATSAPP SITE, and the one that is actually REACHABLE. The Settings card
+      // below is merely hidden on the demo; THIS fallback runs on every browser without the
+      // Web Share API — most desktops — and would open WhatsApp addressed to the host's real
+      // number for any landing-page visitor who taps "Save this page". Falling through to the
+      // numberless `wa.me/?text=` branch keeps the button working (the guest still gets the
+      // link) and addresses it to nobody. Caught by the code gate; the enforcing fix is still
+      // server-side, because `host.whatsapp` reaches the client from an anon-callable RPC.
+      const wa = isPublicDemo ? '' : (host?.whatsapp?.replace(/\D/g, '') ?? '')
       const target = wa
         ? `https://wa.me/${wa}?text=${encodeURIComponent('My guest page: ' + shareUrl)}`
         : `https://wa.me/?text=${encodeURIComponent('My guest page: ' + shareUrl)}`
@@ -845,6 +894,23 @@ export default function GuestPage() {
   return (
     <div className="min-h-screen bg-[#fbfaf7] font-sans">
 
+      {/* THE PUBLIC PEEK BANNER. In flow at the top of the root, so it sits above EVERY tab
+          without a fixed-position offset to maintain — the guest-page tabs are siblings below
+          it. Cream #e7d6ad / ink #4a3a12 measures 8.7:1, so it stays legible independent of
+          the host accent, like the AI-assistant pill. It says "demo" in the visitor's first
+          line of sight: everything on this page is a real host's real page, and the visitor
+          should never be in doubt about which. */}
+      {isPublicDemo && (
+        <div ref={bannerRef} className="bg-[#e7d6ad] text-[#4a3a12] px-4 py-2 text-[12px]">
+          <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
+            <span className="font-medium">You&apos;re looking at a demo guest page.</span>
+            <a href="/demo" className="shrink-0 whitespace-nowrap font-semibold text-[#4a3a12] underline underline-offset-2">
+              Try it with your place →
+            </a>
+          </div>
+        </div>
+      )}
+
       {preview && (
         <div className="fixed top-0 left-0 right-0 z-50 bg-[#1a1a1a] text-white text-[11px] py-2 px-4 flex items-center justify-center gap-3">
           <span className="tracking-wide">Preview — what your guests see</span>
@@ -903,8 +969,13 @@ export default function GuestPage() {
             <p className="text-[15px] leading-relaxed text-[#36322c] mt-4">
               {salutation}.{showBlurb ? ` ${blurb}` : ''}
             </p>
+            {/* The demo variant drops the second half. Messaging is off on the public peek, so
+                "Message me just below" points at a card that is not rendered — the same defect
+                ChatBot's greeting avoids one file over. */}
             <p className="text-[15px] leading-relaxed text-[#36322c] mt-3">
-              Need a quick answer? The assistant in the Chat tab knows the apartment and the city. Want to reach me directly? Message me just below — I&apos;ll get a notification and reply right here.
+              {isPublicDemo
+                ? 'Need a quick answer? The assistant in the Chat tab knows the apartment and the city — and on a real guest page you can message me directly from here too.'
+                : <>Need a quick answer? The assistant in the Chat tab knows the apartment and the city. Want to reach me directly? Message me just below — I&apos;ll get a notification and reply right here.</>}
             </p>
             <div className="mt-5 flex justify-end">
               <p className="font-['Fraunces'] italic text-[15px]" style={{ color: accentColor }}>— {brandName}</p>
@@ -943,7 +1014,7 @@ export default function GuestPage() {
 
           {/* Message host directly. NOT "the same trigger as the More-tab button" — that card is
               preview-only and disabled; this is one of only two live entry points. */}
-          {tokenParam && (
+          {tokenParam && !isPublicDemo && (
             <div className="max-w-lg mx-auto px-6 pb-2">
               <button
                 onClick={() => {
@@ -1132,7 +1203,7 @@ export default function GuestPage() {
       )}
 
       {activeTab === 'chat' && (
-        <div style={{ height: 'calc(100vh - 64px)' }}>
+        <div style={{ height: `calc(100vh - 64px - ${bannerH}px)` }}>
           {preview ? (
             <div className="h-full flex flex-col bg-[#fbfaf7]">
               <div className="shrink-0 px-5 pt-5 pb-3 border-b border-gray-100">
@@ -1189,6 +1260,7 @@ export default function GuestPage() {
               brandName={brandName}
               guestName={guestName}
               city={apt.city}
+              isPublicDemo={isPublicDemo}
             />
           )}
         </div>
@@ -1427,8 +1499,13 @@ export default function GuestPage() {
 
           <div className="max-w-lg mx-auto px-6 pt-6 space-y-3">
 
-            {/* SECTION — This device: Install + Notifications as the two hero items */}
-            {tokenParam && pushNotifState !== 'unsupported' && pushNotifState !== 'loading' && (
+            {/* SECTION — This device: Install + Notifications as the two hero items.
+                HIDDEN ON THE PUBLIC PEEK. Its whole promise is "get notified the moment
+                {brandName} replies", and messaging is 403 in both directions there, so no
+                reply can ever exist. It also WRITES: /api/guest-subscribe now refuses the
+                demo apartment, so leaving the card would offer every landing-page visitor a
+                toggle that can only fail. */}
+            {tokenParam && !isPublicDemo && pushNotifState !== 'unsupported' && pushNotifState !== 'loading' && (
               <>
                 <p className="text-[10px] tracking-widest uppercase text-[#9a958c]">This device</p>
 
@@ -1595,7 +1672,16 @@ export default function GuestPage() {
               <span style={{ color: accentColor }}>→</span>
             </button>
 
-            {host?.whatsapp && (
+            {/* HIDDEN ON THE PUBLIC PEEK — but READ THIS BEFORE TRUSTING IT. Hiding the card
+                stops the number being SHOWN; it does not stop it being SENT. `host.whatsapp`
+                arrives from the anon-callable SECURITY DEFINER RPC `guest_host_card` above,
+                so anyone with the published apartment UUID can read it from the network tab.
+                THIS GUARD IS DECORATION, NOT ENFORCEMENT. The enforcing fix is server-side
+                (suppress the field in the RPC, or clear `hosts.whatsapp` on that account) and
+                is tracked as a launch blocker for the public link — a real person's phone
+                number must not ride a landing-page-advertised surface. Do not read this
+                comment as the problem being solved. */}
+            {host?.whatsapp && !isPublicDemo && (
               <a
                 href={`https://wa.me/${host.whatsapp.replace(/\D/g, '')}`}
                 target="_blank"
@@ -1677,7 +1763,7 @@ export default function GuestPage() {
         />
       )}
 
-      {showMessages && (
+      {showMessages && !isPublicDemo && (
         <MessageHost
           apartmentId={apt.id}
           token={tokenParam ?? ''}

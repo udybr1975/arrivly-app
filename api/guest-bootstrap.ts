@@ -92,7 +92,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       .select(
         'id, host_id, name, country, city, neighborhood, lat, lng, max_guests, ' +
           'accent_color, hero_image_url, city_image_url, city_image_credit, greeting_blurb, ' +
-          'is_visible, welcome_show_address'
+          'is_visible, welcome_show_address, is_public_demo'
       )
       .eq('id', apt)
       .maybeSingle()
@@ -126,6 +126,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const apartment = { ...aptRow }
     delete (apartment as { is_visible?: unknown }).is_visible
     delete (apartment as { welcome_show_address?: unknown }).welcome_show_address
+    // is_public_demo is surfaced DELIBERATELY, as a top-level flag rather than an apartment
+    // field, because it is a property of the PAGE (chrome, scripted chat, messaging off) and
+    // not of the apartment record. It is not a secret: the demo apartment is linked from the
+    // landing page and announces itself in its own banner. It stays OMITTED for every real
+    // apartment rather than sent as false, so nothing here becomes an oracle for a flag that
+    // only ever has one true row.
+    delete (apartment as { is_public_demo?: unknown }).is_public_demo
     if (!coordsAllowed) {
       delete (apartment as { lat?: unknown }).lat
       delete (apartment as { lng?: unknown }).lng
@@ -159,6 +166,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       details: detailsRes.data ?? [],
       picks: picksRes.data ?? [],
       guide: guideRes.data?.categories ?? null,
+      ...(aptRow.is_public_demo === true ? { isPublicDemo: true } : {}),
     })
   } catch (e) {
     console.error('[guest-bootstrap] unexpected', (e instanceof Error ? e.message : 'unknown').slice(0, 120))

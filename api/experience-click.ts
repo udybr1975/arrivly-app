@@ -64,6 +64,47 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(204).end()
   }
 
+  // DEMO TRAFFIC IS NOT ENGAGEMENT. Two distinct flags, both excluded here, and this is the
+  // single choke point for both — every earnings and admin figure downstream is computed from
+  // this table, so filtering at read time would mean remembering to filter in every reader
+  // forever:
+  //   · apartments.is_public_demo — the landing page's public peek. Marketplace cards stay
+  //     LIVE and clickable there (outbound links cost nothing and the fixture carries no
+  //     partner IDs, so any sale is Bemgu's), but a visitor tapping one is a browser, not a
+  //     guest, and must not appear as a click on a host's Earnings panel.
+  //   · hosts.is_demo — the 48-hour sandbox host clicking around their own seeded page.
+  // Silent 204, exactly like the over-limit path: this is a fire-and-forget beacon and the
+  // client must never learn which apartments are counted.
+  // TWO PLAIN SELECTS, NOT A `hosts!inner(...)` EMBED. An embed would be one round-trip, but
+  // it fails as a QUERY ERROR if the FK is ever renamed or made ambiguous — and combined with
+  // the fail-closed branch below that would silently drop EVERY beacon fleet-wide while
+  // logging one line per click. Two column reads on a primary key cannot fail that way.
+  const { data: aptRow, error: aptErr } = await supabase
+    .from('apartments')
+    .select('host_id, is_public_demo')
+    .eq('id', apartmentId)
+    .maybeSingle()
+  if (aptErr) {
+    // Fail CLOSED on the lookup, unlike the insert below. The cost of dropping a beacon is a
+    // missing tally row on a best-effort analytics table; the cost of inserting one blind is
+    // demo traffic permanently mixed into a host's earnings, which nothing downstream can
+    // undo. Cheap direction to be wrong in.
+    console.warn('[experience-click] apartment lookup failed, beacon dropped —', aptErr.message?.slice(0, 120))
+    return res.status(204).end()
+  }
+  if (!aptRow || aptRow.is_public_demo === true) return res.status(204).end()
+
+  const { data: hostRow, error: hostErr } = await supabase
+    .from('hosts')
+    .select('is_demo')
+    .eq('id', aptRow.host_id)
+    .maybeSingle()
+  if (hostErr) {
+    console.warn('[experience-click] host lookup failed, beacon dropped —', hostErr.message?.slice(0, 120))
+    return res.status(204).end()
+  }
+  if (hostRow?.is_demo === true) return res.status(204).end()
+
   const { error } = await supabase
     .from('experience_clicks')
     .insert({ apartment_id: apartmentId, provider, product_id: productId })
