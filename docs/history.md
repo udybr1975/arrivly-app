@@ -2898,3 +2898,367 @@ the DB at the time of writing: status `confirmed`, apartment `is_test = false`. 
 property and a REAL booking — not a fixture, and it needs no maintenance: it COMPLETES ON ITS
 OWN** when the dates pass. Do not date-refresh it, do not add it to the fixture rules, and do
 not delete it as stray test data.
+
+## 26 Aug 2026 (evening) — CLAUDE.md expiry pass (queue item 0): retired entries
+
+Moved verbatim from CLAUDE.md; each sub-block names its origin section. These are retired from
+the working file, not from the record. Superseded claims are kept here with the correction that
+replaced them.
+
+### S1 — origin: header HEAD line (corrected, not retired)
+
+replaced by: the 26 Aug 2026 HEAD (`6518da7`, guest-chat model env-bound; `1f3c4d6` before it). Rest of the line unchanged.
+
+> **Current HEAD — `401db9d`** (24 Aug 2026), Print relabelled "Print / Save as PDF"; `f3f49a9` the designed A5 guest card and `cc2aba6` the help-drawer refresh before it.
+
+### S2 — origin: header "THE FOUR THINGS BLOCKING LAUNCH", item (3)
+
+replaced by: item (3) marked CLOSED as OPTION A (`6518da7`). The claim below that guest-chat is the SOLE Google dependency was FALSE at the time it was written — `api/welcome-chat.ts` also runs on Google (`gemini-3.1-flash-lite`, `GEMINI_API_KEY_PUBLIC`), verified at source 26 Aug 2026.
+
+(3) the `gemini-2.5-flash` **16 Oct 2026** shutdown — **STILL BINDS, but the route is now DECIDED (OPTION A, 18 Aug 2026): repoint guest-chat to a current Gemini model AND make the model an ENV-CONFIGURABLE value**, so the next retirement is a dashboard change, not a code change. `api/guest-chat.ts:9` is today a hardcoded `const MODEL = 'gemini-2.5-flash'` on `GEMINI_API_KEY_CHAT` (project `gen-lang-client-0221179352`), verified in source, free tier, no card. Guest-chat remains the SOLE Google dependency. **The deadline did not go away; it acquired a decided route.**
+
+### S3a — origin: "## AI MODELS" section header + first paragraph
+
+replaced by: the corrected two-surface paragraph. THREE claims here were false by 26 Aug 2026: the 16 Oct shutdown date (withdrawn), "the FILE'S ONLY LIVE DATED DEADLINE" (there is now none), and "it is the only Google dependency left" (`api/welcome-chat.ts` also runs on Google — verified at source).
+
+## AI MODELS — provider assignment, keys, and the one dated fact
+`gemini-2.5-flash` shuts down **16 Oct 2026** and is already refused to new Google Cloud projects. **ONE SURFACE STILL DEPENDS ON IT, so the deadline is REAL and dated — and it is the FILE'S ONLY LIVE DATED DEADLINE** (that clause used to live in the sandbox-subscriptions Launch Blocker, deleted 23 Aug 2026; it existed nowhere else) — the older "no surface depends on it" claim was FALSE. `api/guest-chat.ts:9` runs `gemini-2.5-flash` on `GEMINI_API_KEY_CHAT`, verified in source; it is the only Google dependency left, on the AI Studio FREE tier with no card, so it cannot bill.
+
+### S3b — origin: "## AI MODELS", second paragraph (two sentences)
+
+replaced by: "**SHIPPED 26 Aug 2026 as `6518da7` (env binding only, no repoint — see above).**" for the first; the second is deleted as now stated in the corrected opening paragraph. NOTE the retired sentence says 1,500 RPD free on 2.5; the Google pricing page (26 Aug 2026) says **500** RPD — the corrected text avoids the number and the 500 figure is the right one if it is ever needed. The OPTION B and Pilot-Step-6 sentences STAYED in CLAUDE.md.
+
+**DECIDED 18 Aug 2026 — OPTION A, and this supersedes the "unresolved tension" recorded in `057da82`:** repoint guest-chat to a **current Gemini model**, and make the model an **ENV-CONFIGURABLE value** rather than the hardcoded `const MODEL` it is today — so the *next* model retirement is a dashboard change and a redeploy, not a code change and a gate cycle.
+
+Grounding is 1,500 RPD free on the 2.5 line and **ZERO on Gemini 3** — that is what made graduation-to-Google expensive.
+
+### S3c — origin: "## AI MODELS" key map + the Pilot-Step-6 sentence
+
+replaced by: the CHAT row drops "THE ONLY ONE STILL LIVE ON GOOGLE" (false — welcome-chat is too) and the PUBLIC row names its model. The Step-6 sentence lost its referent when the deadline was withdrawn, so "is no longer what clears this date" became "with the deadline withdrawn there is no date for it to clear" — a referent repair, not a decision change.
+
+| `GEMINI_API_KEY_CHAT` | gen-lang-client-0221179352 | **`guest-chat` — THE ONLY ONE STILL LIVE ON GOOGLE** |
+| `GEMINI_API_KEY_PUBLIC` | (separate, no card) | `welcome-chat` |
+
+Pilot Step 6 (the chat router) was never built and is no longer what clears this date.
+
+### S4 — origin: four sites carrying the "16 Oct 2026 / only live dated deadline" framing
+
+replaced by: queue item 3 marked DONE; item 0 loses its "the next BUILD session still opens on the gemini repoint" clause; the STILL-PARKED `groq/compound` line now reads "Option A shipped 26 Aug; grounding replacement is the only reason to evaluate this"; the GROQ-catalogue clause is deleted (the sentence keeps "PARKED AND UNTESTED"). THE FILE NOW HAS NO LIVE DATED DEADLINE.
+
+     3. **`gemini-2.5-flash` repoint (OPTION A) — THE NEXT SESSION OPENS HERE.** **Deadline
+        16 Oct 2026, the file's only live dated deadline. Must ship before it.**
+
+---
+
+It is the first thing the next DOCS close does; the next BUILD session
+        still opens on the gemini repoint.
+
+---
+
+Option A
+  (repoint + env-configurable model, decided 18 Aug 2026) clears the 16 Oct date, so this is no
+  longer the only route and is not on the critical path
+
+---
+
+, which matters because that dependency now carries the 16 Oct 2026
+shutdown date (see AI MODELS)
+
+### S6 — origin: "## Design System" (the pre-S26 12-line list)
+
+replaced by: a one-line pointer. This list PREDATES the S26 ground-truth block at the top of CLAUDE.md and disagrees with it (it describes a light `#f8f6f2` sidebar; the shipped dashboard has a DARK `#1c1c1a` sidebar). Kept here because it still describes real pre-S26 shipped surfaces, but the top-of-file block is authoritative.
+
+- Page background: `bg-[#f0ede6]`
+- Cards: `bg-white border border-[#ddd8ce] rounded-[10px]`
+- Sidebar: `w-[170px] bg-[#f8f6f2] border-r border-[#ddd8ce]`
+- Inputs: `bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-3 py-2 text-xs text-[#444] focus:border-[#1a1a1a]`
+- Primary button: `bg-[#1a1a1a] text-white rounded-[8px] px-4 py-[10px] text-xs font-semibold`
+- Outline button: `bg-transparent border border-[#ddd8ce] text-[#444] rounded-[8px]`
+- Labels: `text-[10px] uppercase tracking-[.06em] text-[#999]`
+- Headings: `font-serif font-light` (Georgia)
+- Metric number: `font-serif font-light text-[22px]`
+- Pills: green `bg-[#e4f0da] text-[#2a5c0a]`, blue `bg-[#dceef8] text-[#0c3d70]`, amber `bg-[#faeeda] text-[#7a4800]`, red `bg-[#fde4e4] text-[#8a1a1a]`, purple `bg-[#f0e8ff] text-[#4a0e8f]`
+- Text primary: `text-[#1a1a1a]`
+- Text muted: `text-[#888]`
+
+### S7 — origin: Known notes, the Gemini quota-day cron-schedule bullet (CLOSED debt)
+
+replaced by: the one-line surviving rule. The CLOSED-debt narrative pointer is redundant with docs/resolved-debt.md, which already holds it.
+
+- **`cron-refresh-events` / `cron-refresh-guides` schedule vs the Gemini quota-day — CLOSED
+  (`dbfc034`, Jul 28 2026).** Narrative and the original incident moved to
+  **docs/resolved-debt.md**. The surviving rule: both Gemini crons run AFTER the Pacific
+  free-tier reset (`0 9 * * *` events, `0 10 1 * *` guides) and each reads its OWN key, so
+  neither reschedule is neutralised by key-sharing.
+
+### R1 — origin: the sixteen "> Moved to docs/history.md" session pointers (4–25 Aug 2026)
+
+replaced by: one line. THESE POINTERS ARE THE PER-SESSION HOIST NOTES — each records which rules were lifted out of that session before it was archived, which is the evidence that nothing was lost at each move. They are kept here in full for exactly that reason.
+
+> Moved to docs/history.md — "SESSION Aug 4 2026 — Gemini terms verified at source; the 30 Jul session recorded".
+> Moved to docs/history.md — "SESSION Aug 4 2026 (2) — pre-billing security: scrubErr + atomic per-host guide cooldown SHIPPED".
+> Moved to docs/history.md — "SESSION Aug 7 2026 — B3.5 smoke PASSED, cron concurrency fixed, CLAUDE.md split". Superseded by the full-day record below.
+> Moved to docs/history.md — "SESSION CLOSE — Aug 6 2026: pilot Steps 4 and 5 shipped, city-cache scoped, B3.5 shipped".
+> Moved to docs/history.md — "SESSION Aug 8 2026 — date-window guard corrected; iCal sync bounded, fair and honest".
+> Moved to docs/history.md — "Session — 10 Aug 2026 (HEAD 7f3dac5)". Its OPEN blocks were HOISTED
+> first — the seven items live in Known notes, Tracked security follow-ups and OPEN ITEMS.
+> Moved to docs/history.md — "Session — 9-10 Aug 2026 (HEAD 2b71fec)". Its GATE STOPPING
+> CONDITION was HOISTED into Agent policy first — it existed nowhere else.
+> Moved to docs/history.md — "Session — 10 Aug 2026 (restructuring, HEAD e694e90)". Its three
+> standing size rules were already hoisted into the CLAUDE.md-size open item.
+
+> Moved to docs/history.md — "Session — 11 Aug 2026 (retention crons + Viator ruling, HEAD
+> 4d5ac2f)". Its Gmail/inbox rule was HOISTED into Agent policy first — it existed nowhere else.
+
+> Moved to docs/history.md — "Session — 11 Aug 2026 (Viator enforcement + earnings-copy sweep,
+> HEAD 9fa4b7b)". Its two OPEN DECISIONS, the tierCopy watch and the self-qualifying-claim rule
+> were HOISTED first — into OPEN ITEMS and Lessons.
+
+> Moved to docs/history.md — "Session — 11-12 Aug 2026 (the Share panel, HEAD 5153bc4)". Its
+> picks-vs-message coupling was HOISTED into OPEN ITEMS first; the COMMENT-ONLY EXEMPTION it
+> invented was already in Agent policy, and its `anon=m` correction is in docs/schema.md.
+
+> Moved to docs/history.md — "Session — 12 Aug 2026 (tier names, contrast, scroll — HEAD a34af78)".
+> NOTHING needed hoisting: its verify-a-queue-item rule and COMMENT-ONLY exemption were already in
+> Agent policy, the `overflow-auto` lesson already in Lessons, and its Phase H scoping already in
+> docs/design-backlog.md. Its tier-name decision is recorded as CLOSED in OPEN ITEMS.
+
+> Moved to docs/history.md — "Session — 14 Aug 2026 (address-swap gate, beneficiary, the
+> guide cron)". NOTHING needed hoisting: its four rules (SECURITY DEFINER vs INVOKER,
+> fixtures that commit mid-session, CRON_SECRET being unreadable, repo visibility as a
+> class of claim) were already in Lessons; the guide-cron starvation defect is in
+> RESIDUALS and the address-swap/disclosure entries are in OPEN ITEMS.
+
+> Moved to docs/history.md — "Session — 18-19 Aug 2026 (restructure, the push-state rule,
+> four UI items)". Its FOUR rules were HOISTED into Lessons first — the allowlist rule, the
+> write-after-each-edit rule, the computed-contrast rule and "an address is not evidence of a
+> human" — none of which existed anywhere else.
+
+> Moved to docs/history.md — "Session — 20 Aug 2026 (the importer, completed through five
+> live test rounds)". NOTHING needed hoisting: its taxonomy-before-prompt lesson and the
+> label-comp-fixtures rule were already in Lessons, and its open items are carried in the
+> queue below.
+
+> Moved to docs/history.md — "Session — 22 Aug 2026 (the pre-arrival personal guest
+> link, shipped in three commits, plus the bulk-import offering clause)". Its binding
+> rules already live in "PRE-ARRIVAL PERSONAL GUEST LINK"; nothing needed hoisting.
+
+> Moved to docs/history.md — "Session — 23 Aug 2026 (Phase H pre-arrival parity,
+> 3aaca7b)". Its five BINDING rules moved WITH it: each is reasoning about a shipped
+> feature, not an open item, so nothing needed hoisting.
+
+> Moved to docs/history.md — "Session — 23 Aug 2026 (2) — pre-launch data state
+> settled". Its `is_test` invariants already live in DB TRAPS; only the `ARR-IMP301`
+> non-existence note needed hoisting, and it is now in the Test Data fixture rules.
+
+> Moved to docs/history.md — "Session — 24 Aug 2026 — drawer refresh, the A5 guest card, privacy
+> decided". Its decisions are restated under DECIDED in the 25 Aug block.
+
+> Moved to docs/history.md — "Session — 25 Aug 2026 — Lessons retired, landing made
+> true, the mark became a B". Its QUEUE was superseded on 26 Aug (see THE QUEUE item 6);
+> its DECIDED items and the `md:scale-[0.62] lg:scale-[0.92]` note moved WITH it, and its
+> OPEN list is carried in the queue's cosmetic tail. The DEMO — APPROVED DESIGN block moved with
+> it too, marked SHIPPED — **one rule was HOISTED out of it first** ("a public QR cannot be
+> two-sided"), into the TWO DEMO FLAGS trap in DB TRAPS, because it is a design rule and would
+> otherwise have left with the record.
+
+### R2 — origin: THE QUEUE, items 1–5
+
+replaced by: two condensed lines (the `118d05f` residuals, and the welcome_show_address decision). Items 1, 3 and 5 are DONE/CLOSED and carried no live instruction; the two that did are kept in the working file.
+
+  1. **Items through `f113943` / `118d05f`: DONE, deploy-verified.** (Full commit ancestry is in git.)
+  2. **RESIDUALS FROM `118d05f`, recorded so they are not rediscovered as bugs.** (a) A genuine
+     worker UPDATE arriving mid-claim still reloads and still aborts the POST — seconds long,
+     only after a deploy; closing it means coupling `main.tsx` to `WelcomePage`, which is why it
+     was not. (b) A tab loaded via HARD RELOAD bypasses the SW and starts uncontrolled with no
+     claim event, so it spends its latch on the NEXT deploy's worker and picks up the one after.
+     **Bounded, never permanent** — nothing serves stale, `sw.js` being network-first for
+     navigations.
+  3. **TEMPLATE COPY / Airbnb interstitial line — CLOSED WITHOUT CHANGE (Udy, 24 Aug 2026).**
+     Guests understand platform interstitials; a warning about a warning reads as a disclaimer
+     and costs trust. Revisit only if a real guest is observed bouncing off it.
+  4. **PRIVACY QUESTION — DECIDED 24 Aug 2026 (Udy): ACCEPTED, no product change.** A guest
+     holding the welcome link or a confirmed booking seeing the property address is fine — the
+     booking platforms (Airbnb / Vrbo / Booking.com) already show it to that same person.
+     `apartments.welcome_show_address` stays exactly as it is: NOT NULL DEFAULT true, no host
+     UI. **The question is closed — do not re-open it as drift.** What this does NOT license is
+     a documentation claim that the address is hidden; `cc2aba6` corrected one such claim, and
+     the truthful version is the one to keep.
+  5. **GREY-ON-CREAM CONTRAST SWEEP — DONE (`d93c2d9`).** `#8a8276` -> `#6b6354`, 132 sites /
+     21 files. Print-card colours EXCLUDED by decision (live-print approved; paper is not
+     governed by WCAG) — the old scope text claiming otherwise is deleted, not struck through.
+
+### R3 — origin: the build-order / plan-values paragraphs under "Scoped but NOT built"
+
+replaced by: ONE line — "Build order G → H → I → F; Stripe LIVE flip last; Phase F ships AFTER the flip (Udy, 28 Jul 2026) and needs its own second security pass before Tier 4 is sold." The plan values were a DUPLICATE: they remain stated once, in Test Data ("Live plan values (confirmed S12…)"), verified present before this removal.
+
+> ✓ Plan values confirmed (hard gate CLOSED): T1 €10/cap 2, T2 €15/cap 7, T3 €25/cap 12, T4 €49/unlimited; trial_days = 14.
+
+---
+
+> **DECISION (S16, amended S19 cont.): flip-to-live is the LAST step. Build order reordered S19 cont. to G → H → I → F (Phase F / Tier-4 booking moved to the end).**
+
+---
+
+> **DECIDED (Udy, Jul 28 2026): OPTION (b) — flip live on Tiers 1–3, build Phase F (Tier-4 booking) AFTER launch.** Rationale: G/H/I are complete, Tier 4 has no waiting customers, and launching sooner starts real revenue and real traffic. **Consequence for the pentest gate: it now runs on the Tiers 1–3 surface WITHOUT the Phase F booking/payment flow**, which reduces its scope and cost. When Phase F is later built, it introduces a payment-taking surface that did not exist at gate time — **a second security pass over Phase F is therefore required before Tier 4 is sold.**
+
+---
+
+> **LANDING — pre-launch facelift** right before go-live, so copy matches deployed reality; wire
+> "See a live demo" to a real guest page as part of it. **PARKED motif idea** and the **AI video
+> ad strategy** (assets live outside the repo) are recorded with it in docs/design-backlog.md.
+> **DOMAIN MIGRATION GATES PHASE I STAGE 0** — settled by the move to bemgu.app; kept as history
+> in docs/design-backlog.md.
+
+---
+
+Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live (LAST)**.
+- G — pre-launch hardening (incl. pentest gate)
+- H — UI/UX polish
+- I — monetisation iteration
+- F — Tier-4 full booking (moved to end)
+- Flip Stripe to live — LAST. OPEN: F before or after the flip — decide after G/H/I.
+
+### R4 — origin: Lessons / Method & process, the five 22 Aug 2026 diagnostic bullets
+
+replaced by: ONE merged bullet. All five came out of the same `118d05f` diagnosis and each was a facet of it; the merged form keeps every operative instruction. The narrative detail (the Airbnb in-app-browser hypothesis, the composer screenshot that falsified it) lives here.
+
+- **TEST GUEST-FACING FIRST-VISIT FLOWS IN A FRESH PROFILE (Aug 22 2026).** `118d05f` was
+  invisible for hours because every browser in use already had the service worker installed AND a
+  token in localStorage — **two independent reasons the broken path looked fine.** A developer's
+  own browser is never a first-time guest.
+
+- **A NO-ORACLE ENDPOINT IS ALSO OPAQUE TO ITS AUTHOR (Aug 22 2026).** `welcome-claim` returns
+  200 with an identical body for hit and miss BY DESIGN, so the logs could not distinguish them;
+  diagnosis needed a direct endpoint call plus a network trace. **The posture is correct — budget
+  for the diagnostic cost rather than weakening it.**
+
+- **AN ABORTED REQUEST HAS NO STATUS IN A NETWORK TRACE (Aug 22 2026).** The ABSENCE of a
+  response code was the whole tell in `118d05f`. **Reading only completed requests would have
+  missed it entirely.**
+
+- **WHEN TWO DEVICES DISAGREE, SUSPECT LOCAL STATE BEFORE SUSPECTING THE PLATFORM
+  (Aug 22 2026).** The first hypothesis was that Airbnb's in-app browser stripped the fragment.
+  **It did not.** The difference was service-worker registration and a stored token.
+
+- **A COPY-PASTE ARTEFACT IS NOT PLATFORM BEHAVIOUR (Aug 22 2026).** Text copied out of Airbnb
+  into a chat gained object-replacement characters and a swallowed word, and that was
+  misdiagnosed as Airbnb's linkifier mangling the URL. **The composer screenshot falsified it.**
+  Verify against the SOURCE SURFACE, never a transcription of it.
+
+### R5 — origin: the cron-heartbeat detector bullet
+
+replaced by: the condensed five-line form. The retired text carries the 18 Aug CORRECTION (the earlier "has still never run" clause was FALSE), the exact 15 Aug 10:00:18-10:00:29 UTC evidence, and the nine-visible-vs-three-visible fleet argument that makes the idle over-determined.
+
+- STILL OPEN on the detector: **NO CRON HEARTBEAT — "never ran" remains undetectable as a CLASS**,
+  and that is what this item is for. **CORRECTION 18 Aug 2026: the guide cron HAS RUN — the earlier
+  "has still never run" clause was FALSE.** `guide_recommendations` shows three apartments
+  refreshed **15 Aug 10:00:18-10:00:29 UTC**, matching the `0 10 * * *` schedule, and it has
+  correctly IDLED since: every visible apartment sat inside the 25-day freshness gate
+  (oldest 29 July against a 24 July cutoff). **The fleet that was measured against was NINE
+  visible; since 23 Aug 2026 it is THREE, all Helsinki, the other nine unpublished — so the
+  idle is now over-determined and proves less than it did.** **THE 15 AUG RUN COMPLETED ITS QUEUE rather than
+  stopping at the deadline, so 3/run is a LOWER BOUND on throughput, not a capacity measurement**
+  — the "~2/run x 25 days ≈ 50 apartments" figure in RESIDUALS therefore stays an ESTIMATE and must
+  NOT be upgraded to a measured value. The failure ntfy still covers "ran and failed",
+  not "never ran". Also `city-events-host` (9) and `sync-ical` (15) WILL false-positive on a
+  legitimate Tier 3/4 multi-property setup sweep (12 properties > 9), firing a high-priority
+  "block this host" alert at a paying customer — revisit when a real portfolio host exists.
+
+### R6 — origin: Known notes, the cron sequential-loops / TPM-ceiling bullet (both paragraphs)
+
+replaced by: the three-line surviving statement. The retired text holds the measurement trail — concurrency 2 x ~7.6k debit measured Aug 10 against what was then a 12K TPM ceiling, now 8,000 — and the starvation argument that justified concurrency 1.
+
+- Cron sequential loops in `cron-sync-ical` AND `cron-refresh-events` share the "batch at scale / maxDuration" debt — fine at current apartment counts; batch before many booked apartments. (Phase G cron-batching item.) **⚠ NO LONGER "fine at current counts" FOR `cron-refresh-events` (Aug 6 2026): at B3.3+ prompt sizes its `mapPool` concurrency of 2 EXCEEDS the Groq org TPM ceiling deterministically (2 x ~7.6k debit, measured Aug 10, against what was then 12K TPM — **the ceiling is now 8,000 TPM, VERIFIED 17-18 Aug 2026, so the margin is TIGHTER not looser and concurrency 1 is the only width that fits**), so a multi-candidate run is expected to 429 AND starves guest-chat / guide / daily-greeting across every tenant while it runs. Fix is `concurrency: 1`, and it is the top of this debt — see "SESSION CLOSE Aug 6 2026" open item 1.**
+  **PARTIALLY CLOSED, VERIFIED AT SOURCE 22 Aug 2026:** `cron-refresh-events` now calls
+  `mapPool(units, 1, …)` — concurrency IS 1, so the TPM half of this debt is done. The
+  `cron-sync-ical` batching half is **UNVERIFIED AT THE RESTRUCTURE** and stays open.
+
+### R7 — origin: OPEN ITEMS, the backfill-canonical-city bullet
+
+replaced by: the four-line blocked-state form. The retired text holds the denominator history (the superseded "nine visible across 8 cities" count, and why unpublishing rather than drift superseded it).
+
+- **RUN `api/backfill-canonical-city` BY HAND** — GET with `Authorization: Bearer <CRON_SECRET>`. Idempotent. On no schedule. Watch `resolvedNoKey`: a city that resolves with no valid country code stays on the per-apartment path. **HALF DONE, AND THE DENOMINATOR MOVED — RE-COUNTED AGAINST THE LIVE DB 23 Aug 2026: the VISIBLE fleet is THREE apartments, all Helsinki.** The nine test apartments were deliberately UNPUBLISHED (`is_visible = false`) for launch and are republishable per-experiment, so the earlier "nine visible across 8 cities" count is superseded by unpublishing, not by drift. The backfill's remaining work therefore shrank to almost nothing at the visible surface and is still entirely present behind it — **re-count before running it, because the number moves whenever a fixture is republished.** **⚠ BUT THIS IS NOT CURRENTLY DOABLE:** `CRON_SECRET` is flagged **Sensitive** in Vercel, so its value cannot be read back and the Bearer header cannot be reconstructed — see the CRON_SECRET lesson below. This item is blocked on that decision, not on effort.
+
+### R8 — origin: Known notes, six non-defect / verified-reverted bullets
+
+replaced by: NOTHING — these are retired outright. Four are explicitly recorded as "no real bug" / "negligible" / "latent only" / "minor, acceptable"; one records a fixture override that was already verified reverted. Nothing here binds a future change.
+
+- sw.js `showNotification().then()` — if showNotification rejects, badge is not set and the rejection is swallowed by `event.waitUntil`; low risk, standard SW pattern (W2, `c294bda`).
+- `countUnread` in `Layout.tsx` called directly from event listeners with no mounted guard at call site — safe because `mounted` flag is closed over and listeners are removed on cleanup before it matters; no real bug (W3, `c294bda`).
+- `sendPushToHost` url check uses `startsWith('/')`, which also admits protocol-relative `//host` — only ever set from the host's own send-push request (self-targeted), so negligible.
+- send-push `apartmentId` is not ownership-checked — latent only (lookup forces `host_id = userId`, so a foreign apartmentId matches zero rows).
+- Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
+- **Roy's `property_cap_override` was set to 2 for D8 and REVERTED to null** — verified reverted.
+
+### R9 — origin: Known notes, the "Two items VERIFIED RESOLVED" pointer
+
+replaced by: NOTHING. docs/resolved-debt.md already holds both entries with the grep that closed each; a pointer to a pointer earned nothing.
+
+> Two items VERIFIED RESOLVED at the 22 Aug restructure and moved to **docs/resolved-debt.md**
+> with the grep that closed each: `BookingManager.tsx`'s `arrivly:messages-read` cancellation
+> signal, and `PropertySetup.tsx`'s load-effect cancellation guard. Both are fixed in the
+> shipped code; the entries are kept as evidence, not as work.
+
+### R10 — origin: "## PHASE I" section header + its status paragraph
+
+replaced by: the header now reads "(Stages 0/4A/4B shipped; Stage 5 reporting ingest remains)" and the paragraph is retired — the header carries the whole of its content. The scope pointer, the Link spec block and the tier-ladder DECISION all STAYED in CLAUDE.md.
+
+Phase I part (b) — third-party bookable experiences on the guest-page Explore tab — is **BUILT, SHIPPED and verified live in production** through Stage 4B. This supersedes the loose "Viator/GetYourGuide/OpenTable" line in the Phase I roadmap bullet above. The scoping text below is retained for context; the "Build stages" list carries current status. **Remaining: Stage 5** (marketplace reporting ingest — until then commission figures deliberately link out to each provider dashboard).
+
+### R11 — origin: Lessons / Method & process, three bullets
+
+replaced by: NOTHING — retired outright. The mockup-fixture rule survives in substance in the "RENDERED OUTPUT IS THE TEST FOR VISUAL WORK" bullet and in the label-comp-fixtures habit; the mirror-inference and spec-defect bullets describe one-off reasoning moves rather than rules that bind a future change.
+
+- **FIXTURE DATA INVENTED FOR A MOCKUP IS NOT EVIDENCE ABOUT PRODUCTION (Aug 18 2026).** A comp's
+  invented sample bookings were described as "the real Sweet home calendar"; the comp was fine, the
+  SENTENCE around it made a checkable claim about live data that was never checked. **Label comp
+  fixtures as fixtures, and derive any "try this on <apartment>" instruction from a QUERY, never
+  from the picture.** Same class as "an address is not evidence of a human": an assumption dressed
+  as an observation.
+
+---
+
+- **A MIRROR'S EXISTENCE IS EVIDENCE THAT THE GATE GUARDING IT PASSED (Aug 18 2026).** The webhook's
+  `metadata.app` gate could not be read (Sensitive-flagged vars), but `hosts.current_period_end` /
+  `tier` / `subscription_status` are written ONLY by that webhook — rows carrying them prove the
+  gate passed without reading the field it tests. **When an upstream check is unreadable, look for a
+  downstream artefact that only exists if it passed.** State it as inference; it is a real answer
+  where "unverifiable" would otherwise stand.
+
+---
+
+- **A spec defect is still a defect.** Four of the last defects the gates caught were in the prompt's own spec, not the code — a bound handed to a parser is part of the parser; a detector suppressed on a bucket correlated with the fault is silenced exactly when it matters. Derive numbers from the concurrency model, and assert that the control you are NOT testing let the write through.
+
+### R12 — origin: "RESIDUALS FROM `60a4c2b`", three of the six sub-bullets
+
+replaced by: NOTHING; the lead-in count changed "six items" -> "three items". These three are each recorded as accepted or not-a-fix (shoulder-surfing only / accessibility floor already met / a benign unsignalled reload). The three KEPT in CLAUDE.md are the `Messages.tsx` sourceLabel divergence, the `fmt()` UTC off-by-one and the `nightMap` 800-night cap.
+
+  - The `ARR-` token now renders VISIBLY on hover in the availability picker — same trust
+  boundary and same data the list view shows openly; added risk is shoulder-surfing only.
+
+  - Neither calendar has `role="grid"` / roving tabindex — every cell is a real button with a
+  focus ring and full `aria-label`, so the accessibility floor is met. An improvement, not a fix.
+
+  - `void loadBookings()` on the 409 is unsignalled — A's rows could land after B's.
+
+### S8 — origin: THE QUEUE item 0, the booking for this very pass (NOT in the brief; closed because it describes work now done)
+
+replaced by: item 0 marked DONE with the measured result, keeping the standing expiry-sweep rule the booking invented. Retiring the booking while leaving it reading as pending would have been the exact defect this pass exists to remove.
+
+     0. **CLAUDE.md EXPIRY PASS — THE FIRST ITEM OF THE NEXT DOCS CLOSE. Target ~130K,
+        DECISION-PER-LESSON.** Booked 26 Aug 2026 (pm), when the file closed at **141,826** —
+        over the ~140,000 restructure trigger, accepted for that one commit rather than
+        restructuring at a session close.
+        **IT SITS AT 0 RATHER THAN 1 BECAUSE IT IS A DOCS TASK AND MUST NOT DISPLACE ITEM 3'S
+        DATED DEADLINE.** It is the first thing the next DOCS close does.
+        **NOT A TRIM AND NOT ANOTHER SPLIT.** Rule (d) already says restructuring to 139,9xx buys
+        one session and repeats; rule (c) says split on LIFETIME, and that lever is spent — the
+        22, 24 and 26 Aug passes took it. **What is left is deciding, per lesson, that one has
+        stopped earning its place**, which needs Udy approving a proposal table item by item (the
+        25 Aug pass, `4bfa0f2`, is the shape: 140,328 → 131,277).
+        **AND THE EXPIRY CLASS IS PART OF IT, not a separate job** — this session found a
+        "NOT VERIFIED" line that had been false for four days and had already cost a queue item.
+        **Sweep every claim in this file that asserts a GAP, an UNVERIFIED state or a PENDING
+        answer, and re-check each against source before it is kept.** A lesson that is merely
+        old is not the problem; a lesson that is WRONG is.

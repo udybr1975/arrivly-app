@@ -29,14 +29,14 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Current HEAD — `401db9d`** (24 Aug 2026), Print relabelled "Print / Save as PDF"; `f3f49a9` the designed A5 guest card and `cc2aba6` the help-drawer refresh before it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
+> **Current HEAD — `6518da7`** (26 Aug 2026), guest-chat model env-bound; `1f3c4d6` the docs close before it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
 > — so the pentest gate runs on the Tiers 1–3 surface, and Phase F needs its own second
 > security pass before Tier 4 is sold.
 >
-> **THE FOUR THINGS BLOCKING LAUNCH:** (1) ~~Gemini billing~~ — dissolved by the ZERO-GOOGLE AI PILOT; Google is leaving the stack, there is no billing flip. (2) the legal/compliance workstream — inventory DONE, **eight gaps open**, documents 3/4/5 DRAFTED but unpublished, (the retention crons that gated publication SHIPPED 11 Aug 2026). (3) the `gemini-2.5-flash` **16 Oct 2026** shutdown — **STILL BINDS, but the route is now DECIDED (OPTION A, 18 Aug 2026): repoint guest-chat to a current Gemini model AND make the model an ENV-CONFIGURABLE value**, so the next retirement is a dashboard change, not a code change. `api/guest-chat.ts:9` is today a hardcoded `const MODEL = 'gemini-2.5-flash'` on `GEMINI_API_KEY_CHAT` (project `gen-lang-client-0221179352`), verified in source, free tier, no card. Guest-chat remains the SOLE Google dependency. **The deadline did not go away; it acquired a decided route.** (4) the pentest gate. Also open but smaller: welcome-page Part 2 and the pre-live additions.
+> **THE FOUR THINGS BLOCKING LAUNCH:** (1) ~~Gemini billing~~ — dissolved by the ZERO-GOOGLE AI PILOT; Google is leaving the stack, there is no billing flip. (2) the legal/compliance workstream — inventory DONE, **eight gaps open**, documents 3/4/5 DRAFTED but unpublished, (the retention crons that gated publication SHIPPED 11 Aug 2026). (3) ~~gemini-2.5-flash 16 Oct shutdown~~ — CLOSED 26 Aug 2026 as OPTION A (`6518da7`): the model id is now `GEMINI_MODEL_CHAT` (unset by design, default `gemini-2.5-flash`). Google's deprecations page (13 Aug 2026) lists the model as 'no shutdown date announced'; NO REPOINT because free-tier Search grounding exists ONLY on the 2.5 line (Google pricing page, same date) — a 3.x value here means dropping grounding, not swapping a string. (4) the pentest gate. Also open but smaller: welcome-page Part 2 and the pre-live additions.
 >
 > Full session-by-session history — including the long HEAD chain this line replaced — is in
 > docs/history.md.
@@ -166,18 +166,7 @@ Branding settings (colour presets, currency symbol) are in `src/config.ts`. Colo
 Pricing and plan values are DB-driven (`plans` table + `app_settings.trial_days`). `config.ts` no longer contains any pricing fields (legacy fields removed S19 + S23).
 
 ## Design System
-- Page background: `bg-[#f0ede6]`
-- Cards: `bg-white border border-[#ddd8ce] rounded-[10px]`
-- Sidebar: `w-[170px] bg-[#f8f6f2] border-r border-[#ddd8ce]`
-- Inputs: `bg-[#f8f6f2] border border-[#ddd8ce] rounded-[8px] px-3 py-2 text-xs text-[#444] focus:border-[#1a1a1a]`
-- Primary button: `bg-[#1a1a1a] text-white rounded-[8px] px-4 py-[10px] text-xs font-semibold`
-- Outline button: `bg-transparent border border-[#ddd8ce] text-[#444] rounded-[8px]`
-- Labels: `text-[10px] uppercase tracking-[.06em] text-[#999]`
-- Headings: `font-serif font-light` (Georgia)
-- Metric number: `font-serif font-light text-[22px]`
-- Pills: green `bg-[#e4f0da] text-[#2a5c0a]`, blue `bg-[#dceef8] text-[#0c3d70]`, amber `bg-[#faeeda] text-[#7a4800]`, red `bg-[#fde4e4] text-[#8a1a1a]`, purple `bg-[#f0e8ff] text-[#4a0e8f]`
-- Text primary: `text-[#1a1a1a]`
-- Text muted: `text-[#888]`
+See the Design system — GROUND TRUTH block at the top of this file. The pre-S26 list that lived here is in docs/history.md (26 Aug evening, S6).
 
 ## Test Data (in DB)
 
@@ -233,7 +222,6 @@ values — do not change without an explicit decision.**
   confirmed/completed booking on a flagged apartment becomes a permanent verified credential.
   Full reasoning in `api/_lib/public-demo.ts`; the rebuild that produced it is in docs/history.md
   (26 Aug 2026).
-- **Roy's `property_cap_override` was set to 2 for D8 and REVERTED to null** — verified reverted.
 - **THE THREE PRE-ARRIVAL CLAIM FIXTURES, on "charming 1908 studio" (renamed from "importer
   test" 23 Aug 2026; welcome code `DX89PW3H` UNCHANGED). ALL
   CREDENTIALS FABRICATED — shape only, no entropy from any real feed. Udy keeps all test data;
@@ -247,31 +235,17 @@ values — do not change without an explicit decision.**
     from 24 Aug this resolves to a MISS. **Re-roll `check_out` to today to test that state.**
   - **`ARR-PRE901` / `TESTFUTURE1`** — 21-25 Sep, `link_claimed_at` deliberately still NULL.
     **The clean PREVIEW control — do not claim it**, or the only unclaimed fixture is gone.
-- Cron sequential loops in `cron-sync-ical` AND `cron-refresh-events` share the "batch at scale / maxDuration" debt — fine at current apartment counts; batch before many booked apartments. (Phase G cron-batching item.) **⚠ NO LONGER "fine at current counts" FOR `cron-refresh-events` (Aug 6 2026): at B3.3+ prompt sizes its `mapPool` concurrency of 2 EXCEEDS the Groq org TPM ceiling deterministically (2 x ~7.6k debit, measured Aug 10, against what was then 12K TPM — **the ceiling is now 8,000 TPM, VERIFIED 17-18 Aug 2026, so the margin is TIGHTER not looser and concurrency 1 is the only width that fits**), so a multi-candidate run is expected to 429 AND starves guest-chat / guide / daily-greeting across every tenant while it runs. Fix is `concurrency: 1`, and it is the top of this debt — see "SESSION CLOSE Aug 6 2026" open item 1.**
-  **PARTIALLY CLOSED, VERIFIED AT SOURCE 22 Aug 2026:** `cron-refresh-events` now calls
-  `mapPool(units, 1, …)` — concurrency IS 1, so the TPM half of this debt is done. The
-  `cron-sync-ical` batching half is **UNVERIFIED AT THE RESTRUCTURE** and stays open.
+- `cron-refresh-events` runs `mapPool(units, 1, …)` — concurrency 1 is the ONLY width that fits
+  the 8,000 TPM Groq ceiling (verified at source 22 Aug 2026). `cron-sync-ical` batch-at-scale
+  debt UNVERIFIED, still open (Phase G cron-batching).
 - `city-events` lazy-fill: the FIRST guest to view an uncached apartment waits ~the generation time (one-off); the cron pre-warms apartments with current/upcoming bookings so most are already warm.
-- **`cron-refresh-events` / `cron-refresh-guides` schedule vs the Gemini quota-day — CLOSED
-  (`dbfc034`, Jul 28 2026).** Narrative and the original incident moved to
-  **docs/resolved-debt.md**. The surviving rule: both Gemini crons run AFTER the Pacific
-  free-tier reset (`0 9 * * *` events, `0 10 1 * *` guides) and each reads its OWN key, so
-  neither reschedule is neutralised by key-sharing.
-- Re-saving house rules re-polishes already-polished text (Gemini call on every save). Minor; acceptable for now.
+- Cron schedules `0 9 * * *` events, `0 10 1 * *` guides sit after the Pacific free-tier reset and each cron reads its own key — keep both properties on any reschedule (`dbfc034`).
 - iCal fetch (`api/_lib/ical.ts`, used by both sync-ical and cron-sync-ical): mild SSRF (no
   private-IP/metadata blocklist on fetched URLs); no per-host rate limit. The monthly cron now
   exercises this unattended. Tidy SSRF + rate limit before public launch.
-- `sendPushToHost` url check uses `startsWith('/')`, which also admits protocol-relative `//host` — only ever set from the host's own send-push request (self-targeted), so negligible.
-- send-push `apartmentId` is not ownership-checked — latent only (lookup forces `host_id = userId`, so a foreign apartmentId matches zero rows).
-> Two items VERIFIED RESOLVED at the 22 Aug restructure and moved to **docs/resolved-debt.md**
-> with the grep that closed each: `BookingManager.tsx`'s `arrivly:messages-read` cancellation
-> signal, and `PropertySetup.tsx`'s load-effect cancellation guard. Both are fixed in the
-> shipped code; the entries are kept as evidence, not as work.
 
 - `api/guest-chat.ts` (S21): verify-gated (public tier → `403 verify_required` before any Gemini call) + per-instance rate limiter (15/min, apt+IP) + dedicated `GEMINI_API_KEY_CHAT`. The limiter is per-instance best-effort, not a hard cross-instance cap. `generate-guide` remains host-auth+ownership-gated (no public AI-spend surface).
 - **Retention crons SHIPPED (11 Aug 2026)** — `cron-cleanup-messages` (30d) and `cron-retention` (guest identities 30d, greetings 30d, guest push 7d, admin audit 365d). **The periods are a PUBLISHED PROMISE** in the guest notice §6 and in the Art. 30 record: change a constant and the document in the SAME commit, or neither. **No exemptions, ever** — a carve-out makes the notice false for everyone; fixtures survive by refreshing their DATES.
-- sw.js `showNotification().then()` — if showNotification rejects, badge is not set and the rejection is swallowed by `event.waitUntil`; low risk, standard SW pattern (W2, `c294bda`).
-- `countUnread` in `Layout.tsx` called directly from event listeners with no mounted guard at call site — safe because `mounted` flag is closed over and listeners are removed on cleanup before it matters; no real bug (W3, `c294bda`).
 - **The address-swap gate has a DECLARED LIMITATION, not an oversight (shipped `34e79c3`):**
   a swap to another flat in the SAME city, under 1km, is NOT stopped. The trigger
   `enforce_property_address_swap()` blocks a >1km coordinate move or a city/country text
@@ -279,21 +253,16 @@ values — do not change without an explicit decision.**
   `is_demo` exempt). **It defends the CAP against city-scale swaps; tightening it further
   would block genuine address corrections.** The function is INVOKER rights and that is
   load-bearing — see the SECURITY DEFINER lesson.
-- **RESIDUALS FROM `60a4c2b` (the four UI items) — six items, one line each; full argument in
+- **RESIDUALS FROM `60a4c2b` (the four UI items) — three items, one line each; full argument in
   docs/resolved-debt.md under "STILL-OPEN residuals".**
   - `Messages.tsx` still carries its own `isBlockSource`/`sourceColor`/`sourceLabel` now that
   `bookingChrome.ts` exists, and its `sourceLabel` DIVERGES — unreachable today, **one import
   from fixed, and a latent trap until it is.**
-  - The `ARR-` token now renders VISIBLY on hover in the availability picker — same trust
-  boundary and same data the list view shows openly; added risk is shoulder-surfing only.
-  - Neither calendar has `role="grid"` / roving tabindex — every cell is a real button with a
-  focus ring and full `aria-label`, so the accessibility floor is met. An improvement, not a fix.
   - `fmt()` parses `new Date('YYYY-MM-DD')` as UTC and formats locally — off by one day for a
   negative-UTC viewer. Pre-existing, shared by three surfaces.
   - The picker's `nightMap` caps expansion at 800 nights, so a genuine multi-year block draws its
   later nights free. **Degrades to a 409, never to a double booking. There is NO server-side
   maximum stay length, which is what makes the cap reachable at all.**
-  - `void loadBookings()` on the 409 is unsignalled — A's rows could land after B's.
 
 - `api/public-pricing.ts` cache is `s-maxage=60` — admin trial/price edits show on the landing within ~1 min.
 - **npm vulnerabilities — the superseded 8-count and the tool-counting explanation moved to
@@ -534,20 +503,6 @@ values — do not change without an explicit decision.**
 
 ### Method & process
 
-- **FIXTURE DATA INVENTED FOR A MOCKUP IS NOT EVIDENCE ABOUT PRODUCTION (Aug 18 2026).** A comp's
-  invented sample bookings were described as "the real Sweet home calendar"; the comp was fine, the
-  SENTENCE around it made a checkable claim about live data that was never checked. **Label comp
-  fixtures as fixtures, and derive any "try this on <apartment>" instruction from a QUERY, never
-  from the picture.** Same class as "an address is not evidence of a human": an assumption dressed
-  as an observation.
-
-- **A MIRROR'S EXISTENCE IS EVIDENCE THAT THE GATE GUARDING IT PASSED (Aug 18 2026).** The webhook's
-  `metadata.app` gate could not be read (Sensitive-flagged vars), but `hosts.current_period_end` /
-  `tier` / `subscription_status` are written ONLY by that webhook — rows carrying them prove the
-  gate passed without reading the field it tests. **When an upstream check is unreadable, look for a
-  downstream artefact that only exists if it passed.** State it as inference; it is a real answer
-  where "unverifiable" would otherwise stand.
-
 - **TEST FIXTURES THAT COMMIT MID-SESSION INVERT LATER TEST RESULTS (Aug 14 2026).**
   Behaviour-testing the address-swap gate mutated its own fixtures, so a later case ran against
   state an earlier case wrote and returned the opposite verdict — the baseline had moved, not the
@@ -574,8 +529,6 @@ values — do not change without an explicit decision.**
 - **RE-MEASURE AT THE MOMENT YOU STATE A NUMBER, especially about an irreversible delete.** Estimates missed by +234, then -14,500, then quoted "~34 messages" when the true figure was 29 — stale because a fixture date-refresh performed EARLIER IN THE SAME SESSION had moved bookings back inside the window. A figure measured before your own change does not describe the state you are describing.
 
 - **When a resource becomes SHARED between tenants, re-classify every input that reaches it** — not only the one that selects it. Locking the routing key does nothing if the payload is built from unlocked fields.
-
-- **A spec defect is still a defect.** Four of the last defects the gates caught were in the prompt's own spec, not the code — a bound handed to a parser is part of the parser; a detector suppressed on a bucket correlated with the fault is silenced exactly when it matters. Derive numbers from the concurrency model, and assert that the control you are NOT testing let the write through.
 
 - **`grep -v "^[+-][+-]"` SILENTLY HIDES EVERY CHANGE TO A MARKDOWN BULLET (Aug 10 2026).** That
   filter exists to drop a diff's `---`/`+++` headers. But a removed bullet `- Cron sequential…`
@@ -653,28 +606,12 @@ values — do not change without an explicit decision.**
   LIVE value** — sampling sentences is blind to "added to one side only", which is exactly how
   `3417e01` opened the gap.
 
-- **TEST GUEST-FACING FIRST-VISIT FLOWS IN A FRESH PROFILE (Aug 22 2026).** `118d05f` was
-  invisible for hours because every browser in use already had the service worker installed AND a
-  token in localStorage — **two independent reasons the broken path looked fine.** A developer's
-  own browser is never a first-time guest.
-
-- **A NO-ORACLE ENDPOINT IS ALSO OPAQUE TO ITS AUTHOR (Aug 22 2026).** `welcome-claim` returns
-  200 with an identical body for hit and miss BY DESIGN, so the logs could not distinguish them;
-  diagnosis needed a direct endpoint call plus a network trace. **The posture is correct — budget
-  for the diagnostic cost rather than weakening it.**
-
-- **AN ABORTED REQUEST HAS NO STATUS IN A NETWORK TRACE (Aug 22 2026).** The ABSENCE of a
-  response code was the whole tell in `118d05f`. **Reading only completed requests would have
-  missed it entirely.**
-
-- **WHEN TWO DEVICES DISAGREE, SUSPECT LOCAL STATE BEFORE SUSPECTING THE PLATFORM
-  (Aug 22 2026).** The first hypothesis was that Airbnb's in-app browser stripped the fragment.
-  **It did not.** The difference was service-worker registration and a stored token.
-
-- **A COPY-PASTE ARTEFACT IS NOT PLATFORM BEHAVIOUR (Aug 22 2026).** Text copied out of Airbnb
-  into a chat gained object-replacement characters and a swallowed word, and that was
-  misdiagnosed as Airbnb's linkifier mangling the URL. **The composer screenshot falsified it.**
-  Verify against the SOURCE SURFACE, never a transcription of it.
+- **FIRST-VISIT GUEST FLOWS: FRESH PROFILE, LOCAL STATE FIRST, ABSENCES COUNT (Aug 22 2026,
+  `118d05f`).** Test in a profile with no service worker and no stored token (two independent
+  reasons a broken path looks fine); when two devices disagree, suspect SW registration /
+  localStorage before the platform; read a network trace for requests with NO status, not only
+  completed ones; verify against the source surface, never a transcription; a no-oracle endpoint
+  (`welcome-claim`) is opaque by design — budget the diagnostic cost, do not weaken it.
 
 - **RENDERED OUTPUT IS THE TEST FOR VISUAL WORK; THE NUMBERS ARE THE PRE-CHECK (Aug 25 2026, four
   times).** A screenshot of the built page is part of the gate for any UI diff, and the question is
@@ -848,9 +785,7 @@ written consent. **Closed 25 Aug 2026 (Udy):** Viator stays named on the landing
 (comps row + intro); it is removed from every host-earnings statement, since Viator is
 Bemgu-attributed at every tier and hosts earn only on GetYourGuide and Tiqets (Portfolio).
 
-## PHASE I — EXPERIENCE CONNECTORS (Stages 0/4A/4B SHIPPED + verified live, Jul 26 2026; scoped S29, Jul 10 2026)
-
-Phase I part (b) — third-party bookable experiences on the guest-page Explore tab — is **BUILT, SHIPPED and verified live in production** through Stage 4B. This supersedes the loose "Viator/GetYourGuide/OpenTable" line in the Phase I roadmap bullet above. The scoping text below is retained for context; the "Build stages" list carries current status. **Remaining: Stage 5** (marketplace reporting ingest — until then commission figures deliberately link out to each provider dashboard).
+## PHASE I — EXPERIENCE CONNECTORS (Stages 0/4A/4B shipped; Stage 5 reporting ingest remains)
 
 > Scope, revenue model, host UX, marketing anchors, open provider threads, credentials/env ops and the full PRE-MARKETING provider-terms review are in docs/phase-i-affiliate.md.
 
@@ -891,48 +826,27 @@ recorded in both today.
 - **WATCH `src/lib/tierCopy.ts` — it feeds `/choose-plan`, the actual point of payment, and today carries NO earnings claim.** Any earnings bullet added there lands directly on the payment page and would need the tier qualifier in the string itself. The precise form to copy is `Landing.tsx:64` — "Keep 100% of GetYourGuide &amp; Tiqets commissions — paid to you directly" (both axes scoped in one string). Related residual: `EarningsPanel.tsx ~301` is unqualified but sits in `confirmedCard`, which renders only when `confirmedCount > 0` — never in production today.
 - **Welcome share panel shipped (`8ff40e5`); Part 2's STAY TIMELINE was not built** — see
   docs/design-backlog.md.
-- **RUN `api/backfill-canonical-city` BY HAND** — GET with `Authorization: Bearer <CRON_SECRET>`. Idempotent. On no schedule. Watch `resolvedNoKey`: a city that resolves with no valid country code stays on the per-apartment path. **HALF DONE, AND THE DENOMINATOR MOVED — RE-COUNTED AGAINST THE LIVE DB 23 Aug 2026: the VISIBLE fleet is THREE apartments, all Helsinki.** The nine test apartments were deliberately UNPUBLISHED (`is_visible = false`) for launch and are republishable per-experiment, so the earlier "nine visible across 8 cities" count is superseded by unpublishing, not by drift. The backfill's remaining work therefore shrank to almost nothing at the visible surface and is still entirely present behind it — **re-count before running it, because the number moves whenever a fixture is republished.** **⚠ BUT THIS IS NOT CURRENTLY DOABLE:** `CRON_SECRET` is flagged **Sensitive** in Vercel, so its value cannot be read back and the Bearer header cannot be reconstructed — see the CRON_SECRET lesson below. This item is blocked on that decision, not on effort.
+- **`api/backfill-canonical-city` — BLOCKED** on the CRON_SECRET-is-Sensitive decision (see
+  Lessons); idempotent, no schedule. Re-count the visible fleet before running (3 apartments, all
+  Helsinki, 23 Aug 2026 — unpublishing shrank the visible work, it did not do it); watch
+  `resolvedNoKey`.
 - **PRE-LIVE — OBTAIN WRITTEN CONFIRMATION FROM GYG AND TIQETS ON MULTI-TENANT HOST-OWN-ID.** Udy's own terms review (11 Aug 2026) cleared BOTH to keep host-own-partner-ID on Tier 3, and the code ships that way. **But note the EVIDENCE CLASS: that is a self-assessment, not a provider ruling.** For Viator we hold a written answer from Partner Support; for GYG and Tiqets we hold our own reading. **Viator is the proof that the two differ** — the terms were read carefully, the risk was spotted, the question was asked anyway, and the answer came back NO. Send the same question to both **before the Stripe live flip**, so a paying Tier-3 host is never sold a connection a provider later refuses. **Tiqets first — it uses the same partner-ID substitution shape (`partner=`) that Viator prohibited.** Contacts parked in PHASE I. If either answers no, Tier 3 needs repositioning, not just a code change.
 - **THE QUEUE (updated 24 Aug 2026). In order:**
-  1. **Items through `f113943` / `118d05f`: DONE, deploy-verified.** (Full commit ancestry is in git.)
-  2. **RESIDUALS FROM `118d05f`, recorded so they are not rediscovered as bugs.** (a) A genuine
-     worker UPDATE arriving mid-claim still reloads and still aborts the POST — seconds long,
-     only after a deploy; closing it means coupling `main.tsx` to `WelcomePage`, which is why it
-     was not. (b) A tab loaded via HARD RELOAD bypasses the SW and starts uncontrolled with no
-     claim event, so it spends its latch on the NEXT deploy's worker and picks up the one after.
-     **Bounded, never permanent** — nothing serves stale, `sw.js` being network-first for
-     navigations.
-  3. **TEMPLATE COPY / Airbnb interstitial line — CLOSED WITHOUT CHANGE (Udy, 24 Aug 2026).**
-     Guests understand platform interstitials; a warning about a warning reads as a disclaimer
-     and costs trust. Revisit only if a real guest is observed bouncing off it.
-  4. **PRIVACY QUESTION — DECIDED 24 Aug 2026 (Udy): ACCEPTED, no product change.** A guest
-     holding the welcome link or a confirmed booking seeing the property address is fine — the
-     booking platforms (Airbnb / Vrbo / Booking.com) already show it to that same person.
-     `apartments.welcome_show_address` stays exactly as it is: NOT NULL DEFAULT true, no host
-     UI. **The question is closed — do not re-open it as drift.** What this does NOT license is
-     a documentation claim that the address is hidden; `cc2aba6` corrected one such claim, and
-     the truthful version is the one to keep.
-  5. **GREY-ON-CREAM CONTRAST SWEEP — DONE (`d93c2d9`).** `#8a8276` -> `#6b6354`, 132 sites /
-     21 files. Print-card colours EXCLUDED by decision (live-print approved; paper is not
-     governed by WCAG) — the old scope text claiming otherwise is deleted, not struck through.
+  1. `118d05f` residuals: a worker UPDATE mid-claim aborts the POST (seconds, post-deploy only);
+     a hard-reloaded tab spends its latch on the next deploy. Bounded, never stale-serving.
+  2. `welcome_show_address` stays NOT NULL DEFAULT true, no host UI — decided 24 Aug 2026
+     (platforms show the address to the same person). Do not reopen; do not claim the address is
+     hidden.
   6. **THE ORDER — REPLACED 26 Aug 2026. THIS IS THE AUTHORITATIVE QUEUE.**
-     0. **CLAUDE.md EXPIRY PASS — THE FIRST ITEM OF THE NEXT DOCS CLOSE. Target ~130K,
-        DECISION-PER-LESSON.** Booked 26 Aug 2026 (pm), when the file closed at **141,826** —
-        over the ~140,000 restructure trigger, accepted for that one commit rather than
-        restructuring at a session close.
-        **IT SITS AT 0 RATHER THAN 1 BECAUSE IT IS A DOCS TASK AND MUST NOT DISPLACE ITEM 3'S
-        DATED DEADLINE.** It is the first thing the next DOCS close does; the next BUILD session
-        still opens on the gemini repoint.
-        **NOT A TRIM AND NOT ANOTHER SPLIT.** Rule (d) already says restructuring to 139,9xx buys
-        one session and repeats; rule (c) says split on LIFETIME, and that lever is spent — the
-        22, 24 and 26 Aug passes took it. **What is left is deciding, per lesson, that one has
-        stopped earning its place**, which needs Udy approving a proposal table item by item (the
-        25 Aug pass, `4bfa0f2`, is the shape: 140,328 → 131,277).
-        **AND THE EXPIRY CLASS IS PART OF IT, not a separate job** — this session found a
-        "NOT VERIFIED" line that had been false for four days and had already cost a queue item.
-        **Sweep every claim in this file that asserts a GAP, an UNVERIFIED state or a PENDING
-        answer, and re-check each against source before it is kept.** A lesson that is merely
-        old is not the problem; a lesson that is WRONG is.
+     0. ~~CLAUDE.md EXPIRY PASS~~ — **DONE 26 Aug 2026 (evening): 141,826 -> 125,117 chars**;
+        twelve entries retired to docs/history.md, seven stale claims corrected, nothing deleted
+        from the record. **THE RULE IT LEAVES BEHIND: the expiry class is a standing sweep, not a
+        one-off.** Any claim in this file asserting a GAP, an UNVERIFIED state or a PENDING answer
+        is a claim WITH AN EXPIRY and nothing re-checks it — re-verify each against source before
+        keeping it. This pass found three such claims false at once, all in the AI MODELS section
+        (the withdrawn 16 Oct deadline, "the file's ONLY live dated deadline", and "guest-chat is
+        the SOLE Google dependency" — `welcome-chat` also runs on Google). **A lesson that is
+        merely old is not the problem; a lesson that is WRONG is.**
      1. ~~THE DEMO~~ — **DONE** (`23d5197`, 26 Aug 2026).
      2. ~~PRE-ARRIVAL MARKETING PASS~~ — **DONE** (`3b7084c`, 26 Aug 2026). Landing.tsx only;
         the research, the dropped "unlike" claims and the eight caveat sites are in
@@ -940,8 +854,8 @@ recorded in both today.
         — see the corrected delivered-message line above. **Step (iv), sandbox gap #1 (Alex has
         no `platform_ref`), was NOT built and STAYS PARKED**; gap #6's copy is still deferred
         behind it.
-     3. **`gemini-2.5-flash` repoint (OPTION A) — THE NEXT SESSION OPENS HERE.** **Deadline
-        16 Oct 2026, the file's only live dated deadline. Must ship before it.**
+     3. ~~gemini repoint~~ — DONE as Option A, `6518da7`, 26 Aug 2026; no repoint, see AI
+        MODELS.
      4. **Pentest gate** — the unchanged list at item 7 below, **plus the `demo-create` cooldown**.
      5. **AA-FLOOR SESSION:** the `#9a958c` sweep (73 occurrences / 8 files, enumeration
         PENDING) and the FOCUS-RING TOKEN REFACTOR (62 declarations / 11 colour-alpha variants /
@@ -969,6 +883,9 @@ recorded in both today.
         Directions tile (`3b7084c`)** — reflow or reposition; the callouts sit ~130px inside the
         270px frame at EVERY width, so this is a real overlap and not a breakpoint artefact.
         **Screenshot gate** — it cannot be judged from the class names.
+        · two residuals from `6518da7`: the ntfy alarm body lands on exactly 500 chars at a
+        64-char model id (tighten `{2,63}` or move `${MODEL}` last); `MODEL_RE` admits any
+        lowercase-alnum value — a `/^gemini-/` anchor closes it. Executable, own gate cycle.
      **Stripe LIVE flip is ABSOLUTE LAST, and only after the GYG + Tiqets written confirmations.**
      (The LESSONS RETIREMENT PASS that used to head this list was done 25 Aug, `4bfa0f2`.)
   7. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
@@ -1098,8 +1015,7 @@ recorded in both today.
 
 **STILL PARKED, unchanged:** block-source message fix (before Founding Hosts) · pre-arrival
   messaging gap · **`groq/compound` evaluation — PARKED WITHOUT A DEADLINE (option B).** Option A
-  (repoint + env-configurable model, decided 18 Aug 2026) clears the 16 Oct date, so this is no
-  longer the only route and is not on the critical path · **the `api/` typecheck gap** (`api/` is outside
+  shipped 26 Aug; grounding replacement is the only reason to evaluate this · **the `api/` typecheck gap** (`api/` is outside
   every tsconfig AND `@vercel/node` is not installed locally, so `npm run build` type-checks NONE
   of it; **an isolated strict `tsc` per change is the working compensation** and was used on every
   api/ commit this session) · **`cron-refresh-events` refill pacing at fleet scale** (~49s of
@@ -1189,20 +1105,11 @@ recorded in both today.
   spend goes to `GEMINI_API_KEY_GUIDES`; an incident responder would disable the wrong project.
   (f) No cross-endpoint view — a host at 49% on all seven endpoints at once is invisible.
 
-- STILL OPEN on the detector: **NO CRON HEARTBEAT — "never ran" remains undetectable as a CLASS**,
-  and that is what this item is for. **CORRECTION 18 Aug 2026: the guide cron HAS RUN — the earlier
-  "has still never run" clause was FALSE.** `guide_recommendations` shows three apartments
-  refreshed **15 Aug 10:00:18-10:00:29 UTC**, matching the `0 10 * * *` schedule, and it has
-  correctly IDLED since: every visible apartment sat inside the 25-day freshness gate
-  (oldest 29 July against a 24 July cutoff). **The fleet that was measured against was NINE
-  visible; since 23 Aug 2026 it is THREE, all Helsinki, the other nine unpublished — so the
-  idle is now over-determined and proves less than it did.** **THE 15 AUG RUN COMPLETED ITS QUEUE rather than
-  stopping at the deadline, so 3/run is a LOWER BOUND on throughput, not a capacity measurement**
-  — the "~2/run x 25 days ≈ 50 apartments" figure in RESIDUALS therefore stays an ESTIMATE and must
-  NOT be upgraded to a measured value. The failure ntfy still covers "ran and failed",
-  not "never ran". Also `city-events-host` (9) and `sync-ical` (15) WILL false-positive on a
-  legitimate Tier 3/4 multi-property setup sweep (12 properties > 9), firing a high-priority
-  "block this host" alert at a paying customer — revisit when a real portfolio host exists.
+- **NO CRON HEARTBEAT — "never ran" is undetectable as a CLASS.** The failure ntfy covers "ran
+  and failed" only. The guide cron HAS run (15 Aug 2026) and idles correctly inside its 25-day
+  gate; 3/run is a LOWER BOUND, so the ~50-apartment capacity figure stays an ESTIMATE.
+  `city-events-host` (9) and `sync-ical` (15) will false-positive "block this host" on a
+  legitimate 12-property setup sweep — revisit when a real portfolio host exists.
 
 ### RESIDUALS FROM 14 Aug 2026 — recorded with enough detail to fix in ONE pass
 
@@ -1230,39 +1137,25 @@ recorded in both today.
 > argument and the capacity arithmetic — is in **docs/guide-cron-debt.md**.
 
 
-> ✓ Plan values confirmed (hard gate CLOSED): T1 €10/cap 2, T2 €15/cap 7, T3 €25/cap 12, T4 €49/unlimited; trial_days = 14.
-> **DECISION (S16, amended S19 cont.): flip-to-live is the LAST step. Build order reordered S19 cont. to G → H → I → F (Phase F / Tier-4 booking moved to the end).**
-> **DECIDED (Udy, Jul 28 2026): OPTION (b) — flip live on Tiers 1–3, build Phase F (Tier-4 booking) AFTER launch.** Rationale: G/H/I are complete, Tier 4 has no waiting customers, and launching sooner starts real revenue and real traffic. **Consequence for the pentest gate: it now runs on the Tiers 1–3 surface WITHOUT the Phase F booking/payment flow**, which reduces its scope and cost. When Phase F is later built, it introduces a payment-taking surface that did not exist at gate time — **a second security pass over Phase F is therefore required before Tier 4 is sold.**
 > **HARD PRE-LIVE GATE (Udy, S19 cont.): a pentest/"hacker" agent pass must run and pass before the live flip, on top of security-auditor.**
+> Build order G → H → I → F; Stripe LIVE flip last; Phase F ships AFTER the flip (Udy,
+> 28 Jul 2026) and needs its own second security pass before Tier 4 is sold.
 > **Apple Sign-in — PARKED (do NOT build unless asked).** Built + flag-hidden
 > (`VITE_SOCIAL_APPLE` unset). Blocked on Apple Developer account access; matters for the future
 > native iOS app (App Store guideline 4.8). Setup steps in docs/design-backlog.md.
 > **Social sign-in — minor/cosmetic, non-blocking:** the two active-demo CTAs share a destination;
 > leftover `user_metadata.is_demo` after conversion is harmless.
-> **LANDING — pre-launch facelift** right before go-live, so copy matches deployed reality; wire
-> "See a live demo" to a real guest page as part of it. **PARKED motif idea** and the **AI video
-> ad strategy** (assets live outside the repo) are recorded with it in docs/design-backlog.md.
-> **DOMAIN MIGRATION GATES PHASE I STAGE 0** — settled by the move to bemgu.app; kept as history
-> in docs/design-backlog.md.
 
 > Scoped but NOT built — detail in docs/design-backlog.md:
 > **UX design conversations** (welcome-link vs QR placement, missing property name, no scroll reset) · **anon-read lockdown** for `guide_recommendations` + `host_picks` (needs the reader-migration-first pattern) ·
 > **welcome page Part 2** (share panel, AI-drafted note, message variants, view counts) · **pre-arrival guest reachability** (the third page state, and the precondition for pre-arrival push).
 
-Build order (reordered S19 cont.): **G → H → I → F → flip Stripe to live (LAST)**.
-- G — pre-launch hardening (incl. pentest gate)
-- H — UI/UX polish
-- I — monetisation iteration
-- F — Tier-4 full booking (moved to end)
-- Flip Stripe to live — LAST. OPEN: F before or after the flip — decide after G/H/I.
-
-
 > Moved to docs/history.md — "SECURITY — cross-tenant anon leak FOUND AND CLOSED (Jul 28 2026)".
 
-## AI MODELS — provider assignment, keys, and the one dated fact
-`gemini-2.5-flash` shuts down **16 Oct 2026** and is already refused to new Google Cloud projects. **ONE SURFACE STILL DEPENDS ON IT, so the deadline is REAL and dated — and it is the FILE'S ONLY LIVE DATED DEADLINE** (that clause used to live in the sandbox-subscriptions Launch Blocker, deleted 23 Aug 2026; it existed nowhere else) — the older "no surface depends on it" claim was FALSE. `api/guest-chat.ts:9` runs `gemini-2.5-flash` on `GEMINI_API_KEY_CHAT`, verified in source; it is the only Google dependency left, on the AI Studio FREE tier with no card, so it cannot bill.
+## AI MODELS — provider assignment and keys
+`gemini-2.5-flash` has NO announced shutdown date (Google deprecations page, 13 Aug 2026); the earlier 16 Oct 2026 date was withdrawn. TWO surfaces run live on Google: `api/guest-chat.ts` (model from `GEMINI_MODEL_CHAT`, default `gemini-2.5-flash`, grounded, `GEMINI_API_KEY_CHAT`) and `api/welcome-chat.ts` (`gemini-3.1-flash-lite`, ungrounded, `GEMINI_API_KEY_PUBLIC`). Both free tier, no card. Grounding is free ONLY on the 2.5 line; every 3.x model needs the paid tier for it — the reason guest-chat stays on 2.5.
 
-**DECIDED 18 Aug 2026 — OPTION A, and this supersedes the "unresolved tension" recorded in `057da82`:** repoint guest-chat to a **current Gemini model**, and make the model an **ENV-CONFIGURABLE value** rather than the hardcoded `const MODEL` it is today — so the *next* model retirement is a dashboard change and a redeploy, not a code change and a gate cycle. **OPTION B (`groq/compound`, which ships built-in web search and would take Google to zero) stays PARKED WITHOUT A DEADLINE — option A buys the time to evaluate it properly.** Pilot Step 6 (the chat router) was never built and is no longer what clears this date. Grounding is 1,500 RPD free on the 2.5 line and **ZERO on Gemini 3** — that is what made graduation-to-Google expensive. Quota measurements, the per-project model and the migration analysis are in docs/pilot-history.md.
+**SHIPPED 26 Aug 2026 as `6518da7` (env binding only, no repoint — see above).** **OPTION B (`groq/compound`, which ships built-in web search and would take Google to zero) stays PARKED WITHOUT A DEADLINE — option A buys the time to evaluate it properly.** Pilot Step 6 (the chat router) was never built, and with the deadline withdrawn there is no date for it to clear. Quota measurements, the per-project model and the migration analysis are in docs/pilot-history.md.
 
 **WALLET CONSTRAINT — PERMANENT, and it survives the pilot narrative that moved out.** Every AI /
 search / POI provider must be **no-card free tier or prepaid**. Providers requiring an **uncapped
@@ -1283,9 +1176,9 @@ project ID, NEVER a key value.**
 |---|---|---|
 | `GEMINI_API_KEY` (shared) | gen-lang-client-0819525902 | greeting/daily-greeting, host-picks, bulk-import, rewrite-rules, guide-assistant — **the only ones competing with each other, so disabling it is BLUNT** |
 | `GEMINI_API_KEY_GUIDES` | gen-lang-client-0816353550 | `_lib/guide` |
-| `GEMINI_API_KEY_CHAT` | gen-lang-client-0221179352 | **`guest-chat` — THE ONLY ONE STILL LIVE ON GOOGLE** |
+| `GEMINI_API_KEY_CHAT` | gen-lang-client-0221179352 | `guest-chat` — live on Google (with `welcome-chat`) |
 | `GEMINI_API_KEY_EVENTS` | gen-lang-client-0131909896 | `_lib/city-events` |
-| `GEMINI_API_KEY_PUBLIC` | (separate, no card) | `welcome-chat` |
+| `GEMINI_API_KEY_PUBLIC` | (separate, no card) | `welcome-chat` — live on Google, `gemini-3.1-flash-lite` |
 
 Every dedicated key reads `<KEY> || GEMINI_API_KEY`. **Keep every high-volume or public AI surface
 on its OWN key/project** — that isolation is provider-independent and outlives Gemini.
@@ -1297,72 +1190,9 @@ THAT CLEARS THE 16 OCT DEADLINE** — option A above does that. Its acceptance c
 chat history must be truncated server-side) are in docs/pilot-history.md. **Step 7 (the self-attack
 drill) remains a graduation prerequisite.**
 
-> Moved to docs/history.md — "SESSION Aug 4 2026 — Gemini terms verified at source; the 30 Jul session recorded".
-> Moved to docs/history.md — "SESSION Aug 4 2026 (2) — pre-billing security: scrubErr + atomic per-host guide cooldown SHIPPED".
-> Moved to docs/history.md — "SESSION Aug 7 2026 — B3.5 smoke PASSED, cron concurrency fixed, CLAUDE.md split". Superseded by the full-day record below.
-> Moved to docs/history.md — "SESSION CLOSE — Aug 6 2026: pilot Steps 4 and 5 shipped, city-cache scoped, B3.5 shipped".
-> Moved to docs/history.md — "SESSION Aug 8 2026 — date-window guard corrected; iCal sync bounded, fair and honest".
-> Moved to docs/history.md — "Session — 10 Aug 2026 (HEAD 7f3dac5)". Its OPEN blocks were HOISTED
-> first — the seven items live in Known notes, Tracked security follow-ups and OPEN ITEMS.
-> Moved to docs/history.md — "Session — 9-10 Aug 2026 (HEAD 2b71fec)". Its GATE STOPPING
-> CONDITION was HOISTED into Agent policy first — it existed nowhere else.
-> Moved to docs/history.md — "Session — 10 Aug 2026 (restructuring, HEAD e694e90)". Its three
-> standing size rules were already hoisted into the CLAUDE.md-size open item.
-
-> Moved to docs/history.md — "Session — 11 Aug 2026 (retention crons + Viator ruling, HEAD
-> 4d5ac2f)". Its Gmail/inbox rule was HOISTED into Agent policy first — it existed nowhere else.
-
-> Moved to docs/history.md — "Session — 11 Aug 2026 (Viator enforcement + earnings-copy sweep,
-> HEAD 9fa4b7b)". Its two OPEN DECISIONS, the tierCopy watch and the self-qualifying-claim rule
-> were HOISTED first — into OPEN ITEMS and Lessons.
-
-> Moved to docs/history.md — "Session — 11-12 Aug 2026 (the Share panel, HEAD 5153bc4)". Its
-> picks-vs-message coupling was HOISTED into OPEN ITEMS first; the COMMENT-ONLY EXEMPTION it
-> invented was already in Agent policy, and its `anon=m` correction is in docs/schema.md.
-
-> Moved to docs/history.md — "Session — 12 Aug 2026 (tier names, contrast, scroll — HEAD a34af78)".
-> NOTHING needed hoisting: its verify-a-queue-item rule and COMMENT-ONLY exemption were already in
-> Agent policy, the `overflow-auto` lesson already in Lessons, and its Phase H scoping already in
-> docs/design-backlog.md. Its tier-name decision is recorded as CLOSED in OPEN ITEMS.
-
-> Moved to docs/history.md — "Session — 14 Aug 2026 (address-swap gate, beneficiary, the
-> guide cron)". NOTHING needed hoisting: its four rules (SECURITY DEFINER vs INVOKER,
-> fixtures that commit mid-session, CRON_SECRET being unreadable, repo visibility as a
-> class of claim) were already in Lessons; the guide-cron starvation defect is in
-> RESIDUALS and the address-swap/disclosure entries are in OPEN ITEMS.
-
-> Moved to docs/history.md — "Session — 18-19 Aug 2026 (restructure, the push-state rule,
-> four UI items)". Its FOUR rules were HOISTED into Lessons first — the allowlist rule, the
-> write-after-each-edit rule, the computed-contrast rule and "an address is not evidence of a
-> human" — none of which existed anywhere else.
-
-> Moved to docs/history.md — "Session — 20 Aug 2026 (the importer, completed through five
-> live test rounds)". NOTHING needed hoisting: its taxonomy-before-prompt lesson and the
-> label-comp-fixtures rule were already in Lessons, and its open items are carried in the
-> queue below.
-
-> Moved to docs/history.md — "Session — 22 Aug 2026 (the pre-arrival personal guest
-> link, shipped in three commits, plus the bulk-import offering clause)". Its binding
-> rules already live in "PRE-ARRIVAL PERSONAL GUEST LINK"; nothing needed hoisting.
-
-> Moved to docs/history.md — "Session — 23 Aug 2026 (Phase H pre-arrival parity,
-> 3aaca7b)". Its five BINDING rules moved WITH it: each is reasoning about a shipped
-> feature, not an open item, so nothing needed hoisting.
-
-> Moved to docs/history.md — "Session — 23 Aug 2026 (2) — pre-launch data state
-> settled". Its `is_test` invariants already live in DB TRAPS; only the `ARR-IMP301`
-> non-existence note needed hoisting, and it is now in the Test Data fixture rules.
-
-> Moved to docs/history.md — "Session — 24 Aug 2026 — drawer refresh, the A5 guest card, privacy
-> decided". Its decisions are restated under DECIDED in the 25 Aug block.
-
-> Moved to docs/history.md — "Session — 25 Aug 2026 — Lessons retired, landing made
-> true, the mark became a B". Its QUEUE was superseded on 26 Aug (see THE QUEUE item 6);
-> its DECIDED items and the `md:scale-[0.62] lg:scale-[0.92]` note moved WITH it, and its
-> OPEN list is carried in the queue's cosmetic tail. The DEMO — APPROVED DESIGN block moved with
-> it too, marked SHIPPED — **one rule was HOISTED out of it first** ("a public QR cannot be
-> two-sided"), into the TWO DEMO FLAGS trap in DB TRAPS, because it is a design rule and would
-> otherwise have left with the record.
+> Session records 4–25 Aug 2026 are in docs/history.md; every rule each contained was hoisted
+> into this file before the move (the per-session hoist notes are in docs/history.md, 26 Aug
+> evening, R1).
 
 ## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
 
@@ -1395,8 +1225,7 @@ was then 12K TPM") with the correction adjacent.
 `gpt-oss-120b` and `gpt-oss-20b` are the **ONLY production text models**. The **entire Llama family
 is gone.** `qwen3.6-27b` is **preview — evaluation only, do not ship on it.** **`groq/compound` has
 BUILT-IN WEB SEARCH and is the potential replacement for guest-chat's Gemini grounding dependency
-— PARKED AND UNTESTED**, which matters because that dependency now carries the 16 Oct 2026
-shutdown date (see AI MODELS).
+— PARKED AND UNTESTED**.
 
 > Moved to docs/pilot-history.md — "ZERO-GOOGLE AI PILOT — APPROVED PLAN (Aug 5 2026)",
 > including its PILOT STEP 2 benchmark. The pilot's LIVE residue — the per-surface key/model
