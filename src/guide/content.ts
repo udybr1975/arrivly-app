@@ -45,9 +45,9 @@ export const GUIDE_MODULES: GuideModule[] = [
 - **Email** — your login and where Bemgu sends trial reminders and billing notices. *Why:* it's your account identity; it's never shown to guests.
 - **Password** (at least 8 characters) — secures your account. *Why:* protects your guest data and billing.
 - **Agree to terms** checkbox — confirms you accept the terms. *Why:* required to create the account.
-- **Create account** — creates your login and starts your **14-day free trial**. *Why:* no card is needed to begin; you're charged nothing until you choose a plan.
+- **Create account** — creates your login and starts your **14-day free trial**. *Why:* it's step 1 of 2 — you pick a plan next and your card is added at checkout, but there's no charge today and nothing is taken for 14 days.
 
-> The trial badge in the sidebar counts your remaining days. Your guest page is fully live during the trial, with a small "Powered by Bemgu" footer that disappears once you add a card.
+> The trial badge in the sidebar counts your remaining days. Your guest page is fully live during the trial, with a small "Powered by Bemgu" footer that comes off when your trial converts to a paid plan — adding your card at checkout doesn't remove it. (It reappears if a payment later fails, until the card is sorted.)
 
 ### Welcome (shown once)
 - **Add my first property →** — jumps you straight into the property editor. *Why:* the guest page only exists once there's a property to attach it to; this is the one thing to do first.
