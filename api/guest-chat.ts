@@ -7,7 +7,38 @@ import { sendNtfy } from './_lib/ntfy.js'
 import { scriptedReply } from './_lib/public-demo.js'
 
 const supabase = createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
-const MODEL = 'gemini-2.5-flash'
+// GROUNDING (googleSearch) IS FREE-TIER ONLY ON THE 2.5 LINE - Google pricing page, checked
+// 26 Aug 2026: 1,500 RPD free on 2.5, ZERO on Gemini 3. So a Gemini 3.x value here fails on the
+// free GEMINI_API_KEY_CHAT key while the tools array below is present - as a 429 or as a
+// permission/billing error, which is the provider's choice and not ours to assert. A 3.x repoint
+// therefore also means dropping grounding, which is the no-grounding shape api/welcome-chat.ts
+// already ships (verified: no googleSearch tool there). Change the env var, not this default.
+const DEFAULT_MODEL = 'gemini-2.5-flash'
+// The model id is an OPERATOR-SET env value that is both sent to Google as the model id AND
+// echoed into an ntfy alarm, so it is scrubbed before any log - the same treatment
+// _lib/ai-provider.ts gives GROQ_MODEL. THE SHAPE VALIDATION BELOW IS ADDITIONAL HERE AND HAS NO
+// PRECEDENT IN THAT FILE (GROQ_MODEL is read bare); it exists because this value also reaches an
+// operator alarm, and a mis-pasted key must never become a model name or land in a notification.
+//
+// THE 64-CHAR CEILING IS LOAD-BEARING, NOT ARBITRARY: _lib/ntfy.ts slices the body at 500 chars.
+// The alarm below measures 453 with the 17-char default (the host id is always 36 chars and
+// chatCount is always CHAT_HOURLY_LIMIT + 1, because the alarm is one-shot), leaving 47 chars of
+// headroom against a model id at most 47 longer than the default. The worst case lands on exactly
+// 500 and loses nothing TODAY - the margin is ZERO. Anything that LENGTHENS the alarm text must
+// re-do this arithmetic or tighten this max, or the clipped tail is the ACTION line.
+const MODEL_RE = /^[a-z0-9][a-z0-9.-]{2,63}$/
+function resolveChatModel(): string {
+  // || not ??: Vercel can hold an EMPTY string, which is not nullish and would otherwise be
+  // sent to Google as the model id.
+  const raw = (process.env.GEMINI_MODEL_CHAT || '').trim()
+  if (!raw) return DEFAULT_MODEL
+  if (!MODEL_RE.test(raw)) {
+    console.warn(`[guest-chat] GEMINI_MODEL_CHAT rejected (${scrubErr(raw, 20)}) - using default`)
+    return DEFAULT_MODEL
+  }
+  return raw
+}
+const MODEL = resolveChatModel()
 const MAX_MESSAGE = 1000
 const MAX_HISTORY = 10
 const MAX_RETRIES = 2
@@ -126,7 +157,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             message:
               `Feature: Guest AI chat (/api/guest-chat)\n` +
               `Host ${apt.host_id} hit ${chatCount} chat calls this hour (limit ${CHAT_HOURLY_LIMIT}).\n` +
-              `GROUNDED gemini-2.5-flash on GEMINI_API_KEY_CHAT - the dearest call in the system.\n` +
+              `GROUNDED ${MODEL} on GEMINI_API_KEY_CHAT - the dearest call in the system.\n` +
               `DISABLE if needed: GEMINI_API_KEY_CHAT = project gen-lang-client-0221179352 (guest-chat only).\n` +
               `ACTION: INVESTIGATE, do not auto-block. Key = apartment host: culprit (self-minted passes) or VICTIM (leaked token). Revoke token or block per findings.`,
             priority: 'high',
