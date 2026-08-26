@@ -2809,3 +2809,92 @@ where it is TRUE.
   patched at the time, per the sweep rule — the surface had been drawn one site short.
 - **`hosts.is_demo` (48h sandbox host) and `apartments.is_public_demo` (landing-page peek) are
   DIFFERENT FLAGS.** Never conflate them; the rename above exists precisely to stop that.
+
+## Session — 26 Aug 2026 (afternoon) — pre-arrival marketing pass
+
+**Queue item 2, shipped as `3b7084c`.** One file, `src/components/Landing.tsx`. No API, auth,
+DB or AI surface touched. Seven changed blocks plus a new phone frame:
+
+- **Hero paragraph** — the thesis moved from "scan on arrival" to "the day they book".
+- **Trust strip** — a new caveat line under the four platform names.
+- **STEPS rewritten as a TIMELINE**: Set up once → They get their page when they book →
+  Check-in day unlocks itself. (Icons 01 QR, 02 Hand, 03 Key.)
+- **FEATURES card 1** swapped for "Their page, before they arrive".
+- **Revenue point** swapped for "The planning window".
+- **COMPS row 2 added** — "Personal guest page before arrival, from the booking platform's
+  message".
+- **FAQ** — the platform answer edited, and a new "Do guests have to scan the QR?".
+- **PhoneMockup gained a FIFTH, FIRST screen, "Before arrival"** — *See you soon, Marco*, a
+  "12 days to go" pill, and WiFi/Door as dashed LOCKED tiles captioned "On arrival".
+
+### THE RESEARCH FINDING THAT CHANGED THE COPY — and it changed it BEFORE the build
+Read 26 Aug 2026 from the competitors' own help pages: **pre-arrival guidebook links are
+CATEGORY-STANDARD.** Touch Stay sends a unique per-reservation link into the Airbnb inbox via
+its free Airbnb integration (help.touchstay.com/article/124, help.touchstay.com/article/102).
+Hostfully populates guidebook links in message templates, but only when Hostfully PMS is
+integrated (help.hostfully.com/en/articles/2108793).
+
+**CONSEQUENCE: every "unlike competitors" and "more revenue than" line was DROPPED before a
+line of code was written.** Research-first is what made that cheap — the same finding arriving
+after the copy shipped would have been a retraction. What survived are two differences that can
+be stated without a comparative: **no integration to connect** (it rides Airbnb's own built-in
+message variables) and **the link unlocks itself on check-in day**.
+
+### A CORRECTION TO THE MORNING BRIEF, worth more than the pass itself
+The morning brief listed "verify the Airbnb link is clickable in a DELIVERED message" as step
+(i) of this queue item, calling it "still the open hole in the pre-arrival record".
+**IT WAS ALREADY DONE, ON 22 Aug 2026**, and this file records the evidence: Airbnb linkifies a
+`bemgu.app` URL in a delivered message, tapping shows the "You're leaving Airbnb" interstitial,
+and **the fragment survives both the linkifier and the interstitial redirect** — confirmed by a
+completed `POST /api/welcome-claim` from the tapped link. No host action was needed and none was
+taken.
+
+**WHERE THE ERROR CAME FROM, because that is the durable part:** CLAUDE.md still carried the
+pre-22-Aug line "NOT VERIFIED, and do not let this be read as covered: whether a link is
+CLICKABLE once actually SENT". That line was true when written, was closed by the 22 Aug test,
+and was never updated — so it propagated into a queue item as a to-do, and would have sent
+someone to re-run a test that had already passed. **Corrected in CLAUDE.md in this commit.**
+Booking.com and Vrbo remain genuinely unverified; only the Airbnb half closed.
+
+### Gate findings
+- **The FAQ's "straight from the QR code" was the scan-first must-fix the brief predicted.**
+  The prompt asked for a grep of "scan" AFTER the edits, and that grep is what caught it — the
+  sentence named the QR as the sole entry point on a page whose hero now says "nothing to scan".
+- **The STEPS aside failed AA.** Drafted `text-[#f0ede6]/40` = **3.38:1** on `#23211d`; shipped
+  `/55` = **5.12:1**. `/50` = **4.48:1** is recorded IN THE CODE with its number so it is not
+  re-proposed as a compromise. **A parenthetical is not exempt from AA — this one carries the
+  platform scope for the whole section.**
+- **Claude Code OVERRODE one FAQ sentence of the brief.** The brief supplied a verbatim string
+  ending "…if their messaging allows links, the link works there too, but we haven't verified it
+  yet" AND a rule that nothing may claim Vrbo/Booking.com links work. The two conflict.
+  `src/components/host/sharePlatforms.ts` settles it: both platforms ship as `verified: false`
+  with an empty message and zero steps, under a comment reading "no claim that either works" —
+  so the landing would have promised a path the Share panel does not offer. The override was
+  flagged rather than buried; **Udy kept the shipped wording.**
+
+### CAVEAT SITES: EIGHT, not the five the brief listed
+The hero paragraph, the new "Do guests have to scan the QR?" FAQ and the "download an app" FAQ
+all carry Airbnb-only scope **without a marker**, so a grep for `CAVEAT` finds five and misses
+three — the CLAUDE.md "three of four table rows updated" signature, walked into while writing
+the very comment meant to prevent it. All eight are now enumerated in ONE comment in
+`Landing.tsx`, ending "Do not treat the five markers as the list."
+
+### Post-push probe of the LIVE production bundle
+All seven new strings present. `Guests scan on arrival` **0** · `One QR code covers them all`
+**0** · `straight from the QR code` **0** · `unlike` **0** · `only Bemgu` **0**.
+
+### Residuals
+- **VISUAL, not fixed:** the pre-existing hero lift-out callouts (`-right-5` / `-left-4`, ~130px
+  inside the 270px frame at every width) overlap the new frame's **Directions** tile. The two
+  tiles carrying the product claim — WiFi and Door, dashed and locked — stay clear. Cosmetic tail.
+- Two unqualified earnings bullets in the revenue list must be swept **with** `src/lib/tierCopy.ts`,
+  never piecemeal. The `aria-label="Bemgu vs. competitors comparison"` contains a banned word.
+- **Sandbox gap #1 (Alex has no `platform_ref`) was NOT built in this pass** and stays parked.
+
+### Unrelated DB change made the same day, recorded so it is not read as drift
+**A MANUAL BOOKING was added on "charming 1908 studio" (`8ad00130`) for Udy's own testing:**
+guest **Udy**, **25 Aug → 10 Sep 2026**, token **`ARR-EAA14A`**, `source: manual`. Verified in
+the DB at the time of writing: status `confirmed`, apartment `is_test = false`. **A REAL
+property and a REAL booking — not a fixture, and it needs no maintenance: it COMPLETES ON ITS
+OWN** when the dates pass. Do not date-refresh it, do not add it to the fixture rules, and do
+not delete it as stray test data.

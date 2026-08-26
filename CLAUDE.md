@@ -683,6 +683,25 @@ values — do not change without an explicit decision.**
 - **`text-shadow` IS NOT AN INPUT TO WCAG CONTRAST (Aug 25 2026).** It is a perceptual aid; the
   ratio is unchanged by definition. Never record a shadow as closing an AA gap.
 
+- **THE PLATFORM-SCOPE CAVEAT LIVES AT EIGHT SITES IN `Landing.tsx` (Aug 26 2026) — and the
+  enumeration is in a code comment there, NOT in a grep.** Five carry a numbered `CAVEAT SITE n
+  of 8` marker; **three do not** (the hero paragraph, the "Do guests have to scan the QR?" FAQ,
+  and the "download an app" FAQ), so a grep for `CAVEAT` returns five and misses three — the
+  "three of four table rows updated" signature, walked into while writing the comment meant to
+  prevent it. **If the pre-arrival link is ever verified on Vrbo or Booking.com, update all
+  EIGHT in ONE commit, and flip `sharePlatforms.ts`'s `verified` flags in that SAME commit** —
+  the landing and the Share panel must never disagree about which platforms work, which is
+  exactly the divergence the gate caught in `3b7084c`.
+
+- **PRE-ARRIVAL GUIDEBOOK LINKS ARE CATEGORY-STANDARD — NEVER CLAIM UNIQUENESS FOR THE FEATURE
+  (Aug 26 2026).** Touch Stay sends a per-reservation link into the Airbnb inbox via its free
+  Airbnb integration; Hostfully populates guidebook links in message templates when its PMS is
+  integrated. (Sources, dated, in docs/history.md 26 Aug afternoon.) **No "unlike", no "only",
+  no comparative revenue claim** for pre-arrival. **The two DEFENSIBLE differences, statable
+  without a comparative: no integration to connect** (it rides Airbnb's own message variables)
+  **and the link self-unlocks on check-in day.** The research was done BEFORE the copy, which is
+  the only reason this cost nothing — the same finding after launch is a retraction.
+
 - **MARKETING COPY NAMES NO REAL BUSINESS; HOST-FACING PLACEHOLDER EXAMPLES MAY (Aug 25 2026, three
   passes).** On Landing/Auth mockups fabricate the name and verify it resolves NOWHERE (Nominatim
   structured lookup with controls — web search alone passed two real names); landmarks without
@@ -897,39 +916,59 @@ recorded in both today.
      21 files. Print-card colours EXCLUDED by decision (live-print approved; paper is not
      governed by WCAG) — the old scope text claiming otherwise is deleted, not struck through.
   6. **THE ORDER — REPLACED 26 Aug 2026. THIS IS THE AUTHORITATIVE QUEUE.**
+     0. **CLAUDE.md EXPIRY PASS — THE FIRST ITEM OF THE NEXT DOCS CLOSE. Target ~130K,
+        DECISION-PER-LESSON.** Booked 26 Aug 2026 (pm), when the file closed at **141,826** —
+        over the ~140,000 restructure trigger, accepted for that one commit rather than
+        restructuring at a session close.
+        **IT SITS AT 0 RATHER THAN 1 BECAUSE IT IS A DOCS TASK AND MUST NOT DISPLACE ITEM 3'S
+        DATED DEADLINE.** It is the first thing the next DOCS close does; the next BUILD session
+        still opens on the gemini repoint.
+        **NOT A TRIM AND NOT ANOTHER SPLIT.** Rule (d) already says restructuring to 139,9xx buys
+        one session and repeats; rule (c) says split on LIFETIME, and that lever is spent — the
+        22, 24 and 26 Aug passes took it. **What is left is deciding, per lesson, that one has
+        stopped earning its place**, which needs Udy approving a proposal table item by item (the
+        25 Aug pass, `4bfa0f2`, is the shape: 140,328 → 131,277).
+        **AND THE EXPIRY CLASS IS PART OF IT, not a separate job** — this session found a
+        "NOT VERIFIED" line that had been false for four days and had already cost a queue item.
+        **Sweep every claim in this file that asserts a GAP, an UNVERIFIED state or a PENDING
+        answer, and re-check each against source before it is kept.** A lesson that is merely
+        old is not the problem; a lesson that is WRONG is.
      1. ~~THE DEMO~~ — **DONE** (`23d5197`, 26 Aug 2026).
-     2. **PRE-ARRIVAL MARKETING PASS — RESEARCH FIRST, BUILD LAST.** Five steps, in order:
-        **(i)** verify the Airbnb link is clickable in a **DELIVERED** message — one message to
-        self. **This is still the open hole in the pre-arrival record**: everything to date was
-        observed in Airbnb's COMPOSER, never in a delivered message, and Booking.com and Vrbo
-        remain unverified entirely.
-        **(ii)** competitor research — **dated, and cited from the competitors' own sites**: who
-        offers pre-arrival access, by what mechanism, and whether experiences are bookable before
-        arrival. **The comps-table rule stands: a competitor cell states a PRESENCE or nothing.**
-        **(iii)** copy — the pre-arrival page reached from the Airbnb confirmation; no QR needed
-        on arrival; experiences bookable before check-in, i.e. a LONGER EARNING WINDOW. **Airbnb
-        named explicitly.** Earnings claims stay **GetYourGuide + Tiqets on Portfolio** (Viator is
-        Bemgu-attributed at every tier — see PERMANENT PROVIDER CONSTRAINTS). Surfaces: hero, How
-        it works, comps table, earnings section.
-        **(iv)** close sandbox gap #1 — seed a **fabricated** `platform_ref` on Alex plus a
-        one-line "try it as Alex" in the Share panel, so the newest feature is reachable in the
-        demo at all. (Gap #6, the copy, is deferred behind this.)
-        **(v)** mockup → approval → build. Not before.
-     3. **`gemini-2.5-flash` repoint (OPTION A)** — **deadline 16 Oct 2026, the file's only live
-        dated deadline. Must ship before it.**
+     2. ~~PRE-ARRIVAL MARKETING PASS~~ — **DONE** (`3b7084c`, 26 Aug 2026). Landing.tsx only;
+        the research, the dropped "unlike" claims and the eight caveat sites are in
+        docs/history.md (26 Aug afternoon). **Step (i) turned out to be ALREADY DONE on 22 Aug**
+        — see the corrected delivered-message line above. **Step (iv), sandbox gap #1 (Alex has
+        no `platform_ref`), was NOT built and STAYS PARKED**; gap #6's copy is still deferred
+        behind it.
+     3. **`gemini-2.5-flash` repoint (OPTION A) — THE NEXT SESSION OPENS HERE.** **Deadline
+        16 Oct 2026, the file's only live dated deadline. Must ship before it.**
      4. **Pentest gate** — the unchanged list at item 7 below, **plus the `demo-create` cooldown**.
      5. **AA-FLOOR SESSION:** the `#9a958c` sweep (73 occurrences / 8 files, enumeration
         PENDING) and the FOCUS-RING TOKEN REFACTOR (62 declarations / 11 colour-alpha variants /
         7 offset colours — **NOT a value sweep**: backgrounds must be determined per site and
         `Landing.tsx` mixes light and dark. Both design decisions are pre-settled — two tokens,
-        `#7a5c00` light / `#c8a24e` dark, alpha variants dropped). **Also carried into this
+        `#7a5c00` light / `#c8a24e` dark, alpha variants dropped).
+        **A SECOND FAILING FAMILY, MEASURED 26 Aug 2026 — low-alpha CREAM ON DARK, which the
+        `#9a958c` sweep does not cover.** Two live examples, both computed at the gate:
+        `text-[#f0ede6]/35` on `#16100d` = **2.86:1** (trust-strip label) and `/40` on `#1c1c1a`
+        = **3.43:1** (footer copyright). Enumerate this family INTO the frozen surface before
+        that session starts — it is the same defect `3b7084c` fixed at one site (`/40` → `/55`,
+        3.38:1 → 5.12:1), one background over.
+        **RULE FROM THAT FIX: A PARENTHETICAL IS NOT EXEMPT — IT CARRIES THE PLATFORM SCOPE.**
+        The line that failed was the aside qualifying the whole "How it works" section to Airbnb,
+        i.e. the last text on the page that may be the dimmest. Subordinate a scope note by TYPE
+        SIZE, never by lowering contrast. (`/50` = 4.48:1 also fails; recorded so it is not
+        re-proposed as a compromise.) **Also carried into this
         session from the moved 25 Aug record, so they are not lost with it: the AuthShell
         TAGLINE at 2.96:1 on mobile and the LIFT-OUT at 4.26:1, both measured and both under
         AA; and the PHONE/TABLET BROWSER CHECKS that need a real device — h2 wrap at 375px, the
         GuideDrawer Ask panel's ring-inset at the viewport edge, and the ticket-stub earnings
         card at a real 768 and 1024.**
      6. **Cosmetic tail** — `€25` hardcoded twice vs `plans`, `sagrada.jpg` licence, Founding
-        Hosts prep.
+        Hosts prep, and **the hero phone's lift-out callouts overlap the Before-arrival frame's
+        Directions tile (`3b7084c`)** — reflow or reposition; the callouts sit ~130px inside the
+        270px frame at EVERY width, so this is a real overlap and not a breakpoint artefact.
+        **Screenshot gate** — it cannot be judged from the class names.
      **Stripe LIVE flip is ABSOLUTE LAST, and only after the GYG + Tiqets written confirmations.**
      (The LESSONS RETIREMENT PASS that used to head this list was done 25 Aug, `4bfa0f2`.)
   7. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
@@ -1042,10 +1081,20 @@ recorded in both today.
 - **VERIFY THE PLATFORM'S VARIABLE SYNTAX AGAINST LIVE BEHAVIOUR AT BUILD TIME, NEVER FROM
   MEMORY.** This invariant is what falsified the check-in date on 21 Aug and forced the
   amendment — the lock held and the invariant overrode it.
-- **NOT VERIFIED, and do not let this be read as covered: whether a link is CLICKABLE once
-  actually SENT to a guest** (everything was observed in Airbnb's composer, not in a delivered
-  message) · **Booking.com** · **Vrbo**. The latter two ship as a `verified: false` record that
-  structurally cannot render steps.
+- **VERIFIED ON A DELIVERED AIRBNB MESSAGE, 22 Aug 2026 — this line used to say the opposite
+  and the stale version cost a queue item on 26 Aug.** Airbnb linkifies a `bemgu.app` URL in a
+  SENT message; tapping shows the "You're leaving Airbnb" interstitial; **the fragment survives
+  both the linkifier and that redirect**, confirmed by a completed `POST /api/welcome-claim`
+  from the tapped link. Evidence in docs/history.md, 22 Aug.
+  **THE LESSON, and it is why this correction is written out rather than just applied: a
+  "NOT VERIFIED" line is a CLAIM WITH AN EXPIRY, and nothing in this project re-checks one.**
+  It was true when written, was closed three days later by a test recorded in another file, and
+  then propagated into a 26 Aug queue item as a live to-do that would have sent someone to
+  re-run a passing test. When a gap closes, close it AT THE LINE THAT ASSERTS IT, in the same
+  session — not only in the record of the session that closed it.
+- **STILL NOT VERIFIED: Booking.com · Vrbo.** Both ship as a `verified: false` record that
+  structurally cannot render steps, and `sharePlatforms.ts` deliberately makes NO claim that
+  either works. Only the Airbnb half closed.
 
 **STILL PARKED, unchanged:** block-source message fix (before Founding Hosts) · pre-arrival
   messaging gap · **`groq/compound` evaluation — PARKED WITHOUT A DEADLINE (option B).** Option A
