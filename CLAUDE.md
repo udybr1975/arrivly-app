@@ -51,6 +51,7 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > - `apartments.accent_color`: NULL = "inherit the brand default". `hosts.accent_color` = the account-wide brand default.
 > - Guest page resolves colour as: `apartment.accent_color ?? host.accent_color ?? colourPresets[0].hex` (`#1c1c1a`) — wired in `GuestPage.tsx` (`accent_color` added to the Host type).
 > - SECURITY DEFINER RPC `guest_host_card(p_apartment_id)` now ALSO returns `accent_color` (Migration B); `/api/guest-preview`'s host payload now surfaces `host.accent_color`. The coalesce is live on both the real guest page and the owner/admin preview.
+> - **`guest_host_card` MASKS `whatsapp` FOR `is_public_demo` APARTMENTS (DB-side migration, 26 Aug 2026)** — it returns NULL there, real apartments on the same host are unaffected (each checked). **This is the ENFORCING fix; the `!isPublicDemo` guards in `GuestPage.tsx` are defence in depth and say so in the code.** The RPC is anon-callable, so a client-side guard alone would have hidden the number while still SENDING it. Note `api/welcome.ts` is a SECOND server reader of `hosts.whatsapp` and is NOT demo-aware — it does not matter today (the welcome code is a separate door) but it is the reason a future "hide the host's number" job must be scoped to all readers, not to this RPC.
 >
 > **Branding model — LIVE (shipped S27 2a `981bd5b`):**
 > - Branding tab is now **ACCOUNT-WIDE**: logo (`hosts.logo_url`) + brand name (editable → `hosts.brand_name`) + default colour (→ `hosts.accent_color`). The old first-property-only behaviour was removed.
@@ -123,9 +124,25 @@ docs/schema.md.
   email / ntfy / audit still fire, deliberately — the operator must still see the machinery run);
   admin-overview metrics exclude test hosts. **A test host RESTS AT active + exempt with NULL
   Stripe refs — that is the SANCTIONED state, not a phantom subscription to be reconciled.**
-  Live state 23 Aug 2026: **1 real host, 3 real properties** (`8ad00130` charming 1908 studio,
-  `d273d7d4` Beautiful private space, `51a8b817` Cozy Studio in central Helsinki). **NOTHING WAS DELETED** — the fixtures are the only
-  regression corpus this project has, several are load-bearing, and they stay, flagged.
+  Live state 26 Aug 2026: **1 real host, FOUR real properties** (`8ad00130` charming 1908 studio,
+  `d273d7d4` Beautiful private space, `51a8b817` Cozy Studio in central Helsinki, `a1b1f547`
+  Charming Studio for couples — the fourth was created 25 Aug 2026 and is a REAL property, not
+  drift). Apartment totals: **14 total, 5 visible, 10 `is_test`.**
+  **NOTHING WAS DELETED HERE** — the fixtures are the only regression corpus this project has,
+  several are load-bearing, and they stay, flagged. (The ONE deliberate exception is Sweet home
+  `d9614d11`, rebuilt in place on 26 Aug 2026 as the public demo — see the fixture rules and
+  docs/history.md. That was a decision, not a cleanup, and it does not license another.)
+- **TWO DEMO FLAGS, DIFFERENT THINGS — NEVER CONFLATE (26 Aug 2026).** `hosts.is_demo` = a
+  **48-hour SANDBOX HOST** (a stranger who signed up at `/demo`; real AI, real two-way messaging,
+  their own dashboard, expires). `apartments.is_public_demo` = the **LANDING-PAGE PEEK FIXTURE**
+  (one shared apartment, scripted chat, messaging off, no expiry). They were nearly given the
+  same name; the migration was renamed before any code referenced it for exactly this reason.
+  Both are excluded from `experience_clicks`, and `is_demo` is excluded from admin totals.
+  **THE RULE THAT DECIDES THE SHAPE, hoisted 26 Aug 2026 out of the moved 25 Aug design block:
+  A PUBLIC QR CANNOT BE TWO-SIDED** — one shared apartment means one shared or fake inbox, so the
+  peek is one-sided (messaging OFF, a public token must never reach a host inbox) and the SANDBOX
+  is the two-sided demo. **Re-confirmed 26 Aug, not reopened; do not try to make the peek
+  two-sided.**
 - **`hosts` server-only columns** — `hosts` has 14 client-updatable profile columns only; `tier`, `is_exempt`, `price_override_cents`, `discount_percent`, `discount_until`, `property_cap_override`, `subscription_status`, `billing_notice`, `pending_tier`, `cancel_at_period_end`, `current_period_end`, `last_billing_notice_sig` are server-only for WRITE (column-level UPDATE revoked from authenticated+anon; verified via `role_column_grants` in Task 2 for `pending_tier` and `cancel_at_period_end`; `last_billing_notice_sig` UPDATE confirmed granted to `service_role` + `postgres` only, NOT authenticated/anon — F-05 verified safe S24). `billing_notice`, `pending_tier`, `cancel_at_period_end`, and `current_period_end` ARE SELECT-readable by authenticated (needed for BillingPanel). Never write server-only columns from the client — only via admin endpoints, `change-plan.ts`, `cancel-subscription.ts`, or the stripe-webhook (service-role).
 - **`city_events_cache` is service-role-only (RLS ON, ZERO policies)** — hosts CANNOT read it, including its `generated_at` timestamp. The property editor's "Guide & events" tab therefore derives events freshness from the **`/api/refresh-events` JSON response** (`refreshed` / `reason` / `generated_at`), NEVER a direct cache SELECT. (The city-guide row, by contrast, reads `guide_recommendations.generated_at` directly — that table IS host-readable.)
 - **`apartments.accent_color` is NULLABLE (S27 2a, Migration A):** the old NOT NULL + default were dropped. NULL = inherit `hosts.accent_color` (account default); non-null = per-property override. The "Look" tab writes a validated hex on override and `NULL` on "reset to brand default", scoped `.eq('id', aptId).eq('host_id', hostId)`. Backfill state after Migration A: 7 inheriting (NULL) / 4 explicit overrides / 11 total.
@@ -169,7 +186,8 @@ docs/history.md — "Test Data (in DB) — full enumeration as of 18 Aug 2026". 
 within days; only the rules below are durable.**
 
 **Apartment ids** (stable, used by every manual test):
-- Sweet home `d9614d11-d573-4ff0-961a-54c5ea37c2bd` (Etu Töölö Helsinki) · Test Apartment 1
+- Sweet home `d9614d11-d573-4ff0-961a-54c5ea37c2bd` (Helsinki) — **NOW THE PUBLIC DEMO FIXTURE,
+  see the rule below; it is no longer an ordinary test flat** · Test Apartment 1
   `aaaaaaaa-0000-0000-0000-000000000001` (Kallio) · Casa Marco
   `d81e4e89-385a-4886-b461-ba952c78e7f8` (El Born Barcelona) · Maison Lumiere
   `d7f47672-fde5-4da1-91ae-0f9f774732fd` (Le Marais Paris) · Penthouse in the sky
@@ -187,8 +205,12 @@ values — do not change without an explicit decision.**
 **THE FIXTURE RULES — these are what survives, not the dates:**
 - **FIXTURES SURVIVE RETENTION BY DATE-REFRESHING, NEVER BY EXEMPTION.** An exemption makes the
   published privacy notice false for everyone. **Re-roll dates before any guest-page test.**
-- **`ARR-NOA001` (Sweet home) is CANCELLED ON PURPOSE — it is the C8 fixture** for the
-  cancelled-conversation-survives rule. **It must survive every cleanup; do not "fix" it.**
+- **`ARR-NOA001` NO LONGER EXISTS (26 Aug 2026) — and its absence is CORRECT.** It was the C8
+  cancelled-conversation fixture on Sweet home, and it went with the 95 bookings deleted when that
+  apartment was rebuilt as the public demo. **Do not rediscover it as a missing row and re-create
+  it** — re-creating it would put a second booking on a PUBLISHED apartment. If the
+  cancelled-conversation rule ever needs a fixture again, build it on a test apartment, never on
+  `d9614d11`.
 - **Test Apartment 1 is DELIBERATELY geocoded to Vantaa** — a side effect of running D9 from the
   exempt admin account, kept as a fixture. **This is not drift; do not "correct" it.**
 - **`ARR-FUT001` (Casa Marco, 23-26 Aug) is the PRE-ARRIVAL fixture** — a future-dated valid token
@@ -197,8 +219,20 @@ values — do not change without an explicit decision.**
   over-claimed it; nothing references it. **Do not "rediscover" it as a missing row and
   re-create it.** (Hoisted 24 Aug 2026 out of the 23 Aug (2) session record before that block
   moved to docs/history.md — it existed at exactly one site.)
-- **`ARR-EVT777` / `ARR-PAR777` / `ARR-BCN777` are KEEP-PERMANENTLY** live/active/thank-you-state
-  fixtures. Re-roll their dates when they lapse; never delete them.
+- **`ARR-PAR777` / `ARR-BCN777` are KEEP-PERMANENTLY** live/active/thank-you-state fixtures.
+  Re-roll their dates when they lapse; never delete them.
+- **`ARR-EVT777` ON SWEET HOME IS THE PUBLIC DEMO FIXTURE (landing QR) — NOT a test fixture, and
+  the date rule does NOT apply to it (26 Aug 2026).** `apartments.is_public_demo = true`, and it
+  is the ONLY row that carries that flag. **ALL DATA ON IT IS INVENTED.** No iCal feed, no
+  street, no WhatsApp, ONE booking. **The token is deliberately PUBLIC** and resolves on any
+  date — `resolveGuestAccess` skips the date bound for this apartment — so there is nothing to
+  re-roll and a lapsed-looking date is the fixture working.
+  **NEVER attach a feed, a real address, real check-in details or a real stay to it**, and
+  **NEVER re-add `is_public_demo` to the host column allowlist.** Flagging an apartment publishes
+  EVERYTHING already on it, not just the one token the landing page prints: every
+  confirmed/completed booking on a flagged apartment becomes a permanent verified credential.
+  Full reasoning in `api/_lib/public-demo.ts`; the rebuild that produced it is in docs/history.md
+  (26 Aug 2026).
 - **Roy's `property_cap_override` was set to 2 for D8 and REVERTED to null** — verified reverted.
 - **THE THREE PRE-ARRIVAL CLAIM FIXTURES, on "charming 1908 studio" (renamed from "importer
   test" 23 Aug 2026; welcome code `DX89PW3H` UNCHANGED). ALL
@@ -377,7 +411,7 @@ values — do not change without an explicit decision.**
 - **Test/clock subscriptions need `metadata.app = arrivly` (exact lowercase — see BRAND vs CODENAME)
   AND `metadata.host_id = <uuid>`**, or the webhook ignores them with a silent 200.
 
-- **Signup does NOT create a Stripe subscription.** `Signup.tsx` only fires `/send-welcome`. A subscription exists only after a completed Checkout (`create-subscription`). Subscribing during the trial carries the remaining trial via `trial_end` → status stays `'trial'` (no charge) until the trial date, then converts to active.
+- **Signup does NOT create a Stripe subscription** — but `/choose-plan` is **step 2 of 2** and Stripe Checkout **captures the card there**; the dashboard is gated on `stripe_subscription_id`. **"No card needed" is FALSE anywhere in the product; the true wording is "no charge today"** (the 48-hour `/demo` sandbox is the ONE exception — it is genuinely card-free). `Signup.tsx` only fires `/send-welcome`. A subscription exists only after a completed Checkout (`create-subscription`). Subscribing during the trial carries the remaining trial via `trial_end` → status stays `'trial'` (no charge) until the trial date, then converts to active.
 
 ### AI providers & spend
 
@@ -862,14 +896,42 @@ recorded in both today.
   5. **GREY-ON-CREAM CONTRAST SWEEP — DONE (`d93c2d9`).** `#8a8276` -> `#6b6354`, 132 sites /
      21 files. Print-card colours EXCLUDED by decision (live-print approved; paper is not
      governed by WCAG) — the old scope text claiming otherwise is deleted, not struck through.
-  6. **NEXT SESSION, IN ORDER.** (1) **LESSONS RETIREMENT PASS** — Task 2; proposal table
-     first, Udy approves per item; this is what shrinks the file back under the trigger.
-     (2) **AA-FLOOR SESSION:** the `#9a958c` sweep (73 occurrences / 8 files, enumeration
-     PENDING) and the FOCUS-RING TOKEN REFACTOR (62 declarations / 11 colour-alpha variants /
-     7 offset colours — **NOT a value sweep**: backgrounds must be determined per site and
-     `Landing.tsx` mixes light and dark. Both design decisions are pre-settled — two tokens,
-     `#7a5c00` light / `#c8a24e` dark, alpha variants dropped). (3) **`gemini-2.5-flash`
-     repoint before 16 Oct 2026.** (4) the pentest gate below.
+  6. **THE ORDER — REPLACED 26 Aug 2026. THIS IS THE AUTHORITATIVE QUEUE.**
+     1. ~~THE DEMO~~ — **DONE** (`23d5197`, 26 Aug 2026).
+     2. **PRE-ARRIVAL MARKETING PASS — RESEARCH FIRST, BUILD LAST.** Five steps, in order:
+        **(i)** verify the Airbnb link is clickable in a **DELIVERED** message — one message to
+        self. **This is still the open hole in the pre-arrival record**: everything to date was
+        observed in Airbnb's COMPOSER, never in a delivered message, and Booking.com and Vrbo
+        remain unverified entirely.
+        **(ii)** competitor research — **dated, and cited from the competitors' own sites**: who
+        offers pre-arrival access, by what mechanism, and whether experiences are bookable before
+        arrival. **The comps-table rule stands: a competitor cell states a PRESENCE or nothing.**
+        **(iii)** copy — the pre-arrival page reached from the Airbnb confirmation; no QR needed
+        on arrival; experiences bookable before check-in, i.e. a LONGER EARNING WINDOW. **Airbnb
+        named explicitly.** Earnings claims stay **GetYourGuide + Tiqets on Portfolio** (Viator is
+        Bemgu-attributed at every tier — see PERMANENT PROVIDER CONSTRAINTS). Surfaces: hero, How
+        it works, comps table, earnings section.
+        **(iv)** close sandbox gap #1 — seed a **fabricated** `platform_ref` on Alex plus a
+        one-line "try it as Alex" in the Share panel, so the newest feature is reachable in the
+        demo at all. (Gap #6, the copy, is deferred behind this.)
+        **(v)** mockup → approval → build. Not before.
+     3. **`gemini-2.5-flash` repoint (OPTION A)** — **deadline 16 Oct 2026, the file's only live
+        dated deadline. Must ship before it.**
+     4. **Pentest gate** — the unchanged list at item 7 below, **plus the `demo-create` cooldown**.
+     5. **AA-FLOOR SESSION:** the `#9a958c` sweep (73 occurrences / 8 files, enumeration
+        PENDING) and the FOCUS-RING TOKEN REFACTOR (62 declarations / 11 colour-alpha variants /
+        7 offset colours — **NOT a value sweep**: backgrounds must be determined per site and
+        `Landing.tsx` mixes light and dark. Both design decisions are pre-settled — two tokens,
+        `#7a5c00` light / `#c8a24e` dark, alpha variants dropped). **Also carried into this
+        session from the moved 25 Aug record, so they are not lost with it: the AuthShell
+        TAGLINE at 2.96:1 on mobile and the LIFT-OUT at 4.26:1, both measured and both under
+        AA; and the PHONE/TABLET BROWSER CHECKS that need a real device — h2 wrap at 375px, the
+        GuideDrawer Ask panel's ring-inset at the viewport edge, and the ticket-stub earnings
+        card at a real 768 and 1024.**
+     6. **Cosmetic tail** — `€25` hardcoded twice vs `plans`, `sagrada.jpg` licence, Founding
+        Hosts prep.
+     **Stripe LIVE flip is ABSOLUTE LAST, and only after the GYG + Tiqets written confirmations.**
+     (The LESSONS RETIREMENT PASS that used to head this list was done 25 Aug, `4bfa0f2`.)
   7. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
      dependency vulnerabilities (8 high, 8 moderate) as of the 18 Aug push, UNREVIEWED.** Read the
      list before the gate — **earlier if any high is runtime-reachable**. NOTE this supersedes the
@@ -1048,6 +1110,16 @@ recorded in both today.
   `result.capped`. ntfy is a third consumer of `deferred + ok + failed === apartments.length`.
   `PropertySetup.tsx`'s "Calendar synced" toast hides the strings (UI, mockup-first).
 
+- **PARKED (not scheduled) — "GIRLFRIEND ACCESS": a SECOND EMAIL that can see Udy's host
+  dashboard AND /admin (26 Aug 2026).** **Not possible today**, and the two blockers are
+  structural, not cosmetic: RLS is written as `auth.uid() = host_id` throughout, and
+  `SuperAdminRoute` gates on ONE hardcoded email. Two options recorded, neither chosen:
+  **(a) a second superadmin + the existing Impersonate** — cheapest, but **verify Impersonate's
+  WRITE semantics first**: reading as another host is not the same permission as writing as them,
+  and nobody has checked which it does. **(b) a `host_members` table + an RLS rewrite** — the
+  real feature, a genuine multi-user model, and therefore a **pentest-gate item**, since it
+  changes the tenancy boundary every policy in the database is written against. **Do not treat
+  (a) as a stepping stone to (b)** — they are different products.
 - **OPEN — THE SHARE MESSAGE AND `host_picks` ARE NOW COUPLED, and nothing enforces it.** The
   default welcome message promises "our own favourite places to eat and drink nearby", and
   `SharePanel` nags when a property has **zero `host_picks`** — the first time those two facts have
@@ -1235,54 +1307,13 @@ drill) remains a graduation prerequisite.**
 > Moved to docs/history.md — "Session — 24 Aug 2026 — drawer refresh, the A5 guest card, privacy
 > decided". Its decisions are restated under DECIDED in the 25 Aug block.
 
-## Session — 25 Aug 2026 — Lessons retired, landing made true, the mark became a B
-
-HEAD at close: c9e2753. Twelve commits; detail lives in their commit bodies, not here.
-
-SHIPPED: `4bfa0f2` Lessons retirement pass (140,328 → 131,277). `a3ad688` `168b0f4` `80c0160`
-`7e57492` landing + AuthShell copy made true (no tables/transfers; "pick is bookable" corrected;
-"pays you back" scoped inside the same string). `9c82af4` comps table re-verified against the
-competitors' own sites 25 Aug — a competitor cell states a PRESENCE or nothing. `3068757` mark
-A→B, `withTagline` lockup on landing/auth only, icons via `scripts/gen-icons.mjs`. `a7a35a6`
-`1e53163` ticket-stub earnings card; `md:scale-[0.62] lg:scale-[0.92]` exists because the fixed
-ticket clipped 768–1080px — re-derive if that section's gaps/max-w change. `71fc9e3` `67a76d4`
-`c9e2753` marketing fixtures: real venues → invented, geocoder-verified-absent names.
-
-VERIFIED 25 Aug: `VITE_EXPERIENCES_ENABLED` is true in the production bundle (flag-gated call
-present ×2 in prod, ×0 in a flag-off build). Re-verify after any env edit + redeploy.
-
-DECIDED (Udy), do not reopen: Viator stays named only as Bemgu's own guest-facing marketplace,
-never in earnings copy or competitor cells (clause-14 observation closed). Host-facing placeholder
-examples (PropertySetup hints, help-drawer content.ts, host-guide doc) KEEP real place names —
-they show what to type. 24 Aug decisions carried unchanged (no ntfy rotation; print colours out
-of contrast work; interstitial closed; ring two-token, alpha dropped).
-
-OPEN: AuthShell tagline 2.96:1 mobile + lift-out 4.26:1 → AA session · `€25` hardcoded twice vs
-`plans` · `sagrada.jpg` licence undocumented · competitor facts dated 25 Aug, re-check at marketing
-pass · phone/tablet browser checks (h2 wrap 375px, ring-inset, ticket at real 768/1024).
-
-QUEUE: 1 THE DEMO (approved 25 Aug, below) · 2 gemini-2.5-flash repoint (deadline 16 Oct 2026 —
-must ship before it) · 3 pentest gate (incl. demo-sandbox limits) · 4 AA-floor session · 5
-cosmetic tail (€25 from plans, sagrada licence, Founding Hosts prep). Stripe LIVE flip ABSOLUTE LAST.
-
-DEMO — APPROVED DESIGN (Udy, 25 Aug 2026). Two tiers, not one:
-- PUBLIC PEEK — a QR/link on the landing page to the Sweet home fixture (`d9614d11`, token
-  `ARR-EVT777`; refresh its dates first). Guest page ONLY. NO AI: chat shows scripted question
-  bubbles with pre-written answers; the free-text input is disabled and says, in the box, that in
-  a live guest page the assistant answers any question. Messaging OFF for demo apartments (a
-  public token must not reach a host inbox). Marketplaces (Viator/GYG/Tiqets) stay LIVE and
-  clickable — outbound links cost nothing; the fixture has no partner IDs so any sale is Bemgu's;
-  exclude the demo apartment from `experience_clicks` earnings/admin metrics. Zero spend surface
-  → NOT a pentest item. Mockup-first.
-- SANDBOX — the EXISTING `/demo` flow (`api/demo-create.ts`, `VITE_DEMO_ENABLED`): signed-up
-  host, Turnstile-gated, 48h, own dashboard + own guest page with the seeded "Alex" booking; real
-  AI and real two-way messaging in their own sandbox. This is the two-sided demo. Its abuse bound
-  is signup + Turnstile; demo-create cooldown never built → pentest gate.
-- A public QR CANNOT be two-sided (one shared apartment → shared or fake inbox); do not try.
-NEXT SESSION, in order: (a) verify `VITE_DEMO_ENABLED` in the production bundle (same method as
-the experiences flag); (b) audit the sandbox seed against features shipped since (pre-arrival
-link, drawer refresh, A5 card) and list gaps; (c) public peek: mockup → approval → build;
-(d) flip the landing "Live demo coming soon" CTAs to the two real entry points.
+> Moved to docs/history.md — "Session — 25 Aug 2026 — Lessons retired, landing made
+> true, the mark became a B". Its QUEUE was superseded on 26 Aug (see THE QUEUE item 6);
+> its DECIDED items and the `md:scale-[0.62] lg:scale-[0.92]` note moved WITH it, and its
+> OPEN list is carried in the queue's cosmetic tail. The DEMO — APPROVED DESIGN block moved with
+> it too, marked SHIPPED — **one rule was HOISTED out of it first** ("a public QR cannot be
+> two-sided"), into the TWO DEMO FLAGS trap in DB TRAPS, because it is a design rule and would
+> otherwise have left with the record.
 
 ## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
 

@@ -2673,3 +2673,139 @@ DECIDED, so none of it is re-litigated:
 - **Copy ticket — DECIDED leave-as-is:** the imperative reading of "Download QR only (PNG)", and
   the desktop-shaped "in the print window" caption (**iOS Safari uses the share sheet**). Revisit
   only if a real host stumbles; the button label carries "Save as PDF".
+
+## Session — 25 Aug 2026 — Lessons retired, landing made true, the mark became a B
+
+HEAD at close: c9e2753. Twelve commits; detail lives in their commit bodies, not here.
+
+SHIPPED: `4bfa0f2` Lessons retirement pass (140,328 → 131,277). `a3ad688` `168b0f4` `80c0160`
+`7e57492` landing + AuthShell copy made true (no tables/transfers; "pick is bookable" corrected;
+"pays you back" scoped inside the same string). `9c82af4` comps table re-verified against the
+competitors' own sites 25 Aug — a competitor cell states a PRESENCE or nothing. `3068757` mark
+A→B, `withTagline` lockup on landing/auth only, icons via `scripts/gen-icons.mjs`. `a7a35a6`
+`1e53163` ticket-stub earnings card; `md:scale-[0.62] lg:scale-[0.92]` exists because the fixed
+ticket clipped 768–1080px — re-derive if that section's gaps/max-w change. `71fc9e3` `67a76d4`
+`c9e2753` marketing fixtures: real venues → invented, geocoder-verified-absent names.
+
+VERIFIED 25 Aug: `VITE_EXPERIENCES_ENABLED` is true in the production bundle (flag-gated call
+present ×2 in prod, ×0 in a flag-off build). Re-verify after any env edit + redeploy.
+
+DECIDED (Udy), do not reopen: Viator stays named only as Bemgu's own guest-facing marketplace,
+never in earnings copy or competitor cells (clause-14 observation closed). Host-facing placeholder
+examples (PropertySetup hints, help-drawer content.ts, host-guide doc) KEEP real place names —
+they show what to type. 24 Aug decisions carried unchanged (no ntfy rotation; print colours out
+of contrast work; interstitial closed; ring two-token, alpha dropped).
+
+OPEN: AuthShell tagline 2.96:1 mobile + lift-out 4.26:1 → AA session · `€25` hardcoded twice vs
+`plans` · `sagrada.jpg` licence undocumented · competitor facts dated 25 Aug, re-check at marketing
+pass · phone/tablet browser checks (h2 wrap 375px, ring-inset, ticket at real 768/1024).
+
+QUEUE: superseded 26 Aug 2026 — **the authoritative queue is THE QUEUE item 6 under OPEN ITEMS**.
+Do not read this session block's ordering as current.
+
+DEMO — **SHIPPED 26 Aug 2026 (`23d5197`)**. Approved design (Udy, 25 Aug 2026), two tiers, not one:
+- PUBLIC PEEK — a QR/link on the landing page to the Sweet home fixture (`d9614d11`, token
+  `ARR-EVT777`). **The token resolves on ANY date — there is nothing to refresh.** Guest page ONLY. NO AI: chat shows scripted question
+  bubbles with pre-written answers; the free-text input is disabled and says, in the box, that in
+  a live guest page the assistant answers any question. Messaging OFF for demo apartments (a
+  public token must not reach a host inbox). Marketplaces (Viator/GYG/Tiqets) stay LIVE and
+  clickable — outbound links cost nothing; the fixture has no partner IDs so any sale is Bemgu's;
+  exclude the demo apartment from `experience_clicks` earnings/admin metrics. Zero spend surface
+  → NOT a pentest item. Mockup-first.
+- SANDBOX — the EXISTING `/demo` flow (`api/demo-create.ts`, `VITE_DEMO_ENABLED`): signed-up
+  host, Turnstile-gated, 48h, own dashboard + own guest page with the seeded "Alex" booking; real
+  AI and real two-way messaging in their own sandbox. This is the two-sided demo. Its abuse bound
+  is signup + Turnstile; demo-create cooldown never built → pentest gate.
+- A public QR CANNOT be two-sided (one shared apartment → shared or fake inbox); do not try.
+
+## Session — 26 Aug 2026 — the public demo shipped, and the fixture behind it was rebuilt
+
+**HEAD at open `bda0933`, at close `23d5197` + the two closing commits.** Opening ritual: no
+drift — Vercel READY deployment matched HEAD, and the DB matched the brief except for one extra
+REAL apartment on Udy's host, "Charming Studio for couples" (`a1b1f547`, created 25 Aug). That is
+a real property, not drift; the real count on that host is now FOUR.
+
+### (a) VITE_DEMO_ENABLED verified TRUE in production — measured, not assumed
+Same method as the 25 Aug `VITE_EXPERIENCES_ENABLED` check: compare the deployed bundle against a
+flag-off local build of the same commit. `"Live demo coming soon"` (the inert-branch title) appears
+**0×** in production and **1×** in a flag-off local build of `bda0933`; `"Try Bemgu free for 48
+hours"` is **1× / 0×**. Two ungated controls were identical across both bundles (**2/2**, **1/1**),
+which is what makes the first two numbers a flag reading rather than a build difference. **The
+sandbox demo was already live.** Consequence, and the reason this had to be measured first:
+anything added behind that flag goes public on the next push.
+
+### (b) Sandbox seed audited against everything shipped since — 7 gaps
+- **#3 sandbox clicks counted as real** and **#4 sandbox hosts inflating `/admin` totals** — both
+  SHIPPED in `23d5197`. `experience-click` now drops beacons for `hosts.is_demo` as well as
+  `apartments.is_public_demo`; `admin-overview` filters `is_demo` alongside `is_test`.
+- **#1** the seeded guest (Alex) has no `platform_ref`, so **the pre-arrival link cannot be tried
+  in the sandbox at all** — the newest feature is invisible in the demo. → marketing pass.
+- **#2** the pre-arrival PREVIEW state is unreachable because Alex is already checked in. Deferred.
+- **#5 / #7** keep as they are. **#6** is copy, and is deferred behind #1 because the copy
+  describes a flow the seed cannot yet perform.
+
+### (c) + (d) The two-tier demo — SHIPPED as `23d5197`
+Mockup approved before any code was written. Full detail is in that commit's message and is not
+restated here. Shape: `apartments.is_public_demo` confines ONE apartment to demo behaviour —
+dateless `active`, scripted chat with no model call and no counter bump, messaging 403 at three
+doors, no click logging, no ntfy heartbeat, null daily-greeting — plus a `#live-demo` landing
+section (QR + sandbox CTA) and the trial-copy correction at six sites.
+
+**Both gates ran THREE rounds and the code needed all three.** What they caught is worth keeping:
+- **The date bound expiring the demo one surface at a time** — found INDEPENDENTLY by both gates.
+  The first implementation made only `guest-state` dateless, so the page would have stayed
+  `active` while `guest-details` (the door code) and `guest-bootstrap` (the coordinates) quietly
+  went back to 403 once the fixture's dates lapsed. Fixed CENTRALLY in `resolveGuestAccess`.
+- **`guest-subscribe` — the only messaging door that WRITES**, and the one left open. Its window
+  is wider than the canonical gate, so every visitor would have been authorised to upsert a
+  `push_subscriptions` row against a real host.
+- **`handleShare`'s `wa.me` fallback** — genuinely reachable, on every browser without the Web
+  Share API, opening WhatsApp addressed to the host's real number. The visible Settings card had
+  been guarded; this second site had not.
+
+### DB-SIDE CHANGES WITH NO COMMIT — this record is their only trace
+- **Migration `apartments_is_demo_flag`, renamed to `apartments_is_demo_rename_is_public_demo`
+  BEFORE any code referenced it**, because `hosts.is_demo` already means "sandbox host" and the
+  two would have been read as one thing forever. `apartments.is_public_demo boolean NOT NULL
+  DEFAULT false` + a partial index. **Deliberately NOT in the host column allowlist** — UPDATE
+  and INSERT measured `false` for both `anon` and `authenticated`; a separate grant gives
+  `authenticated` SELECT only.
+- **Migration `guest_host_card_null_whatsapp_for_public_demo`** — the anon-callable RPC now
+  returns `whatsapp` NULL when the apartment is `is_public_demo`. The four real apartments on the
+  same host still receive it; each was checked individually. This is the ENFORCING fix; the
+  client-side guards in `GuestPage.tsx` are defence in depth and say so.
+- **Sweet home `d9614d11` REBUILT IN PLACE as the public fixture** — Udy's decision, "no more
+  test apartments". 95 bookings, 13 messages and 14 experience-clicks deleted. What remains: ONE
+  booking (Alex, `ARR-EVT777`, 25 Aug → 30 Sep, **dates now irrelevant — the code resolves it
+  dateless**); 10 detail rows replaced by 8 invented ones (WiFi, door, check-in, rules, Parking,
+  Bins); 9 host picks replaced by 5 public landmarks; `ical_urls` NULL; `street` NULL;
+  `welcome_show_address` false; the pin moved to a public square in Kamppi; description and
+  welcome_note both say the property is a demo and the details are invented.
+
+**WHY the rebuild happened, and it is the whole lesson of the session:** the security gate found
+that the apartment about to be advertised on the landing page was carrying a real-looking 4-digit
+door code, an ISP-issued WiFi network and its password, a real street address, the host's real
+WhatsApp number, 57 past stays with real-looking guest first names — and a **LIVE Airbnb iCal
+feed**, which meant the cron would have kept minting fresh permanent credentials faster than any
+scrub could remove them. (The values themselves are deliberately NOT recorded here: git objects
+never expire and this repo is public.) Udy confirmed it was a test flat and is changing the
+physical codes anyway. **The general rule this produced is now in `api/_lib/public-demo.ts` and
+in CLAUDE.md: flagging an apartment publishes EVERYTHING already on it, so a flagged apartment
+must never have taken — or ever take — a real stay.**
+
+### Post-push probes against PRODUCTION
+`guest-state` → `active`, guest name Alex · `guest-chat` → scripted 200 on a known question and
+the single fallback line on an unknown one · `guest-message` → 403 `demo_messaging_off` ·
+`experience-click` → 204 with **0 rows written**, confirmed at the table · the landing bundle
+carries the section and the token · the only surviving "No card needed" in `src` is `Demo.tsx`,
+where it is TRUE.
+
+### Decisions
+- **The peek is ONE-SIDED and the sandbox is TWO-SIDED — re-confirmed, not reopened.** A single
+  shared apartment cannot have a real inbox.
+- **"No card needed" is FALSE product-wide.** Fixed at SEVEN sites: six in `23d5197`
+  (`Landing.tsx` ×4, `Signup.tsx` ×2) and `src/guide/content.ts` in the closing commit. The
+  content.ts site was found by the closing grep of the previous session and reported rather than
+  patched at the time, per the sweep rule — the surface had been drawn one site short.
+- **`hosts.is_demo` (48h sandbox host) and `apartments.is_public_demo` (landing-page peek) are
+  DIFFERENT FLAGS.** Never conflate them; the rename above exists precisely to stop that.
