@@ -32,7 +32,10 @@ import { resolveGuestAccess } from './_lib/guest-access.js'
 // window. Do NOT loosen the gate to status-only, which would extend that signal to
 // future-dated and long-past tokens that guest-state deliberately flattens.
 //
-// This response varies by token, so it must NEVER gain an s-maxage/CDN cache header:
+// THE CACHE PROHIBITION IS A MECHANISM, NOT A NOTE. The handler sets
+// Cache-Control: no-store as its FIRST STATEMENT, before the method guard, so every
+// return path carries it. The prohibition it used to state on its own still stands:
+// this response varies by token, so it must NEVER gain an s-maxage/CDN cache header —
 // a cached coordinate-bearing body could be served to a tokenless caller.
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
@@ -67,6 +70,12 @@ function clientIp(req: VercelRequest): string {
 // --------------------------------------------------------------------------------
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // This response varies by a per-guest credential (the booking token, which gates
+  // lat/lng), so it must never be stored by a CDN, a proxy or the browser. Set BEFORE
+  // the method guard so every path carries it — there are multiple return sites in
+  // this file and a future one added below would otherwise ship uncovered.
+  res.setHeader('Cache-Control', 'no-store')
+
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' })
 
   const now = Date.now()

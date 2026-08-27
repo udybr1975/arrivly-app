@@ -130,6 +130,13 @@ async function notifyOpen(
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // This response varies by a per-guest credential (the booking token, or the QR key
+  // on the keyed date path), so it must never be stored by a CDN, a proxy or the
+  // browser. Set BEFORE the method guard so every path carries it — there are multiple
+  // return sites in this file and a future one added below would otherwise ship
+  // uncovered.
+  res.setHeader('Cache-Control', 'no-store')
+
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' })
 
   const now = Date.now()
