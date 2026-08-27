@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { GoogleGenAI } from '@google/genai'
 import { scrubErr } from './_lib/scrub.js'
 import { aiGenerate, resolveProvider } from './_lib/ai-provider.js'
+import { sendNtfy } from './_lib/ntfy.js'
 import { scrubCredentialSentences } from './_lib/import-listing.js'
 import { EXTRAS_CATEGORIES, isExtrasCategory } from '../src/lib/detailCategories.js'
 
@@ -169,6 +170,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     .maybeSingle()
   if (!apt) return res.status(403).json({ error: 'forbidden' })
 
+  // SPEND BRAKE. A brake is UNFINISHED until its key is in cron-spend-audit's ROLLING_LIMITS —
+  // unlisted endpoints are ignored by BOTH detectors, so the 429 would fire while nothing
+  // alarmed. 'bulk-import' is registered there at 3x this cap.
+  //
+  // CALLER-KEYED: the bump follows a PROVEN ownership check on apartments.host_id above, so the
+  // named host really is the spender and "block this host" is correct remediation — unlike the
+  // victim-keyed guest surfaces.
+  //
+  // WHY THIS ENDPOINT NEEDS ONE AT ALL: it is host-authenticated and calls a paid model on every
+  // request, and the client offers a manual re-paste with no ceiling of its own. The Groq minute
+  // is ORG-WIDE, so an unbraked loop here starves guest-chat, the greeting, events and the guide
+  // for every other tenant; the gemini branch spends the SHARED GEMINI_API_KEY project instead.
+  //
+  // 10/hour mirrors api/import-listing.ts, the sibling door onto the same job: a host organising
+  // one paste spends one call, and a host genuinely iterating on a document does not need eleven.
+  const BULK_IMPORT_HOURLY_LIMIT = 10
+  const { data: hourCount, error: counterErr } = await admin.rpc('bump_api_counter', {
+    p_host_id: authData.user.id,
+    p_endpoint: 'bulk-import',
+  })
+  if (counterErr) {
+    // FAIL CLOSED. The blocked behaviour here is the free fallback — the host types the fields
+    // into the tabs by hand, which is what they would have done without this feature at all.
+    // Fail-open is indefensible when the fallback costs nothing: it would spend uncapped model
+    // budget during exactly the burst that broke the counter.
+    console.warn('[bulk-import] counter bump failed (fail-closed)', scrubErr(counterErr, 120))
+    return res.status(503).json({ error: 'busy' })
+  }
+  if (typeof hourCount !== 'number') {
+    console.warn('[bulk-import] counter returned a non-number (fail-closed)')
+    return res.status(503).json({ error: 'busy' })
+  }
+  if (hourCount > BULK_IMPORT_HOURLY_LIMIT) {
+    // Alert INSIDE the over-cap branch and on STRICT EQUALITY, so it is one-shot: a host held at
+    // the cap must not be able to fire an alert per request. (Written the other way round it was
+    // unreachable — the 429 returns first.)
+    if (hourCount === BULK_IMPORT_HOURLY_LIMIT + 1) {
+      // AWAITED, not fire-and-forget: an un-awaited fetch in a serverless function can be killed
+      // when the response returns, which is exactly when this one is sent.
+      await sendNtfy({
+        title: 'Bemgu — bulk-import hourly cap hit',
+        message:
+          `Host ${authData.user.id} exceeded ${BULK_IMPORT_HOURLY_LIMIT}/h on /api/bulk-import.\n` +
+          `CALLER-KEYED: this host is the spender (ownership proven before the bump), so ` +
+          `blocking them is correct remediation.\n` +
+          `REVOKE + ROTATE if abuse is confirmed: GROQ_API_KEY (console.groq.com) or ` +
+          `GEMINI_API_KEY (gen-lang-client-0819525902).`,
+        priority: 'high',
+      }).catch(() => {})
+    }
+    return res.status(429).json({ error: 'rate_limited' })
+  }
+
   // PILOT: provider decides WHICH model answers. Auth, ownership check, the 8000-char cap, the
   // parse/validation, the delete+insert and every response shape are untouched. The
   // GEMINI_API_KEY guard moved inside the gemini branch so the groq path survives Step 8.
@@ -179,8 +233,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     let raw = ''
     if (provider === 'groq') {
       // Budget parity with the gemini branch below, which is a SINGLE-SHOT 10s Promise.race
-      // with no retry: retries 0. This endpoint has no rate limiter at all, so allowing 3
-      // attempts here would have tripled its per-request model calls.
+      // with no retry: retries 0. Retries stay at 0 because the CLIENT owns the retry decision
+      // (one manual button) and the gemini branch is single-shot. The hourly brake above bounds
+      // how many times that loop may run; automatic retries would multiply the model calls
+      // INSIDE each one, which the brake does not see.
       raw = await aiGenerate('bulk_import', {
         system: SYSTEM_PROMPT,
         prompt: content.trim(),

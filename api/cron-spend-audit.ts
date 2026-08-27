@@ -48,6 +48,13 @@ const ROLLING_LIMITS: Record<string, number> = {
   // correct remediation. This endpoint carries the largest per-call Groq reservation of any
   // host-authenticated surface, against an ORG-WIDE minute.
   'import-listing': 30,
+  // 3x the 10/hour cap in api/bulk-import.ts. Registered in the SAME commit that added the
+  // brake, because a brake is UNFINISHED until its key is here: unlisted endpoints are ignored
+  // by BOTH detectors below, so the 429 would fire while nothing alarmed. CALLER-KEYED — the
+  // bump follows a proven apartments.host_id ownership check, so blocking the named host is
+  // correct remediation. Sibling of 'import-listing' above: same 10/hour cap, same job through
+  // an older door, and unlike that one this endpoint may resolve to EITHER provider.
+  'bulk-import': 30,
   // 3x the 30/hour cap in api/cancel-booking.ts. Registered for the reason the block above
   // exists: a brake is UNFINISHED until its key is in this allowlist, because unlisted
   // endpoints are ignored by BOTH detectors and the 429 would fire while nothing alarmed.
@@ -99,6 +106,14 @@ const KEY_HINT: Record<string, string> = {
   // own alert falls back to 'see the endpoint owner' while the endpoint's own alarm names the
   // key — two alerts about one incident disagreeing on the remediation.
   'import-listing': 'GROQ_API_KEY (console.groq.com) - ORG-WIDE TPM, shared by every Groq surface',
+  // Names BOTH providers because this surface alone resolves per AI_PROVIDER_BULK_IMPORT: the
+  // groq branch spends the ORG-WIDE Groq TPM pool, the gemini branch spends the SHARED
+  // GEMINI_API_KEY project (gen-lang-client-0819525902). An operator paged about this endpoint
+  // cannot tell which from the alert, so naming one key would point half the incidents at the
+  // wrong console. 66 chars - re-measured 27 Aug 2026 by executing both templates with this
+  // hint: per-host 448, global 471, both inside sendNtfy's 500-char slice with this hint
+  // intact as the last line.
+  'bulk-import': 'GROQ_API_KEY or GEMINI_API_KEY (shared) - provider set per surface',
 }
 
 // Cross-host aggregate (Sybil detection). Every per-host check below (and every brake) keys on
