@@ -885,7 +885,7 @@ async function generateCityEventsGemini(
 
   try {
     const response = await withRetry(generate, { retries: 1 })
-    const raw = (response.text || '').replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim()
+    const raw = (response.text || '').replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
     const parsed = JSON.parse(raw)
     if (parsed && typeof parsed === 'object' && Array.isArray(parsed.categories)) {
       parsed.categories.forEach((cat: any) => {
@@ -1303,7 +1303,7 @@ async function generateCityEventsTavily(
   // 3. Parse + sanitise. Anything not matching the expected shape returns null, as today.
   let parsed: unknown
   try {
-    const cleaned = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim()
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
     parsed = JSON.parse(cleaned)
   } catch {
     console.warn('[city-events] extraction parse failed', { aptId: apt.id, rawLen: raw.length })

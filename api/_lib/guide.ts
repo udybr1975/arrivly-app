@@ -150,7 +150,20 @@ function buildPrompt(apt: AptInput, onlyCategories?: readonly CategoryKey[]): st
 // reply is not guaranteed to be bare JSON, so on failure retry the first-brace..last-brace slice.
 // Shared by the main call and the empty-category retry so the two cannot drift apart.
 function parseModelJson(raw: string): Record<string, unknown> {
-  const cleaned = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim()
+  // THE `(?:...)` GROUP IS LOAD-BEARING — do not "simplify" it to `json?`. Without the group
+  // the `?` binds to the letter `n` alone, so the pattern reads "jso" plus an OPTIONAL "n"
+  // and a BARE ``` fence is never stripped.
+  //
+  // WHAT THAT COSTS DIFFERS BY SITE, and this one is the mild case: here JSON.parse fails and
+  // the brace-slice retry below usually recovers, so the bug shows up as a second-chance path
+  // taken on every fenced reply rather than as a visible failure. At _lib/city-events.ts
+  // (both sites) and _lib/host-picks.ts there is NO such fallback — the parse failure is
+  // terminal and the caller silently gets an empty result.
+  //
+  // All seven fence-strippers in api/ share this opening form. _lib/host-picks.ts carries the
+  // same note in fuller form; the two in _lib/city-events.ts were fixed in the same commit and
+  // carry none.
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
   try {
     const p = JSON.parse(cleaned)
     if (p !== null && typeof p === 'object' && !Array.isArray(p)) {
