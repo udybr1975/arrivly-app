@@ -3263,7 +3263,7 @@ replaced by: item 0 marked DONE with the measured result, keeping the standing e
         answer, and re-check each against source before it is kept.** A lesson that is merely
         old is not the problem; a lesson that is WRONG is.
 
-## Session — 27 Aug 2026 — the pentest gate: six commits, an enumeration, and a contract
+## Session — 27 Aug 2026 — the pentest gate: eight commits, an enumeration, a contract and a queue
 
 THE DAY IN FULL: six code commits, one read-only enumeration, one new contract, two docs
 passes. The sections below run in order; the first two are the morning's parity commits.
@@ -3504,3 +3504,82 @@ nobody had opened, by a gate looking at something else entirely.
 one.** Each pass over a file surfaces siblings of what it just fixed. Budget it as a sweep
 with a rate, not a list with an end — and expect the queue to grow while the code improves.
 That is the gate working, not failing.
+
+### Evening — two more commits, and the queue moves out of CLAUDE.md
+
+`08941f7` **generate-host-picks spend brake.** The same missing-brake defect `b5a9ff1`
+closed in `bulk-import` at 08:24 that morning, found at 16:42 in a file nobody had opened.
+**It is worse than its siblings on one axis, and that axis is the reason it is not merely
+parity:** beyond the model call, `enrichHostPicks` fans out to UP TO 20 CONCURRENT
+`geocodeAddress` calls per request (`_lib/host-picks.ts:119-122`), so an unbraked loop burns
+the FLEET-WIDE LocationIQ pool as well as an AI quota. The brake sits before
+`enrichHostPicks` so an over-cap request spends NEITHER. Measured ntfy bodies: per-host 456,
+global 480, endpoint alarm 333 — all inside the 500-char slice. Both gates PASS, round 1.
+
+`6d244c3` **the bare-fence regex.** `/^```json?\s*/i` reads "```jso" plus an OPTIONAL "n" — the
+`?` binds to the single preceding character, so the intended alternation never existed and a
+BARE ``` fence was never stripped: `JSON.parse` failed, `rawParsed` stayed `[]`, and the host
+silently got zero picks. **Calibrated honestly as a CORRECTNESS bug in a defensive fallback,
+not a security finding** — `responseMimeType: 'application/json'` is set, so a fence should
+not normally appear, and there is no credential exposure either way. Proven by EXECUTING both
+patterns rather than reading them: bare fence went from `JSON.parse` FAILS to parses OK, and
+the other three cases were unchanged.
+
+### THE FENCE FAMILY WAS SEVEN SITES, NOT THREE — the same failure, twice in one day
+
+The brief for `6d244c3` said the fix would make host-picks "match `bulk-import.ts` and
+`import-listing.ts`", implying a three-site family. **A `grep -rn` over `api/` returned
+SEVEN, of which THREE are still defective:** `_lib/city-events.ts:888`,
+`_lib/city-events.ts:1306`, `_lib/guide.ts:153`. (`_lib/greeting.ts:91` was already correct
+and nobody knew.)
+
+**THIS IS THE SECOND TIME IN ONE DAY A BRIEF ASSERTED THE SIZE OF A DEFECT FAMILY WITHOUT
+ENUMERATING IT AND WAS WRONG.** The first was `d8efb4e`, where "no host-authored text reaches
+the model" was false at both sites. **The pattern is identical: a plausible scope claim,
+repeated forward, never measured.** It is the "three of four table rows updated" signature
+the project already records — and the reason the queue file now demands a grep or a source
+line as EVIDENCE on every entry, not a description.
+
+### `api/geocode.ts` — the finding that arrived by looking sideways
+
+The `08941f7` security gate, auditing something else, noticed that **`api/geocode.ts` is the
+same missing-brake defect one endpoint over — and a cheaper door onto the very pool
+`08941f7`'s comment exists to protect.** 27 lines total: Bearer auth, `getUser`, then
+`geocodeAddress` on an arbitrary 250-char string. No counter, no cap, no registry entry —
+**and no apartment ownership check at all**, so any authenticated host may geocode any
+string, unmetered. It is PG-01 in the new queue and ranked above every latent item.
+
+### THE CALIBRATION THAT KEEPS THE BRAKE HONEST
+
+**A per-host cap cannot bound a FLEET-WIDE pool**, and `08941f7` must not be read as a
+ceiling. At the cap it permits 10 requests/hour x 20 geocodes = **200 LocationIQ calls per
+host per hour**; the cross-host alarm sits at 150 x 20 = 3,000 against a ~5,000/day pool that
+also backs address save and guide places. The other bound is the per-instance 550ms start
+gate in `_lib/geo.ts`, which serialises starts within ONE Lambda and therefore bounds neither
+the fleet pool nor the daily quota. **Consequence: this key's numbers are NOT comparable to
+the AI-only keys beside it in `ROLLING_LIMITS`.** Recorded as PG-18, explicitly as calibration
+rather than a defect, so a future reader does not "fix" it.
+
+### docs/pentest-queue.md — why the list left CLAUDE.md
+
+The gate list lived inside CLAUDE.md, which is size-constrained against a ~130,000 floor, so
+the list competed for space with the invariants. **Extracting it took CLAUDE.md from 126,721
+to 120,243 stored chars (-6,478)** and replaced two sites with pointers.
+
+**The queue was REBUILT FROM SOURCE, not transcribed.** Every open item was opened and
+confirmed before being written, which immediately caught a stale citation: the raw
+name-interpolation item pointed at `_lib/guest-access.ts:200`, but that line is the PICKS
+BLOCK — the interpolation is at **`:222-223`**, 22 lines away. A queue rebuilt from the old
+text would have carried that error into every future session that trusted it.
+
+**The structure earns its keep in two places.** Stable ids (PG-01…) mean a session can be
+given "work PG-01 and PG-02 under the contract" instead of a prompt per commit. And the
+**INVESTIGATED AND CLEARED** section exists because `guest-availability` has now been raised
+and dismissed TWICE: **a cleared item that is not recorded as cleared comes back as a new
+finding.** `freeText`-unscrubbed is recorded there too, with its ruling — this endpoint never
+writes to the database, so the argument that forced a server-side belt in `bulk-import` does
+not transfer.
+
+**Dependabot got its own entry that says not to batch it (PG-17).** Sixteen alerts is a
+TRIAGE task, and its two known-reachable advisories are in `react-router`, which touches every
+route — nothing like the one-line mirrors around it.

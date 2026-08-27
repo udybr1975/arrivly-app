@@ -856,41 +856,15 @@ recorded in both today.
         behind it.
      3. ~~gemini repoint~~ — DONE as Option A, `6518da7`, 26 Aug 2026; no repoint, see AI
         MODELS.
-     4. **Pentest gate — IN PROGRESS, opened 27 Aug 2026.** The unchanged list at item 7
-        below, **plus the `demo-create` cooldown**. SIX items shipped that day —
-        `b5a9ff1`, `eca5a32`, `31b14eb`, `2324059`, `5083e2a`, `d8efb4e` — and their bullets are
-        DELETED here rather than struck through; docs/history.md (27 Aug) holds the closures.
-        **STILL OPEN from the first enumeration:**
-        (iii) `api/guest-details.ts` has NO rate limiter, while its three siblings all carry the
-        30/60s per-instance one — and it is the ONLY one of the four returning PRIVATE
-        `apartment_details` rows. Verified-tier-gated, so this is a brute-force-COST question,
-        not an access one. Pre-existing; visible for the first time because `eca5a32` edited all
-        four together.
-        **INVESTIGATED AND CLEARED, do not re-raise:** `api/guest-availability.ts` is NOT a
-        defect — it reads no `Authorization` header, keys entirely on `?apt=<uuid>`, and returns
-        only `brand_name`/`logo_url`/`accent_color`; its unpublished-apartment brand disclosure is
-        deliberate and documented at its own :4-10.
-        **SEVEN NEW, from the 27 Aug enumeration and gates — reasoning in docs/history.md:**
-        - `api/generate-host-picks.ts` — no rate limiter, no `bump_api_counter`, no ROLLING_LIMITS
-        entry; IDENTICAL SHAPE to the gap `b5a9ff1` closed in bulk-import, invisible to
-        cron-spend-audit. **LIVE.**
-        - `api/generate-host-picks.ts` — `freeText` reaches the model with no credential scrub at
-        all; same class as `20609c1`. **LIVE.**
-        - `api/_lib/host-picks.ts:79` — `/^```json?\s*/i` is "jso" plus an OPTIONAL "n", so a BARE
-        ``` fence is not stripped and falls into the parse failure; siblings use
-        `/^```(?:json)?\s*/i`. **LIVE.**
-        - `api/guest-preview.ts` — returns 404 before 403, an existence oracle for apartments the
-        caller does not own. **LATENT.**
-        - `api/guest-preview.ts` — third server reader of `hosts.whatsapp`, not public-demo-aware.
-        **LATENT.**
-        - `api/_lib/city-events.ts:846` — `generateCityEventsGemini` splices the same `place` but
-        calls the Gemini SDK directly, so `redactErrorBody` cannot apply. COUPLED PRECONDITION,
-        not work: needed only if that leg moves onto `aiGenerate`.
-        - `api/_lib/city-events.ts:1263` — comment says "a city name is not a credential" where
-        `place` is city + country. Not false; the narrower noun invites checking only half.
-        WORDING, close on next touch.
-        Standing prompt rules for gate commits live in `docs/pentest-gate-contract.md` — a
-        prompt that says "follow the contract" adopts all of it.
+     4. **Pentest gate — IN PROGRESS, opened 27 Aug 2026.** **THE WORK LIST LIVES IN
+        `docs/pentest-queue.md`** — every item verified at source, with a stable id, a
+        LIVE/LATENT label, its evidence, and a CLOSED and an INVESTIGATED-AND-CLEARED
+        section. **The standing rules for HOW a gate commit runs are in
+        `docs/pentest-gate-contract.md`**; a prompt that says "follow the contract" adopts
+        all of it. A session works the next N items from the queue under the contract.
+        **DO NOT re-list queue items here** — that is what this extraction undid.
+        Eight items shipped 27 Aug 2026: `b5a9ff1`, `eca5a32`, `31b14eb`, `2324059`,
+        `5083e2a`, `d8efb4e`, `08941f7`, `6d244c3`.
      5. **AA-FLOOR SESSION:** the `#9a958c` sweep (73 occurrences / 8 files, enumeration
         PENDING) and the FOCUS-RING TOKEN REFACTOR (62 declarations / 11 colour-alpha variants /
         7 offset colours — **NOT a value sweep**: backgrounds must be determined per site and
@@ -922,62 +896,11 @@ recorded in both today.
         lowercase-alnum value — a `/^gemini-/` anchor closes it. Executable, own gate cycle.
      **Stripe LIVE flip is ABSOLUTE LAST, and only after the GYG + Tiqets written confirmations.**
      (The LESSONS RETIREMENT PASS that used to head this list was done 25 Aug, `4bfa0f2`.)
-  7. **Pentest gate — LAST, and FOLD THE DEPENDABOT REVIEW INTO IT.** GitHub reports **16
-     dependency vulnerabilities (8 high, 8 moderate) as of the 18 Aug push, UNREVIEWED.** Read the
-     list before the gate — **earlier if any high is runtime-reachable**. NOTE this supersedes the
-     earlier "7 total / 5 high / 2 moderate" `npm audit` measurement: those two tools count
-     differently (GitHub counts one alert per advisory per manifest path, `npm audit` dedupes per
-     package), so the gap is NOT drift and must not be re-litigated as such — but 16 is the number
-     to review against.
-     **THE RUNTIME-REACHABILITY TRIAGE SURVIVES THE SUPERSEDED COUNT AND IS STILL THE STARTING
-     POINT** (measured Aug 7 2026, hoisted here 18 Aug when its parent bullet was deleted):
-     **`react-router` (HIGH) + `react-router-dom` (MODERATE) are the same defect counted twice,
-     via a PROD dependency that ships in the browser bundle**, and `protobufjs` (MODERATE) arrives
-     via `@google/genai`, which is still installed and imported. **The other four are build/dev
-     only and never ship** (`postcss` + `vite`; `js-yaml` + `brace-expansion` via eslint).
-     **NUANCE:** three of react-router's five advisories are scoped to **RSC / SSR**, and Bemgu is
-     a client-only SPA with no SSR and no RSC, so they appear unreachable — leaving the
-     **backslash open-redirect in `<Link>`/`useNavigate` (GHSA-wrjc-x8rr-h8h6)** and the
-     **route-matching DoS** as the two genuinely worth triaging.
-     **ADDED TO THE GATE 22 Aug 2026:**
-     - **THE RAW NAME INTERPOLATION — and the PRINCIPLE is worth more than the instance.**
-       `api/_lib/guest-access.ts:200` interpolates the guest's name straight into the guest-chat
-       SYSTEM INSTRUCTION, **outside the nonce fence**. `c0848d8` fixed the WRITE boundary on the
-       new claim path with an allowlist, but **two writers of host-supplied names remain** —
-       `api/create-booking.ts:193` and `api/import-airbnb-csv.ts:168,178` — both
-       host-authenticated, so severity drops, and the defect is NOT closed. (A third inserter,
-       `api/demo-create.ts:139`, writes a hardcoded constant and does not count.)
-       **THE PRINCIPLE: A WRITE-BOUNDARY FIX MUST BE REPEATED AT EVERY WRITER, FOREVER — INCLUDING
-       WRITERS THAT DO NOT EXIST YET. A READ-BOUNDARY FIX IS DONE ONCE.** The durable fix is
-       fencing the name where it is INTERPOLATED; the allowlists stay as defence in depth.
-     - **VERCEL'S `x-forwarded-for` HANDLING ON THIS PROJECT IS UNMEASURED.** `welcome-claim`'s
-       `clientIp` prefers the platform-set headers (`x-vercel-forwarded-for`, `x-real-ip`) and
-       falls back to `x-forwarded-for`. **The IP keys BOTH anti-enumeration controls on that
-       endpoint**, so an unmeasured assumption sits underneath them. **One measurement closes it**
-       — and until it is taken, the honest control is `platform_ref` entropy, not the brakes.
-     - **ADDED 24 Aug 2026 — ntfy SILENT 429.** `_lib/ntfy.ts` logs a 429 in the same shape as
-       a 200, so a DROPPED priority-high alarm is indistinguishable from a delivered one.
-     - **ADDED 24 Aug 2026 — split the heartbeat and alarm topics** if heartbeat volume ever
-       threatens the detector: they share one NTFY_URL today.
-     - **ADDED 24 Aug 2026 — ring-inset / viewport-edge check** on the GuideDrawer Ask panel
-       (`2d7985b`): the ring has no offset and the panel is flush to the drawer edge. Needs a
-       browser; neither a gate nor Claude can render it.
-     - **ADDED 24 Aug 2026 — A CSP WOULD BREAK THE PRINT CARD SILENTLY.** The generated A5
-       document depends on an INLINE `<script>` (it self-prints on load, because nothing outside
-       it calls `print()` any more) and an INLINE `onerror` on the logo image. The repo has NO
-       Content-Security-Policy today. **Any future CSP must allow both, or printing dies with no
-       error and no dialog** — the host sees a blank tab and concludes the button is broken.
-     - **ADDED 23 Aug 2026 — `bulk-import`'s SILENT ALL-SCRUBBED PASTE.** When the credential
-       scrub (`20609c1`) empties every row, the endpoint returns `{ categories: [] }`,
-       `PropertySetup.tsx` renders NOTHING for an empty list **and clears the paste box**, and
-       the handler returns before the delete so the host's unchanged extras re-render. **The
-       host concludes it worked; their text is gone, nothing was saved, and the code they pasted
-       now exists nowhere** — this path cannot write `entry_instructions` either. The other door
-       returns `redacted` and renders "We left N sentence(s) out of the public sections". **Fix
-       is one response field plus one component line** — a response-shape change, which is why
-       it was not folded into the scrub commit. Transparency, not a boundary — but it is the
-       residual most likely to cost a real host real content.
-
+  7. **Pentest gate — LAST.** The work list is `docs/pentest-queue.md`; the rules for
+     running a gate commit are `docs/pentest-gate-contract.md`. **THE DEPENDABOT REVIEW
+     (16 alerts, 8 high / 8 moderate, unreviewed) IS PG-17 THERE AND GETS ITS OWN SESSION** —
+     it is a TRIAGE task whose two known-reachable advisories are in `react-router`, which
+     touches every route, so it must NOT be batched with the mechanical parity items.
 
 ### PRE-ARRIVAL PERSONAL GUEST LINK — the binding rules (SHIPPED `13eaaf3`/`c0848d8`/`ed92ad2`)
 
