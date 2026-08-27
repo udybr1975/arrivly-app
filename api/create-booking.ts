@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
 import { sendNtfy } from './_lib/ntfy.js'
+import { randomInt } from 'node:crypto'
 
 // Host-auth endpoint: creates a manual booking + its own guest row server-side, so
 // the client no longer reads or inserts `guests` directly (which had forced the
@@ -10,11 +11,40 @@ import { sendNtfy } from './_lib/ntfy.js'
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
-// Same alphabet/shape as the prior client randomRef (Crockford-ish, no ambiguous chars).
+// Reference token for a new booking. `reference_number` DOUBLES AS THE GUEST ACCESS TOKEN —
+// it is what /api/guest-details, /api/guest-state and /api/guest-chat accept as the
+// credential — SO IT MUST NOT BE PREDICTABLE, and that is why this uses node:crypto rather
+// than Math.random().
+//
+// THE DEFECT THIS REPLACED WAS PREDICTABILITY, NOT BIAS, and the distinction matters so the
+// next reader does not "simplify" it back. The alphabet is 32 characters, a power of two, so
+// `Math.floor(Math.random() * 32)` was uniform — nothing was skewed. What was wrong is that
+// V8's Math.random is xorshift128+ drawn from a shared per-isolate pool, and its state is
+// RECOVERABLE FROM OBSERVED OUTPUTS. Be precise about the cost, because the fix does not
+// depend on exaggerating it. A token exposes only floor(x*32) — the TOP 5 BITS of each
+// draw — so against 128 bits of state an attacker needs AT LEAST ~26 consecutive draws,
+// i.e. FIVE-ISH tokens minted back to back on one warm instance, plus a lattice/SAT solve.
+// ONE token is 30 bits and is nowhere near enough. The samples must also be CONTIGUOUS in
+// the draw stream, so any other Math.random consumer on that isolate inserts unknowns and
+// makes it harder still. Expensive and co-residency-dependent, then — but it is a path to
+// a NEIGHBOURING token that ignores the 32^6 search space entirely, and it predicts
+// BACKWARDS as well as forwards. Math.random is not a security primitive and a credential
+// must not be drawn from it at any price. randomInt() closes it; it also rejection-
+// samples, which costs nothing here but keeps the function correct if the alphabet ever
+// stops being a power of two.
+//
+// THREE MINTERS PRODUCE THIS CREDENTIAL and they must agree: this one, demo-create.ts
+// (identical body), and api/_lib/ical.ts generateRef — which builds the suffix separately
+// and template-literals the prefix, so it is the same OUTPUT SHAPE by a different
+// implementation, not the same code. All three now draw from node:crypto. They had already
+// drifted once on exactly this property: ical.ts had crypto from the start and the other
+// two did not, because both inherited their body from the old CLIENT-side helper, where
+// node:crypto was not available. A fourth minter must not repeat that.
+// Alphabet: Crockford-ish, no ambiguous characters (no I/O/0/1).
 function randomRef(): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
   let r = 'ARR-'
-  for (let i = 0; i < 6; i++) r += chars[Math.floor(Math.random() * chars.length)]
+  for (let i = 0; i < 6; i++) r += chars[randomInt(chars.length)]
   return r
 }
 
