@@ -55,6 +55,14 @@ const ROLLING_LIMITS: Record<string, number> = {
   // correct remediation. Sibling of 'import-listing' above: same 10/hour cap, same job through
   // an older door, and unlike that one this endpoint may resolve to EITHER provider.
   'bulk-import': 30,
+  // 3x the 10/hour cap in api/generate-host-picks.ts. Registered in the SAME commit that added
+  // the brake, because a brake is UNFINISHED until its key is here: unlisted endpoints are
+  // ignored by BOTH detectors below, so the 429 would fire while nothing alarmed. CALLER-KEYED
+  // — the bump follows a proven apartments.host_id ownership check, so blocking the named host
+  // is correct remediation. THE ONLY ENTRY HERE THAT SPENDS TWO VENDORS PER CALL: a model call
+  // plus up to 20 concurrent LocationIQ geocodes, so it burns a FLEET-WIDE pool as well as an
+  // AI quota.
+  'generate-host-picks': 30,
   // 3x the 30/hour cap in api/cancel-booking.ts. Registered for the reason the block above
   // exists: a brake is UNFINISHED until its key is in this allowlist, because unlisted
   // endpoints are ignored by BOTH detectors and the 429 would fire while nothing alarmed.
@@ -114,6 +122,10 @@ const KEY_HINT: Record<string, string> = {
   // hint: per-host 448, global 471, both inside sendNtfy's 500-char slice with this hint
   // intact as the last line.
   'bulk-import': 'GROQ_API_KEY or GEMINI_API_KEY (shared) - provider set per surface',
+  // Names BOTH vendors because both are spent on every call: the model on the shared Gemini
+  // project, and up to 20 LocationIQ geocodes. An operator who revokes only one has not
+  // stopped the spend. 66 chars — see the re-measure note on resolve-canonical-city above.
+  'generate-host-picks': 'GEMINI_API_KEY (shared) + LOCATIONIQ_API_KEY - both spent per call',
 }
 
 // Cross-host aggregate (Sybil detection). Every per-host check below (and every brake) keys on
