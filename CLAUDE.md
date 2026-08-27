@@ -889,6 +889,8 @@ recorded in both today.
         (iv) `api/guest-availability.ts` varies by apartment UUID only — no per-guest credential
         — but discloses brand fields for an UNPUBLISHED apartment. Weaker than (i); folds into
         the same commit.
+        Standing prompt rules for gate commits live in `docs/pentest-gate-contract.md` — a
+        prompt that says "follow the contract" adopts all of it.
      5. **AA-FLOOR SESSION:** the `#9a958c` sweep (73 occurrences / 8 files, enumeration
         PENDING) and the FOCUS-RING TOKEN REFACTOR (62 declarations / 11 colour-alpha variants /
         7 offset colours — **NOT a value sweep**: backgrounds must be determined per site and
