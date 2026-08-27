@@ -75,8 +75,17 @@ export async function enrichHostPicks(
     return []
   }
 
-  // Defensive parse: strip code fences, fall back to [] on failure
-  const cleaned = raw.replace(/^```json?\s*/i, '').replace(/```\s*$/i, '').trim()
+  // Defensive parse: strip code fences, fall back to [] on failure.
+  //
+  // THE `(?:...)` GROUP IS LOAD-BEARING — do not "simplify" it back to `json?`. Without the
+  // group the `?` binds to the letter `n` alone, so the pattern reads "jso" plus an OPTIONAL
+  // "n" and a BARE ``` fence is never stripped: JSON.parse then fails, rawParsed stays [],
+  // and the host silently gets zero picks. Matches api/bulk-import.ts and
+  // api/import-listing.ts.
+  //
+  // The CLOSING pattern differs from those two (`/```\s*$/i` here, `/\s*```$/i` there) and is
+  // deliberately left alone: both are correct because of the trailing .trim().
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
   let rawParsed: unknown[] = []
   try {
     const p = JSON.parse(cleaned)
