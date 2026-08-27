@@ -39,7 +39,8 @@ const ROLLING_LIMITS: Record<string, number> = {
   // FLEET-WIDE, and a per-host hourly cap provably cannot bound a fleet pool (the Tavily lesson).
   // Unlisted endpoints are ignored by BOTH detectors below, so without this line ~11 accounts
   // pacing at 20/h would cross the daily pool while every one of them stayed under limit+1 and
-  // nothing alarmed. This is also the only counter here whose vendor is NOT an AI provider.
+  // nothing alarmed. Its vendor is NOT an AI provider — one of two such counters here, the
+  // other being 'geocode' below, which spends the SAME LocationIQ pool.
   'resolve-canonical-city': 60,
   // 3x the 10/hour cap in api/import-listing.ts. Registered in the SAME commit that added the
   // brake, because a brake is UNFINISHED until its key is here: unlisted endpoints are ignored
@@ -63,6 +64,12 @@ const ROLLING_LIMITS: Record<string, number> = {
   // plus up to 20 concurrent LocationIQ geocodes, so it burns a FLEET-WIDE pool as well as an
   // AI quota.
   'generate-host-picks': 30,
+  // 3x the 30/hour cap in api/geocode.ts. Registered in the SAME commit that added the brake,
+  // because a brake is UNFINISHED until its key is here. CALLER-KEYED — the bump is keyed on
+  // the getUser-verified JWT subject. LIKE resolve-canonical-city and UNLIKE the AI keys, this
+  // one protects a FLEET-WIDE vendor pool that a per-host cap provably cannot bound (see the
+  // Tavily lesson) — the registry entry is what makes the cross-host detector see it at all.
+  'geocode': 90,
   // 3x the 30/hour cap in api/cancel-booking.ts. Registered for the reason the block above
   // exists: a brake is UNFINISHED until its key is in this allowlist, because unlisted
   // endpoints are ignored by BOTH detectors and the 429 would fire while nothing alarmed.
@@ -126,6 +133,9 @@ const KEY_HINT: Record<string, string> = {
   // project, and up to 20 LocationIQ geocodes. An operator who revokes only one has not
   // stopped the spend. 66 chars — see the re-measure note on resolve-canonical-city above.
   'generate-host-picks': 'GEMINI_API_KEY (shared) + LOCATIONIQ_API_KEY - both spent per call',
+  // Same key and the same blast radius as resolve-canonical-city: revoking it breaks address
+  // lookup EVERYWHERE, not just this endpoint. 66 chars.
+  'geocode': 'LOCATIONIQ_API_KEY - shared with address save, guide places, picks',
 }
 
 // Cross-host aggregate (Sybil detection). Every per-host check below (and every brake) keys on
