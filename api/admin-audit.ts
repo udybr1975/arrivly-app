@@ -8,6 +8,14 @@ const anon = () => createClient(process.env.VITE_SUPABASE_URL!, process.env.VITE
 const svc  = () => createClient(process.env.VITE_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // This response varies by the ADMIN Bearer token in the Authorization header, and its URL
+  // carries NO parameters at all — so a URL-keyed shared cache would hold the 50 most recent
+  // audit entries, plus every host name, under ONE key. Never let it be stored by a CDN, a
+  // proxy or the browser. Set BEFORE the method guard and before any branch, so every return
+  // path carries it AND so its presence can never itself signal that a valid credential was
+  // supplied.
+  res.setHeader('Cache-Control', 'no-store')
+
   if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' })
 
   const h     = req.headers.authorization
