@@ -29,7 +29,7 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Current HEAD — `eca5a32`** (27 Aug 2026), no-store parity on the four guest endpoints; `b5a9ff1` the bulk-import brake before it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
+> **Current HEAD — `d8efb4e`** (27 Aug 2026), the two recorded redactErrorBody non-decisions; `5083e2a` the Bearer-GET no-store class before it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -857,38 +857,38 @@ recorded in both today.
      3. ~~gemini repoint~~ — DONE as Option A, `6518da7`, 26 Aug 2026; no repoint, see AI
         MODELS.
      4. **Pentest gate — IN PROGRESS, opened 27 Aug 2026.** The unchanged list at item 7
-        below, **plus the `demo-create` cooldown**. Two of its items SHIPPED that day:
-        `b5a9ff1` (bulk-import hourly brake + ROLLING_LIMITS) and `eca5a32` (`no-store` on
-        the four token-varying guest endpoints) — both bullets are deleted from item 7
-        rather than struck through. **FOUR FINDINGS THE TWO GATES SURFACED, added here:**
-        (i) **THE BEARER-GET CACHE CLASS — and it is a CLASS, not one endpoint, which is why
-        it is written this way.** `api/guest-preview.ts` sets no `Cache-Control` and no
-        `Vary: Authorization` while returning `apartment_details` WITH NO `is_private` FILTER
-        (door codes, check-in instructions), unmasked lat/lng, and `hosts.whatsapp`. **ITS
-        CREDENTIAL IS IN THE `Authorization` HEADER AND ITS URL IS `?apt=<uuid>` ALONE**, so a
-        URL-keyed shared cache cannot see the credential at all — a stored 200 would be served
-        to a caller who should have received 401 or 403. **THIS IS STRICTLY WORSE THAN THE FOUR
-        `eca5a32` CLOSED:** those carry the credential IN the URL, so a distinct token is a
-        distinct cache key and a naive cache MISSES rather than cross-serves. Latent, not live
-        — nothing caches these today. **ENUMERATE EVERY Bearer-authenticated GET in `api/`
-        BEFORE FIXING ANY OF THEM**: guest-preview is one instance of the shape and the surface
-        has never been listed. Freeze the list, then one commit.
-        (ii) `api/bulk-import.ts` logs `raw.slice(0, 200)` on a JSON parse failure. On this
-        surface the model's output is a restatement of a house manual, so the first characters
-        routinely carry the WiFi password or the door code — the sibling `api/import-listing.ts`
-        deliberately logs LENGTH AND FENCE SHAPE ONLY for exactly this reason, and says so in a
-        comment. Same door, opposite disposition. **This one is LIVE, not latent** — credentials
-        are reaching the Vercel logs today on every failed parse. bulk-import's `aiGenerate`
-        call also omits `redactErrorBody`, which import-listing sets for the same reason. Both
-        fixes are one line; take them together.
+        below, **plus the `demo-create` cooldown**. SIX items shipped that day —
+        `b5a9ff1`, `eca5a32`, `31b14eb`, `2324059`, `5083e2a`, `d8efb4e` — and their bullets are
+        DELETED here rather than struck through; docs/history.md (27 Aug) holds the closures.
+        **STILL OPEN from the first enumeration:**
         (iii) `api/guest-details.ts` has NO rate limiter, while its three siblings all carry the
         30/60s per-instance one — and it is the ONLY one of the four returning PRIVATE
         `apartment_details` rows. Verified-tier-gated, so this is a brute-force-COST question,
         not an access one. Pre-existing; visible for the first time because `eca5a32` edited all
         four together.
-        (iv) `api/guest-availability.ts` varies by apartment UUID only — no per-guest credential
-        — but discloses brand fields for an UNPUBLISHED apartment. Weaker than (i); folds into
-        the same commit.
+        **INVESTIGATED AND CLEARED, do not re-raise:** `api/guest-availability.ts` is NOT a
+        defect — it reads no `Authorization` header, keys entirely on `?apt=<uuid>`, and returns
+        only `brand_name`/`logo_url`/`accent_color`; its unpublished-apartment brand disclosure is
+        deliberate and documented at its own :4-10.
+        **SEVEN NEW, from the 27 Aug enumeration and gates — reasoning in docs/history.md:**
+        - `api/generate-host-picks.ts` — no rate limiter, no `bump_api_counter`, no ROLLING_LIMITS
+        entry; IDENTICAL SHAPE to the gap `b5a9ff1` closed in bulk-import, invisible to
+        cron-spend-audit. **LIVE.**
+        - `api/generate-host-picks.ts` — `freeText` reaches the model with no credential scrub at
+        all; same class as `20609c1`. **LIVE.**
+        - `api/_lib/host-picks.ts:79` — `/^```json?\s*/i` is "jso" plus an OPTIONAL "n", so a BARE
+        ``` fence is not stripped and falls into the parse failure; siblings use
+        `/^```(?:json)?\s*/i`. **LIVE.**
+        - `api/guest-preview.ts` — returns 404 before 403, an existence oracle for apartments the
+        caller does not own. **LATENT.**
+        - `api/guest-preview.ts` — third server reader of `hosts.whatsapp`, not public-demo-aware.
+        **LATENT.**
+        - `api/_lib/city-events.ts:846` — `generateCityEventsGemini` splices the same `place` but
+        calls the Gemini SDK directly, so `redactErrorBody` cannot apply. COUPLED PRECONDITION,
+        not work: needed only if that leg moves onto `aiGenerate`.
+        - `api/_lib/city-events.ts:1263` — comment says "a city name is not a credential" where
+        `place` is city + country. Not false; the narrower noun invites checking only half.
+        WORDING, close on next touch.
         Standing prompt rules for gate commits live in `docs/pentest-gate-contract.md` — a
         prompt that says "follow the contract" adopts all of it.
      5. **AA-FLOOR SESSION:** the `#9a958c` sweep (73 occurrences / 8 files, enumeration

@@ -816,7 +816,8 @@ vars being present.
   this, and it is the durable lesson of Step 3.** A brake counts REQUESTS; what a request costs
   is the provider's attempt budget. The first draft used a uniform `retries: 2` + 30s for all
   four surfaces, which silently turned `bulk-import`'s SINGLE 10s shot into 3 attempts / ~92s
-  (on an endpoint with no rate limiter at all) and moved `daily-greeting`'s 50/h ceiling from
+  (on an endpoint with no rate limiter at all — as of that step; a 10/hour brake landed
+  27 Aug 2026 in `b5a9ff1`) and moved `daily-greeting`'s 50/h ceiling from
   ~100 model calls to ~150. **`AiGenerateOpts` now carries per-surface `retries` + `timeoutMs`,
   and every call site passes the SAME budget its Gemini path used:** greeting 1 retry x 12s,
   rewrite 2 x 10s, bulk-import **0** x 10s, guide-assistant 1 x 20s. So one counter unit costs

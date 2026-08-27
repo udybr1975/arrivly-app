@@ -3263,7 +3263,10 @@ replaced by: item 0 marked DONE with the measured result, keeping the standing e
         answer, and re-check each against source before it is kept.** A lesson that is merely
         old is not the problem; a lesson that is WRONG is.
 
-## Session — 27 Aug 2026 — pentest gate opens: two commits
+## Session — 27 Aug 2026 — the pentest gate: six commits, an enumeration, and a contract
+
+THE DAY IN FULL: six code commits, one read-only enumeration, one new contract, two docs
+passes. The sections below run in order; the first two are the morning's parity commits.
 
 The first two items of the pentest gate shipped. Both were scoped as PARITY commits against
 an existing sibling, both ran ONE review round, and both were verified live before this record
@@ -3392,3 +3395,112 @@ failing on comment accuracy — and it did not repeat.**
 more serious than what was being fixed) and **reported all five rather than patching any**.
 The Viator sweep turned one fix into six commits by doing the opposite.
 
+
+---
+
+### The rest of the day, in order
+
+`35b14c5` docs pass (retired the two claims closed that morning) · `31b14eb` bulk-import
+credential logging · THE READ-ONLY ENUMERATION PASS · `2b45cd3` the pentest-gate contract ·
+`2324059` host-picks · `5083e2a` the Bearer-GET class · `d8efb4e` the two recorded
+non-decisions · this docs pass.
+
+### `31b14eb` — bulk-import credential logging (LIVE)
+
+Two leaks, both LIVE. The JSON.parse catch logged `raw.slice(0, 200)` — unscrubbed model
+output on a house-manual surface — and **it fired UPSTREAM of every mechanism the file has**:
+`buildRows` runs `scrubCredentialSentences`, but a parse failure returns before it, so the
+logged text had been scrubbed by nothing. Every safety mechanism sat downstream of the one
+line that logged the raw text. Second leak: the groq call omitted `redactErrorBody`, so a
+`json_validate_failed` 400 echoed the model text through `scrubErr`, which redacts key
+PREFIXES only and is no defence against a door code.
+
+### THE READ-ONLY ENUMERATION PASS — and its headline
+
+**BOTH SURFACES WERE BIGGER THAN ASSUMED, and that is the finding, not the individual
+defects.**
+
+**Surface 1 was FOUR endpoints, not one.** The brief named `guest-preview`. The sweep of all
+67 `api/` handlers found `admin-overview`, `admin-audit` and `admin-impersonate` in the same
+shape. **AND THE TWO ADMIN ONES ARE WORSE THAN THE ENDPOINT THAT PROMPTED THE SEARCH:** they
+take NO QUERY PARAMETERS AT ALL, so each collapses to a **SINGLE cache key** holding every
+host's `contact_email`, `subscription_status`, billing overrides, the audit trail, and
+`totals.mrr_cents` — whole-business revenue. `guest-preview` at least partitions per
+apartment. **That was not anticipated by anyone, and it is the argument for enumerating a
+class before fixing any instance of it.**
+
+**Surface 2 was NINE files / TEN SDK constructions, not two.** The brief named `guest-chat`
+and `welcome-chat`. Also present: `guide-assistant`, `rewrite-rules`, `bulk-import`'s gemini
+branch, `_lib/city-events`, `_lib/greeting` (×2), `_lib/guide`, `_lib/host-picks`.
+
+A repo-wide sweep confirmed exactly ONE log in all of `api/` sliced a model-output variable:
+`_lib/host-picks.ts:101`. Two hits looked like model output and were not — `guest-chat.ts:36`
+and `ai-provider.ts:63` slice a variable named `raw` that is an ENV VALUE, scrubbed and
+capped at 20.
+
+### `2324059` — host-picks (LIVE), and `5083e2a` — the Bearer-GET class (all LATENT)
+
+host-picks was the same shape as `31b14eb`, one file over. Severity was stated honestly and
+downward: the input is a list of recommended places, not a house manual, so a door code is
+far less likely — fixed because the SHAPE is one this project has now rejected three times.
+
+**A CORRECTION TO THE BRIEF, found during `5083e2a`: `admin-impersonate` is a STATE-CHANGING
+GET** — it writes an `admin_audit` row. So `no-store` there protects the audit trail's
+COMPLETENESS as well as its confidentiality: a cached GET would have suppressed the write.
+Nothing in the brief said so; it came out of reading the file.
+
+### A STANDING UNKNOWN WAS SETTLED — and half of it stays unknown
+
+The enumeration recorded UNKNOWN for "can the Google SDK echo generated content in an error?"
+The `2324059` security gate answered it AT SOURCE, in `node_modules/@google/genai`:
+`throwErrorIfNotOK` builds its message from the **HTTP error response body**, and a non-2xx
+carries no generated candidate — so **GENERATED CONTENT CANNOT APPEAR IN A THROWN `ApiError`.**
+`ApiError` stores only `message` and `status`.
+
+**STILL UNKNOWN, and it is recorded as unknown rather than rounded off:** whether a Gemini 4xx
+body ever echoes a fragment of the REQUEST. The envelope looks server-authored, but the SDK
+stringifies whatever arrives. **Settled by capturing one real `INVALID_ARGUMENT` body** — not
+by reasoning from how Groq behaves.
+
+### THE CHAIN-OF-TRUST LESSON — the most useful thing in the day
+
+**`d8efb4e` FAILED code review round 1 on a claim I invented.** The comment said "no host- or
+guest-authored text reaches the model". It was FALSE AT BOTH SITES, **and both files already
+said so:**
+
+- `guide.ts:667` splices `cap(apt.neighborhood)` and `cap(apt.city)` into `prosePrompt`, and
+  the note at **`guide.ts:654`** already read "the prompt carries ONLY public place data +
+  **neighbourhood/city**".
+- `city-events.ts:1161` puts `${place}` in the INSTRUCTION section, outside the SNIPPETS
+  fence, and that file's own header at **`:115-120`** records it as unconstrained
+  host-writable free text on the per-apartment fallback path.
+
+**THE CHAIN: the claim originated in the enumeration report, was repeated in the commit
+prompt without opening the files, and was written into a comment. THREE LAYERS, NO CHECK, and
+a pre-existing note contradicting it the whole time.** Nobody lied; each layer trusted the one
+above it.
+
+**What caught it was contract §3's exception — a comment making a FALSE CLAIM ABOUT
+EXECUTABLE BEHAVIOUR is a real must-fix.** Without that carve-out it would have been an
+ordinary wording note, waved through as a residual, and the false sentence would be in the
+repo today looking authoritative.
+
+**THE DECISION WAS SOUND; THE JUSTIFICATION WAS INVENTED.** Omitting `redactErrorBody` at
+those two sites is correct — a city or neighbourhood name is not a credential. But an
+invented justification in a comment is trusted later by someone who cannot cheaply re-derive
+it, which is exactly why **§8 requires every claim to come from a file actually opened.** A
+right answer reached by a wrong route is not a right answer; it is an unexploded one.
+
+### THE DAY'S SHAPE, stated honestly
+
+**Six defects closed, and the queue is LONGER than it started** — seven new entries against
+three retired.
+
+The sharpest instance: **`generate-host-picks.ts` carries the SAME missing-brake defect that
+`b5a9ff1` closed in `bulk-import` at 08:24 that morning.** It was found at 16:42, in a file
+nobody had opened, by a gate looking at something else entirely.
+
+**THE RULE THAT FOLLOWS: the pentest gate is NOT a fixed-size task and must not be planned as
+one.** Each pass over a file surfaces siblings of what it just fixed. Budget it as a sweep
+with a rate, not a list with an end — and expect the queue to grow while the code improves.
+That is the gate working, not failing.
