@@ -29,7 +29,7 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Current HEAD — `60e46eb`** (27 Aug 2026), PG-13 (429/503 told apart); `d7e876b` the all-scrubbed-paste fix before it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
+> **Current HEAD — `7a28bd3`** (27 Aug 2026), PG-05 scalar fencing in the guest system prompt; `5664d43` the ntfy dropped-alarm fix before it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -581,12 +581,15 @@ values — do not change without an explicit decision.**
   retention promise.
 
 - **A WRITE-BOUNDARY FIX MUST BE REPEATED AT EVERY WRITER, FOREVER — INCLUDING WRITERS THAT DO NOT
-  EXIST YET; A READ-BOUNDARY FIX IS DONE ONCE (Aug 22 2026).** `guests.first_name` is interpolated
-  raw into the guest-chat system instruction (`guest-access.ts:200`, outside the nonce fence).
+  EXIST YET; A READ-BOUNDARY FIX IS DONE ONCE (Aug 22 2026; APPLIED 27 Aug 2026).**
+  `guests.first_name` WAS interpolated raw into the guest-chat system instruction.
   `c0848d8` constrained it at the NEW write path — necessary, since that path moved the write to
-  "anyone holding a confirmation code" — but other writers remain and any future one starts
-  unprotected. **Prefer the read boundary; keep write-side checks as defence in depth.** This
-  asymmetry decides where every future sanitiser belongs.
+  "anyone holding a confirmation code" — but other writers remained and any future one started
+  unprotected. **CLOSED AT THE READ BOUNDARY BY `7a28bd3`** (six-plus writers, one read site —
+  measured); the write-side allowlists stay as defence in depth and still bound what is STORED.
+  **It closes the MULTI-LINE technique, NOT semantic injection — see PG-05 in
+  docs/pentest-queue.md before concluding otherwise.** This asymmetry decides where every future
+  sanitiser belongs.
 
 - **A PROMPT SENTENCE IS A HINT, NOT A MECHANISM (Aug 22 2026).** A prompt rule lowers the FREQUENCY
   of a bad output and changes the BOUND not at all; the mechanism is the code check before the write
