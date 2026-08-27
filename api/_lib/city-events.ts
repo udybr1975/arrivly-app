@@ -1256,6 +1256,13 @@ async function generateCityEventsTavily(
 
   let raw = ''
   try {
+    // NO redactErrorBody, and that is a DECISION, not an oversight. The criterion in
+    // ai-provider.ts is "any surface whose model output is credential-bearing" — and the input
+    // here is Tavily web snippets (SNIPPETS) plus `place`, which on the per-apartment fallback
+    // path IS host-writable and rides in the instruction section, as this file's header records.
+    // A city name is not a credential: no house manual, extras, message, booking or
+    // guest-authored content reaches this prompt, so the output cannot be credential-bearing and
+    // the provider's error body aids diagnosis at no cost.
     raw = await aiGenerate('events', {
       prompt,
       json: true,

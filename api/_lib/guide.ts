@@ -683,6 +683,12 @@ async function generateGuidePoi(
         `PLACES:\n${JSON.stringify(listed)}`
 
       // Budget parity is explicit, never defaulted: 1 retry x 25s.
+      // NO redactErrorBody, and that is a DECISION, not an oversight. The criterion in
+      // ai-provider.ts is "any surface whose model output is credential-bearing" — and the input
+      // here is OSM place data (PLACES) plus the host's own neighbourhood/city name, exactly as
+      // the note at the top of this step records. NO house manual, extras, message, booking or
+      // guest-authored content reaches it, so the output cannot be credential-bearing and the
+      // provider's error body aids diagnosis at no cost.
       const raw = await aiGenerate('guide', {
         prompt: prosePrompt,
         json: true,
