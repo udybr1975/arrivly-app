@@ -29,7 +29,7 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Current HEAD — `6518da7`** (26 Aug 2026), guest-chat model env-bound; `1f3c4d6` the docs close before it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
+> **Current HEAD — `eca5a32`** (27 Aug 2026), no-store parity on the four guest endpoints; `b5a9ff1` the bulk-import brake before it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -856,7 +856,39 @@ recorded in both today.
         behind it.
      3. ~~gemini repoint~~ — DONE as Option A, `6518da7`, 26 Aug 2026; no repoint, see AI
         MODELS.
-     4. **Pentest gate** — the unchanged list at item 7 below, **plus the `demo-create` cooldown**.
+     4. **Pentest gate — IN PROGRESS, opened 27 Aug 2026.** The unchanged list at item 7
+        below, **plus the `demo-create` cooldown**. Two of its items SHIPPED that day:
+        `b5a9ff1` (bulk-import hourly brake + ROLLING_LIMITS) and `eca5a32` (`no-store` on
+        the four token-varying guest endpoints) — both bullets are deleted from item 7
+        rather than struck through. **FOUR FINDINGS THE TWO GATES SURFACED, added here:**
+        (i) **THE BEARER-GET CACHE CLASS — and it is a CLASS, not one endpoint, which is why
+        it is written this way.** `api/guest-preview.ts` sets no `Cache-Control` and no
+        `Vary: Authorization` while returning `apartment_details` WITH NO `is_private` FILTER
+        (door codes, check-in instructions), unmasked lat/lng, and `hosts.whatsapp`. **ITS
+        CREDENTIAL IS IN THE `Authorization` HEADER AND ITS URL IS `?apt=<uuid>` ALONE**, so a
+        URL-keyed shared cache cannot see the credential at all — a stored 200 would be served
+        to a caller who should have received 401 or 403. **THIS IS STRICTLY WORSE THAN THE FOUR
+        `eca5a32` CLOSED:** those carry the credential IN the URL, so a distinct token is a
+        distinct cache key and a naive cache MISSES rather than cross-serves. Latent, not live
+        — nothing caches these today. **ENUMERATE EVERY Bearer-authenticated GET in `api/`
+        BEFORE FIXING ANY OF THEM**: guest-preview is one instance of the shape and the surface
+        has never been listed. Freeze the list, then one commit.
+        (ii) `api/bulk-import.ts` logs `raw.slice(0, 200)` on a JSON parse failure. On this
+        surface the model's output is a restatement of a house manual, so the first characters
+        routinely carry the WiFi password or the door code — the sibling `api/import-listing.ts`
+        deliberately logs LENGTH AND FENCE SHAPE ONLY for exactly this reason, and says so in a
+        comment. Same door, opposite disposition. **This one is LIVE, not latent** — credentials
+        are reaching the Vercel logs today on every failed parse. bulk-import's `aiGenerate`
+        call also omits `redactErrorBody`, which import-listing sets for the same reason. Both
+        fixes are one line; take them together.
+        (iii) `api/guest-details.ts` has NO rate limiter, while its three siblings all carry the
+        30/60s per-instance one — and it is the ONLY one of the four returning PRIVATE
+        `apartment_details` rows. Verified-tier-gated, so this is a brute-force-COST question,
+        not an access one. Pre-existing; visible for the first time because `eca5a32` edited all
+        four together.
+        (iv) `api/guest-availability.ts` varies by apartment UUID only — no per-guest credential
+        — but discloses brand fields for an UNPUBLISHED apartment. Weaker than (i); folds into
+        the same commit.
      5. **AA-FLOOR SESSION:** the `#9a958c` sweep (73 occurrences / 8 files, enumeration
         PENDING) and the FOCUS-RING TOKEN REFACTOR (62 declarations / 11 colour-alpha variants /
         7 offset colours — **NOT a value sweep**: backgrounds must be determined per site and
@@ -916,23 +948,11 @@ recorded in both today.
        **THE PRINCIPLE: A WRITE-BOUNDARY FIX MUST BE REPEATED AT EVERY WRITER, FOREVER — INCLUDING
        WRITERS THAT DO NOT EXIST YET. A READ-BOUNDARY FIX IS DONE ONCE.** The durable fix is
        fencing the name where it is INTERPOLATED; the allowlists stay as defence in depth.
-     - **`bulk-import` has NO rate limiter, NO `bump_api_counter` and NO `ROLLING_LIMITS` entry,**
-       unlike its sibling importer, which has all three. Pre-existing. **The same two-doors
-       argument `f113943` makes about wording, one layer down.**
      - **VERCEL'S `x-forwarded-for` HANDLING ON THIS PROJECT IS UNMEASURED.** `welcome-claim`'s
        `clientIp` prefers the platform-set headers (`x-vercel-forwarded-for`, `x-real-ip`) and
        falls back to `x-forwarded-for`. **The IP keys BOTH anti-enumeration controls on that
        endpoint**, so an unmeasured assumption sits underneath them. **One measurement closes it**
        — and until it is taken, the honest control is `platform_ref` entropy, not the brakes.
-     - **ADDED 23 Aug 2026 — `no-store` PARITY ACROSS THE FOUR TOKEN-VARYING GUEST ENDPOINTS.**
-       `guest-state`, `guest-bootstrap`, `guest-details` and `welcome` all vary their body by a
-       booking token or a welcome code, and **all four set NO `Cache-Control` at all.** Nothing
-       is cached today (Vercel does not CDN-cache a function response absent one), so this is a
-       latent gap, not a live leak — **but `guest-bootstrap` now carries only a COMMENT
-       forbidding a future `s-maxage`, and a comment standing in for a mechanism is the exact
-       shape this file records elsewhere as the thing that gets deprioritised.** Set `no-store`
-       on all four in ONE pass, or the parity argument that justifies leaving each one bare
-       stops being true the moment one of them changes.
      - **ADDED 24 Aug 2026 — ntfy SILENT 429.** `_lib/ntfy.ts` logs a 429 in the same shape as
        a 200, so a DROPPED priority-high alarm is indistinguishable from a delivered one.
      - **ADDED 24 Aug 2026 — split the heartbeat and alarm topics** if heartbeat volume ever

@@ -3262,3 +3262,133 @@ replaced by: item 0 marked DONE with the measured result, keeping the standing e
         **Sweep every claim in this file that asserts a GAP, an UNVERIFIED state or a PENDING
         answer, and re-check each against source before it is kept.** A lesson that is merely
         old is not the problem; a lesson that is WRONG is.
+
+## Session — 27 Aug 2026 — pentest gate opens: two commits
+
+The first two items of the pentest gate shipped. Both were scoped as PARITY commits against
+an existing sibling, both ran ONE review round, and both were verified live before this record
+was written. HEAD moved `fce8dd2` → `b5a9ff1` → `eca5a32`.
+
+### The opening ritual — NO DRIFT
+
+Measured before any edit, not recalled:
+- HEAD `fce8dd2`, Vercel production READY from it.
+- Supabase: **8 hosts / 7 `is_test` / 0 `is_demo` / 0 Stripe refs.**
+- **14 apartments / 5 visible / 10 `is_test` / 1 `is_public_demo`.**
+- Sweet home carries its ONE booking, `ARR-EVT777` — the public demo fixture, exactly as the
+  fixture rules require.
+- charming 1908 studio carries `ARR-EAA14A` plus the three pre-arrival claim fixtures
+  (`ARR-ACT501`, `ARR-IMP401`, `ARR-PRE901`).
+
+Everything matched the recorded state. **No drift, nothing to reconcile.**
+
+### `b5a9ff1` — bulk-import hourly spend brake + ROLLING_LIMITS parity
+
+**THE DEFECT:** `api/bulk-import.ts` is host-authenticated and calls a paid model on every
+request, but had NO `bump_api_counter`, NO hourly cap, NO alarm and NO entry in
+`cron-spend-audit.ts`'s `ROLLING_LIMITS`. Its sibling `api/import-listing.ts` has all three.
+Mirrored exactly — parity, not design.
+
+- **10/hour cap**, keyed `bulk-import`, bumped AFTER the proven `apartments.host_id` ownership
+  check and BEFORE `resolveProvider`, so an over-cap request spends nothing.
+- **The fail-closed pair:** 503 on `counterErr` AND on a non-number return. Correct per the
+  per-endpoint rule — the blocked behaviour is the free fallback (the host types the fields by
+  hand), and fail-open is indefensible when the fallback costs nothing.
+- **One-shot awaited alarm** at strict equality `hourCount === LIMIT + 1`, inside the over-cap
+  branch, then `429 rate_limited`. Written the other way round it would be unreachable.
+- **CALLER-KEYED** — the bump follows a proven ownership check, so "block this host" is the
+  correct remediation, unlike the victim-keyed guest surfaces.
+- `'bulk-import': 30` in `ROLLING_LIMITS` (3x the cap), registered in the SAME commit, because
+  a brake is UNFINISHED until its key is there.
+- **The `KEY_HINT` names BOTH providers** — `GROQ_API_KEY or GEMINI_API_KEY (shared)`. This is
+  the ONE registered surface that resolves per `AI_PROVIDER_BULK_IMPORT`, so a single-key hint
+  would point half the incidents at the wrong console.
+
+**MEASURED ntfy bodies** (both templates executed with the new 66-char hint, worst-case numeric
+values), all inside `sendNtfy`'s 500-char slice with the hint intact as the last line:
+
+| Body | Chars |
+|---|---|
+| per-host | **448** |
+| global | **471** |
+| the endpoint's own alarm | **311** |
+
+**Both gates PASS, round 1, zero must-fix.** Verification: `npm run build` green, isolated
+strict `tsc` clean, `npm run test:bulk-import` 22/22.
+
+**ALL 12 `p_endpoint` VALUES IN `api/` ARE NOW REGISTERED** in `ROLLING_LIMITS` — enumerated,
+not grepped for a phrasing. The registry is complete; there was no third site.
+
+### `eca5a32` — `Cache-Control: no-store` on the four token-varying guest endpoints
+
+`guest-state`, `guest-bootstrap`, `guest-details` and `welcome` all vary their body by a
+per-guest credential — a booking token, the QR key, or the welcome code — and not one set a
+cache header.
+
+**NOTHING WAS CACHED BEFORE THIS COMMIT.** Vercel does not CDN-cache a function response absent
+a cache header, so this was a LATENT gap, never a live leak. It was closed because
+`guest-bootstrap.ts` carried only a COMMENT forbidding a future `s-maxage` — and a comment
+standing in for a mechanism is the exact shape this project records elsewhere as the thing that
+gets deprioritised. **The mechanism now replaces that comment-only guard**, and the comment was
+rewritten to name it while KEEPING both the `s-maxage` prohibition and the
+coordinate-bearing-body reasoning.
+
+- `res.setHeader(...)` is the **FIRST STATEMENT** of each handler, before the method guard, so
+  **all 36 return sites across the four files are covered** — 405, 429, 400, 403, 200 and 500
+  alike. The gates enumerated every one.
+- **Set unconditionally and before any branch, which is itself a security property:** had it
+  been set only on credential-bearing responses, its PRESENCE would have been an oracle for a
+  valid token.
+- **`no-store` ALONE, deliberately.** `no-cache` and `max-age=0` both **PERMIT storage** and are
+  strictly weaker; `private` still permits browser-local storage; `Vary` is meaningless on a
+  response that may not be stored and would imply cacheability to a future editor. A longer
+  string invites a later edit to tidy it into something weaker.
+
+**THE TYPECHECK PROOF, because the number looks alarming and is not:** the isolated strict `tsc`
+over the four files reports **25 errors — IDENTICAL before and after**. Proven by stashing the
+diff, re-running against HEAD, restoring, re-running, and diffing the two error sets: `IDENTICAL`.
+They are pre-existing Supabase `select()` inference on concatenated column strings, on lines the
+diff never touches. **A count is not a regression until it is compared against a baseline.**
+
+**Both gates PASS, round 1, zero must-fix.** Not verified live, and deliberately not attempted:
+the Vercel MCP fetch bypasses the CDN and Vercel rewrites browser-facing `Cache-Control`.
+Source-only.
+
+### The four findings the gates surfaced
+
+**All four are now queue item 4 in CLAUDE.md** (the pentest gate), written out there in full so
+they are not rediscovered from scratch. Recorded here only as the trail back to this session:
+
+1. **THE BEARER-GET CACHE CLASS** — `api/guest-preview.ts` returns `apartment_details` with NO
+   `is_private` filter, unmasked lat/lng and `hosts.whatsapp`, with no cache header and no
+   `Vary: Authorization`. Its credential is in the `Authorization` HEADER while its URL is
+   `?apt=<uuid>` alone, so a URL-keyed cache cannot see the credential — **strictly worse than
+   the four just closed**, which carry theirs IN the URL and therefore MISS rather than
+   cross-serve. **A CLASS, not an endpoint: enumerate every Bearer-authenticated GET first.**
+2. **`bulk-import` logs `raw.slice(0, 200)` on a parse failure** where `import-listing`
+   deliberately logs length and fence shape only. Same door, opposite disposition, and **this
+   one is LIVE** — house-manual output routinely leads with the WiFi password or door code.
+3. **`guest-details.ts` has no rate limiter** while its three siblings do, and it is the only
+   one of the four returning PRIVATE rows. Visible for the first time because `eca5a32` edited
+   all four together.
+4. **`guest-availability.ts`** discloses brand fields for an unpublished apartment.
+
+### THE METHOD NOTE WORTH KEEPING
+
+**Both commits ran ONE review round.** That was not luck — the prompts carried an explicit
+round cap, a FROZEN SURFACE naming the files and forbidding a second commit, and a rule that
+**comment WORDING cannot block a commit while a comment making a FALSE CLAIM ABOUT EXECUTABLE
+BEHAVIOUR is a real must-fix.**
+
+That last distinction is the load-bearing one. `b5a9ff1` had to correct its own comment reading
+"this endpoint has no rate limiter at all" — a sentence the commit itself made false. Under the
+rule that was a MUST-FIX and was taken inside round 1; without it, it would have been an
+ordinary wording note, argued over across rounds with the executable code unchanged. **That is
+exactly the `90aed01` failure mode — six rounds, code unchanged after round 1, every later round
+failing on comment accuracy — and it did not repeat.**
+
+**The frozen surface also held twice.** Both sessions found real defects outside their scope
+(three in commit (a), two in commit (b), including the guest-preview class that is arguably
+more serious than what was being fixed) and **reported all five rather than patching any**.
+The Viator sweep turned one fix into six commits by doing the opposite.
+
