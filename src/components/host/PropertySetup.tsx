@@ -531,6 +531,36 @@ export default function PropertySetup() {
     setFeedback({ ok: false, msg })
   }
 
+  // WHAT THE SERVER ACTUALLY SAID, instead of guessing. Three call sites used to collapse
+  // every failure into "could not identify places" / "import failed", so a host stopped by
+  // an HOURLY SPEND CAP was told their text could not be parsed — and invited to retry.
+  // Each retry re-bumps the counter and holds them over the cap until the UTC hour rolls,
+  // so the wrong message actively made the situation worse.
+  //
+  // PARSE DEFENSIVELY. api.post throws `new Error(rawResponseText)` and that text is NOT
+  // guaranteed to be JSON — a network failure, an abort, or a Vercel 5xx HTML page all reach
+  // here too. A throw inside an error handler would replace a bad message with a blank
+  // screen, so everything is inside the try and anything unrecognised falls back verbatim.
+  //
+  // 429 and 503 are DIFFERENT and are told apart because the right action differs: the cap
+  // needs waiting, a fail-closed counter error clears on its own. Neither promises a
+  // duration — the counter resets on the UTC hour, so the real wait is anywhere from
+  // seconds to an hour and any specific number would be a lie some of the time.
+  function serverMessage(err: unknown, fallback: string): string {
+    try {
+      const code = JSON.parse((err as Error)?.message ?? '')?.error
+      if (code === 'rate_limited') {
+        return "You've hit this hour's limit for this tool. Nothing was saved — wait a little and try again."
+      }
+      if (code === 'busy') {
+        return 'The service is busy right now. Nothing was saved — please try again in a moment.'
+      }
+    } catch {
+      // not JSON — fall through to the caller's own wording
+    }
+    return fallback
+  }
+
   // ── Tab 1 ──────────────────────────────────────────────────────────────────
   // Both address panels are transient: a new save supersedes them, and switching tabs means the
   // host has moved on. Cleared in one place so neither can outlive the state it describes.
@@ -1166,8 +1196,12 @@ export default function PropertySetup() {
         } else {
           out.push({ section: 'My picks', ok: false, message: "Couldn't identify any places — add them manually in My picks" })
         }
-      } catch {
-        out.push({ section: 'My picks', ok: false, message: 'Could not identify places' })
+      } catch (err) {
+        out.push({
+          section: 'My picks',
+          ok: false,
+          message: serverMessage(err, 'Could not identify places'),
+        })
       }
     }
 
@@ -1214,8 +1248,8 @@ export default function PropertySetup() {
       // the defect, because they could not even retry without retyping.
       setExtrasContent('')
       await loadExtras()
-    } catch {
-      showErr('Import failed — please try again')
+    } catch (err) {
+      showErr(serverMessage(err, 'Import failed — please try again'))
     } finally {
       setImporting(false)
     }
@@ -1247,8 +1281,8 @@ export default function PropertySetup() {
       } else {
         setCandidates(data.picks.map(p => ({ ...p, key: crypto.randomUUID(), note: '' })))
       }
-    } catch {
-      showErr('Could not identify places')
+    } catch (err) {
+      showErr(serverMessage(err, 'Could not identify places'))
     }
     setEnriching(false)
   }
