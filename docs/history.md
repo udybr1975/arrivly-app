@@ -3263,7 +3263,7 @@ replaced by: item 0 marked DONE with the measured result, keeping the standing e
         answer, and re-check each against source before it is kept.** A lesson that is merely
         old is not the problem; a lesson that is WRONG is.
 
-## Session — 27 Aug 2026 — the pentest gate: eight commits, an enumeration, a contract and a queue
+## Session — 27 Aug 2026 — the pentest gate: fifteen commits, a DB migration, an enumeration, a contract and a queue
 
 THE DAY IN FULL: six code commits, one read-only enumeration, one new contract, two docs
 passes. The sections below run in order; the first two are the morning's parity commits.
@@ -3583,3 +3583,104 @@ not transfer.
 **Dependabot got its own entry that says not to batch it (PG-17).** Sixteen alerts is a
 TRIAGE task, and its two known-reachable advisories are in `react-router`, which touches every
 route — nothing like the one-line mirrors around it.
+
+### Evening — the queue gets worked: five items closed and a migration
+
+`82aeabd` PG-01 geocode brake · `c134c2f` PG-02 guest-details limiter ·
+`d67d214` PG-21 crypto minters · the `welcome_code` migration (PG-22) ·
+`d7e876b` PG-14 the all-scrubbed paste · `60e46eb` PG-13 the 429 message.
+
+**PG-01 was split and only half taken, deliberately.** The queue recorded "no apartment
+ownership check at all" alongside the missing brake. The brake shipped; the ownership half
+did not, because `geocodeAddress` returns public geocoder output and the endpoint reads NO
+apartment-scoped data — there is no object to be cross-tenant about, and the counter keys on
+the authenticated host regardless. The security gate was asked to break that reasoning and
+tried four ways (data boundary, oracle, attribution, population narrowing); all four failed.
+**It also found the REAL argument for an apartment id, which is QUALITY not security:
+`/geocode` is the only `geocodeAddress` caller passing no `GeoBias`, and an unbiased
+thin-coverage query returns a regional centroid — "how guide places ended up hundreds of km
+inland".** If that half is ever taken, scope it for that reason.
+
+### THE welcome_code MIGRATION — the most transferable lesson of the evening
+
+PG-21 fixed two `Math.random()` token minters. The security gate that reviewed it asked a
+question the enumeration had answered too quickly: `welcome_code` had been checked and
+recorded as "minted DB-side", and **DB-SIDE IS NOT EVIDENCE OF A CSPRNG.** It was
+PostgreSQL `random()` — a seeded xoshiro256** PRNG — on the ONLY credential for the public
+`/w/:code` page. Same defect class as PG-21, one layer down, on a longer-lived credential.
+
+**THE FIRST ATTEMPT AT THE FIX APPLIED CLEANLY AND WOULD HAVE BLOCKED EVERY APARTMENT
+INSERT.** pgcrypto lives in the `extensions` schema on Supabase; the trigger function pins
+`search_path` to `public, pg_temp`, which is correct for SECURITY DEFINER and must not be
+widened. An unqualified `gen_random_bytes()` therefore raised 42883 **at runtime only**.
+
+> **`CREATE OR REPLACE FUNCTION` VALIDATES SYNTAX, NOT NAME RESOLUTION.** A migration that
+> applies "successfully" is not a migration that works. Nothing in the apply step touches the
+> function body's identifiers — they resolve on first execution, which for a BEFORE INSERT
+> trigger means the next real insert, in production.
+
+**A source review would not have caught it.** What did was an END-TO-END TRIGGER TEST, and the
+technique is the reusable part: create a TEMP TABLE `LIKE` the real one `ON COMMIT DROP`,
+attach the same trigger, insert into it, assert the shape, then `RAISE` to roll the whole
+transaction back. **It exercises the real code path and leaves no test row behind** — which
+matters on a table whose fixtures are load-bearing and never deleted.
+
+The fix is to SCHEMA-QUALIFY, never to widen `search_path` on a SECURITY DEFINER function.
+Existing codes were NOT rotated: doing so would strand every pre-arrival link already shared,
+including the ones verified on a delivered Airbnb message on 22 Aug. **The migration closed
+PREDICTABILITY, not size** — alphabet and length are unchanged at ~39 bits.
+
+### THE THIRD STALE-COMMENT ROUND — name the pattern, it is now a predictable cost
+
+PG-14's review FAILED round 1 because the commit falsified THREE nearby comments: the
+`buildRows` docstring ("`redacted` is returned for LOGGING ONLY — the HTTP response shape is
+unchanged"), a pointer reading "What IS a real residual is that the host is not told" that now
+resolved to a note opening "THE HOST IS NOW TOLD", and a claim that two return bodies were "the
+same" when the commit made them deliberately different.
+
+**THAT IS THE THIRD TIME IN ONE DAY.** `d8efb4e` failed on an invented justification;
+`82aeabd` falsified a neighbouring ROLLING_LIMITS comment; PG-14 falsified three at once.
+
+> **THE RULE: A COMMIT THAT CLOSES A KNOWN RESIDUAL MUST EXPECT THAT RESIDUAL TO BE WRITTEN
+> DOWN NEAR THE CODE, AND MUST GO FIND EVERY PLACE IT IS ASSERTED — BEFORE running the gates,
+> not after.** A well-documented codebase records its own gaps; closing one therefore
+invalidates prose by construction. This is not a surprise to be re-discovered a fourth time,
+it is a step in the work.
+
+### THE GATE DISAGREEMENT AT PG-14, and how it was settled
+
+security-auditor wanted `redacted: 0` on the `valid.length === 0` early return so the
+response shape would be uniform across all three 200s. code-reviewer argued that is
+semantically wrong: no scrub ran on that path, so reporting a count would assert "we removed
+nothing" about a run where nothing was examined.
+
+**The semantic reading was kept and the disagreement RECORDED rather than split.** The client
+reads `data.redacted ?? 0`, so the asymmetry is invisible to it, and a uniform shape would
+have bought tidiness at the cost of a false statement. Recording which gate wanted what is
+the useful artifact — a future reader who notices the asymmetry can see it was decided, not
+missed.
+
+### THE PG-13 JUDGMENT CALL — the rule followed against the reviewer, and against preference
+
+PG-13 passed round 1 with a warning: "wait a little and try again" reads as SECONDS, which is
+exactly the reading that invites the retry loop the commit exists to stop. **The warning was
+persuasive and was DECLINED.** A string literal is an expression, so changing it re-triggers
+both gates, and the GATE STOPPING CONDITION permits only must-fix edits after a passing
+verdict — remaining warnings become residuals.
+
+**That is the right default even when the reviewer is right**, because the alternative is a
+gate that never terminates: every pass surfaces one more improvement, and `90aed01` already
+showed what six rounds of that looks like with the code unchanged after round one. The
+warning is PG-27, to be taken on the next touch of that block.
+
+### THE STATE OF THE GATE
+
+**OPEN — live is now EMPTY**, and the queue says so explicitly rather than dropping the
+heading: an empty live section is a measured state, a missing one reads as an oversight.
+
+Of what remains open, only **PG-05** (the raw name interpolation), **PG-07** (the ntfy silent
+429) and **PG-11** (the three remaining fence-regex sites) are mechanical code work.
+**PG-17** (Dependabot, 16 alerts) needs its own session and must not be batched. **PG-06**
+(the `x-forwarded-for` measurement) and **PG-15** (the GuideDrawer ring-inset) need a human
+with a browser or a live request. The rest are preconditions, rulings, calibration notes or
+wording — items with nothing to do until something else moves.
