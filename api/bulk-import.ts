@@ -119,7 +119,8 @@ export { SYSTEM_PROMPT }
  * checkin.entry_instructions ("never discard one"); this endpoint writes extras and nothing
  * else, so there is no destination to move it to and the sentence simply goes.
  *
- * `redacted` is returned for LOGGING ONLY — the HTTP response shape is unchanged. It is a
+ * `redacted` is RETURNED TO THE CALLER as well as logged — both 200 paths carry it, and it
+ * drives two host-facing messages in PropertySetup.tsx. It is a
  * count, never the removed text: the whole point is that the text does not travel.
  */
 export function buildRows(
@@ -331,10 +332,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(200).json({ categories: [] })
     }
 
-    // Scrub BEFORE the delete. If every row collapses to empty, this returns the same
-    // { categories: [] } the `valid.length === 0` guard above returns — and, like that
-    // guard, WITHOUT deleting: a run that has nothing to write must not wipe the extras
-    // the host already has. The delete+insert ordering below is otherwise unchanged.
+    // Scrub BEFORE the delete. If every row collapses to empty this returns an empty
+    // `categories` like the `valid.length === 0` guard above — but NOT the same body: this one
+    // carries `redacted`, and the client MUST be able to tell the two apart (a scrub emptied
+    // everything vs the model found nothing). Like that guard it does NOT delete: a run that
+    // has nothing to write must not wipe the extras the host already has. The delete+insert
+    // ordering below is otherwise unchanged.
     //
     // THE PARTIAL CASE IS DELIBERATE AND WAS ARGUED, so it is not rediscovered as a bug.
     // The delete below is WHOLESALE — every extras category, not just the ones being
@@ -349,24 +352,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // one. Narrowing the delete to the surviving categories would reverse that decision
     // AND point the wrong way for this commit's own purpose: the row left standing could be
     // a previous run's leaked code, which is exactly what must not survive a re-paste.
-    // What IS a real residual is that the host is not told — see the note at the warn below.
+    // The host IS now told how many sentences were left out (see the note at the warn below).
+    // THE NARROWER RESIDUAL THAT SURVIVES: they are not told WHICH categories the wholesale
+    // delete wiped — a category the model did not emit, or one the scrub emptied entirely, is
+    // gone with no per-category signal. That is a different message from a redaction count.
     const { rows, redacted } = buildRows(apartmentId, valid)
     if (redacted > 0) {
       // Count only, never the text. Silent suppression is the one thing the incident
       // comment above calls out as a real difference between the two doors, so at least
       // the operator can see it happened.
       //
-      // THE HOST IS STILL NOT TOLD, and that is a KNOWN RESIDUAL, not an oversight. The
-      // other door returns `redacted` in its response and ImportListing.tsx renders "We
-      // left N sentence(s) out of the public sections"; this one returns categories only,
-      // and PropertySetup.tsx renders NOTHING for an empty list while clearing the paste
-      // box — so an all-scrubbed run looks to the host like it worked. Closing it means
-      // adding a field to this response and a line to that component, which is a shape
-      // change this commit deliberately does not make. Do not mistake the log for the fix.
+      // THE HOST IS NOW TOLD — this log is no longer the only signal. Both 200 paths below
+      // carry `redacted`, and PropertySetup.tsx surfaces it: the all-scrubbed case as an
+      // error (nothing was saved, and the paste box is NOT cleared so the text survives),
+      // the partial case as a notice alongside the saved categories. This log stays because
+      // the operator needs it independently of whatever the client does with the count.
       console.warn('[bulk-import] credential sentences removed before insert:', redacted)
     }
     if (rows.length === 0) {
-      return res.status(200).json({ categories: [] })
+      // CARRIES `redacted`. This is the all-scrubbed path: the model returned usable rows and
+      // the scrub emptied every one of them, so `categories` is [] AND the reason is a
+      // redaction. Without the count the client cannot tell this apart from "the model found
+      // nothing", which is the whole defect — the host concluded it worked while their text
+      // was gone. Nothing was deleted and nothing was written, so their existing extras stand.
+      return res.status(200).json({ categories: [], redacted })
     }
 
     await admin
@@ -384,7 +393,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // Derived from the rows actually INSERTED, not from `valid` — a category whose only
     // content was a code sentence is gone, and the response must not claim it was saved.
     const categories = rows.map(row => row.category)
-    return res.status(200).json({ categories })
+    // `redacted` rides the success path too: a PARTIAL scrub saved some rows and dropped a
+    // sentence from others, and the host is owed that either way. Mirrors
+    // api/import-listing.ts, which returns the count on its only success path.
+    return res.status(200).json({ categories, redacted })
   } catch (e) {
     const msg = scrubErr(e, 120)
     console.error('[bulk-import] generateContent failed —', msg)

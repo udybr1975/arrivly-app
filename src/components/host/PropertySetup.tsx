@@ -1181,8 +1181,37 @@ export default function PropertySetup() {
     setImporting(true)
     setImportResult('')
     try {
-      const data = await api.post<{ categories: string[] }>('/bulk-import', { apartmentId, content: extrasContent })
+      const data = await api.post<{ categories: string[]; redacted?: number }>('/bulk-import', { apartmentId, content: extrasContent })
+      const removed = data.redacted ?? 0
+
+      // THE ALL-SCRUBBED PASTE. The scrub emptied every row, so nothing was written and the
+      // host's existing extras are untouched. Before this, `categories` was [] and the join
+      // produced '' — the success box rendered nothing, the paste box was cleared anyway, and
+      // the host concluded it worked while their text existed nowhere. Two things matter here
+      // and they are different messages: N sentences were REMOVED, and NOTHING WAS SAVED.
+      if (data.categories.length === 0 && removed > 0) {
+        showErr(
+          `Nothing was saved. We removed ${removed} sentence${removed === 1 ? '' : 's'} that looked like ` +
+          `${removed === 1 ? 'it contained' : 'they contained'} an access code — codes belong only in WiFi ` +
+          'and Check-in. Your text is still in the box: edit it and try again.',
+        )
+        return
+      }
+
       setImportResult(data.categories.join(' · '))
+      // PARTIAL scrub: rows were saved AND a sentence was dropped from some of them. The
+      // green box above lists what was saved; this says what was left out, mirroring
+      // ImportListing.tsx. An existing surface, so no new element.
+      if (removed > 0) {
+        toast(
+          `Saved. We left ${removed} sentence${removed === 1 ? '' : 's'} out — ` +
+          `${removed === 1 ? 'it looked like it contained' : 'they looked like they contained'} an access code.`,
+          'info',
+        )
+      }
+      // CLEARED ONLY ON A WRITE. The all-scrubbed branch returns above without touching this,
+      // so the host's text survives a run that saved nothing — losing it was the worst part of
+      // the defect, because they could not even retry without retyping.
       setExtrasContent('')
       await loadExtras()
     } catch {
