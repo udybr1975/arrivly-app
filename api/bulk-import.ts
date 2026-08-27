@@ -244,6 +244,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         maxTokens: 2048,
         retries: 0,
         timeoutMs: 10000,
+        // THIS SURFACE'S model output is a restatement of a house manual, so a Groq
+        // `json_validate_failed` 400 echoes credentials in `error.failed_generation`. Opt out
+        // of the provider's body echo — see redactErrorBody in ai-provider.ts, whose stated
+        // criterion is "any surface whose model output is credential-bearing". Same input
+        // class and same disposition as api/import-listing.ts, the precedent it names.
+        redactErrorBody: true,
       })
     } else {
       const apiKey = process.env.GEMINI_API_KEY
@@ -274,7 +280,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
       parsed = JSON.parse(cleaned)
     } catch {
-      console.error('[bulk-import] JSON parse failed — raw:', raw.slice(0, 200))
+      // NEVER log `raw` here, not even truncated: on THIS surface the model's output is a
+      // restatement of a house manual, so the first characters routinely contain the WiFi
+      // password or the door code. Length and shape are enough to diagnose a truncation or a
+      // stray code fence; content would put credentials in the Vercel logs.
+      //
+      // AND THIS LOG FIRES UPSTREAM OF EVERY MECHANISM THIS FILE HAS. `buildRows` runs
+      // `scrubCredentialSentences` further down, but a parse failure returns before it — so
+      // the text logged here has been scrubbed by nothing. Both provider branches assign
+      // `raw`, so this covers groq and gemini alike.
+      //
+      // Identical in shape and wording to api/import-listing.ts's parse-failure log, on
+      // purpose: two doors onto the same job, and a divergence here drifts on the next edit
+      // to either.
+      console.error(
+        '[bulk-import] JSON parse failed — length:', raw.length,
+        'startsWithFence:', raw.trimStart().startsWith('```'),
+      )
       return res.status(502).json({ error: 'parse_failed' })
     }
 
