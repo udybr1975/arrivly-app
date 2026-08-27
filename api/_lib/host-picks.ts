@@ -98,7 +98,19 @@ export async function enrichHostPicks(
     }))
 
   if (candidates.length === 0) {
-    console.error('[host-picks] empty result', { rawLen: raw.length, sample: raw.slice(0, 200) })
+    // NEVER log `raw` here, not even truncated: it is UNSCRUBBED MODEL OUTPUT, and the prompt
+    // above embeds `freeText` — the host's own typed list of places, capped at 5,000 chars by
+    // generate-host-picks.ts and scrubbed by nothing. Length and shape are enough to tell an
+    // empty generation from prose from a stray code fence; content would put host-authored
+    // text in the Vercel logs.
+    //
+    // Same shape as the parse-failure logs in api/import-listing.ts and api/bulk-import.ts, so
+    // the three sites do not diverge. Kept in this file's object-literal log style rather than
+    // their positional one; the two facts logged are identical.
+    console.error('[host-picks] empty result', {
+      rawLen: raw.length,
+      startsWithFence: raw.trimStart().startsWith('```'),
+    })
     return []
   }
 
