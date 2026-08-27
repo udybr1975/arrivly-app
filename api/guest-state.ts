@@ -89,8 +89,10 @@ async function resolveGuestName(db: SupabaseClient, guestId: string | null): Pro
 //   - `door` says `QR (token)` on the stored-token path, so a guest who arrived via the
 //     PRE-ARRIVAL LINK and was redirected with ?token= is reported as a QR entry. The entry
 //     path label is indicative, not authoritative.
-// AND A GAP IN THE FEED IS NOT A GAP IN TRAFFIC: sendNtfy swallows a non-2xx (it logs 429 and
-// 200 identically), so ntfy's own rate limiting shows up as MISSING pings, never as an error.
+// AND A GAP IN THE FEED IS NOT A GAP IN TRAFFIC: sendNtfy swallows a non-2xx — it warns
+// `[ntfy] NOT DELIVERED` and does not retry — so ntfy's own rate limiting shows up as MISSING
+// pings in the feed, never as a failed request. VISIBLE IN THE LOGS SINCE PG-07; before that
+// it logged 429 and 200 identically and a quiet hour was undiagnosable from here.
 // Do not read a quiet hour as no arrivals.
 // Fixing it means changing the redirect logic in GuestPage.tsx, which is out of scope here and
 // deliberately NOT done: accepted as known noise for launch monitoring. Do not "correct" the
