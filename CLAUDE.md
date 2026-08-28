@@ -29,7 +29,7 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Current HEAD — `7a28bd3`** (27 Aug 2026), PG-05 scalar fencing in the guest system prompt; `5664d43` the ntfy dropped-alarm fix before it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
+> **Current HEAD — this docs commit** (28 Aug 2026), PG-06 + PG-15 closed by measurement; code tip is `7a28bd3` (PG-05 scalar fencing). The `0993fda` PG-06 debug line was reverted by `8fe3029`, so the code tree is unchanged from `7a28bd3`. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -886,9 +886,9 @@ recorded in both today.
         re-proposed as a compromise.) **Also carried into this
         session from the moved 25 Aug record, so they are not lost with it: the AuthShell
         TAGLINE at 2.96:1 on mobile and the LIFT-OUT at 4.26:1, both measured and both under
-        AA; and the PHONE/TABLET BROWSER CHECKS that need a real device — h2 wrap at 375px, the
-        GuideDrawer Ask panel's ring-inset at the viewport edge, and the ticket-stub earnings
-        card at a real 768 and 1024.**
+        AA; and the PHONE/TABLET BROWSER CHECKS that need a real device — h2 wrap at 375px, and the ticket-stub
+        earnings card at a real 768 and 1024 (the Chat-tab Ask panel ring-inset at 375px was
+        MEASURED AND CLOSED 28 Aug 2026 — PG-15, Chat tab not GuideDrawer).**
      6. **Cosmetic tail** — `€25` hardcoded twice vs `plans`, `sagrada.jpg` licence, Founding
         Hosts prep, and **the hero phone's lift-out callouts overlap the Before-arrival frame's
         Directions tile (`3b7084c`)** — reflow or reposition; the callouts sit ~130px inside the
