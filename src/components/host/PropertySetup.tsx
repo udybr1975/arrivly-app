@@ -550,7 +550,7 @@ export default function PropertySetup() {
     try {
       const code = JSON.parse((err as Error)?.message ?? '')?.error
       if (code === 'rate_limited') {
-        return "You've hit this hour's limit for this tool. Nothing was saved — wait a little and try again."
+        return "You've hit this hour's limit for this tool. Nothing was saved — this resets on the hour."
       }
       if (code === 'busy') {
         return 'The service is busy right now. Nothing was saved — please try again in a moment.'
@@ -1232,20 +1232,38 @@ export default function PropertySetup() {
         return
       }
 
+      // NOTHING SAVED, NO SCRUB RAN (PG-23). The model returned no usable categories and
+      // no sentence was removed, so `removed` is 0 and the all-scrubbed branch above does
+      // not fire. Without this branch the code falls through to setImportResult('') and
+      // setExtrasContent('') clears the box, so the host loses their text and concludes it
+      // worked — the same silent-loss outcome PG-14 closed, one branch over. Keep the box.
+      if (data.categories.length === 0 && removed === 0) {
+        showErr(
+          "Nothing was saved — we couldn't sort that text into categories. " +
+          'Your text is still in the box: check it and try again.',
+        )
+        return
+      }
+
       setImportResult(data.categories.join(' · '))
-      // PARTIAL scrub: rows were saved AND a sentence was dropped from some of them. The
-      // green box above lists what was saved; this says what was left out, mirroring
-      // ImportListing.tsx. An existing surface, so no new element.
+
+      // PARTIAL scrub (PG-24): rows were saved AND a sentence was dropped. KEEP THE BOX —
+      // a host told a code was removed still needs their original text to copy that code
+      // into Check-in, where the scrub says it belongs. Clearing it stranded exactly the
+      // text they were sent to re-file.
       if (removed > 0) {
         toast(
           `Saved. We left ${removed} sentence${removed === 1 ? '' : 's'} out — ` +
-          `${removed === 1 ? 'it looked like it contained' : 'they looked like they contained'} an access code.`,
+          `${removed === 1 ? 'it looked like it contained' : 'they looked like they contained'} an access code. ` +
+          'Copy any code into Check-in, then clear this box.',
           'info',
         )
+        await loadExtras()
+        return
       }
-      // CLEARED ONLY ON A WRITE. The all-scrubbed branch returns above without touching this,
-      // so the host's text survives a run that saved nothing — losing it was the worst part of
-      // the defect, because they could not even retry without retyping.
+
+      // FULLY CLEAN WRITE — categories saved, nothing removed. Only now is it safe to clear
+      // the box: this is the one outcome where nothing the host typed is discarded unseen.
       setExtrasContent('')
       await loadExtras()
     } catch (err) {
