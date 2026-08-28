@@ -139,11 +139,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // uncovered.
   res.setHeader('Cache-Control', 'no-store')
 
-  // TEMP PG-06 DEBUG — REMOVE AFTER MEASUREMENT. Logs the resolved client IP
-  // and the raw inbound x-forwarded-for so we can see whether Vercel lets a
-  // client control the value the rate limiters key on.
-  console.log('[pg06] xff=', JSON.stringify(req.headers['x-forwarded-for']), 'resolved=', clientIp(req))
-
   if (req.method !== 'GET') return res.status(405).json({ error: 'method_not_allowed' })
 
   const now = Date.now()
