@@ -83,8 +83,11 @@ export async function enrichHostPicks(
   // and the host silently gets zero picks. Matches api/bulk-import.ts and
   // api/import-listing.ts.
   //
-  // The CLOSING pattern differs from those two (`/```\s*$/i` here, `/\s*```$/i` there) and is
-  // deliberately left alone: both are correct because of the trailing .trim().
+  // The CLOSING pattern here is the CORRECT form (`/```\s*$/i` — fence, then optional
+  // trailing whitespace). The other three sites (bulk-import, import-listing, greeting)
+  // were on the BROKEN form `/\s*```$/i` — which fails to strip a fence followed by a
+  // newline or spaces, because `$` without `m` anchors at end-of-input and .trim() cannot
+  // rescue a replace that never matched — and were corrected to this form in the PG-29 fix.
   const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
   let rawParsed: unknown[] = []
   try {

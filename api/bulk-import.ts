@@ -278,7 +278,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     let parsed: unknown
     try {
-      const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+      const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
       parsed = JSON.parse(cleaned)
     } catch {
       // NEVER log `raw` here, not even truncated: on THIS surface the model's output is a

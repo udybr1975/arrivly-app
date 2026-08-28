@@ -88,7 +88,7 @@ interface BlurbPayload {
 // clean JSON and NO stripping logic belongs here (adding some is how a working parser breaks).
 function parseBlurbPayload(raw: string): BlurbPayload | null {
   try {
-    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+    const cleaned = raw.replace(/^```(?:json)?\s*/i, '').replace(/```\s*$/i, '').trim()
     const parsed = JSON.parse(cleaned) as unknown
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null
     const obj = parsed as Record<string, unknown>
