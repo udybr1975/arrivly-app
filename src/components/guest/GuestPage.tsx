@@ -1013,7 +1013,9 @@ export default function GuestPage() {
           )}
 
           {/* Message host directly. NOT "the same trigger as the More-tab button" — that card is
-              preview-only and disabled; this is one of only two live entry points. */}
+              preview-only and disabled; this is one of THREE live entry points (with the `&msg=1`
+              deep-link and the offramp under the AI composer in ChatBot). Kept in step with the
+              matching enumeration above MessageHost's onClose — if one moves, both move. */}
           {tokenParam && !isPublicDemo && (
             <div className="max-w-lg mx-auto px-6 pb-2">
               <button
@@ -1261,6 +1263,20 @@ export default function GuestPage() {
               guestName={guestName}
               city={apt.city}
               isPublicDemo={isPublicDemo}
+              /* SAME GATE AS THE HOME-TAB ENTRY AND THE MessageHost RENDER — `tokenParam &&
+                 !isPublicDemo`, reused verbatim rather than re-derived. Ineligible guests get
+                 `undefined`, so ChatBot renders no button AND drops the greeting clause that
+                 would otherwise promise one. Both follow from this single decision.
+
+                 The badge clear MIRRORS the Home entry exactly, so opening the overlay from
+                 either place behaves identically — a guest who opens from chat should not be
+                 left with a dot the Home route would have cleared. */
+              onMessageHost={tokenParam && !isPublicDemo
+                ? () => {
+                    setShowMessages(true)
+                    if ('clearAppBadge' in navigator) void (navigator as any).clearAppBadge()
+                  }
+                : undefined}
             />
           )}
         </div>
@@ -1771,12 +1787,15 @@ export default function GuestPage() {
           brandName={brandName}
           guestName={guestName}
           // CLOSE RETURNS TO HOME. This used to set 'more', which is the reported bug. MEASURED,
-          // not assumed: `setShowMessages(true)` occurs at exactly TWO live sites — the Home-tab
-          // card ABOVE and the `&msg=1` push deep-link — and NEITHER is the More tab. (The
+          // not assumed: `setShowMessages(true)` occurs at exactly THREE live sites — the Home-tab
+          // card ABOVE, the `&msg=1` push deep-link, and the `onMessageHost` handed to ChatBot
+          // (the offramp under the AI composer) — and NONE of the three is the More tab. (The
           // "Message your host" card in the More tab exists only inside the `preview &&` branch
           // and is `disabled`, so it is an owner-facing mock, not an entry point.) The Home card
           // opens the overlay WITHOUT changing tabs, so a guest arriving from Home was dropped on
-          // Settings — a tab they never chose. Home is correct from both real entry points.
+          // Settings — a tab they never chose. Home is correct from all three real entry points:
+          // the chat offramp lives on the Chat tab, and returning a guest to Home from there is
+          // the same deliberate behaviour, not an oversight.
           onClose={() => { setShowMessages(false); setActiveTab('home') }}
         />
       )}

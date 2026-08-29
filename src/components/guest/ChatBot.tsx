@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, RefreshCw } from 'lucide-react'
+import { Send, RefreshCw, MessageCircle } from 'lucide-react'
 import { DEMO_STARTERS } from './demoStarters'
 
 interface Msg { role: 'user' | 'assistant'; text: string }
@@ -15,12 +15,49 @@ interface Props {
       flag server-side, so a visitor who flips this prop in devtools gets the same four
       answers. This exists to make the UI honest about what it is, not to enforce it. */
   isPublicDemo?: boolean
+  /** OPENS THE HOST-MESSAGE OVERLAY. Purely presentational: ChatBot does NOT decide who may
+      message a host and must never try to. A caller that passes this handler has already
+      applied the eligibility gate (`tokenParam && !isPublicDemo` in GuestPage — the same
+      condition governing the Home-tab entry and the MessageHost render itself). No handler =
+      no door, and the greeting drops its promise of one along with it. */
+  onMessageHost?: () => void
 }
+
+// LONG BRAND NAMES FALL BACK RATHER THAN TRUNCATE INTO NONSENSE. `hosts.brand_name` has no
+// length CHECK in the database — a host can PATCH any length straight through PostgREST — so
+// this is a real input, not a hypothetical. Past this many characters the label reads "your
+// host" instead, because "Message Anna's Barcelona Apart…" is worse than a clean generic: it
+// looks like a rendering bug rather than a deliberate phrase.
+//
+// 28 IS A SEMANTIC THRESHOLD, NOT A FIT GUARANTEE — and be precise about which half the CSS
+// protects, because an earlier version of this comment had it backwards. The row is built so
+// the QUESTION shrinks and the CALL TO ACTION does not: `Message {hostLabel}` is `shrink-0`,
+// so the brand name and the verb survive at every width, and what ellipsizes is the leading
+// "Didn't find your answer?". That ordering is the whole point. With both halves in one
+// truncating span the opposite happened — `truncate` clips the END, so a 320px phone showed
+// "Didn't find your answer? Mess…" and NO NAME AT ALL, which is the one outcome this constant
+// exists to prevent. Measured: at 320px roughly 233px of text width is available, and
+// "Didn't find your answer? Message Anna Stays" needs ~260px — so the live fleet's longest
+// brand (14 chars) already overflowed, not merely the 28-char edge case.
+//
+// So this constant does ONE job: decide whether a name is short enough to be worth showing at
+// all, because "Message Anna's Barcelona Apart…" reads as a rendering bug where "Message your
+// host" reads as a deliberate phrase. (Longest brand_name MEASURED IN THE LIVE DB 29 Aug 2026:
+// 14 chars — a dated measurement, not a standing fact; re-measure before relying on it.)
+const BRAND_LABEL_MAX = 28
 
 const STARTERS = ['How does check-in work?', "What's the Wi-Fi?", 'Good food nearby', 'Getting around']
 
 
-export default function ChatBot({ apartmentId, token, accentColor, brandName, guestName, city, isPublicDemo = false }: Props) {
+export default function ChatBot({ apartmentId, token, accentColor, brandName, guestName, city, isPublicDemo = false, onMessageHost }: Props) {
+  // ONE FACT DRIVES BOTH THE BUTTON AND THE GREETING, deliberately — they cannot disagree
+  // because there is nothing to keep in sync. The old greeting told EVERY non-demo guest to
+  // "use Message host", including TOKENLESS ones with no such control anywhere on their page:
+  // ChatBot renders with `token={tokenParam ?? ''}`, so a guest without a token still reaches
+  // the chat and was being pointed at a door that was not there. If this ever splits back into
+  // two separate conditions, that bug returns.
+  const canMessageHost = !!onMessageHost && !isPublicDemo
+  const hostLabel = brandName.length <= BRAND_LABEL_MAX ? brandName : 'your host'
   const [msgs, setMsgs] = useState<Msg[]>([
     // Says plainly what it is, in the guest's first line of contact. The header label is the
     // PERSISTENT disclosure; this is the plain-language one. Both are required, not either/or.
@@ -30,7 +67,7 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
       role: 'assistant',
       text: isPublicDemo
         ? `Hi — I'm the AI assistant for this stay, and I know this apartment${city ? ' and ' + city : ''}. On this demo page I answer the four sample questions below.`
-        : `Hi${guestName ? ' ' + guestName : ''} — I'm an AI assistant for this stay. I know this apartment${city ? ' and ' + city : ''}, so ask me anything. To reach a person, use Message host.`,
+        : `Hi${guestName ? ' ' + guestName : ''} — I'm an AI assistant for this stay. I know this apartment${city ? ' and ' + city : ''}, so ask me anything.${canMessageHost ? ' To reach a person, use the button below.' : ''}`,
     },
   ])
   const [input, setInput] = useState('')
@@ -226,6 +263,56 @@ export default function ChatBot({ apartmentId, token, accentColor, brandName, gu
           <Send size={16} />
         </button>
       </div>
+      )}
+
+      {/* THE QUIET OFFRAMP. Sits BELOW the composer, not above the starters: it is what a guest
+          reaches for AFTER the assistant has failed them, so it must not compete with asking.
+          Transparent and hairline-bordered so it reads as a secondary route, with the action
+          words in the host accent so the door is still obviously a door.
+
+          RENDERED ONLY WHEN `canMessageHost`, which is `onMessageHost && !isPublicDemo`. The
+          demo check is BELT AND BRACES: the demo passes no handler, so the first half already
+          excludes it — but messaging is off on the public peek and a visible door there would
+          be a promise the server refuses (403), so the flag is named explicitly rather than
+          left implied by a caller's discipline. */}
+      {canMessageHost && (
+        <div className="shrink-0 px-4 pb-3 bg-[#fffdf9]">
+          <button
+            type="button"
+            onClick={onMessageHost}
+            /* WCAG 2.5.3 LABEL IN NAME, IN BOTH BRANCHES — and the fallback branch is the one
+               that is easy to get wrong. The accessible name must CONTAIN the visible label. When
+               the brand is short the two are identical. When it has fallen back, the screen says
+               "Message your host" while the full brand is what a screen-reader user actually needs
+               to hear — so the name leads with the VISIBLE words (keeping speech input working for
+               "click message your host", the only words on screen) and appends the real brand after
+               a dash. Naming only `brandName` here, as an earlier version did, satisfied 2.5.3 for
+               short brands and FAILED it for exactly the long ones this fallback exists for. */
+            aria-label={hostLabel === brandName
+              ? `Didn't find your answer? Message ${brandName}`
+              : `Didn't find your answer? Message ${hostLabel} — ${brandName}`}
+            /* overflow-hidden IS THE BACKSTOP, not decoration. `shrink-0` on the CTA means an
+               unfittable brand (28 wide glyphs, all-caps or CJK, on a 320px phone) would otherwise
+               overflow the row and give the whole guest page a horizontal scrollbar. Clipping
+               inside the button is the strictly better failure: it stays a label problem instead
+               of becoming a page-layout one. */
+            className="w-full min-h-[44px] flex items-center gap-2 overflow-hidden rounded-xl border border-[#e9e4d9] bg-transparent px-4 py-2.5 text-left cursor-pointer"
+          >
+            <MessageCircle size={15} className="shrink-0" style={{ color: accentColor }} />
+            {/* TWO SPANS, AND THE SPLIT IS THE MECHANISM. The question is the shrinking half
+                (`min-w-0 truncate`); the call to action is `shrink-0` so the verb and the brand
+                name are width-invariant and can never be the thing that disappears. Both children
+                are single-line, so the row still cannot wrap onto two. Collapsing these back into
+                one truncating span re-opens the defect this shape fixes — see the note on
+                BRAND_LABEL_MAX above. */}
+            <span className="min-w-0 truncate text-[12.5px] leading-snug text-[#5b5853]">
+              Didn&apos;t find your answer?
+            </span>
+            <span className="shrink-0 text-[12.5px] leading-snug font-medium" style={{ color: accentColor }}>
+              Message {hostLabel}
+            </span>
+          </button>
+        </div>
       )}
     </div>
   )
