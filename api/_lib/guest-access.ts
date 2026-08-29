@@ -159,7 +159,7 @@ export async function resolveMessagingAccess(
 // scalars inside detailsBlock, picksBlock or guideBlock — those sit inside multi-line blocks
 // that are newline-joined by construction, so collapsing whitespace there would destroy the
 // format. That is a different fix with a different shape.
-function asPromptScalar(v: string | null | undefined, maxLen: number): string {
+export function asPromptScalar(v: string | null | undefined, maxLen: number): string {
   if (!v) return ''
   return v
     // C0 (includes newline, CR, tab) and C1/DEL become a SPACE, never removed outright, so two
@@ -169,11 +169,12 @@ function asPromptScalar(v: string | null | undefined, maxLen: number): string {
     // newline is gone the double quote is the ONLY structural delimiter left that a value can
     // forge — the callers below wrap these in "..." , so a value containing one can close the
     // quotation early and leave its own text sitting at top level, outside the quotes. Folding
-    // to an apostrophe keeps the value readable and removes the last delimiter THE CALLERS BELOW
-    // EMIT. It is deliberately not exhaustive over quote-like characters: backtick, guillemets,
-    // fullwidth quote and the curly SINGLES all survive. They cannot close an ASCII `"`, so they
-    // are a perception attack on the model, not a structural one — which puts them squarely in
-    // the NOT CLOSED box below, not in a gap this fold pretends to cover.
+    // to an apostrophe keeps the value readable and removes the last delimiter the callers emit
+    // (in this file and api/welcome-chat.ts). It is deliberately not exhaustive over quote-like
+    // characters: backtick, guillemets, fullwidth quote and the curly SINGLES all survive. They
+    // cannot close an ASCII `"`, so they are a perception attack on the model, not a structural
+    // one — which puts them squarely in the NOT CLOSED box below, not in a gap this fold
+    // pretends to cover.
     .replace(/["\u201C\u201D]/g, "'")
     .replace(/\s+/g, ' ')
     .trim()

@@ -5,6 +5,7 @@ import { GoogleGenAI } from '@google/genai'
 import { verifyTurnstile } from './_lib/turnstile.js'
 import { withRetry } from './_lib/retry.js'
 import { scrubErr } from './_lib/scrub.js'
+import { asPromptScalar } from './_lib/guest-access.js'
 
 // PUBLIC concierge for the welcome page (/w/:code). Separate from api/guest-chat.ts on
 // purpose: this endpoint is reachable WITHOUT a booking token, so it carries its own,
@@ -97,15 +98,25 @@ async function buildPublicSystemInstruction(
       .join('\n')
   }
 
-  const where = [apt.neighborhood, apt.city, apt.country].filter(Boolean).join(', ')
-  const streetLine = [apt.street, apt.street_number].filter(Boolean).join(' ')
+  // Short scalars are fenced through asPromptScalar — full reasoning on the function in
+  // _lib/guest-access.ts. Same LATENT framing as the guest surface: every value here is
+  // host-controlled, so this closes the injection SHAPE, not a live hole (PG-30). Each
+  // component is fenced BEFORE any join and exactly once — fencing a join lets an inner
+  // newline survive, and re-capping a join right-truncates the house number.
+  const nb = asPromptScalar(apt.neighborhood, 60)
+  const city = asPromptScalar(apt.city, 60)
+  const country = asPromptScalar(apt.country, 60)
+  const where = [nb, city, country].filter(Boolean).join(', ')
+  const streetLine = [asPromptScalar(apt.street, 60), asPromptScalar(apt.street_number, 60)]
+    .filter(Boolean)
+    .join(' ')
   // Address ONLY when the host opted in; otherwise it never enters the prompt.
   const addressBlock = apt.welcome_show_address === true && streetLine
-    ? `ADDRESS: ${[streetLine, apt.neighborhood, apt.city, apt.country].filter(Boolean).join(', ')}`
+    ? `ADDRESS: ${[streetLine, nb, city, country].filter(Boolean).join(', ')}`
     : ''
 
   return [
-    `You are the friendly concierge for "${brandName}", helping a guest who has booked ${apt.name} in ${where} and is planning their trip BEFORE they arrive.`,
+    `You are the friendly concierge for "${asPromptScalar(brandName, 60)}", helping a guest who has booked "${asPromptScalar(apt.name, 80)}" in ${where} and is planning their trip BEFORE they arrive.`,
     ``,
     `CONTEXT: This is a PUBLIC pre-arrival visitor, not a verified in-stay guest. You have ONLY public information. You do NOT have Wi-Fi, door codes, exact entry instructions or any booking details. If asked for those, warmly explain they are waiting inside the guest page to be scanned on arrival, and that the host can help via WhatsApp — never guess or invent them.`,
     ``,
