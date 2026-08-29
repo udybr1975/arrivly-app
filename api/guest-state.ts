@@ -137,6 +137,49 @@ async function notifyOpen(
   })
 }
 
+// THE DEMO'S COUNTERPART TO notifyOpen. A real apartment pings the operator feed; the public
+// demo increments one integer instead. Same event, two different instruments, and the reason
+// is the same measurement argument the suppression comment below makes: the feed exists so the
+// operator sees REAL arrivals, but the demo's open RATE is the top-of-funnel number a marketing
+// launch is judged on, and a ping that scrolls past in a phone notification list cannot be
+// summed. A counter accumulates; a ping does not.
+//
+// WHAT IS STORED: one row per Europe/Helsinki day, holding a COUNT and nothing else. No request
+// data of any kind reaches the database here — no token, no key, no IP, no apartment id, no
+// user agent, no timestamp beyond the day. The RPC takes no arguments — as called here AND as
+// defined in the database — which makes that structural rather than a promise: caller data
+// cannot reach the table without changing BOTH the call site and the function signature. That is
+// a far stronger guarantee than a convention, though not an unbreakable one; it is two
+// deliberate edits away, not one careless one.
+//
+// THE SAME OVER-COUNT AS THE HEARTBEAT APPLIES, and for the same reason — see the enumerated
+// redirect cases documented above notifyOpen. GuestPage redirects after resolving a token and
+// the reload hits this endpoint again, so this counts REQUESTS THAT RESOLVED THE DEMO TO
+// ACTIVE, not humans, and one visitor can appear more than once. DO NOT "fix" that by
+// suppressing a bump — same rule as the heartbeat: suppressing would hide the second, real
+// request. Read the number as a trend line, not a headcount.
+//
+// FAIL-SILENT. The demo is the marketing front door; a counting hiccup must never break it or
+// change one byte of the guest response. Everything is inside the catch, nothing is rethrown,
+// and the failure is a warn with a truncated message — the same shape the rest of this file uses.
+//
+// BE PRECISE ABOUT THE BOUND, because the heartbeat above states a stronger one and the two are
+// NOT equivalent: sendNtfy self-caps at 5s, so notifyOpen can delay a page by at most that. This
+// adds one service-role round trip with NO timeout — postgrest-js sets none — exactly like the
+// four queries this handler already awaits on the same path. So the honest claim is that it
+// cannot FAIL the page, not that it cannot DELAY it. Do not add an AbortController for this: it
+// would be new surface for no measured gain while the neighbouring queries stay unbounded.
+// THE DB TABLE IS THE DURABLE ARTEFACT: a lost bump costs one tick on a trend line, which is not
+// worth risking the page for.
+async function countDemoOpen(db: SupabaseClient): Promise<void> {
+  try {
+    const { error } = await db.rpc('bump_demo_open')
+    if (error) console.warn('[guest-state] demo count failed —', error.message?.slice(0, 120))
+  } catch (e) {
+    console.warn('[guest-state] demo count failed —', (e instanceof Error ? e.message : 'unknown').slice(0, 120))
+  }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // This response varies by a per-guest credential (the booking token, or the QR key
   // on the keyed date path), so it must never be stored by a CDN, a proxy or the
@@ -216,7 +259,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           // arrivals; a public link anyone can tap would make every landing-page visitor
           // look like a guest checking in, and the alarm value of the feed is exactly its
           // signal-to-noise. Not a privacy measure — a measurement one.
+          // Real apartment -> operator heartbeat. Demo -> the day counter instead (see
+          // countDemoOpen). Exactly one of the two runs, never both and never neither, so the
+          // demo's opens are measured without ever entering the arrival feed.
           if (!isPublicDemo) await notifyOpen(apartment, 'QR (token)')
+          else await countDemoOpen(db)
           return res.status(200).json({ state: 'active', token, guestName })
         }
         // future/other → fall through to keyed date path
@@ -254,7 +301,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const guestName = await resolveGuestName(db, dateBooking.guest_id)
           // Same suppression as the token path: the demo apartment never pings the feed,
           // by whichever door it was opened.
+          // DEAD TODAY, KEPT DELIBERATELY — and the reason matters, because an earlier version of
+          // this comment got it wrong. The landing page's QR and its link are built from ONE
+          // constant (Landing.tsx PUBLIC_DEMO_URL) which carries `&token=`, so a landing SCAN
+          // arrives at the TOKEN path above and is already counted there — not here. This door is
+          // additionally date-bounded (check_in/check_out below) while the token path skips that
+          // bound for the demo, so a keyed open of the demo returns neutral before reaching this
+          // line at all.
+          //
+          // IT STAYS BECAUSE THE FAILURE DIRECTIONS ARE ASYMMETRIC: a host can still mint a keyed
+          // QR for this apartment from the Share panel, and if that ever happens — or the date
+          // bound changes — an unfired bump costs nothing while an omitted reachable one silently
+          // under-reports the exact number this exists to measure. DO NOT remove the TOKEN-path
+          // bump on the belief that scans are counted here; they are not.
           if (!isPublicDemo) await notifyOpen(apartment, 'QR (date)')
+          else await countDemoOpen(db)
           return res.status(200).json({ state: 'active', token: dateBooking.reference_number, guestName })
         }
       }
