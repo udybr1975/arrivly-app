@@ -29,7 +29,7 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Current HEAD — `c901081`** (29 Aug 2026), PG-38/33/39 closed: the fence extracted to `_lib/prompt-scalar.ts`, the public-endpoint adjacency removed; freeze gate declared — 3 commits + the npm pass remain. This docs commit sits above it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
+> **Current HEAD — `bf5401f`** (29 Aug 2026), the last of the three freeze-gate commits: `27e2acd` (ntfy topic split, PG-10/34), `d5c7945` (PG-36/31/40 + PG-35 by argument), `bf5401f` (PG-28 minter mechanism). **THE FREEZE GATE IS ONE ROUTINE NPM PASS FROM COMPLETE** — PG-17's remainder is the only item left. This docs commit sits above it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -1212,8 +1212,16 @@ docs/spend-hardening.md. What stays here is only what a future change could BREA
 
 - **OPERATOR NTFY HEARTBEAT ON GUEST-PAGE OPENS (`a4a35bd`).** Payload is PROPERTY / STATE /
   DOOR only — **never the guest name, token, confirmation code, IP, stay dates or any host
-  id**; the Art. 30 record says so, so a payload change is a two-sided change. Off switch is
-  unsetting `NTFY_URL`. Known and accepted: redirect paths DOUBLE-COUNT, so the feed counts
+  id**; the Art. 30 record says so, so a payload change is a two-sided change. **OFF SWITCH IS
+  UNSETTING `NTFY_TELEMETRY_URL`, NOT `NTFY_URL` (`27e2acd`, PG-10):** the heartbeat now rides
+  its OWN topic, and `NTFY_URL` is the ALARM topic only. Unsetting `NTFY_URL` would silence
+  every spend brake in the product and would NOT stop these pings. `NTFY_TELEMETRY_URL` must be
+  its own private topic, flagged Sensitive, and NEVER equal to `NTFY_URL` — the code cannot
+  detect equality and it would silently restore the coupling. Until it is set the pings skip by
+  design. **The Art. 30 register still names ONE ntfy recipient where TWO topics now exist** —
+  a recipient/topic-identity change, not a content change (payloads are unchanged), and the
+  split NARROWS exposure since the host UUID appears only on the alarm topic. Known and
+  accepted: redirect paths DOUBLE-COUNT, so the feed counts
   redirects, not humans — see the enumerated cases at `notifyOpen`.
 
 > Full mechanism and history: docs/spend-hardening.md.
