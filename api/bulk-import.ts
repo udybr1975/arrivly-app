@@ -119,8 +119,10 @@ export { SYSTEM_PROMPT }
  * checkin.entry_instructions ("never discard one"); this endpoint writes extras and nothing
  * else, so there is no destination to move it to and the sentence simply goes.
  *
- * `redacted` is RETURNED TO THE CALLER as well as logged — both 200 paths carry it, and it
- * drives two host-facing messages in PropertySetup.tsx. It is a
+ * `redacted` is RETURNED TO THE CALLER as well as logged — ALL THREE 200 paths carry it (the
+ * `valid.length === 0` guard, the all-scrubbed path and the success path), and it drives three
+ * host-facing branches in PropertySetup.tsx: the all-scrubbed error, the nothing-saved-no-scrub
+ * error (which exists BECAUSE the zero is meaningful), and the partial-scrub toast. It is a
  * count, never the removed text: the whole point is that the text does not travel.
  */
 export function buildRows(
@@ -329,7 +331,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ) as { category: string; content: string }[]
 
     if (valid.length === 0) {
-      return res.status(200).json({ categories: [] })
+      // `redacted: 0` IS EXPLICIT AND LOAD-BEARING (PG-36). No scrub ran on this path, so the
+      // value is genuinely zero — but returning the KEY makes the client contract a VALUE
+      // contract instead of a key-presence one. Every 200 from this endpoint now carries
+      // `redacted` as a non-negative integer, so a client can branch on the number alone and
+      // never has to distinguish "absent" from "zero". That closes the only trigger of PG-35:
+      // PropertySetup's `removed = data.redacted ?? 0` no longer depends on the `??` for
+      // correctness, and no 200 body can produce a `removed` that satisfies neither `> 0` nor
+      // `=== 0`.
+      return res.status(200).json({ categories: [], redacted: 0 })
     }
 
     // Scrub BEFORE the delete. If every row collapses to empty this returns an empty

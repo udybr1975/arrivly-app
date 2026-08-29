@@ -6,17 +6,44 @@
 // SHORT SCALARS GO INTO THE SYSTEM INSTRUCTION THROUGH HERE, never raw.
 //
 // WHY A READ-BOUNDARY FIX: a write-boundary fix must be repeated at every writer, forever,
-// including writers that do not exist yet — a read-boundary fix is done once. These values are
-// written by api/create-booking.ts, api/import-airbnb-csv.ts and the property editor today;
-// sanitising there would have to be re-done at every future writer. This is the one place they
-// are INTERPOLATED, so this is where the fence belongs.
+// including writers that do not exist yet — a read-boundary fix is done once per READER. This
+// is the one place these values are INTERPOLATED, so this is where the fence belongs.
 //
-// LATENT AND FORWARD-LOOKING, NOT A LIVE HOLE — do not read this as an active vulnerability.
-// Every writer today is HOST-authenticated, and a host already controls this entire prompt
-// through apartment_details, so a host gains NOTHING by injecting here. It is fenced because
-// the writers will not always be host-authored: iCal pre-fill and guest self-identify are both
-// on the roadmap, and at that point guestName becomes GUEST-controlled text sitting on the
-// second line of a system instruction.
+// THE WRITER SET, MEASURED (grep -rn "first_name" api/, insert/update sites) — FIVE write
+// statements across FOUR files, and they are NOT all host-authenticated:
+//   api/create-booking.ts:223        host-authenticated, value NOT allowlisted (trim + 80 cap)
+//   api/import-airbnb-csv.ts:168,178 host-authenticated, value NOT allowlisted (a guest's
+//                                    Airbnb display name, relayed by the host)
+//   api/demo-create.ts:169           server-authored literal ('Alex'), no caller input
+//   api/_lib/welcome-claim.ts:252    ANYONE HOLDING A CONFIRMATION CODE
+// SCOPE OF THAT MEASUREMENT: it is over `api/` only. A DB-side writer (a trigger, or a
+// SECURITY DEFINER RPC) would NOT appear in it. Nothing writes the column from the database
+// today, but do not read "five" as a closed set without re-checking that side too.
+//
+// SO "GUEST SELF-IDENTIFY" IS NOT ON THE ROADMAP — IT SHIPPED. An earlier version of this
+// paragraph named three writers, called them all host-authenticated, and listed guest
+// self-identify as future work. All three claims were stale (PG-40).
+//
+// LATENT AND FORWARD-LOOKING, NOT A LIVE HOLE — the verdict is unchanged, but the REASON is
+// not the one that used to be written here. It holds because TWO controls STACK, and the
+// asymmetry runs in BOTH directions, so neither may be dropped on the strength of the other:
+//
+//   (a) THIS FENCE bounds what is READ into the prompt, per read site. For the three writers
+//       above that store an un-allowlisted value — create-booking and both import-airbnb-csv
+//       sites, which are host-AUTHENTICATED but not host-AUTHORED — the fence is the SOLE
+//       control. Host-authenticated is not the same as trusted content.
+//   (b) NAME_RE, declared api/_lib/welcome-claim.ts:50 and applied at :174 inside
+//       validateClaimInput, bounds what the NON-HOST writer can STORE through that door:
+//       letters, marks, spaces, apostrophes, hyphens and full stops only, so no newline, no
+//       bidi or zero-width control, no braces or colon reaches the column THROUGH THAT DOOR.
+//       (Other doors are length-capped only — the column as a whole is NOT clean.)
+//
+// **RELAXING NAME_RE WIDENS WHAT A GUEST CAN PLACE ON LINE TWO OF A SYSTEM INSTRUCTION, AND
+// THIS FENCE WOULD NOT CATCH IT.** That is not rhetoric: per PG-32 this fence deliberately does
+// NOT strip Unicode Cf format characters (U+200B, the bidi controls U+202A-202E and
+// U+2066-2069); only U+2028/U+2029/U+FEFF fall out via the \s+ collapse. So for the
+// welcome-claim door, NAME_RE is the ONLY control keeping zero-width and bidi characters out
+// of the system instruction. See the matching note at the allowlist itself.
 //
 // KILLING LINE BREAKS IS THE LOAD-BEARING PART. Multi-line injection is what makes this work
 // on a single-line field: a value containing a line break can close the sentence and open what

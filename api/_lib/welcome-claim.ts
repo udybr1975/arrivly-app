@@ -130,13 +130,22 @@ const miss = (): ClaimOutcome => ({ status: CLAIM_MISS_STATUS, body: CLAIM_MISS,
  * the rest of the name".
  *
  * THE CHARACTER SET IS AN ALLOWLIST BECAUSE THIS VALUE REACHES AN LLM SYSTEM INSTRUCTION.
- * `guests.first_name` is interpolated raw into the guest-chat system prompt
- * (api/_lib/guest-access.ts — "The guest's name is ${name}."), OUTSIDE the per-request
- * nonce fence that guards host content. Until now only an AUTHENTICATED HOST could set that
- * string; this endpoint lets anyone holding a confirmation code set it, on exactly the
- * booking class that has no name yet (iCal carries none). The trust boundary moved, so the
- * validation moved with it: letters, marks, spaces, apostrophes, hyphens and full stops,
- * which keeps accents and non-Latin scripts.
+ * `guests.first_name` is spliced into the guest-chat system prompt (api/_lib/guest-access.ts
+ * — "The guest's name is ${name}."), OUTSIDE the per-request nonce fence that guards host
+ * content. It is NO LONGER INTERPOLATED RAW: `7a28bd3` added a read-boundary fence
+ * (`asPromptScalar`, now api/_lib/prompt-scalar.ts) at that splice.
+ *
+ * THAT DOES NOT MAKE THIS ALLOWLIST REDUNDANT, AND IT MUST NOT BE RELAXED ON THE STRENGTH OF
+ * IT — the two bound different things. The fence bounds what is READ into one prompt and is
+ * applied per read site; this allowlist bounds what is STORED in the column, for every reader
+ * that exists now or later (a log, an email, an export, a future prompt someone forgets to
+ * fence). A read-boundary fix is done once per READER; a write-boundary fix is what keeps the
+ * stored value clean for readers nobody has written yet.
+ *
+ * Until this endpoint existed only an AUTHENTICATED HOST could set that string; it lets anyone
+ * holding a confirmation code set it, on exactly the booking class that has no name yet (iCal
+ * carries none). The trust boundary moved, so the validation moved with it: letters, marks,
+ * spaces, apostrophes, hyphens and full stops, which keeps accents and non-Latin scripts.
  *
  * BE PRECISE ABOUT WHAT THIS BUYS, because the next editor will rely on it. It removes the
  * STRUCTURAL half of prompt injection — no newline, no bidi or zero-width format control, no
