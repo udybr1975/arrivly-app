@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { MapPin, Download, Printer, Copy, Check, AlertTriangle, EyeOff, RefreshCw } from 'lucide-react'
 import QRCode from 'qrcode'
@@ -1053,6 +1053,10 @@ export default function SharePanel() {
   const [host, setHost] = useState<HostBrand | null>(null)
   const [loadError, setLoadError] = useState(false)
   const [loading, setLoading] = useState(true)
+  // WHICH property's card is on screen. One card at a time, because stacking every card made
+  // it far too easy to copy the URL from the wrong one — the cards look alike and the only
+  // thing distinguishing them is a heading the eye skips past on the way to a Copy button.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -1128,6 +1132,11 @@ export default function SharePanel() {
       setHostId(user.id)
       setHost(brand)
       setApts(mapped)
+      // Default to the first property, set HERE rather than in a follow-up effect: the value is
+      // already in hand, so an effect would only add a render pass and a second place for the
+      // two to disagree. `mapped` keeps the query's created_at order — deliberately NOT sorted
+      // alphabetically, so the list a host already knows does not silently reshuffle.
+      setSelectedId(mapped[0]?.id ?? null)
       setLoading(false)
     }
     load()
@@ -1138,13 +1147,12 @@ export default function SharePanel() {
     setApts(prev => prev.map(a => (a.id === aptId ? { ...a, welcome_message: message } : a)))
   }
 
-  const cards = useMemo(
-    () =>
-      apts.map(apt => (
-        <PropertyShareCard key={apt.id} apt={apt} hostId={hostId as string} host={host} onSaved={handleSaved} />
-      )),
-    [apts, hostId, host],
-  )
+  // `?? apts[0]` is a guard, not a nicety: if the selected id ever goes stale — a property
+  // deleted in another tab, a future refresh that replaces the list — the panel falls back to
+  // a real card instead of rendering an empty area under a populated dropdown, which reads as
+  // a broken page rather than a missing selection.
+  const selected = apts.find(a => a.id === selectedId) ?? apts[0] ?? null
+  const pickerId = useId()
 
   if (loading) return <Loader />
 
@@ -1175,7 +1183,50 @@ export default function SharePanel() {
       ) : apts.length === 0 ? (
         <div className="text-center py-16 text-[#b3aa9b] text-[13px]">No properties yet.</div>
       ) : (
-        <div className="flex flex-col gap-3.5">{cards}</div>
+        // ONE CARD AT A TIME. Every card carries its own guest URL and its own Copy button, and
+        // stacked they are near-identical — so the failure mode was copying the right-looking
+        // URL for the wrong property and sending a guest to someone else's page. A picker makes
+        // the choice explicit and leaves exactly one Copy button on screen.
+        <div className="flex flex-col gap-3.5">
+          {apts.length > 1 && (
+            // Hidden at one property: there is nothing to choose, and a one-option dropdown
+            // reads as a control that is broken rather than one that is unnecessary. Same
+            // `length > 1` gate BookingManager and Messages already use for their pickers.
+            <div className="flex items-center gap-2">
+              <label htmlFor={pickerId} className="text-[13px] text-[#6b6354]">
+                Property
+              </label>
+              <select
+                id={pickerId}
+                value={selected?.id ?? ''}
+                onChange={e => setSelectedId(e.target.value)}
+                className="bg-white border border-[#e0dacd] rounded-[10px] px-3 py-2 text-[13px] text-[#1c1c1a] focus:outline-none focus:border-[#c8a24e] max-w-xs"
+              >
+                {apts.map(a => (
+                  <option key={a.id} value={a.id}>{a.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {selected && (
+            // THE KEY IS LOAD-BEARING — DO NOT REMOVE IT AS REDUNDANT. SendStep holds
+            // platformId / editing / draft / saving as INSTANCE state that is not derived from
+            // `apt` on re-render. Without the key React reuses that instance across a property
+            // switch, so an open editor holding property A's draft would render under property
+            // B's heading, above property B's Copy button — the same wrong-property failure this
+            // picker exists to eliminate, just moved from the URL to the message body. Losing an
+            // unsaved draft on switch is the safer trade AND it is visible, because the host
+            // watches the card change. Note it costs nothing on save: handleSaved rewrites the
+            // message but never an id, so a save does not remount.
+            <PropertyShareCard
+              key={selected.id}
+              apt={selected}
+              hostId={hostId as string}
+              host={host}
+              onSaved={handleSaved}
+            />
+          )}
+        </div>
       )}
     </div>
   )
