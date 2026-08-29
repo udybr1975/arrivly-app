@@ -60,7 +60,10 @@ async function resolveGuestName(db: SupabaseClient, guestId: string | null): Pro
 // deliberately silent here: neutral is the flat body every non-active outcome returns, so
 // notifying on it would both drown the signal and put a ping behind a probe of any visible
 // apartment UUID. Fires on every open including reloads — deliberate launch monitoring; the
-// off switch is unsetting NTFY_URL. is_test properties still fire, tagged, per the standing
+// off switch is unsetting NTFY_TELEMETRY_URL, NOT NTFY_URL. THIS IS THE TELEMETRY CHANNEL
+// (PG-10): unsetting NTFY_URL would silence every SPEND BRAKE in the product and would not
+// stop these pings at all. Telemetry is OFF until NTFY_TELEMETRY_URL is set in Vercel.
+// is_test properties still fire, tagged, per the standing
 // is_test rule (operator machinery always stays visible).
 // CONTENT RULE (Art. 30: ntfy carries no personal data): property and request facts ONLY.
 // Never the guest name, token, confirmation code, IP, stay dates, or any host identifier.
@@ -90,7 +93,7 @@ async function resolveGuestName(db: SupabaseClient, guestId: string | null): Pro
 //     PRE-ARRIVAL LINK and was redirected with ?token= is reported as a QR entry. The entry
 //     path label is indicative, not authoritative.
 // AND A GAP IN THE FEED IS NOT A GAP IN TRAFFIC: sendNtfy swallows a non-2xx — it warns
-// `[ntfy] NOT DELIVERED` and does not retry — so ntfy's own rate limiting shows up as MISSING
+// `[ntfy:telemetry] NOT DELIVERED` and does not retry — so ntfy's own rate limiting shows up as MISSING
 // pings in the feed, never as a failed request. VISIBLE IN THE LOGS SINCE PG-07; before that
 // it logged 429 and 200 identically and a quiet hour was undiagnosable from here.
 // Do not read a quiet hour as no arrivals.
@@ -128,6 +131,9 @@ async function notifyOpen(
     title: `${apt.is_test ? '[test] ' : ''}Bemgu: guest page open`,
     message: `${safeName}${place ? ' — ' + place : ''}\nactive · ${door}`,
     priority: 'default',
+    // TELEMETRY, not an alarm (PG-10): this fires on every open including reloads, so it is
+    // exactly the per-request volume that must never share a topic with the spend brakes.
+    channel: 'telemetry',
   })
 }
 

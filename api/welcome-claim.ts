@@ -259,7 +259,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // OPERATOR HEARTBEAT — every pre-arrival link open (preview/active/thankyou), NEVER a
     // miss: misses feed the brake + victim-keyed detector above and must not be
     // double-reported here. Fires on every open including reloads — deliberate launch
-    // monitoring; the off switch is unsetting NTFY_URL. is_test properties still fire,
+    // monitoring; the off switch is unsetting NTFY_TELEMETRY_URL, NOT NTFY_URL — this is the
+    // TELEMETRY channel (PG-10), and unsetting NTFY_URL would silence every SPEND BRAKE in the
+    // product while these pings kept firing. Telemetry is OFF until NTFY_TELEMETRY_URL is set
+    // in Vercel. is_test properties still fire,
     // tagged, per the standing is_test rule (operator machinery always stays visible).
     // CONTENT RULE (Art. 30: ntfy carries no personal data): property and request facts
     // ONLY. Never the guest name, token, confirmation code, IP, stay dates, or any host
@@ -288,6 +291,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         title: `${h.isTest ? '[test] ' : ''}Bemgu: guest page open`,
         message: `${safeName}${place ? ' — ' + place : ''}\n${h.state} · pre-arrival link`,
         priority: 'default',
+        // TELEMETRY, not an alarm (PG-10): same per-request shape as guest-state's heartbeat.
+        // The failed-claim detector above stays on the ALARM channel.
+        channel: 'telemetry',
       })
     }
 
