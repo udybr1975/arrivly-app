@@ -22,7 +22,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { SYSTEM_PROMPT, buildRows } from '../bulk-import.ts'
+import { SYSTEM_PROMPT, buildRows, normaliseItems } from '../bulk-import.ts'
 import { SYSTEM_PROMPT as IMPORTER_PROMPT } from './import-listing.ts'
 import { EXTRAS_CATEGORIES } from '../../src/lib/detailCategories.ts'
 
@@ -163,10 +163,17 @@ test('the category list is INTERPOLATED from the shared constant, never hand-cop
   // it names is worse than no assertion: it reads like cover.
 })
 
-test('the output contract is unchanged', () => {
-  assert.match(SYSTEM_PROMPT, /Output ONLY a JSON array of \{ "category": string, "content": string \} objects/)
-  assert.match(SYSTEM_PROMPT, /Output the raw JSON array only, no other text, no code fences\./)
+test('the output contract requests an items object (json_object mode cannot emit a bare array)', () => {
+  // CHANGED by the 31 Aug 2026 freeze-lifted fix: the live default is Groq, whose json_object
+  // mode structurally forbids a bare top-level array, so the prompt now asks for
+  // {"items":[…]}. The word "JSON" stays present (Groq json mode requires it in the prompt).
+  // The MECHANISM is normaliseItems (tested below), not this sentence — a prompt is a hint.
+  assert.match(SYSTEM_PROMPT, /Output ONLY a JSON object of the exact shape \{"items":\[\{ "category": string, "content": string \}, \.\.\.\]\}/)
+  assert.match(SYSTEM_PROMPT, /Output the raw JSON object only, no other text, no code fences\./)
   assert.match(SYSTEM_PROMPT, /category MUST be exactly one of the listed categories/)
+  // The old bare-array wording must be GONE, or json_object mode makes it unsatisfiable again.
+  assert.doesNotMatch(SYSTEM_PROMPT, /Output ONLY a JSON array/)
+  assert.doesNotMatch(SYSTEM_PROMPT, /Output the raw JSON array only/)
 })
 
 test('the WiFi / Check-in / House Rules exclusion is unchanged', () => {
@@ -323,4 +330,87 @@ test('the fixtures are invented, and must stay that way', () => {
   // The invented codes are short and obviously fake — a value that still looks random beside
   // these is the tell that something real was pasted in. Case-folding is NOT de-identification.
   assert.ok(/7742/.test(F.mixed) && /1125/.test(F.codeOnly))
+})
+
+// ---------------------------------------------------------------------------
+// the SHAPE LADDER — normaliseItems reads what json_object mode actually returns
+// ---------------------------------------------------------------------------
+//
+// Behavioural, like the buildRows tests: normaliseItems is pure, so the real function runs
+// here. It only WIDENS what is readable — the handler's per-item validator is still the sole
+// gate on what is writable — so these assert the container is resolved, not that a category is
+// accepted. First match wins, so ordering is part of the contract and is pinned.
+//
+// WHY THIS SECTION EXISTS: Groq's response_format json_object (the live default) forbids a bare
+// top-level array, so the model legally returns wrapped/keyed shapes. The single-array unwrap
+// this replaced 502'd on a single {category,content} object and on category-keyed maps — the two
+// shapes seen in the 31 Aug production logs.
+
+test('a bare array passes through unchanged (the gemini shape)', () => {
+  const arr = [{ category: 'Parking', content: 'bay 14' }]
+  assert.strictEqual(normaliseItems(arr), arr)
+})
+
+test('an {"items":[…]} object is unwrapped (the shape the prompt now requests, branch b)', () => {
+  const items = [{ category: 'Parking', content: 'bay 14' }, { category: 'Games', content: 'cards' }]
+  assert.deepEqual(normaliseItems({ items }), items)
+})
+
+test('a single {category, content} object becomes a one-item array (branch c, today\'s 502 shape)', () => {
+  assert.deepEqual(
+    normaliseItems({ category: 'Good to know', content: 'Tap water is excellent.' }),
+    [{ category: 'Good to know', content: 'Tap water is excellent.' }],
+  )
+})
+
+test('a category-keyed map with string values is resolved (branch d)', () => {
+  assert.deepEqual(
+    normaliseItems({ Parking: 'bay 14', 'Good to know': 'Tap water is excellent.' }),
+    [
+      { category: 'Parking', content: 'bay 14' },
+      { category: 'Good to know', content: 'Tap water is excellent.' },
+    ],
+  )
+})
+
+test('a category-keyed map with string-ARRAY values joins on newlines (branch d, the ≥2-array case)', () => {
+  // This is exactly the shape the single-array unwrap dropped as ambiguous and then 502'd.
+  assert.deepEqual(
+    normaliseItems({ 'During your stay': ['picnic kit', 'sauna'], Parking: ['bay 14'] }),
+    [
+      { category: 'During your stay', content: 'picnic kit\nsauna' },
+      { category: 'Parking', content: 'bay 14' },
+    ],
+  )
+})
+
+test('branch b wins over branch d when exactly one array-valued property is present', () => {
+  // First match wins: {"items":[…]} plus a scalar sibling resolves via the single-array
+  // unwrap, not the keyed map — the pin on the ladder order.
+  const items = [{ category: 'Parking', content: 'bay 14' }]
+  assert.deepEqual(normaliseItems({ items, note: 'ignored' }), items)
+})
+
+test('unresolvable shapes return null (→ the handler 502)', () => {
+  assert.strictEqual(normaliseItems(42), null)
+  assert.strictEqual(normaliseItems('a string'), null)
+  assert.strictEqual(normaliseItems(null), null)
+  // an object whose only value is neither a string nor a string-array
+  assert.strictEqual(normaliseItems({ meta: { nested: true } }), null)
+  // a mixed map where one value disqualifies the whole (a number) — no bare array, no
+  // {category,content}, not all string/string-array → null
+  assert.strictEqual(normaliseItems({ Parking: 'bay 14', count: 3 }), null)
+  // an empty object has no entries to resolve
+  assert.strictEqual(normaliseItems({}), null)
+})
+
+test('a normalised item still has to pass the handler validator to be written', () => {
+  // The ladder surfaced a category name from a keyed map, but a bogus category is dropped by
+  // isExtrasCategory downstream — proven here by feeding the normaliser output through the same
+  // predicate the handler uses (imported from the shared constant).
+  const items = normaliseItems({ 'Not A Real Category': 'x', Parking: 'bay 14' })
+  const survivingCategories = items
+    .filter(i => EXTRAS_CATEGORIES.includes(i.category) && typeof i.content === 'string' && i.content.trim())
+    .map(i => i.category)
+  assert.deepEqual(survivingCategories, ['Parking'])
 })

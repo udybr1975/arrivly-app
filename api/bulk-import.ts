@@ -60,7 +60,7 @@ const MODEL = 'gemini-2.5-flash'
 const SYSTEM_PROMPT =
   'You are a property information organiser. Split the provided property info text into the following fixed categories: ' +
   EXTRAS_CATEGORIES.join(', ') + '. ' +
-  'Output ONLY a JSON array of { "category": string, "content": string } objects — one object per category that has relevant content. ' +
+  'Output ONLY a JSON object of the exact shape {"items":[{ "category": string, "content": string }, ...]} — one entry per category that has relevant content — and nothing else, no code fences. ' +
   'Merge multiple items for the same category into that one content string as short newline-separated lines. ' +
   'Keep content concise and guest-friendly. ' +
   // ORDER IS DELIBERATE: this sits AFTER 'concise' so the specific rule qualifies the general
@@ -92,7 +92,7 @@ const SYSTEM_PROMPT =
   'name the thing and say the code is in the guest\'s check-in info. ' +
   'category MUST be exactly one of the listed categories; anything that does not fit goes under "Good to know". ' +
   'Do NOT include WiFi, Check-in, or House Rules content — skip it entirely. ' +
-  'Output the raw JSON array only, no other text, no code fences.'
+  'Output the raw JSON object only, no other text, no code fences.'
 
 // Exported for `npm run test:bulk-import`. THE PROMPT TESTS assert the PROMPT'S CONTENT — that
 // the offerings rule is present, that the category list is interpolated rather than hand-copied,
@@ -139,6 +139,60 @@ export function buildRows(
     rows.push({ apartment_id: apartmentId, category: item.category, content, is_private: false })
   }
   return { rows, redacted }
+}
+
+/**
+ * Resolve the model's parsed JSON into an ITEMS ARRAY (or null when nothing usable is present).
+ *
+ * WHY THIS EXISTS, stated so it is not read as over-engineering: the live default provider is
+ * Groq, and `aiGenerate({ json: true })` maps to `response_format: { type: 'json_object' }`
+ * (api/_lib/ai-provider.ts). json_object mode STRUCTURALLY FORBIDS a bare top-level array, so
+ * the old prompt's "Output ONLY a JSON array" was UNSATISFIABLE on the groq branch — the model
+ * had to return an object, and the single-array unwrap below rescued only the {"key":[…]} shape.
+ * Production 502s on 31 Aug 2026 showed a single {category, content} object and small
+ * category-keyed maps (zero array-valued properties), which fell straight through that unwrap.
+ * So the wrapped/keyed shapes are LEGAL provider output under json mode, not model misbehaviour,
+ * and this ladder reads them all. The new prompt (layer 2) now asks for {"items":[…]}, which is
+ * branch (b) — the normal path; the rest are tolerated fallbacks.
+ *
+ * IT WIDENS WHAT IS READABLE ONLY. The per-item validator in the handler (isExtrasCategory +
+ * content-string checks) stays the SOLE gate on what is WRITABLE — a category name or content
+ * this ladder surfaces still has to pass that gate before it can reach a row. First match wins.
+ */
+export function normaliseItems(parsed: unknown): { category: unknown; content: unknown }[] | null {
+  // a. already an array — the gemini branch's normal shape; passed straight through.
+  if (Array.isArray(parsed)) return parsed as { category: unknown; content: unknown }[]
+  if (!parsed || typeof parsed !== 'object') return null
+  const obj = parsed as Record<string, unknown>
+
+  // b. exactly ONE array-valued property — {"items":[…]} (what the prompt now requests) and any
+  //    other single-array wrapper. Unchanged from the prior behaviour, deliberately kept.
+  const arrays = Object.values(obj).filter(Array.isArray)
+  if (arrays.length === 1) return arrays[0] as { category: unknown; content: unknown }[]
+
+  // c. a single {category, content} object — the shape in today's 502 logs. Wrapped into a
+  //    one-element array so the validator sees it like any other item.
+  if (typeof obj.category === 'string' && typeof obj.content === 'string') {
+    return [{ category: obj.category, content: obj.content }]
+  }
+
+  // d. a CATEGORY-KEYED MAP — every value a string or an array of strings. Also resolves the
+  //    ≥2-array case the single-array unwrap (b) deliberately dropped as ambiguous. Each value
+  //    becomes one item's content (a string as-is, an array joined on newlines, matching how the
+  //    prompt asks the model to merge lines). Guarded so a value that is neither is skipped
+  //    rather than crashing the join — though the gate above means the gate decides entry, not
+  //    the skip.
+  const isStr = (v: unknown): v is string => typeof v === 'string'
+  const isStrArr = (v: unknown): v is string[] => Array.isArray(v) && v.every(isStr)
+  const entries = Object.entries(obj)
+  if (entries.length > 0 && entries.every(([, v]) => isStr(v) || isStrArr(v))) {
+    return entries
+      .filter(([, v]) => isStr(v) || isStrArr(v))
+      .map(([key, v]) => ({ category: key, content: isStr(v) ? v : (v as string[]).join('\n') }))
+  }
+
+  // e. anything else — a number, a string, an object of nested objects — is unresolvable.
+  return null
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -303,32 +357,38 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return res.status(502).json({ error: 'parse_failed' })
     }
 
-    // PROVIDER DIFFERENCE, handled here rather than by editing the prompt: Groq's json_object
-    // mode emits a top-level OBJECT, so the array this prompt asks for can arrive wrapped
-    // (e.g. {"categories":[…]}). Unwrap a single array-valued property before the check below.
-    // A bare array — what Gemini returns in the normal case — never enters this branch, so the
-    // Gemini path is unaffected in practice. It is NOT a strict no-op though: a wrapped object
-    // from either provider used to 502 and is now accepted. That widening is intended, and the
-    // per-item validation below still gates every category name and content string.
-    // Anything still not an array falls through to the unchanged 502.
-    if (!Array.isArray(parsed) && parsed && typeof parsed === 'object') {
-      const arrays = Object.values(parsed as Record<string, unknown>).filter(Array.isArray)
-      if (arrays.length === 1) parsed = arrays[0]
-    }
+    // PROVIDER SHAPE LADDER — the mechanism, in normaliseItems above (exported and unit-tested).
+    // Groq is the live default and its json_object mode CANNOT emit a bare top-level array, so
+    // the model legally returns {"items":[…]} (what the prompt now asks), a single
+    // {category, content} object, or a category-keyed map. The ladder reads all of those plus a
+    // bare array (gemini's normal shape); a genuinely unresolvable shape returns null → 502.
+    // This widens what is READABLE; the per-item validator below stays the SOLE gate on what is
+    // WRITABLE, so a category/content this ladder surfaces still has to pass it.
+    const items = normaliseItems(parsed)
 
-    if (!Array.isArray(parsed)) {
-      console.error('[bulk-import] response is not an array')
+    if (!items) {
+      // SHAPE METADATA ONLY, never key NAMES, never values, never `raw`. Key names on this
+      // surface can be credential-adjacent (a host's manual restated), so a COUNT is the most
+      // that may be logged — enough to tell a truncation from a wrong container, no more. Same
+      // no-content discipline as the parse-failure log above.
+      console.error(
+        '[bulk-import] response has no usable items — typeof:', typeof parsed,
+        'isArray:', Array.isArray(parsed),
+        'keyCount:', parsed && typeof parsed === 'object' ? Object.keys(parsed as object).length : 0,
+      )
       return res.status(502).json({ error: 'parse_failed' })
     }
 
-    const valid = (parsed as any[]).filter(
-      item =>
-        item &&
-        typeof item === 'object' &&
-        isExtrasCategory(item.category) &&
-        typeof item.content === 'string' &&
-        item.content.trim()
-    ) as { category: string; content: string }[]
+    const valid = items.filter((item): item is { category: string; content: string } => {
+      if (!item || typeof item !== 'object') return false
+      const { category, content } = item as { category?: unknown; content?: unknown }
+      return (
+        typeof category === 'string' &&
+        isExtrasCategory(category) &&
+        typeof content === 'string' &&
+        content.trim().length > 0
+      )
+    })
 
     if (valid.length === 0) {
       // `redacted: 0` IS EXPLICIT AND LOAD-BEARING (PG-36). No scrub ran on this path, so the
