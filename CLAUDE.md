@@ -29,15 +29,19 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Current HEAD — `47bb840`** (29 Aug 2026), the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS `47bb840`'s TREE AND IS READY TO FREEZE; nothing remains but the declaration, which is Udy's call made in chat, never a side effect of a docs pass.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). This docs commit sits above it. **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
+> **Frozen surface — `9eb5255`** (31 Aug 2026), the bulk-import 502 fix. The prior frozen tip `47bb840` (29 Aug) was the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `9eb5255` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
-> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026, frozen SHA `47bb840`
+> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`
 >
 > The Tiers 1-3 code surface — the guest page, the host dashboard, onboarding, and the `api/`
-> routes behind them — is **FROZEN as of `47bb840`**. The freeze exists for ONE reason: so the
+> routes behind them — is **FROZEN as of `9eb5255`**. The freeze exists for ONE reason: so the
 > hacker-agent pass (LAUNCH BLOCKER #4) attacks a **stationary** surface. A finding against a
 > tree that has since moved is a finding you cannot act on with confidence, and a surface that
 > shifts mid-pass turns "we tested it" into a claim nobody can check.
+>
+> **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 31 Aug 2026 for exactly one fix — the
+> bulk-import 502 (Groq json_object cannot emit a bare array), shipped as `9eb5255`, both gates
+> PASS with zero must-fix — and RE-FROZEN at `9eb5255` the same day, approved by Udy in chat.**
 >
 > **WHILE FROZEN, NO Tiers 1-3 CODE CHANGE MAY BE MADE EXCEPT:**
 > - **(a) a genuine live-incident hotfix** — production broken for real hosts. Not "a host might
@@ -56,9 +60,10 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > **NOT FROZEN:** config and env vars, DB data, test bookings, marketing, docs. Operating the
 > business is entirely unaffected.
 >
-> **NEXT:** the hacker-agent pass runs against `47bb840`, generates its OWN new PG-ids, and its
-> findings are triaged live → fix now / latent → record. **Its plan is approved in chat before
-> it runs.**
+> **NEXT:** the hacker-agent pass RAN and CLOSED against `47bb840` (31 Aug 2026; four phase
+> reports in docs/hacker-pass/, docs commit `8f55b1a`). T-22 and T-27 re-run pending
+> post-`9eb5255`; Phase F still needs its own second security pass before Tier 4 is sold
+> (LAUNCH BLOCKER #4).
 >
 > **WHERE THE PROJECT IS:** Phases A–E, G, H and Phase I Stages 0/4A/4B/5 are COMPLETE.
 > Build order decided: **flip live on Tiers 1–3 FIRST, then build Phase F (Tier-4 booking)**
@@ -269,9 +274,15 @@ values — do not change without an explicit decision.**
   debt UNVERIFIED, still open (Phase G cron-batching).
 - `city-events` lazy-fill: the FIRST guest to view an uncached apartment waits ~the generation time (one-off); the cron pre-warms apartments with current/upcoming bookings so most are already warm.
 - Cron schedules `0 9 * * *` events, `0 10 1 * *` guides sit after the Pacific free-tier reset and each cron reads its own key — keep both properties on any reschedule (`dbfc034`).
-- iCal fetch (`api/_lib/ical.ts`, used by both sync-ical and cron-sync-ical): mild SSRF (no
-  private-IP/metadata blocklist on fetched URLs); no per-host rate limit. The monthly cron now
-  exercises this unattended. Tidy SSRF + rate limit before public launch.
+- iCal fetch (`api/_lib/ical.ts`, used by both sync-ical and cron-sync-ical): **SSRF CLOSED** —
+  the fetch routes through `api/_lib/safe-fetch.ts`'s `safeFetchIcal`, which blocks private-IP
+  and cloud-metadata addresses at DNS-lookup time (no rebind window) and is https-only.
+  **Verified live 31 Aug 2026** (link-local/metadata IPs blocked, no content returned —
+  docs/hacker-pass/phase2b-results.md, A10 CLEAN). **The per-host rate-limit half is ALSO closed
+  and the old "no per-host rate limit" note is SUPERSEDED** (checked at source): the interactive
+  `api/sync-ical.ts` carries a per-host limiter (`RL_MAX=5`, userId-keyed) plus a cross-instance
+  `SYNC_HOURLY_LIMIT=5` via `bump_api_counter`; `cron-sync-ical.ts` is `CRON_SECRET`-gated (the
+  operator's own cron, not a per-host caller), so per-host limiting is N/A there.
 
 - `api/guest-chat.ts` (S21): verify-gated (public tier → `403 verify_required` before any Gemini call) + per-instance rate limiter (15/min, apt+IP) + dedicated `GEMINI_API_KEY_CHAT`. The limiter is per-instance best-effort, not a hard cross-instance cap. `generate-guide` remains host-auth+ownership-gated (no public AI-spend surface).
 - **Retention crons SHIPPED (11 Aug 2026)** — `cron-cleanup-messages` (30d) and `cron-retention` (guest identities 30d, greetings 30d, guest push 7d, admin audit 365d). **The periods are a PUBLISHED PROMISE** in the guest notice §6 and in the Art. 30 record: change a constant and the document in the SAME commit, or neither. **No exemptions, ever** — a carve-out makes the notice false for everyone; fixtures survive by refreshing their DATES.
@@ -836,19 +847,22 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 1. **Retention crons — SHIPPED 11 Aug 2026, blocker CLEARED.** `cron-cleanup-messages` (30d) and `cron-retention` (guest identities 30d, greetings 30d, guest push 7d, admin audit 365d) now match the drafted notice §6, so the documents are publishable. **The constraint is permanent even though the blocker is closed:** these periods are a two-sided contract — change a constant and the notice AND the Art. 30 record in the SAME commit, or none of them. **No exemptions, ever.**
 2. **Legal review — the only external dependency, so start it earliest.** Four documents DRAFTED and committed under `docs/`, NOT published, NOT in force; **eight of ten inventory gaps open**; a Finnish lawyer must review. Every `[CONFIRM]`/`[BUILD]` marker in those files IS the to-do list — never resolve, tidy, renumber or remove one. Roles are THREE-WAY: Bemgu controller for host data, PROCESSOR for guest data, controller in its own right for logs and anti-abuse.
 3. ~~**Dependency triage**~~ — **DONE 29 Aug 2026 (`386faf0` + `602ff15`), npm audit 6 -> 0.** The remainder was cleared lockfile-only: every advisory was fixable by a PATCH already inside the existing semver range, so `package.json` is unchanged and no major was taken (`@google/genai` stayed on 2.6.0 — its own manifest declares `protobufjs: ^7.5.4`, which 7.6.6 satisfies). Full closure and the live smoke in PG-17's CLOSED entry, docs/pentest-queue.md. **Re-check `npm audit` before the Stripe live flip** — this figure has an expiry like any other measured claim. **Older counts in this file (Known notes' 8, and a since-deleted 7 on `d254df9`) are SUPERSEDED, and the gap between them was never drift** — GitHub counts one alert per advisory per manifest path while `npm audit` dedupes per package, so the two tools measure different things. Precedes the pentest gate.
-4. **Pentest / "hacker" agent gate** — runs once on the Tiers 1-3 surface. Phase F needs its own second pass before Tier 4 is sold.
-   **THE SURFACE IS AT `47bb840` AND IS AWAITING THE FREEZE DECLARATION IN CHAT; this pass runs
-   NEXT, against that SHA** — not against `ca89036`, where the gate closed, because three
-   sanctioned feature commits landed after it.
-   **THE QUEUE'S EXIT CONDITION IS THE `## FREEZE GATE` SECTION OF docs/pentest-queue.md, NOT
-   "drain to zero"** — three named commits plus the npm pass; everything else is tagged
-   DOES-NOT-GATE in place and must not be promoted back without a stated reason.
-   **PRE-FREEZE SMOKE MUST INCLUDE** (things shipped logic-verified that nothing has yet
-   watched run):
-   - Confirm the four bulk-import box-clear branches live — PG-23/24/27 (`5958fae`) shipped
-     logic-verified, NOT browser-verified.
+4. **Pentest / "hacker" agent gate — COMPLETE on the Tiers 1-3 surface, RAN AND CLOSED against
+   `47bb840` (31 Aug 2026).** Four phase reports filed in docs/hacker-pass/ (docs commit
+   `8f55b1a`); results measured live against production. Verdict: A01/A02/A04/A05/A10 CLEAN, three
+   LOW/INFORMATIONAL A07 notes (all standard Supabase, accepted — see docs/pentest-queue.md). Two
+   DB-only hardening fixes applied under the freeze discipline (T-DB1/T-DB2, migration
+   `hacker_pass_fix_tdb1_tdb2`). **STILL PENDING: T-22 (credential-scrub end-to-end) and T-27 (the
+   four bulk-import box-clear branches, PG-23/24/27 `5958fae`, shipped logic-verified not
+   browser-verified) — both were blocked by the bulk-import 502, now fixed at `9eb5255`, so
+   re-run them post-deploy.** **Phase F needs its OWN second pass before Tier 4 is sold** — the
+   Tiers 1-3 gate does not cover it.
 5. **Written multi-tenant confirmation from GetYourGuide and Tiqets.** Tier 3 sells "connect your own account" for both. That clearance is currently OUR terms reading, not theirs. Viator ruled NO on the identical question on 4 Aug 2026 after the same self-assessment said probably yes. Selling a tier on an unconfirmed permission is the risk; asking costs one email each.
-6. **Stripe LIVE flip — LAST.** Also then: enable Supabase leaked-password protection.
+6. **Stripe LIVE flip — LAST.** Also then, at the Supabase Auth dashboard: enable
+   leaked-password protection AND **turn email confirmation ON** — it is deliberately OFF today
+   (frictionless trial), DECIDED 31 Aug 2026 (Udy, in chat) to flip ON BEFORE the marketing
+   launch, so unverified signups cannot bounce trial emails and burn sender reputation
+   (hacker-pass A07 note, docs/hacker-pass/phase2c-results.md).
 
 **COUNSEL-PENDING, opened 24 Aug 2026 by the ntfy heartbeat — all three are `[CONFIRM]`s in the
 drafted notice, not code work:** ntfy RETENTION for notice §6 (no period invented — every other
