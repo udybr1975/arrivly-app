@@ -29,12 +29,12 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Frozen surface — `9eb5255`** (31 Aug 2026), the bulk-import 502 fix. The prior frozen tip `47bb840` (29 Aug) was the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `9eb5255` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
+> **Frozen surface — `f94f665`** (1 Sep 2026), the GO-LIVE STEP 0 signup-under-email-confirmation fix. The prior frozen tip `9eb5255` (31 Aug) was the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `f94f665` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
-> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`
+> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`
 >
 > The Tiers 1-3 code surface — the guest page, the host dashboard, onboarding, and the `api/`
-> routes behind them — is **FROZEN as of `9eb5255`**. The freeze exists for ONE reason: so the
+> routes behind them — is **FROZEN as of `f94f665`**. The freeze exists for ONE reason: so the
 > hacker-agent pass (LAUNCH BLOCKER #4) attacks a **stationary** surface. A finding against a
 > tree that has since moved is a finding you cannot act on with confidence, and a surface that
 > shifts mid-pass turns "we tested it" into a claim nobody can check.
@@ -42,6 +42,13 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 31 Aug 2026 for exactly one fix — the
 > bulk-import 502 (Groq json_object cannot emit a bare array), shipped as `9eb5255`, both gates
 > PASS with zero must-fix — and RE-FROZEN at `9eb5255` the same day, approved by Udy in chat.**
+>
+> **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 1 Sep 2026 for exactly one fix — the
+> GO-LIVE RUNBOOK STEP 0 signup-under-email-confirmation change (`Signup.tsx` `emailRedirectTo`
+> + `brand_name` metadata; `AuthCallback` welcome-email on the confirmation landing), shipped as
+> `f94f665`, both gates PASS with zero must-fix — and RE-FROZEN at `f94f665` the same day,
+> approved by Udy in chat. DB half: migration `handle_new_user_brand_name_from_metadata`,
+> applied and verified from chat.**
 >
 > **WHILE FROZEN, NO Tiers 1-3 CODE CHANGE MAY BE MADE EXCEPT:**
 > - **(a) a genuine live-incident hotfix** — production broken for real hosts. Not "a host might
@@ -104,7 +111,7 @@ and the surface is **RE-FROZEN at `9eb5255`**. Host A was reset to baseline 1 Se
 
 ### STEP 0 — SIGNUP UNDER EMAIL CONFIRMATION (**requires a freeze-lift; do this FIRST**)
 
-**Verified at source 1 Sep 2026.** With email confirmation ON, `Signup.tsx` takes the
+**SHIPPED `f94f665`, 1 Sep 2026 — code live, migration applied, surface re-frozen.** With email confirmation ON, `Signup.tsx` takes the
 `!signUpData.session` branch and stops **BEFORE** writing `brand_name` and **BEFORE**
 `send-welcome`. `AuthCallback` already routes a brand-less host to `/complete-profile`, which
 writes name + brand, sends the welcome email and continues to `/choose-plan` — **but only if the
@@ -125,6 +132,13 @@ it lands on the Supabase **Site URL** instead and the host is **never asked for 
 
 **Verify by a real signup:** confirmation email arrives (Resend SMTP) → the link lands on
 `/auth/callback` → brand present → welcome email sent → `/choose-plan`.
+
+**Two residuals from the gates, carried into STEP 1:** (i) the "Confirm signup" template **MUST
+keep `{{ .ConfirmationURL }}`** — the `{{ .TokenHash }}` form lands the link as a QUERY STRING
+with no session and the host times out into `/login`, **which looks exactly like STEP 0
+failing**; (ii) an already-registered address under confirmation ON shows "Check your email"
+and sends nothing (enumeration protection) — the panel needs a resend / sign-in affordance
+before marketing traffic (post-runbook item, not a blocker).
 
 ### STEP 1 — EMAIL CONFIRMATION ON
 
