@@ -106,7 +106,7 @@ General Terms cl. 3.6, and WRITTEN multi-tenant confirmation from **GetYourGuide
 **LAUNCH BLOCKER 6 (partner confirmations) IS CLOSED** — it is numbered **5** in the LAUNCH
 BLOCKERS list below; the Stripe LIVE flip is **6** there. (This runbook's own "blocker 6/7"
 numbering came from the session brief; the list is the authority.) The bulk-import 502 is fixed
-and the surface is **RE-FROZEN at `9eb5255`**. Host A was reset to baseline 1 Sep 2026.
+and the surface is **RE-FROZEN at `f94f665` (STEP 0 shipped)**. Host A was reset to baseline 1 Sep 2026.
 **The only thing remaining before the marketing launch is this runbook.**
 
 ### STEP 0 — SIGNUP UNDER EMAIL CONFIRMATION (**requires a freeze-lift; do this FIRST**)
