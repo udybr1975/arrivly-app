@@ -155,11 +155,12 @@ every open item keeps its one-line statement here. Read one when you need to kno
 ## GO-LIVE — DONE 1 Sep 2026
 
 **Bemgu is LIVE and taking real payments.** Runbook, proofs and the POST-RUNBOOK QUEUE are in
-**docs/go-live-runbook.md**. Open items there, in order: **(b)** auth polish batch
-(pre-marketing) · **(c)** Stripe Checkout branding decision · **(d)** Preview Stripe vars ·
-**(e)** leaked-password toggle · **(g)** duplicate pending ntfy · **(h)** Art. 30 ntfy
-enumeration.
-**(a) CLOSED `3bbb958`; (b) CLOSED `d6e03ce`** (auth polish); **(f) CLOSED `a4a3fdd`**
+**docs/go-live-runbook.md**. **Remaining ACTIONABLE open items: (d)** Preview Stripe vars ·
+**(g)** duplicate pending ntfy · **(h)** Art. 30 ntfy enumeration.
+**(e) is BLOCKED-ON-PLAN — accepted 1 Sep 2026, see the runbook** (and the Tracked security
+follow-up below); it is NOT actionable work and must not be re-attempted as a quick win.
+**(a) CLOSED `3bbb958`; (b) CLOSED `d6e03ce`** (auth polish); **(c) CLOSED — decided 1 Sep
+2026** (Checkout branding, dashboard-only); **(f) CLOSED `a4a3fdd`**
 (declined first charge).
 
 ## What is Arrivly?
@@ -387,7 +388,16 @@ values — do not change without an explicit decision.**
 - **`app_settings.trial_days` is 14; the original project brief says 30.** The brief is STALE — code and UI agree on 14, and 14 is the confirmed live plan value. Recorded so the discrepancy is not "discovered" again and fixed in the wrong direction.
 
 ### Tracked security follow-ups (S19; updated S24)
-- **STILL OPEN — leaked-password protection disabled** (Auth dashboard HaveIBeenPwned toggle; pending).
+- **BLOCKED-ON-PLAN — leaked-password protection (Auth dashboard HaveIBeenPwned toggle).**
+  **It is Supabase Pro-only: the dashboard REJECTS it on this project's free tier**, error
+  verbatim — *"Configuring leaked password protection via HaveIBeenPwned.org is available on Pro
+  Plans and up"* — hit at least twice, recorded 1 Sep 2026. **ACCEPTED for launch (Udy, in
+  chat)** with mitigations: 8-character minimum, email confirmation ON, Supabase auth rate
+  limits. **TWO REOPENING PATHS:** (a) **Supabase Pro — but decide that on BACKUPS, not on this
+  toggle** (see the lesson under Method & process); (b) a **free signup-time HIBP k-anonymity
+  range check** — keyless, no-card, and the password never leaves the device readably — queued
+  as **PG-49**. **Do not re-list this as "pending"**: the blocker is a plan paywall, and an item
+  that hides its precondition gets re-attempted forever.
 - **STILL OPEN — `api/guest-state.ts` rate limiter is per-instance best-effort** (serverless memory not shared) — a shared-store / Vercel-firewall limiter is a later option.
 - **STILL OPEN — QR key rotation:** a leaked per-apartment key is revocable only by rotating `apartment_qr_secrets.qr_secret`, which invalidates every printed QR for that apartment (no per-guest revocation).
 - **STILL OPEN (by-design, INFO):** the 4 RLS-on/zero-policy service-role tables (`admin_audit`, `apartment_qr_secrets`, `app_settings`, `city_events_cache`) and the intentional anon `guest_host_card` EXECUTE remain as advisor INFO/WARN — accepted by design.
@@ -646,6 +656,18 @@ values — do not change without an explicit decision.**
   wrong belief about it persists silently and mis-prices every decision about what may be written
   down. Check it at the API when it matters; never carry it forward from a note.
 
+- **A QUEUE ITEM THAT OMITS ITS PRECONDITION GETS RE-ATTEMPTED FOREVER (1 Sep 2026).**
+  "Leaked-password toggle; pending" read as a five-second dashboard job. It is **Supabase
+  Pro-only**, and that wall was walked into **at least twice** because the record named the
+  STATE and not the BLOCKER. **When an item is blocked, the entry must name what blocks it** —
+  a plan, a provider ruling, a missing credential — or the next reader pays the discovery cost
+  again.
+  **THE LARGER FACT THE WALL EXPOSED, and it outranks the toggle: THE FREE TIER HAS NO
+  AUTOMATED DATABASE BACKUPS.** A LIVE, PAYING product's entire state — hosts, bookings,
+  subscriptions — currently has none. **So the Supabase Pro question is a BACKUPS decision with
+  the password toggle as a side benefit, never the reverse**, and it belongs on the
+  pre-marketing decision list beside the legal ruling. Deciding Pro "for the toggle" would be
+  buying the wrong thing for the right reason.
 - **A QUALIFIER BELONGS INSIDE THE CLAIM STRING, NOT IN THE PROSE AROUND IT (Aug 11 2026).**
   `AuthShell`'s earnings claim was made self-qualifying — "and on Portfolio, you earn" in the SAME
   text node at the same size — so prominence parity holds by construction and cannot decouple under

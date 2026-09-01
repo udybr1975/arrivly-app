@@ -138,7 +138,29 @@ ResetPassword (**all three, one commit**); plus the "Check your email" dead end 
 is already registered (Supabase enumeration protection returns no session AND no error — needs a
 "Didn't get it? Sign in instead" line).
 
-**c. STRIPE CHECKOUT BRANDING — A DECISION, NOT CODE.** Checkout shows the Anna's Stays logo and
+**c. STRIPE CHECKOUT BRANDING — CLOSED 1 Sep 2026 — DECIDED (Udy, in chat), dashboard-only, no
+code.**
+**Anna's Stays is ON HOLD and taking no payments**, so the SHARED account's public branding was
+switched to Bemgu: trading name **Bemgu**, statement descriptor **BEMGU.APP**, support email
+**hello@bemgu.app**, Bemgu logo. **Already-settled charges keep the old descriptor** — the
+change is not retroactive. **PROVEN** by an incognito Checkout showing Bemgu with no Anna's
+Stays trace (Udy, in chat).
+The compliance-facing **Business website** was also changed to `bemgu.app` — **initially
+accidental, then kept deliberately**, because it is truthful while Anna's is dormant. Stripe's
+Account status showed **"No active tasks"** afterwards, so **no re-verification was triggered**.
+
+**THE DEFERRED MIRROR — a DECISION, not a discovery, and the reason this item is closed rather
+than solved.** If Anna's Stays **RESUMES** payments, her guests will see Bemgu branding and
+`BEMGU.APP` on their statements — **the same defect, reversed**. At that point the
+second-account split runs in **HER** direction: **Bemgu will by then hold live subscriptions and
+must not move**, while Anna's, freshly resuming, migrates cheaply. **Re-decide at Anna's resume,
+not before.**
+**The measurement that shaped the choice: 0 live Bemgu subscriptions** (SQL from chat, 1 Sep
+2026), which is what made the full split *available* today — and it was declined precisely
+because its benefit evaporates while Anna's is dormant. That window closes with the first
+paying host.
+
+**The reason the item existed:** Checkout shows the Anna's Stays logo and
 merchant **"U & A investment and consultancy"**; the card statement reads **"ANNAS STAYS,
 HELSINKI"**. These are ACCOUNT-LEVEL settings on the shared account. Options: neutral account
 branding for both products, or accept it and say so on `/choose-plan`.
@@ -147,7 +169,15 @@ branding for both products, or accept it and say so on `/choose-plan`.
 re-scoped, and Preview never had `STRIPE_SECRET_KEY` anyway. Restore from the sandbox dashboard
 only if preview checkout is ever needed.
 
-**e. Leaked-password protection toggle** (Supabase Auth) — **still off.**
+**e. Leaked-password protection toggle** (Supabase Auth) — **BLOCKED-ON-PLAN, ACCEPTED
+1 Sep 2026.** The HaveIBeenPwned toggle is **Supabase Pro-only**; the dashboard rejects it on
+this project's free tier (*"Configuring leaked password protection via HaveIBeenPwned.org is
+available on Pro Plans and up"*), hit at least twice. **Accepted for launch (Udy, in chat)**
+with mitigations: 8-character minimum, email confirmation ON, Supabase auth rate limits.
+Reopening paths: **Supabase Pro — decided on BACKUPS, not on this toggle** (the free tier has no
+automated DB backups, which is the far larger fact), or the free **HIBP k-anonymity range
+check** queued as **PG-49**. Full detail and the lesson: CLAUDE.md, Tracked security follow-ups
+and Method & process.
 
 **f. DECLINED FIRST CHARGE — CLOSED 1 Sep 2026, `a4a3fdd`.**
 Shipped: the retrieve's expand deepened to `latest_invoice.payment_intent` (same request, no
