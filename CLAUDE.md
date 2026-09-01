@@ -92,6 +92,77 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > - Host-contact-to-guests toggle (WhatsApp/phone "show to guests on every page", OFF by default) is still **DEFERRED** to its own later pass — needs guest-page display work; do not ship a dead toggle.
 > - Per-property colour override lives in the **"Look" tab** inside the property editor (shipped S27 2b).
 
+## GO-LIVE RUNBOOK (next session — 1 Sep 2026)
+
+**STATUS:** all partner confirmations received **1 Sep 2026** — Viator name-consent under
+General Terms cl. 3.6, and WRITTEN multi-tenant confirmation from **GetYourGuide AND Tiqets**.
+**LAUNCH BLOCKER 6 (partner confirmations) IS CLOSED** — it is numbered **5** in the LAUNCH
+BLOCKERS list below; the Stripe LIVE flip is **6** there. (This runbook's own "blocker 6/7"
+numbering came from the session brief; the list is the authority.) The bulk-import 502 is fixed
+and the surface is **RE-FROZEN at `9eb5255`**. Host A was reset to baseline 1 Sep 2026.
+**The only thing remaining before the marketing launch is this runbook.**
+
+### STEP 0 — SIGNUP UNDER EMAIL CONFIRMATION (**requires a freeze-lift; do this FIRST**)
+
+**Verified at source 1 Sep 2026.** With email confirmation ON, `Signup.tsx` takes the
+`!signUpData.session` branch and stops **BEFORE** writing `brand_name` and **BEFORE**
+`send-welcome`. `AuthCallback` already routes a brand-less host to `/complete-profile`, which
+writes name + brand, sends the welcome email and continues to `/choose-plan` — **but only if the
+confirmation link lands on `/auth/callback`**, and `signUp` passes **no `emailRedirectTo`**, so
+it lands on the Supabase **Site URL** instead and the host is **never asked for a brand**.
+
+**Fix — one file + one migration:**
+- **(a) `Signup.tsx`:** the `signUp` options gain
+  `emailRedirectTo: \`${ARRIVLY_CONFIG.appUrl}/auth/callback\`` and the metadata gains
+  `brand_name`.
+- **(b) migration:** `handle_new_user` writes `brand_name` from
+  `raw_user_meta_data->>'brand_name'` (coalesced to `''`), so email signups **skip**
+  `/complete-profile`.
+- **Supabase Auth:** add `https://bemgu.app/auth/callback` to the **Redirect URLs allowlist**.
+
+**Gates:** code-reviewer + security-auditor (this is an auth surface), zero must-fix, then
+**RE-FREEZE at the new SHA and record it in the freeze block above.**
+
+**Verify by a real signup:** confirmation email arrives (Resend SMTP) → the link lands on
+`/auth/callback` → brand present → welcome email sent → `/choose-plan`.
+
+### STEP 1 — EMAIL CONFIRMATION ON
+
+Supabase **Auth → Email provider → Confirm email = ON**. Check the **"Confirm signup"** email
+template is **Bemgu-branded** (no "Arrivly", no Supabase default text). **Existing hosts are
+unaffected** (auto-confirmed at creation). **Social login is unaffected.**
+
+### STEP 2 — STRIPE LIVE
+
+**Same Stripe account as Anna's Stays: CREATE NEW, NEVER EDIT OR DELETE ANYTHING EXISTING.**
+Anna's live key and her **"elegant-voyage"** webhook are **never touched**.
+
+In **LIVE mode**:
+- **(A) Three products**, monthly EUR recurring: **Bemgu Starter €10.00 · Growth €15.00 ·
+  Portfolio €25.00** — matches the `plans` table. **No Pro / €49 yet.**
+- **(B) Webhook** `https://bemgu.app/api/stripe-webhook` with the **SAME event list** as the
+  sandbox endpoint; copy its `whsec_`.
+- **(C) New secret key** named **"Bemgu production"** — its own key, so either product can
+  rotate independently.
+
+Then in **Vercel, PRODUCTION scope ONLY** (Preview stays on sandbox): `STRIPE_SECRET_KEY`,
+`STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_TIER_1/2/3`. **The key and the `whsec_` must be from the
+SAME mode** — a mismatch passes `constructEvent()` and 500s later. **Redeploy via the Vercel
+Redeploy button — never an empty commit.**
+
+**Prove it:** incognito, fresh signup, **real card**, Starter €10 → **NO test badge on
+Checkout** → webhook delivery **200** → `hosts` row **active** with a real subscription id.
+Then **refund + cancel**, and mark that host `is_test` (**kept, never deleted**).
+
+**Pre-check:** the sandbox **"inspiring-inspiration"** endpoint (Anna's staging) delivery log
+shows Bemgu test events as harmless — live mirrors it. Bemgu ignores Anna's events via the
+`metadata.app === 'arrivly'` filter.
+
+### STEP 3 — RECORD GO-LIVE
+
+Docs-only commit: record go-live in CLAUDE.md and mark the **Stripe LIVE flip** blocker
+**CLOSED** (it is **#6** in the LAUNCH BLOCKERS list below — the brief called it 7).
+
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
 
@@ -857,12 +928,15 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
    browser-verified) — both were blocked by the bulk-import 502, now fixed at `9eb5255`, so
    re-run them post-deploy.** **Phase F needs its OWN second pass before Tier 4 is sold** — the
    Tiers 1-3 gate does not cover it.
-5. **Written multi-tenant confirmation from GetYourGuide and Tiqets.** Tier 3 sells "connect your own account" for both. That clearance is currently OUR terms reading, not theirs. Viator ruled NO on the identical question on 4 Aug 2026 after the same self-assessment said probably yes. Selling a tier on an unconfirmed permission is the risk; asking costs one email each.
+5. **Written multi-tenant confirmation from GetYourGuide and Tiqets — CLOSED 1 Sep 2026.** BOTH confirmed IN WRITING, together with the Viator name-consent under General Terms cl. 3.6 (see the GO-LIVE RUNBOOK above). Tier 3's "connect your own account" promise now rests on provider rulings, not on our own terms reading. **Historical statement of the blocker, kept because it is the reason it existed:** Tier 3 sells "connect your own account" for both. That clearance is currently OUR terms reading, not theirs. Viator ruled NO on the identical question on 4 Aug 2026 after the same self-assessment said probably yes. Selling a tier on an unconfirmed permission is the risk; asking costs one email each.
 6. **Stripe LIVE flip — LAST.** Also then, at the Supabase Auth dashboard: enable
    leaked-password protection AND **turn email confirmation ON** — it is deliberately OFF today
    (frictionless trial), DECIDED 31 Aug 2026 (Udy, in chat) to flip ON BEFORE the marketing
    launch, so unverified signups cannot bounce trial emails and burn sender reputation
    (hacker-pass A07 note, docs/hacker-pass/phase2c-results.md).
+   **THE EMAIL-CONFIRMATION FLIP IS NOT A ONE-SWITCH JOB — SEE THE GO-LIVE RUNBOOK,
+   STEP 0 AND STEP 1, ABOVE.** Turning it on BEFORE the `Signup.tsx` `emailRedirectTo` +
+   `handle_new_user` brand_name fix lands leaves every email signup without a brand name.
 
 **COUNSEL-PENDING, opened 24 Aug 2026 by the ntfy heartbeat — all three are `[CONFIRM]`s in the
 drafted notice, not code work:** ntfy RETENTION for notice §6 (no period invented — every other
