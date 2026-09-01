@@ -2,6 +2,19 @@
 
 Moved out of CLAUDE.md, which keeps the live rules and points here.
 
+## LAUNCH DECISION — 1 Sep 2026 (Udy, in chat): OPTION B
+
+**Resolve the `[CONFIRM]` markers in a working session, publish the drafted documents as v1 on
+bemgu.app — a legal page plus REAL links under the Signup consent checkbox, which today links to
+NOTHING (a freeze-lifted code change, both gates) — BEFORE the first marketing spend.
+Finnish-lawyer review becomes a FAST-FOLLOW on the published v1, not a gate.**
+
+**LAUNCH BLOCKER #2 IS THEREBY SCHEDULED, NOT WAIVED.** The documents still get reviewed; what
+changed is the ORDER, so the external dependency stops blocking a launch that is otherwise
+ready. Everything below stands unchanged — the `[CONFIRM]`/`[BUILD]` markers are still the
+to-do list and are still never to be resolved, tidied, renumbered or removed except in that
+working session.
+
 ## PRE-LIVE LEGAL & COMPLIANCE WORKSTREAM (opened Jul 28 2026 — BLOCKS LAUNCH)
 
 Promoted out of the Settings cosmetic backlog. Bemgu will take subscription money from
