@@ -3785,3 +3785,28 @@ not the frozen-surface exemption, which covers defects existing INDEPENDENTLY of
 The queue is longer than it started the day, again — and that is still the gate working. Six
 defects closed this evening; seven entries added. Each pass over a file surfaces siblings of
 what it just fixed.
+
+---
+
+> Moved verbatim from CLAUDE.md on 1 Sep 2026 (one-record rule) when the GO-LIVE
+> record below was superseded by the same day's second record.
+
+## SESSION RECORD — 1 Sep 2026 (GO-LIVE)
+
+**Bemgu went LIVE and took a real payment.** The GO-LIVE RUNBOOK was written, then executed
+end to end in one day: STEP 0 fixed signup under email confirmation (`f94f665`, the one
+conscious freeze-lift, both gates PASS, surface re-frozen the same day, DB half applied from
+chat as `handle_new_user_brand_name_from_metadata`); STEP 1 turned Confirm-email ON and proved
+it with a real signup; STEP 2 created the three live Stripe products, the `bemgu-production`
+webhook and a dedicated live key, scoped five Vercel vars to PRODUCTION and proved the whole
+path with a **real €10 3-D Secure charge**, refunded and cancelled immediately; STEP 3 is this
+commit. **LAUNCH BLOCKER #6 (Stripe LIVE flip) is CLOSED**, and #5 (GYG + Tiqets written
+confirmation) closed earlier the same day — so the marketing launch is no longer blocked on
+this file. **Nothing on Anna's Stays was opened, edited or deleted at any point.** Two things
+this session produced that outlive it: the **POST-RUNBOOK QUEUE** (five items, 3-D Secure
+first-payment messaging FIRST — a live-measured 56-second window in which a normal EU card
+makes the host receive a "payment failed" email, with no notice when it recovers), and the
+go-live fixture host `d1de87a8`, which rests at `expired` with a real cancelled sub id and is
+**deliberately not** the usual active+exempt test-host shape. **Full detail, every SHA and every
+measured timestamp: the GO-LIVE RUNBOOK section above — it is the record, not a summary of one.**
+

@@ -20,6 +20,8 @@ every open item keeps its one-line statement here. Read one when you need to kno
 - **docs/spend-hardening.md** — the seven brakes, plus the six open residual items (24 Aug).
 - **docs/design-backlog.md** — scoped-but-not-built work, plus the parked and landing/marketing
   narrative (24 Aug).
+- **docs/go-live-runbook.md** (1 Sep) — the completed go-live runbook, its live proofs, and the
+  POST-RUNBOOK QUEUE. Read before working any of items (b)-(h).
 
 > **BRAND vs CODENAME (Jul 12 2026 — rebrand):** the **public brand = Bemgu** (domain **https://bemgu.app**, Resend sender **hello@bemgu.app**, registrar **Porkbun**). The **internal codename = arrivly** — the GitHub repo name (`udybr1975/arrivly-app`), `package.json` name, local folder `C:\dev\arrivly`, the Stripe **`metadata.app === 'arrivly'`** filter (case-sensitive, load-bearing in `api/stripe-webhook.ts`), every `arrivly_*`/`arrivly:*` storage key + window/DOM event, the `arrivly-v*` SW cache name, all env var NAMES, and every code identifier / CSS class deliberately KEEP "arrivly". **Never rename them.** User-facing strings (page titles, meta tags, email copy + sender, push titles, aria-labels, displayed URLs, the "Powered by Bemgu" footer, manifest name) are all "Bemgu".
 >
@@ -29,12 +31,12 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Frozen surface — `f94f665`** (1 Sep 2026), the GO-LIVE STEP 0 signup-under-email-confirmation fix. The prior frozen tip `9eb5255` (31 Aug) was the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `f94f665` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
+> **Frozen surface — `3bbb958`** (1 Sep 2026), the 3-D Secure first-payment messaging fix. The prior frozen tip `f94f665` (1 Sep) was the GO-LIVE STEP 0 signup-under-email-confirmation fix; `9eb5255` (31 Aug) the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `3bbb958` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
-> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`
+> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`
 >
 > The Tiers 1-3 code surface — the guest page, the host dashboard, onboarding, and the `api/`
-> routes behind them — is **FROZEN as of `f94f665`**. The freeze exists for ONE reason: so the
+> routes behind them — is **FROZEN as of `3bbb958`**. The freeze exists for ONE reason: so the
 > hacker-agent pass (LAUNCH BLOCKER #4) attacks a **stationary** surface. A finding against a
 > tree that has since moved is a finding you cannot act on with confidence, and a surface that
 > shifts mid-pass turns "we tested it" into a claim nobody can check.
@@ -49,6 +51,14 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > `f94f665`, both gates PASS with zero must-fix — and RE-FROZEN at `f94f665` the same day,
 > approved by Udy in chat. DB half: migration `handle_new_user_brand_name_from_metadata`,
 > applied and verified from chat.**
+>
+> **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 1 Sep 2026 (second lift that day) for
+> post-runbook item (a) — the 3-D Secure first-payment messaging fix — and EXTENDED the same day
+> to `src/components/host/BillingPanel.tsx` after code-reviewer round 1 FAILED on a crash (M1: a
+> new notice type returned `undefined` from a switch with no default, and the render site
+> destructured it). Six files, both gates PASS with zero must-fix on the FINAL bytes,
+> `test:billing-notice` 12/12, shipped as `3bbb958` — and RE-FROZEN at `3bbb958` the same day,
+> approved by Udy in chat. NO DB MIGRATION.**
 >
 > **WHILE FROZEN, NO Tiers 1-3 CODE CHANGE MAY BE MADE EXCEPT:**
 > - **(a) a genuine live-incident hotfix** — production broken for real hosts. Not "a host might
@@ -99,134 +109,13 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > - Host-contact-to-guests toggle (WhatsApp/phone "show to guests on every page", OFF by default) is still **DEFERRED** to its own later pass — needs guest-page display work; do not ship a dead toggle.
 > - Per-property colour override lives in the **"Look" tab** inside the property editor (shipped S27 2b).
 
-## GO-LIVE RUNBOOK (1 Sep 2026 — COMPLETE)
+## GO-LIVE — DONE 1 Sep 2026
 
-**STATUS:** all partner confirmations received **1 Sep 2026** — Viator name-consent under
-General Terms cl. 3.6, and WRITTEN multi-tenant confirmation from **GetYourGuide AND Tiqets**.
-**LAUNCH BLOCKER 6 (partner confirmations) IS CLOSED** — it is numbered **5** in the LAUNCH
-BLOCKERS list below; the Stripe LIVE flip is **6** there. (This runbook's own "blocker 6/7"
-numbering came from the session brief; the list is the authority.) The bulk-import 502 is fixed
-and the surface is **RE-FROZEN at `f94f665` (STEP 0 shipped)**. Host A was reset to baseline 1 Sep 2026.
-**The only thing remaining before the marketing launch is this runbook.**
-
-**RUNBOOK COMPLETE 1 Sep 2026 — Bemgu is LIVE and taking real payments.** Steps 0-3 all
-shipped; see each step.
-
-### STEP 0 — SIGNUP UNDER EMAIL CONFIRMATION (**requires a freeze-lift; do this FIRST**)
-
-**SHIPPED `f94f665`, 1 Sep 2026 — code live, migration applied, surface re-frozen.** With email confirmation ON, `Signup.tsx` takes the
-`!signUpData.session` branch and stops **BEFORE** writing `brand_name` and **BEFORE**
-`send-welcome`. `AuthCallback` already routes a brand-less host to `/complete-profile`, which
-writes name + brand, sends the welcome email and continues to `/choose-plan` — **but only if the
-confirmation link lands on `/auth/callback`**, and `signUp` passes **no `emailRedirectTo`**, so
-it lands on the Supabase **Site URL** instead and the host is **never asked for a brand**.
-
-**Fix — one file + one migration:**
-- **(a) `Signup.tsx`:** the `signUp` options gain
-  `emailRedirectTo: \`${ARRIVLY_CONFIG.appUrl}/auth/callback\`` and the metadata gains
-  `brand_name`.
-- **(b) migration:** `handle_new_user` writes `brand_name` from
-  `raw_user_meta_data->>'brand_name'` (coalesced to `''`), so email signups **skip**
-  `/complete-profile`.
-- **Supabase Auth:** add `https://bemgu.app/auth/callback` to the **Redirect URLs allowlist**.
-
-**Gates:** code-reviewer + security-auditor (this is an auth surface), zero must-fix, then
-**RE-FREEZE at the new SHA and record it in the freeze block above.**
-
-**Verify by a real signup:** confirmation email arrives (Resend SMTP) → the link lands on
-`/auth/callback` → brand present → welcome email sent → `/choose-plan`.
-
-**Two residuals from the gates, carried into STEP 1:** (i) the "Confirm signup" template **MUST
-keep `{{ .ConfirmationURL }}`** — the `{{ .TokenHash }}` form lands the link as a QUERY STRING
-with no session and the host times out into `/login`, **which looks exactly like STEP 0
-failing**; (ii) an already-registered address under confirmation ON shows "Check your email"
-and sends nothing (enumeration protection) — the panel needs a resend / sign-in affordance
-before marketing traffic (post-runbook item, not a blocker).
-
-### STEP 1 — EMAIL CONFIRMATION ON
-
-**DONE 1 Sep 2026.** Confirm email = ON (Supabase dashboard, via Claude in Chrome). Template
-uses `{{ .ConfirmationURL }}`, neutral wording, sender Bemgu <hello@bemgu.app> via Resend SMTP.
-Proven by a real signup (`udy.bar.yosef+golive1@gmail.com`, host `d1de87a8`, `is_test`): created
-16:00:30 with `brand_name` from metadata → confirmed 16:01:19 → welcome email stamped 16:01:22 →
-`/choose-plan`.
-
-Supabase **Auth → Email provider → Confirm email = ON**. Check the **"Confirm signup"** email
-template is **Bemgu-branded** (no "Arrivly", no Supabase default text). **Existing hosts are
-unaffected** (auto-confirmed at creation). **Social login is unaffected.**
-
-### STEP 2 — STRIPE LIVE
-
-**DONE 1 Sep 2026.** Live products: Bemgu Starter `price_1UAuLKCJamIa548Jcbxbx3JC` · Growth
-`price_1UAuMnCJamIa548JV1DiUfcv` · Portfolio `price_1UAuNQCJamIa548Jp3nFGoAb` (EUR monthly,
-descriptions carry the property cap only). Live webhook endpoint **'bemgu-production'** →
-`https://bemgu.app/api/stripe-webhook`, 6 events, API version **2026-04-22.dahlia** (the account
-default — same as the sandbox endpoint; acacia is not offered on this account). Secret key
-**'Bemgu production'**. Five Vercel vars set **PRODUCTION-scope** via `vercel env rm/add`
-(secrets Sensitive); redeploy `dpl_5Vzz6KCZ` via `vercel redeploy`, **no empty commit**.
-**PROOF:** the test host's `trial_ends_at` was set to the past from chat so Checkout charged
-immediately (a trialing sub would have charged €0); `cs_live_` session, **no test badge**, real
-**€10 via 3-D Secure**; five webhook deliveries **all 200** (17:01:32-33 → `grace` during the
-bank step; 17:02:29 → **active**, `sub_1UAv3tCJamIa548J5PEKfCNg`, period end 1 Oct); refunded +
-cancelled immediately → row `expired` 17:11:44; host kept, `is_test`. **Anna's Stays: nothing
-opened, edited or deleted.**
-
-**Same Stripe account as Anna's Stays: CREATE NEW, NEVER EDIT OR DELETE ANYTHING EXISTING.**
-Anna's live key and her **"elegant-voyage"** webhook are **never touched**.
-
-In **LIVE mode**:
-- **(A) Three products**, monthly EUR recurring: **Bemgu Starter €10.00 · Growth €15.00 ·
-  Portfolio €25.00** — matches the `plans` table. **No Pro / €49 yet.**
-- **(B) Webhook** `https://bemgu.app/api/stripe-webhook` with the **SAME event list** as the
-  sandbox endpoint; copy its `whsec_`.
-- **(C) New secret key** named **"Bemgu production"** — its own key, so either product can
-  rotate independently.
-
-Then in **Vercel, PRODUCTION scope ONLY** (Preview stays on sandbox): `STRIPE_SECRET_KEY`,
-`STRIPE_WEBHOOK_SECRET`, `STRIPE_PRICE_TIER_1/2/3`. **The key and the `whsec_` must be from the
-SAME mode** — a mismatch passes `constructEvent()` and 500s later. **Redeploy via the Vercel
-Redeploy button — never an empty commit.**
-
-**Prove it:** incognito, fresh signup, **real card**, Starter €10 → **NO test badge on
-Checkout** → webhook delivery **200** → `hosts` row **active** with a real subscription id.
-Then **refund + cancel**, and mark that host `is_test` (**kept, never deleted**).
-
-**Pre-check:** the sandbox **"inspiring-inspiration"** endpoint (Anna's staging) delivery log
-shows Bemgu test events as harmless — live mirrors it. Bemgu ignores Anna's events via the
-`metadata.app === 'arrivly'` filter.
-
-### STEP 3 — RECORD GO-LIVE
-
-**DONE — this commit.**
-
-Docs-only commit: record go-live in CLAUDE.md and mark the **Stripe LIVE flip** blocker
-**CLOSED** (it is **#6** in the LAUNCH BLOCKERS list below — the brief called it 7).
-
-### POST-RUNBOOK QUEUE (opened 1 Sep 2026, in priority order — all frozen-surface, each needs a conscious lift)
-
-**a. 3-D SECURE FIRST-PAYMENT MESSAGING (pre-marketing, FIRST).** `mapStatus` in
-`api/stripe-webhook.ts` maps `incomplete` → `grace` alongside `past_due`/`unpaid`, so a
-**brand-new** subscription waiting on the bank's 3-D Secure step sends the host a "payment
-failed" email + high-priority ntfy; and the notice logic has **no case for grace → active**, so
-when the bank step passes the host hears nothing. **Measured live 1 Sep: a 56-second window.
-Most EU cards hit this.** Fix: treat `incomplete` on a FIRST payment as pending (no host email),
-and add a 'recovered' notice for grace → active. Webhook file only, both gates.
-
-**b. AUTH POLISH BATCH (pre-marketing).** Show-password toggle on Login, Signup and
-ResetPassword (**all three, one commit**); plus the "Check your email" dead end when the address
-is already registered (Supabase enumeration protection returns no session AND no error — needs a
-"Didn't get it? Sign in instead" line).
-
-**c. STRIPE CHECKOUT BRANDING — A DECISION, NOT CODE.** Checkout shows the Anna's Stays logo and
-merchant **"U & A investment and consultancy"**; the card statement reads **"ANNAS STAYS,
-HELSINKI"**. These are ACCOUNT-LEVEL settings on the shared account. Options: neutral account
-branding for both products, or accept it and say so on `/choose-plan`.
-
-**d. Preview has NO Stripe env vars** — the shared sandbox rows were removed when Production was
-re-scoped, and Preview never had `STRIPE_SECRET_KEY` anyway. Restore from the sandbox dashboard
-only if preview checkout is ever needed.
-
-**e. Leaked-password protection toggle** (Supabase Auth) — **still off.**
+**Bemgu is LIVE and taking real payments.** Runbook, proofs and the POST-RUNBOOK QUEUE are in
+**docs/go-live-runbook.md**. Open items there, in order: **(b)** auth polish batch
+(pre-marketing) · **(c)** Stripe Checkout branding decision · **(d)** Preview Stripe vars ·
+**(e)** leaked-password toggle · **(f)** declined-first-charge silence (pre-marketing) ·
+**(g)** duplicate pending ntfy · **(h)** Art. 30 ntfy enumeration.
 
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
@@ -643,6 +532,11 @@ values — do not change without an explicit decision.**
   glob** — Vercel rejects overlapping patterns and the build fails. Use one glob, raise its
   `maxDuration`.
 
+- **TWO TYPE UNIONS ACROSS THE `api/` ↔ `src/` BOUNDARY ARE NOT CHECKED AGAINST EACH OTHER
+  (1 Sep 2026).** `NoticeType` (api) and `BillingNotice.type` (src) are independent
+  declarations; `tsc -b` covers only `src/`, so adding a server-side value compiled green and
+  would have crashed the Billing page. **Caught by code-reviewer, not the build.** Any new
+  notice/status value must be added to BOTH, and the consumer needs a `default`.
 - **`src/lib/api.ts` already prefixes `BASE = '/api'`** — callers must pass the path **without** a leading `/api` (e.g. `api.post('/send-welcome')`). Passing `/api/send-welcome` produces `/api/api/send-welcome` (404) — silently swallowed by a `.catch(() => {})`. Always check the helper before writing a new call.
 
 - **A Vercel environment-variable change only takes effect after a redeploy.** Adding or rotating a secret in the Vercel dashboard does not hot-reload running functions. Trigger a redeploy (push a commit, or use the Vercel dashboard "Redeploy" button) immediately after any env-var change and confirm the new deployment is READY before testing.
@@ -1340,24 +1234,25 @@ drill) remains a graduation prerequisite.**
 > into this file before the move (the per-session hoist notes are in docs/history.md, 26 Aug
 > evening, R1).
 
-## SESSION RECORD — 1 Sep 2026 (GO-LIVE)
+## SESSION RECORD — 1 Sep 2026 (GO-LIVE, and the first post-live fix)
 
-**Bemgu went LIVE and took a real payment.** The GO-LIVE RUNBOOK was written, then executed
-end to end in one day: STEP 0 fixed signup under email confirmation (`f94f665`, the one
-conscious freeze-lift, both gates PASS, surface re-frozen the same day, DB half applied from
-chat as `handle_new_user_brand_name_from_metadata`); STEP 1 turned Confirm-email ON and proved
-it with a real signup; STEP 2 created the three live Stripe products, the `bemgu-production`
-webhook and a dedicated live key, scoped five Vercel vars to PRODUCTION and proved the whole
-path with a **real €10 3-D Secure charge**, refunded and cancelled immediately; STEP 3 is this
-commit. **LAUNCH BLOCKER #6 (Stripe LIVE flip) is CLOSED**, and #5 (GYG + Tiqets written
-confirmation) closed earlier the same day — so the marketing launch is no longer blocked on
-this file. **Nothing on Anna's Stays was opened, edited or deleted at any point.** Two things
-this session produced that outlive it: the **POST-RUNBOOK QUEUE** (five items, 3-D Secure
-first-payment messaging FIRST — a live-measured 56-second window in which a normal EU card
-makes the host receive a "payment failed" email, with no notice when it recovers), and the
-go-live fixture host `d1de87a8`, which rests at `expired` with a real cancelled sub id and is
-**deliberately not** the usual active+exempt test-host shape. **Full detail, every SHA and every
-measured timestamp: the GO-LIVE RUNBOOK section above — it is the record, not a summary of one.**
+**Bemgu went LIVE, took real money, and then had its first live-measured defect found and
+fixed the same day.** The GO-LIVE RUNBOOK was written and executed end to end: STEP 0 fixed
+signup under email confirmation (`f94f665`), STEP 1 turned Confirm-email ON, STEP 2 created the
+live Stripe products, webhook and key and proved the path with a **real €10 3-D Secure charge**,
+STEP 3 recorded it. **LAUNCH BLOCKERS #5 and #6 both CLOSED**, so nothing in this file blocks
+the marketing launch. **Nothing on Anna's Stays was touched at any point.** That same €10 charge
+then exposed post-runbook item (a): a first payment waiting on the bank's 3-D Secure step is
+Stripe status `incomplete`, which mapped to `grace`, so the host was told their payment FAILED
+and then told nothing when it succeeded 56 seconds later — **fixed and PROVEN LIVE with a second
+real charge as `3bbb958`**, which also closed the re-subscriber hole and turned every genuine
+past-due card-retry recovery into a host notification for the first time. **THE LESSON THAT
+OUTLIVES THE DAY, and it nearly shipped a crash: the `NoticeType` union in `api/` and the
+`BillingNotice.type` union in `src/` are independent declarations that NOTHING type-checks
+against each other, because `api/` sits outside every tsconfig.** Adding a value server-side
+compiled green on both sides and would have left every recovered host with a permanently broken
+Billing page; a code-reviewer round caught it, the build could not. **Detail, proofs and the
+POST-RUNBOOK QUEUE (b)-(h): docs/go-live-runbook.md.**
 
 ## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
 
