@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import AuthShell from './AuthShell'
+import PasswordInput from './PasswordInput'
 
 const INPUT =
   'w-full bg-white border border-[#e0dacd] rounded-[11px] px-[15px] py-[13px] text-sm text-[#1c1c1a] placeholder:text-[#b3ab9b] focus:outline-none focus:border-[#c8a24e] focus:ring-2 focus:ring-[#c8a24e]/20 transition-colors'
@@ -89,12 +90,10 @@ export default function ResetPassword() {
           <form onSubmit={submitUpdate} className="mt-8 space-y-4">
             <div>
               <label className={LABEL} htmlFor="reset-new">New password</label>
-              <input
+              <PasswordInput
                 id="reset-new"
-                type="password"
                 value={password}
-                onChange={e => setPassword(e.target.value)}
-                className={INPUT}
+                onChange={setPassword}
                 placeholder="At least 8 characters"
                 autoComplete="new-password"
                 minLength={8}
@@ -103,12 +102,10 @@ export default function ResetPassword() {
             </div>
             <div>
               <label className={LABEL} htmlFor="reset-confirm">Confirm password</label>
-              <input
+              <PasswordInput
                 id="reset-confirm"
-                type="password"
                 value={confirm}
-                onChange={e => setConfirm(e.target.value)}
-                className={INPUT}
+                onChange={setConfirm}
                 placeholder="Re-enter your password"
                 autoComplete="new-password"
                 minLength={8}

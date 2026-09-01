@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import AuthShell from './AuthShell'
+import PasswordInput from './PasswordInput'
 import SocialAuthButtons from './SocialAuthButtons'
 
 const INPUT =
@@ -69,12 +70,10 @@ export default function Login() {
               Forgot password?
             </Link>
           </div>
-          <input
+          <PasswordInput
             id="login-password"
-            type="password"
             value={password}
-            onChange={e => setPassword(e.target.value)}
-            className={INPUT}
+            onChange={setPassword}
             placeholder="••••••••"
             autoComplete="current-password"
             required

@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { ARRIVLY_CONFIG } from '../../config'
 import AuthShell, { AUTH_POINTS } from './AuthShell'
+import PasswordInput from './PasswordInput'
 import SocialAuthButtons from './SocialAuthButtons'
 
 const INPUT =
@@ -102,6 +103,20 @@ export default function Signup() {
           We've sent a confirmation link to <strong className="text-[#1c1c1a]">{email}</strong>. Click it and we'll sign you
           in and take you straight to choosing your plan.
         </p>
+        {/* THE DEAD-END EXIT. With email confirmation ON, signing up with an address that is
+            ALREADY registered lands on this exact panel and sends NOTHING: Supabase's
+            enumeration protection returns no session AND no error, so there is nothing to show
+            the host and no way for them to tell the two cases apart. Without this line the
+            screen is a terminus. COPY ONLY — no resend endpoint, no lookup, nothing that would
+            reveal whether the address exists. The enumeration protection is the feature; this
+            sentence is how a real person escapes it. */}
+        <p className="mt-3 border-t border-[#e0dacd] pt-3 text-sm leading-relaxed text-[#6f6757]">
+          Didn't get an email? You may already have an account —{' '}
+          <Link to="/login" className="font-semibold text-[#a8842f] underline decoration-[#c8a24e]/40 underline-offset-2 hover:text-[#c8a24e]">
+            sign in instead
+          </Link>
+          .
+        </p>
         <p className="mt-8 text-center text-sm text-[#6f6757]">
           <Link to="/login" className="font-semibold text-[#a8842f] underline decoration-[#c8a24e]/40 underline-offset-2 hover:text-[#c8a24e]">
             Back to sign in
@@ -172,12 +187,10 @@ export default function Signup() {
         </div>
         <div>
           <label className={LABEL} htmlFor="signup-password">Password</label>
-          <input
+          <PasswordInput
             id="signup-password"
-            type="password"
             value={password}
-            onChange={e => setPassword(e.target.value)}
-            className={INPUT}
+            onChange={setPassword}
             placeholder="At least 8 characters"
             autoComplete="new-password"
             minLength={8}
