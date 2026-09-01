@@ -2,15 +2,20 @@ import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { ARRIVLY_CONFIG } from '../../config'
+import { api } from '../../lib/api'
 import Loader from '../shared/Loader'
 
 /**
- * OAuth landing (route /auth/callback, public).
+ * OAuth AND email-confirmation landing (route /auth/callback, public).
  *
- * After a social sign-in the provider full-page-redirects here with the session
- * in the URL hash. detectSessionInUrl (on by default, implicit/hash flow)
- * populates the session asynchronously, so we poll getUser() briefly before
- * giving up. Once the session exists we route the host:
+ * Two arrivals land here. After a social sign-in the provider full-page-redirects
+ * here with the session in the URL hash. After an email signup the confirmation
+ * link does the same (Signup.tsx passes emailRedirectTo), and that arrival is
+ * distinguishable by `type=signup` in the hash — an OAuth landing has no such param.
+ * detectSessionInUrl (on by default, implicit/hash flow) populates the session
+ * asynchronously in both cases, so we poll getUser() briefly before giving up.
+ * On an email confirmation we also fire the welcome email (see below).
+ * Once the session exists we route the host:
  *   - existing demo (is_demo) → /dashboard (Layout shows the wall if expired)
  *   - pending demo intent + empty brand → /demo (finish a Google demo)
  *   - pending demo intent + brand set → /dashboard (real account; ignore intent)
@@ -60,6 +65,8 @@ export default function AuthCallback() {
       // Provider denial / OAuth error comes back as a query or hash param.
       const params = new URLSearchParams(window.location.search)
       const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ''))
+      // Supabase's implicit-flow confirmation redirect carries type=signup in the hash.
+      const isEmailConfirm = hashParams.get('type') === 'signup'
       if (params.get('error') || hashParams.get('error') || params.get('error_description') || hashParams.get('error_description')) {
         if (!cancelled) navigate('/login', { replace: true })
         return
@@ -93,6 +100,17 @@ export default function AuthCallback() {
 
       const brand = hostRow?.brand_name?.trim()
       const pendingDemo = hasFreshDemoIntent()
+
+      // Email signups now skip /complete-profile (handle_new_user writes brand_name from
+      // the signup metadata), so this is the ONLY place their welcome email can fire —
+      // Signup.tsx returns before its own /send-welcome call when there is no session.
+      // send-welcome is idempotent: it claims hosts.welcome_email_sent_at, so a repeated
+      // landing sends nothing. Gating on type=signup means a Google login never triggers
+      // it. api.post attaches the session Bearer, which exists here because getUser()
+      // just succeeded.
+      if (isEmailConfirm && brand) {
+        void api.post('/send-welcome', {}).catch(() => {})
+      }
 
       if (hostRow?.is_demo === true) {
         // Existing demo host — the demo intent (if any) is moot; let them in.

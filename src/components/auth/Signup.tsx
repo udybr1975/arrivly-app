@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
+import { ARRIVLY_CONFIG } from '../../config'
 import AuthShell, { AUTH_POINTS } from './AuthShell'
 import SocialAuthButtons from './SocialAuthButtons'
 
@@ -40,7 +41,10 @@ export default function Signup() {
     const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
       email,
       password,
-      options: { data: { first_name: firstName.trim() } },
+      options: {
+        emailRedirectTo: `${ARRIVLY_CONFIG.appUrl}/auth/callback`,
+        data: { first_name: firstName.trim(), brand_name: brandName.trim() },
+      },
     })
 
     if (signUpError) {
@@ -49,7 +53,9 @@ export default function Signup() {
       return
     }
 
-    // Email confirmation is disabled on this project; this is a safety fallback.
+    // Email confirmation is ON. With no session the host confirms by email: the link
+    // lands on /auth/callback (emailRedirectTo above), and handle_new_user has already
+    // written name + brand_name from the signup metadata, so nothing is written here.
     if (!signUpData.session) {
       setAwaitingConfirmation(true)
       setLoading(false)
@@ -93,8 +99,8 @@ export default function Signup() {
       <AuthShell headline={SIGNUP_HEADLINE} sub={SIGNUP_SUB} points={AUTH_POINTS}>
         <h1 className="font-['Fraunces'] font-light text-[31px] leading-tight text-[#1c1c1a]">Check your email</h1>
         <p className="mt-3 text-sm leading-relaxed text-[#6f6757]">
-          We've sent a confirmation link to <strong className="text-[#1c1c1a]">{email}</strong>. Click it to activate
-          your account, then sign in.
+          We've sent a confirmation link to <strong className="text-[#1c1c1a]">{email}</strong>. Click it and we'll sign you
+          in and take you straight to choosing your plan.
         </p>
         <p className="mt-8 text-center text-sm text-[#6f6757]">
           <Link to="/login" className="font-semibold text-[#a8842f] underline decoration-[#c8a24e]/40 underline-offset-2 hover:text-[#c8a24e]">
