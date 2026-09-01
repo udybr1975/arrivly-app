@@ -126,7 +126,14 @@ when the bank step passes the host hears nothing. **Measured live 1 Sep: a 56-se
 Most EU cards hit this.** Fix: treat `incomplete` on a FIRST payment as pending (no host email),
 and add a 'recovered' notice for grace → active. Webhook file only, both gates.
 
-**b. AUTH POLISH BATCH (pre-marketing).** Show-password toggle on Login, Signup and
+**b. AUTH POLISH BATCH — CLOSED 1 Sep 2026, `d6e03ce`.**
+Shipped: a shared `PasswordInput` component wired into all **FOUR** password fields (the brief
+said three — `ResetPassword` has two), the "sign in instead" exit line on Signup's
+Check-your-email panel (copy only, enumeration protection preserved), and the **spell-jacking
+fix** the security gate failed round 1 on — unconditional `spellCheck={false}` +
+`autoCapitalize`/`autoCorrect` off, because a revealed field is `type="text"` and its value
+becomes eligible for Chrome Enhanced Spellcheck / Microsoft Editor remote transmission.
+**The reason the item existed:** Show-password toggle on Login, Signup and
 ResetPassword (**all three, one commit**); plus the "Check your email" dead end when the address
 is already registered (Supabase enumeration protection returns no session AND no error — needs a
 "Didn't get it? Sign in instead" line).

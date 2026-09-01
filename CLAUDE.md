@@ -31,12 +31,12 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Frozen surface — `3bbb958`** (1 Sep 2026), the 3-D Secure first-payment messaging fix. The prior frozen tip `f94f665` (1 Sep) was the GO-LIVE STEP 0 signup-under-email-confirmation fix; `9eb5255` (31 Aug) the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `3bbb958` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
+> **Frozen surface — `d6e03ce`** (1 Sep 2026), the auth polish batch (post-runbook item (b)). The prior frozen tip `3bbb958` (1 Sep) was the 3-D Secure first-payment messaging fix, with `070e3b4` — the Dependabot lockfile patch — between them in the chain; `f94f665` (1 Sep) the GO-LIVE STEP 0 signup-under-email-confirmation fix; `9eb5255` (31 Aug) the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `d6e03ce` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
-> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`
+> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`
 >
 > The Tiers 1-3 code surface — the guest page, the host dashboard, onboarding, and the `api/`
-> routes behind them — is **FROZEN as of `3bbb958`**. The freeze exists for ONE reason: so the
+> routes behind them — is **FROZEN as of `d6e03ce`**. The freeze exists for ONE reason: so the
 > hacker-agent pass (LAUNCH BLOCKER #4) attacks a **stationary** surface. A finding against a
 > tree that has since moved is a finding you cannot act on with confidence, and a surface that
 > shifts mid-pass turns "we tested it" into a claim nobody can check.
@@ -59,6 +59,31 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > destructured it). Six files, both gates PASS with zero must-fix on the FINAL bytes,
 > `test:billing-notice` 12/12, shipped as `3bbb958` — and RE-FROZEN at `3bbb958` the same day,
 > approved by Udy in chat. NO DB MIGRATION.**
+>
+> **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 1 Sep 2026 (THIRD lift that day) for the
+> DEPENDABOT PATCH, shipped as `070e3b4`:** browserslist 4.28.2 → 4.28.8 (two HIGH advisories)
+> and postcss-selector-parser 6.1.2 → 6.1.4 (one LOW). **Both were triaged UNREACHABLE in chat**
+> — dev tree only, no attacker input path (no `browserslist-stats.json` in the repo, no
+> untrusted CSS in the build) — **and fixed anyway**, because the cost is one lockfile commit and
+> a green Dependabot dashboard keeps the NEXT real alert visible. **LOCKFILE-ONLY: package.json
+> unchanged.** Seven packages moved, including two FORCED minors (browserslist's own manifest
+> demands them). Both gates PASS with zero must-fix; 252 tests green. **NO DB MIGRATION.**
+> **Residual:** the JS bundle moved ~190 bytes because the browserslist target set is unpinned,
+> so a caniuse-lite data bump shifts Babel's targets — **a payment-path browser smoke is
+> assigned to Udy in chat.**
+>
+> **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 1 Sep 2026 (FOURTH lift that day) for
+> POST-RUNBOOK ITEM (b), THE AUTH POLISH BATCH, shipped as `d6e03ce`:** a shared `PasswordInput`
+> component on all **FOUR** password fields (**the brief said three — `ResetPassword` has two**),
+> plus the "sign in instead" exit line on Signup's Check-your-email panel (**copy only — no
+> resend endpoint, so Supabase's enumeration protection is preserved exactly**).
+> **The security gate FAILED round 1 on M1, SPELL-JACKING:** a revealed field becomes
+> `type="text"` and its value becomes eligible for Chrome Enhanced Spellcheck and Microsoft
+> Editor, **both of which transmit field contents to a remote service** — i.e. the feature being
+> added was itself the only path by which a typed password could leave the device. Fixed with
+> **unconditional** `spellCheck={false}` + `autoCapitalize="none"` + `autoCorrect="off"`. Both
+> gates then re-run FROM SCRATCH: PASS with zero must-fix on the final bytes; 252 tests green.
+> **NO DB MIGRATION.** Surface **RE-FROZEN at `d6e03ce` the same day**, approved by Udy in chat.
 >
 > **WHILE FROZEN, NO Tiers 1-3 CODE CHANGE MAY BE MADE EXCEPT:**
 > - **(a) a genuine live-incident hotfix** — production broken for real hosts. Not "a host might
@@ -116,6 +141,7 @@ every open item keeps its one-line statement here. Read one when you need to kno
 (pre-marketing) · **(c)** Stripe Checkout branding decision · **(d)** Preview Stripe vars ·
 **(e)** leaked-password toggle · **(f)** declined-first-charge silence (pre-marketing) ·
 **(g)** duplicate pending ntfy · **(h)** Art. 30 ntfy enumeration.
+**(a) CLOSED `3bbb958`; (b) CLOSED `d6e03ce`** (auth polish).
 
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
@@ -532,6 +558,14 @@ values — do not change without an explicit decision.**
   glob** — Vercel rejects overlapping patterns and the build fails. Use one glob, raise its
   `maxDuration`.
 
+- **A SHOW-PASSWORD TOGGLE IS A DATA-EXFILTRATION SURFACE, NOT COSMETIC (1 Sep 2026).**
+  Flipping `type="password"` to `"text"` makes the value eligible for **Chrome Enhanced
+  Spellcheck / Microsoft Editor remote transmission** ("spell-jacking"). Any revealed-credential
+  field needs **unconditional** `spellCheck={false}` (plus `autoCapitalize`/`autoCorrect` off for
+  mobile) — **unconditional because the attribute must already be on the element at the INSTANT
+  `type` flips**, not applied as a consequence of it. **Caught by security-auditor; neither the
+  build nor code review would surface it** (and a lowercase `spellcheck` is silently dropped by
+  React, so the fix would look applied and do nothing).
 - **TWO TYPE UNIONS ACROSS THE `api/` ↔ `src/` BOUNDARY ARE NOT CHECKED AGAINST EACH OTHER
   (1 Sep 2026).** `NoticeType` (api) and `BillingNotice.type` (src) are independent
   declarations; `tsc -b` covers only `src/`, so adding a server-side value compiled green and
@@ -878,7 +912,7 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 ## LAUNCH BLOCKERS (ordered — the calendar runs on the first two)
 1. **Retention crons — SHIPPED 11 Aug 2026, blocker CLEARED.** `cron-cleanup-messages` (30d) and `cron-retention` (guest identities 30d, greetings 30d, guest push 7d, admin audit 365d) now match the drafted notice §6, so the documents are publishable. **The constraint is permanent even though the blocker is closed:** these periods are a two-sided contract — change a constant and the notice AND the Art. 30 record in the SAME commit, or none of them. **No exemptions, ever.**
 2. **Legal review — the only external dependency, so start it earliest.** Four documents DRAFTED and committed under `docs/`, NOT published, NOT in force; **eight of ten inventory gaps open**; a Finnish lawyer must review. Every `[CONFIRM]`/`[BUILD]` marker in those files IS the to-do list — never resolve, tidy, renumber or remove one. Roles are THREE-WAY: Bemgu controller for host data, PROCESSOR for guest data, controller in its own right for logs and anti-abuse.
-3. ~~**Dependency triage**~~ — **DONE 29 Aug 2026 (`386faf0` + `602ff15`), npm audit 6 -> 0.** The remainder was cleared lockfile-only: every advisory was fixable by a PATCH already inside the existing semver range, so `package.json` is unchanged and no major was taken (`@google/genai` stayed on 2.6.0 — its own manifest declares `protobufjs: ^7.5.4`, which 7.6.6 satisfies). Full closure and the live smoke in PG-17's CLOSED entry, docs/pentest-queue.md. **Re-check `npm audit` before the Stripe live flip** — this figure has an expiry like any other measured claim. **Older counts in this file (Known notes' 8, and a since-deleted 7 on `d254df9`) are SUPERSEDED, and the gap between them was never drift** — GitHub counts one alert per advisory per manifest path while `npm audit` dedupes per package, so the two tools measure different things. Precedes the pentest gate.
+3. ~~**Dependency triage**~~ — **DONE 29 Aug 2026 (`386faf0` + `602ff15`), npm audit 6 -> 0.** The remainder was cleared lockfile-only: every advisory was fixable by a PATCH already inside the existing semver range, so `package.json` is unchanged and no major was taken (`@google/genai` stayed on 2.6.0 — its own manifest declares `protobufjs: ^7.5.4`, which 7.6.6 satisfies). Full closure and the live smoke in PG-17's CLOSED entry, docs/pentest-queue.md. **Re-check `npm audit` before the Stripe live flip** — this figure has an expiry like any other measured claim. **RE-CHECKED 1 Sep 2026 post-flip: 2 new dev-tree advisories (browserslist HIGH, postcss-selector-parser LOW), triaged unreachable in chat and patched LOCKFILE-ONLY at `070e3b4`; `npm audit` 0.** **Older counts in this file (Known notes' 8, and a since-deleted 7 on `d254df9`) are SUPERSEDED, and the gap between them was never drift** — GitHub counts one alert per advisory per manifest path while `npm audit` dedupes per package, so the two tools measure different things. Precedes the pentest gate.
 4. **Pentest / "hacker" agent gate — COMPLETE on the Tiers 1-3 surface, RAN AND CLOSED against
    `47bb840` (31 Aug 2026).** Four phase reports filed in docs/hacker-pass/ (docs commit
    `8f55b1a`); results measured live against production. Verdict: A01/A02/A04/A05/A10 CLEAN, three
