@@ -6,7 +6,12 @@ import Loader from '../shared/Loader'
 import PlanCard from './PlanCard'
 
 interface BillingNotice {
-  type: 'started' | 'upgraded' | 'downgraded' | 'cancelled' | 'grace'
+  // MIRRORS NoticeType IN api/_lib/billing-notice.ts. The two unions are INDEPENDENT
+  // declarations across the api/ <-> src/ boundary, and `api/` is outside every tsconfig, so
+  // NOTHING TYPE-CHECKS THE PAIR — adding a notice type server-side compiles clean on both
+  // sides while this file receives a value it has never heard of. That is why bannerConfig
+  // below returns null on an unknown type instead of falling off the end of a switch.
+  type: 'started' | 'upgraded' | 'downgraded' | 'cancelled' | 'grace' | 'recovered'
   from_tier: number | null
   to_tier: number
   at: string
@@ -115,7 +120,7 @@ const BTN_DISABLED_FEATURED = 'w-full text-[13px] font-semibold py-2.5 rounded-[
 
 const TIER_NAMES_LOCAL: Record<number, string> = { 1: 'Starter', 2: 'Growth', 3: 'Portfolio', 4: 'Pro' }
 
-function bannerConfig(notice: BillingNotice): { heading: string; body: string; style: BannerStyle } {
+function bannerConfig(notice: BillingNotice): { heading: string; body: string; style: BannerStyle } | null {
   const from = notice.from_tier !== null ? (TIER_NAMES_LOCAL[notice.from_tier] ?? `Tier ${notice.from_tier}`) : null
   const to = TIER_NAMES_LOCAL[notice.to_tier] ?? `Tier ${notice.to_tier}`
   switch (notice.type) {
@@ -124,6 +129,13 @@ function bannerConfig(notice: BillingNotice): { heading: string; body: string; s
     case 'downgraded': return { heading: `Plan changed to ${to}`, body: from ? `Changed from ${from} to ${to}.` : `Now on ${to}.`, style: AMBER }
     case 'cancelled':  return { heading: 'Subscription cancelled', body: 'Your guest page is no longer active. Reactivate anytime.', style: RED }
     case 'grace':      return { heading: 'Payment issue', body: 'Your page is still live — please update your card.', style: RED }
+    case 'recovered':  return { heading: 'Payment received', body: `You're on the ${to} plan — your guest pages are live.`, style: GREEN }
+    // An unknown type renders NOTHING rather than crashing the whole billing page. The
+    // switch used to have no default, so a server-side type this file did not know about
+    // returned undefined and the render site destructured it — a permanently broken page,
+    // because billing_notice persists in the DB and its dismiss button lives inside the
+    // subtree that crashed.
+    default:           return null
   }
 }
 
@@ -367,7 +379,9 @@ export default function BillingPanel() {
       <div className="max-w-3xl">
         {/* Dismissible billing_notice banner from webhook */}
         {billingNotice && (() => {
-          const { heading, body, style } = bannerConfig(billingNotice)
+          const cfg = bannerConfig(billingNotice)
+          if (!cfg) return null
+          const { heading, body, style } = cfg
           return (
             <div className={`${style.bg} border ${style.border} rounded-[12px] p-4 mb-4 flex items-start justify-between gap-3`}>
               <div>
@@ -427,7 +441,7 @@ export default function BillingPanel() {
         {(status === 'grace' || status === 'expired') && (
           <div className={`${RED.bg} border ${RED.border} rounded-[12px] p-4 mb-4`}>
             <div className={`text-[13px] font-semibold ${RED.heading} mb-1`}>
-              {status === 'grace' ? 'Payment failed — grace period' : 'Subscription inactive'}
+              {status === 'grace' ? 'Payment pending — complete or update your card' : 'Subscription inactive'}
             </div>
             <div className={`text-[11px] ${RED.muted}`}>Add a payment method to restore access.</div>
           </div>

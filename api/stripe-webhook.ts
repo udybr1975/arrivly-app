@@ -9,8 +9,10 @@ import {
   subscriptionChangedEmail,
   subscriptionCancelledEmail,
   subscriptionPastDueEmail,
+  subscriptionRecoveredEmail,
   adminSubscriptionEventEmail,
 } from './_lib/email.js'
+import { decideNotice, type NoticeType } from './_lib/billing-notice.js'
 import { sendPushToHost } from './_lib/push.js'
 import { sendNtfy } from './_lib/ntfy.js'
 
@@ -305,17 +307,35 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const isTestHost = hostRow.is_test === true
   const effectiveNewStatus = newStatus ?? oldStatus
 
-  type NoticeType = 'started' | 'upgraded' | 'downgraded' | 'cancelled' | 'grace'
-  const liveNow = effectiveNewStatus === 'active' || effectiveNewStatus === 'trial'
-  let notice: NoticeType | null = null
-  if (effectiveNewStatus === 'expired' && oldStatus !== 'expired') {
-    notice = 'cancelled'                       // a cancellation is ALWAYS a cancellation
-  } else if (effectiveNewStatus === 'grace' && oldStatus !== 'grace') {
-    notice = 'grace'
-  } else if (liveNow && (oldStatus === 'expired' || oldStatus == null || !hadSubscription)) {
-    notice = 'started'                         // fresh subscribe OR re-subscribe after expiry
-  } else if (liveNow && oldTier !== null && tier !== oldTier) {
-    notice = tier > oldTier ? 'upgraded' : 'downgraded'   // only on a LIVE sub
+  // The transition -> notice mapping lives in _lib/billing-notice.ts as a PURE function so it
+  // can be tested without Stripe (npm run test:billing-notice). mapStatus() and the DB write
+  // above are deliberately unchanged: `grace` remains the correct STORED state while a payment
+  // is pending — only the message differs.
+  const { notice, pendingAuthentication } = decideNotice({
+    stripeStatus: sub.status ?? null,
+    effectiveNewStatus,
+    oldStatus,
+    hadSubscription,
+    // Identity, not existence: stripe_subscription_id is never cleared on cancel/expiry, so
+    // `!hadSubscription` would be false for a re-subscriber and would miss their 3-D Secure
+    // first payment entirely. Null column => new subscription, which is the correct reading.
+    isNewSubscription: sub.id !== (hostRow.stripe_subscription_id as string | null),
+    tier,
+    oldTier,
+  })
+
+  if (pendingAuthentication) {
+    // FIRST payment waiting on the bank's 3-D Secure step. No host notice — nothing has failed,
+    // and telling a host their payment failed while their card is being authenticated is the
+    // defect this branch exists to prevent. The operator still sees it, at DEFAULT priority
+    // (this is not an alarm), with the host id only and no personal data — same shape as the
+    // other ntfy calls in this file.
+    console.log('[stripe-webhook] first payment pending authentication (incomplete), no host notice')
+    await sendNtfy({
+      title: 'Payment pending (3DS)',
+      message: `First payment authenticating — host ${hostId}`,
+      priority: 'default',
+    })
   }
 
   if (notice !== null) {
@@ -355,6 +375,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         downgraded: { title: `Plan changed to ${toTierName}`, body: fromTierName ? `Changed from ${fromTierName} to ${toTierName}.` : `Now on ${toTierName}.` },
         cancelled:  { title: 'Subscription cancelled', body: 'Your guest page is no longer active.' },
         grace:      { title: 'Payment issue', body: 'Your page is still live — please update your card.' },
+        recovered:  { title: 'Payment received', body: `You're on the ${toTierName} plan — your guest pages are live.` },
       }
       const ADMIN_MSG: Record<NoticeType, string> = {
         started:    `A host subscribed to ${toTierName}`,
@@ -362,6 +383,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         downgraded: `A host downgraded to ${toTierName}`,
         cancelled:  'A host cancelled their subscription',
         grace:      "A host's payment failed",
+        recovered:  "A host's pending payment went through",
       }
       const { title: hostPushTitle, body: hostPushBody } = HOST_PUSH[n]
       const adminMsg = ADMIN_MSG[n]
@@ -388,6 +410,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 })
               : n === 'cancelled'
               ? subscriptionCancelledEmail(hostName, { endedIso: currentPeriodEnd })
+              : n === 'recovered'
+              ? subscriptionRecoveredEmail(hostName, tier, { priceCents: safePriceCents, currency: safeCurrency, nextPaymentIso: safeRenewalIso })
               : subscriptionPastDueEmail(hostName)
           await sendEmail({ to: recipientEmail, ...tmpl })
         })(),

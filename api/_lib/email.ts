@@ -139,6 +139,35 @@ export function subscriptionStartedEmail(
   return { subject: `You're on the ${tierName} plan`, html, text }
 }
 
+export function subscriptionRecoveredEmail(
+  name: string | null,
+  tier: number,
+  opts: { priceCents: number; currency: string; nextPaymentIso: string },
+): { subject: string; html: string; text: string } {
+  // Sent when a subscription moves grace -> active: the pending payment settled. The common
+  // case is a first payment that was waiting on the bank's 3-D Secure step, which is why the
+  // wording never implies anything went wrong — the host may never have seen a problem at all.
+  const who = name?.trim() ? name.trim() : 'there'
+  const tierName = TIER_NAMES[tier] ?? `Tier ${tier}`
+  const price = formatMoney(opts.priceCents, opts.currency)
+  const nextDate = formatDateLong(opts.nextPaymentIso)
+  const html = layout(
+    "Payment received — you're all set",
+    `<p style="margin:0 0 12px;">Hi ${esc(who)},</p>
+     <p style="margin:0 0 12px;">Your payment went through. You're on the <strong>${esc(tierName)}</strong> plan at ${esc(price)}/month, and your next payment is on ${esc(nextDate)}.</p>
+     <p style="margin:0;">To upgrade, downgrade, or manage your billing details, visit your dashboard any time.</p>`,
+    'Manage your plan', `${APP_URL}/dashboard/billing`,
+  )
+  const text = `Hi ${who},
+
+Your payment went through. You're on the ${tierName} plan at ${price}/month, and your next payment is on ${nextDate}.
+
+Manage your plan: ${APP_URL}/dashboard/billing
+
+Bemgu`
+  return { subject: "Payment received — you're all set", html, text }
+}
+
 export function subscriptionChangedEmail(
   name: string | null,
   oldTier: number,

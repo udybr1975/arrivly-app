@@ -17,7 +17,8 @@
     "test:ical": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/ical.test.mjs",
     "test:welcome-claim": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/welcome-claim.test.mjs",
     "test:bulk-import": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/bulk-import.test.mjs",
-    "test:public-demo": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/public-demo.test.mjs"
+    "test:public-demo": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/public-demo.test.mjs",
+    "test:billing-notice": "node --import ./api/_lib/_ts-resolve.mjs --test api/_lib/billing-notice.test.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.6.0",
