@@ -31,12 +31,12 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Domain migration + rebrand narrative (Jul 12-17 2026) and its 8/8 smoke tests: docs/history.md.
 > **Repo note (Jun 5 2026):** The canonical repo is now `udybr1975/arrivly-app`. The old `udybr1975/arrivly` is abandoned (server-side corruption: pushes rejected "missing necessary objects", Settings page 500s; GitHub support ticket open). Local working copy: `C:\dev\arrivly`. Vercel project `arrivly` is connected to `arrivly-app`.
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
-> **Frozen surface — `d6e03ce`** (1 Sep 2026), the auth polish batch (post-runbook item (b)). The prior frozen tip `3bbb958` (1 Sep) was the 3-D Secure first-payment messaging fix, with `070e3b4` — the Dependabot lockfile patch — between them in the chain; `f94f665` (1 Sep) the GO-LIVE STEP 0 signup-under-email-confirmation fix; `9eb5255` (31 Aug) the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `d6e03ce` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
+> **Frozen surface — `a4a3fdd`** (1 Sep 2026), the item-(f) declined-first-charge fix. The prior frozen tip `d6e03ce` (1 Sep) was the auth polish batch (post-runbook item (b)); `3bbb958` (1 Sep) the 3-D Secure first-payment messaging fix, with `070e3b4` — the Dependabot lockfile patch — between them in the chain; `f94f665` (1 Sep) the GO-LIVE STEP 0 signup-under-email-confirmation fix; `9eb5255` (31 Aug) the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `a4a3fdd` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
-> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`
+> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`
 >
 > The Tiers 1-3 code surface — the guest page, the host dashboard, onboarding, and the `api/`
-> routes behind them — is **FROZEN as of `d6e03ce`**. The freeze exists for ONE reason: so the
+> routes behind them — is **FROZEN as of `a4a3fdd`**. The freeze exists for ONE reason: so the
 > hacker-agent pass (LAUNCH BLOCKER #4) attacks a **stationary** surface. A finding against a
 > tree that has since moved is a finding you cannot act on with confidence, and a surface that
 > shifts mid-pass turns "we tested it" into a claim nobody can check.
@@ -84,6 +84,24 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > **unconditional** `spellCheck={false}` + `autoCapitalize="none"` + `autoCorrect="off"`. Both
 > gates then re-run FROM SCRATCH: PASS with zero must-fix on the final bytes; 252 tests green.
 > **NO DB MIGRATION.** Surface **RE-FROZEN at `d6e03ce` the same day**, approved by Udy in chat.
+>
+> **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 1 Sep 2026 (FIFTH lift that day) for
+> POST-RUNBOOK ITEM (f), THE DECLINED-FIRST-CHARGE FIX, shipped as `a4a3fdd`:** Stripe's
+> `incomplete` means BOTH "3-D Secure challenge in flight" and "first charge DECLINED", and (a)
+> suppressed both, so a declined host heard nothing until the cancellation email. The retrieve's
+> expand was deepened to `latest_invoice.payment_intent` — one more level of the SAME expand, no
+> extra API call — **which works only because the wire pin is acacia; BASIL REMOVED
+> `Invoice.payment_intent`, so a pin bump is a CODE change and is recorded as a FIFTH migration
+> site in `api/_lib/stripe.ts`.** The suppression was narrowed **FAIL-SAFE: notify only on a
+> POSITIVE `requires_payment_method`, so missing payment-intent data stays suppressed and the (a)
+> defect cannot return** — the inverse would tell a host mid-3DS their payment failed, which is
+> the worse message on the more frequent path. **NO NEW NoticeType** (a decline reuses `grace`,
+> deliberately avoiding the api/ ↔ src/ two-unions trap). Tests 12 → 15; all 255 green. Both
+> gates PASS with zero must-fix. **ONE post-verdict COMMENT-ONLY edit, declared under the
+> standing exemption:** both gates independently flagged that the Basil note asserted an
+> unmeasured "fails quietly" claim, so it now names BOTH candidate failure modes as unverified
+> and says to measure before moving the pin. **NO DB MIGRATION.** Surface **RE-FROZEN at
+> `a4a3fdd` the same day**, approved by Udy in chat.
 >
 > **WHILE FROZEN, NO Tiers 1-3 CODE CHANGE MAY BE MADE EXCEPT:**
 > - **(a) a genuine live-incident hotfix** — production broken for real hosts. Not "a host might
@@ -139,9 +157,10 @@ every open item keeps its one-line statement here. Read one when you need to kno
 **Bemgu is LIVE and taking real payments.** Runbook, proofs and the POST-RUNBOOK QUEUE are in
 **docs/go-live-runbook.md**. Open items there, in order: **(b)** auth polish batch
 (pre-marketing) · **(c)** Stripe Checkout branding decision · **(d)** Preview Stripe vars ·
-**(e)** leaked-password toggle · **(f)** declined-first-charge silence (pre-marketing) ·
-**(g)** duplicate pending ntfy · **(h)** Art. 30 ntfy enumeration.
-**(a) CLOSED `3bbb958`; (b) CLOSED `d6e03ce`** (auth polish).
+**(e)** leaked-password toggle · **(g)** duplicate pending ntfy · **(h)** Art. 30 ntfy
+enumeration.
+**(a) CLOSED `3bbb958`; (b) CLOSED `d6e03ce`** (auth polish); **(f) CLOSED `a4a3fdd`**
+(declined first charge).
 
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
@@ -558,6 +577,11 @@ values — do not change without an explicit decision.**
   glob** — Vercel rejects overlapping patterns and the build fails. Use one glob, raise its
   `maxDuration`.
 
+- **THE ISOLATED `api/` TSC CAUGHT A REDECLARATION THE BUILD SHIPPED GREEN (1 Sep 2026).**
+  `npm run build` (`tsc -b && vite build`) type-checks **none** of `api/` — no tsconfig includes
+  it — so a duplicate `const latestInvoice` in the LIVE PAYMENT WEBHOOK compiled green and was
+  caught only by the standing isolated-`tsc` compensation (`TS2451`, plus two cascading errors).
+  **On any `api/` edit that compensation is MANDATORY, not optional.**
 - **A SHOW-PASSWORD TOGGLE IS A DATA-EXFILTRATION SURFACE, NOT COSMETIC (1 Sep 2026).**
   Flipping `type="password"` to `"text"` makes the value eligible for **Chrome Enhanced
   Spellcheck / Microsoft Editor remote transmission** ("spell-jacking"). Any revealed-credential

@@ -8,7 +8,7 @@ General Terms cl. 3.6, and WRITTEN multi-tenant confirmation from **GetYourGuide
 **LAUNCH BLOCKER 6 (partner confirmations) IS CLOSED** — it is numbered **5** in the LAUNCH
 BLOCKERS list below; the Stripe LIVE flip is **6** there. (This runbook's own "blocker 6/7"
 numbering came from the session brief; the list is the authority.) The bulk-import 502 is fixed
-and the surface is **RE-FROZEN at `3bbb958`** (STEP 0 shipped at `f94f665`; post-runbook (a) at `3bbb958`). Host A was reset to baseline 1 Sep 2026.
+and the surface was re-frozen after each lift. **THE CURRENT FREEZE SHA IS RECORDED IN CLAUDE.md's FREEZE BLOCK — deliberately NOT copied here.** A completed runbook cannot keep a live SHA current, and this line carried a stale one until 1 Sep 2026; a pointer cannot go stale, a copy always does. Host A was reset to baseline 1 Sep 2026.
 **The only thing remaining before the marketing launch is this runbook.**
 
 **RUNBOOK COMPLETE 1 Sep 2026 — Bemgu is LIVE and taking real payments.** Steps 0-3 all
@@ -149,7 +149,11 @@ only if preview checkout is ever needed.
 
 **e. Leaked-password protection toggle** (Supabase Auth) — **still off.**
 
-**f. DECLINED FIRST CHARGE IS NOW SILENT TOO (pre-marketing, small).** Stripe's `incomplete`
+**f. DECLINED FIRST CHARGE — CLOSED 1 Sep 2026, `a4a3fdd`.**
+Shipped: the retrieve's expand deepened to `latest_invoice.payment_intent` (same request, no
+extra API call), the intent's status passed into `decideNotice`, and the suppression narrowed so
+a genuine decline now fires the existing `grace` notice — no new notice type. Tests 12 → 15.
+**The reason the item existed:** Stripe's `incomplete`
 covers BOTH `requires_action` (3-D Secure, the case (a) fixed) AND `requires_payment_method`
 (a genuinely declined first charge). (a) suppresses both identically, so a host whose card was
 DECLINED gets no email until the eventual cancellation. **Mitigated in-app** by (a)'s own W3
@@ -157,6 +161,13 @@ rewording — the Billing banner reads "Payment pending — complete or update y
 true for both. **Fix:** narrow the exclusion to
 `latest_invoice.payment_intent.status === 'requires_action'`; `latest_invoice` is ALREADY
 expanded at the `subscriptions.retrieve` call, so this costs no extra API request.
+**SHIPPED INVERTED — notify only on positive `requires_payment_method`, so missing
+payment-intent data fails toward SUPPRESSION rather than resurrecting (a); the FAIL-SAFE CASE
+test pins this. DO NOT "correct" the code back to the literal scoping above.** The two forms are
+identical whenever the intent is readable and differ on every path where it is not (absent,
+unexpanded, a bare id string, or a status Stripe adds later) — and on those paths the literal
+form tells a host mid-3DS that their payment failed, which is the worse message on the more
+frequent path.
 
 **g. THE OPERATOR "Payment pending (3DS)" NTFY FIRED TWICE on the live proof (low).** Two Stripe
 events landed in the same second and both read the PRE-WRITE status, so both entered the branch.
