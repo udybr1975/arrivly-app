@@ -13,11 +13,14 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { decideNotice } from './billing-notice.ts'
 
-const base = { stripeStatus: 'active', effectiveNewStatus: 'active', oldStatus: 'active', hadSubscription: true, isNewSubscription: false, tier: 1, oldTier: 1 }
+// base is the active/active steady state; paymentIntentStatus is null here because that is
+// the shape of every transition that has nothing to do with a first charge. Each test that
+// cares sets it explicitly.
+const base = { stripeStatus: 'active', effectiveNewStatus: 'active', oldStatus: 'active', hadSubscription: true, isNewSubscription: false, paymentIntentStatus: null, tier: 1, oldTier: 1 }
 const decide = over => decideNotice({ ...base, ...over })
 
 test('a. first payment mid-3DS (trial -> incomplete on a NEW sub id) sends NO host notice', () => {
-  const r = decide({ stripeStatus: 'incomplete', effectiveNewStatus: 'grace', oldStatus: 'trial', hadSubscription: false, isNewSubscription: true })
+  const r = decide({ stripeStatus: 'incomplete', effectiveNewStatus: 'grace', oldStatus: 'trial', hadSubscription: false, isNewSubscription: true, paymentIntentStatus: 'requires_action' })
   assert.equal(r.notice, null)
   // The operator must still see it — suppressing the HOST contact is not suppressing the event.
   assert.equal(r.pendingAuthentication, true)
@@ -84,6 +87,36 @@ test('the incomplete exclusion is scoped to a NEW subscription only (renewal on 
   const r = decide({ stripeStatus: 'incomplete', effectiveNewStatus: 'grace', oldStatus: 'active', hadSubscription: true, isNewSubscription: false })
   assert.equal(r.notice, 'grace')
   assert.equal(r.pendingAuthentication, false)
+})
+
+test('f. a DECLINED first charge NOTIFIES — requires_payment_method is the positive signal', () => {
+  // Item (f). Same subscription status as the 3DS case and the same isNewSubscription; ONLY the
+  // payment intent separates them. Without this the host hears nothing until the eventual
+  // cancellation email.
+  const r = decide({ stripeStatus: 'incomplete', effectiveNewStatus: 'grace', oldStatus: 'trial', hadSubscription: false, isNewSubscription: true, paymentIntentStatus: 'requires_payment_method' })
+  assert.equal(r.notice, 'grace')
+  assert.equal(r.pendingAuthentication, false)
+})
+
+test('f. THE FAIL-SAFE CASE — a missing payment-intent status suppresses, never notifies', () => {
+  // THE ASSERTION THAT PINS THE INVERSION. The obvious scoping ("suppress iff requires_action")
+  // would notify here, resurrecting the (a) defect and telling a host mid-3DS that their payment
+  // FAILED — the worse and more frequent failure, since most EU cards hit 3DS. A null status
+  // means the intent was absent, unexpanded, or a bare id string; it is NOT evidence of a
+  // decline. If someone "tidies" the condition into the literal form, this test fails.
+  const r = decide({ stripeStatus: 'incomplete', effectiveNewStatus: 'grace', oldStatus: 'trial', hadSubscription: false, isNewSubscription: true, paymentIntentStatus: null })
+  assert.equal(r.notice, null)
+  assert.equal(r.pendingAuthentication, true)
+})
+
+test('f. a declined RENEWAL is unchanged — the SAME sub id always notifies, whatever the PI says', () => {
+  // The suppression never applied to renewals, and (f) must not accidentally extend it there.
+  // Asserted for both PI statuses so the renewal path is provably independent of the new input.
+  for (const paymentIntentStatus of ['requires_payment_method', 'requires_action', null]) {
+    const r = decide({ stripeStatus: 'incomplete', effectiveNewStatus: 'grace', oldStatus: 'active', hadSubscription: true, isNewSubscription: false, paymentIntentStatus })
+    assert.equal(r.notice, 'grace')
+    assert.equal(r.pendingAuthentication, false)
+  }
 })
 
 test('grace -> active WITH a tier change is a recovery, not an upgrade (the ordering claim)', () => {

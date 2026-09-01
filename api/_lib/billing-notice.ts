@@ -27,6 +27,30 @@
 // would have reproduced the exact defect this file fixes. Identity, not existence, is the
 // question. A renewal on the SAME subscription going `incomplete` is NOT excluded and still
 // notifies — that one is a real payment problem on a card that used to work.
+//
+// ITEM (f), 1 Sep 2026 — `incomplete` IS TWO SITUATIONS, AND ONLY ONE OF THEM IS HARMLESS.
+// Stripe uses `incomplete` both for "the bank is running a 3-D Secure challenge" and for "the
+// first charge was DECLINED". (a) suppressed both, so a declined host heard nothing until the
+// eventual cancellation email. The payment intent's own status is what separates them:
+// `requires_action` = a challenge in flight, `requires_payment_method` = declined, try another
+// card.
+//
+// THE FAIL-SAFE DIRECTION IS DELIBERATE AND INVERTED FROM THE OBVIOUS READING. We suppress
+// unless there is a POSITIVE decline signal — NOT "suppress iff requires_action". The two are
+// identical when the payment intent is present and readable, and they differ on every path
+// where it is absent, unexpanded, a bare id string, or a status Stripe adds later. On those
+// paths the literal scoping would resurrect the (a) defect and tell a host mid-3DS that their
+// payment FAILED — the worse failure AND the more frequent one, since most EU cards hit 3DS.
+// A missing signal therefore means silence, and only `requires_payment_method` speaks.
+// Decided in chat 1 Sep 2026; a reviewer proposing the inverse should be answered with this
+// paragraph, not with a code change.
+//
+// NO NEW NoticeType. A decline reuses `grace`, whose copy ("payment failed / please update your
+// card") is simply TRUE for a decline. Adding a union member would walk straight into the
+// api/ <-> src/ two-unions trap recorded in CLAUDE.md — `NoticeType` here and
+// `BillingNotice.type` in BillingPanel.tsx are independent declarations that nothing
+// type-checks against each other, and that pair already caused one crash. If a future edit
+// finds itself adding a member, that is the signal the shape is wrong.
 
 export type NoticeType = 'started' | 'upgraded' | 'downgraded' | 'cancelled' | 'grace' | 'recovered'
 
@@ -45,6 +69,14 @@ export type NoticeInput = {
    * `!hadSubscription`, which is false for a re-subscriber because the column is never cleared.
    */
   isNewSubscription: boolean
+  /**
+   * Status of the latest invoice's PaymentIntent, when the webhook could read one:
+   * 'requires_action' (3-D Secure challenge in flight), 'requires_payment_method' (DECLINED),
+   * 'succeeded', etc. NULL whenever it could not be read — an unexpanded field, a bare id
+   * string, or no invoice at all. Null is treated as "no decline signal", never as a decline;
+   * see the fail-safe paragraph above.
+   */
+  paymentIntentStatus: string | null
   tier: number
   oldTier: number | null
 }
@@ -88,7 +120,7 @@ export type NoticeDecision = {
  * silently narrowed 'started'.
  */
 export function decideNotice(input: NoticeInput): NoticeDecision {
-  const { stripeStatus, effectiveNewStatus, oldStatus, hadSubscription, isNewSubscription, tier, oldTier } = input
+  const { stripeStatus, effectiveNewStatus, oldStatus, hadSubscription, isNewSubscription, paymentIntentStatus, tier, oldTier } = input
   const liveNow = effectiveNewStatus === 'active' || effectiveNewStatus === 'trial'
 
   if (effectiveNewStatus === 'expired' && oldStatus !== 'expired') {
@@ -101,7 +133,13 @@ export function decideNotice(input: NoticeInput): NoticeDecision {
   }
 
   if (effectiveNewStatus === 'grace' && oldStatus !== 'grace') {
-    if (stripeStatus === 'incomplete' && isNewSubscription) {
+    if (
+      stripeStatus === 'incomplete' &&
+      isNewSubscription &&
+      // POSITIVE decline signal only — see the fail-safe paragraph in the header. A null or
+      // unexpected status falls through to suppression, never to a false "payment failed".
+      paymentIntentStatus !== 'requires_payment_method'
+    ) {
       return { notice: null, pendingAuthentication: true }
     }
     return { notice: 'grace', pendingAuthentication: false }

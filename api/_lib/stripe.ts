@@ -29,6 +29,20 @@ let _stripe: Stripe | null = null
  *   api/change-plan.ts         (1 site)
  *   api/cancel-subscription.ts (2 sites)
  *
+ * A FIFTH SITE, ADDED 1 Sep 2026, AND IT BREAKS FOR A DIFFERENT REASON — read it separately.
+ * `api/stripe-webhook.ts` expands `latest_invoice.payment_intent` and reads that intent's
+ * status to tell a 3-D Secure challenge apart from a DECLINED first charge. Acacia has
+ * `Invoice.payment_intent`; BASIL REMOVED IT from the Invoice object (the value moves to the
+ * invoice's payments data), so the REMEDIATION IS A CODE CHANGE — drop the expand and read the
+ * intent via the invoice's payments data — not a string edit.
+ * THE FAILURE MODE IS UNVERIFIED, and the two candidates are opposite extremes. If Stripe
+ * validates expand paths server-side and 400s an unknown one, the retrieve THROWS and the
+ * webhook 500s on EVERY event until the endpoint is disabled — loud and total. If the path is
+ * silently dropped, declined first charges quietly stop notifying — silent. The first is the
+ * more likely reading and the one to prepare for. MEASURE IT against a Basil-pinned sandbox
+ * call before moving the pin; both gates flagged that an earlier version of this note asserted
+ * the silent mode as fact, which would have under-prepared the migration.
+ *
  * TYPE NOTE: the SDK types `apiVersion` as `LatestApiVersion`, a single-member union equal to this
  * literal, so it typechecks with no cast. If a future SDK bump makes this line fail to compile,
  * that failure IS the migration notice — do not silence it with a cast.

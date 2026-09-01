@@ -121,7 +121,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Retrieve live subscription — idempotency + out-of-order safety
   let sub: Stripe.Subscription
   try {
-    sub = await getStripe().subscriptions.retrieve(subId, { expand: ['latest_invoice'] })
+    // `latest_invoice.payment_intent` — ONE MORE LEVEL OF THE SAME EXPAND, not an extra API
+    // call. The payment intent's status is the only thing that separates "3-D Secure challenge
+    // in flight" from "first charge DECLINED"; both surface as subscription status
+    // `incomplete`. See api/_lib/billing-notice.ts.
+    //
+    // THIS READ DEPENDS ON THE PINNED WIRE VERSION. api/_lib/stripe.ts pins
+    // 2025-02-24.acacia, where `Invoice.payment_intent` exists. BASIL (2025-03-31+) REMOVED
+    // that field from the Invoice object; under Basil the value is reached through the
+    // invoice's payments data instead, so this expand PATH IS NO LONGER VALID and the fix is a
+    // code change, not a version-string edit.
+    // WHAT BASIL ACTUALLY DOES HERE IS NOT VERIFIED, AND THE TWO POSSIBILITIES ARE OPPOSITE
+    // ENDS OF THE LOUDNESS SCALE — do not plan the migration until you have measured which:
+    //   (i) Stripe validates expand paths server-side and 400s an unknown one. Then this
+    //       retrieve THROWS, the catch below returns 500, and EVERY billing event stops
+    //       processing — Stripe retries, then disables the endpoint. Loud and total.
+    //   (ii) The path is silently dropped. Then `paymentIntentStatus` resolves null and, by the
+    //       fail-safe direction, declined first charges quietly stop notifying. Silent.
+    // (i) is the more likely reading and the one to prepare for. An earlier version of this
+    // comment asserted (ii) as fact; it was never measured. Measure it against a Basil-pinned
+    // sandbox call before moving the pin.
+    sub = await getStripe().subscriptions.retrieve(subId, { expand: ['latest_invoice.payment_intent'] })
   } catch (err) {
     console.error('[stripe-webhook] subscription retrieve error:', scrubKeys(String((err as Error).message ?? '')))
     return res.status(500).json({ error: 'Failed to retrieve subscription' })
@@ -182,6 +202,19 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     console.log('[stripe-webhook] host row not found:', hostId)
     return res.status(200).json({ ignored: true })
   }
+
+  // Defensive by shape, not by trust: `payment_intent` is typed string | PaymentIntent | null,
+  // and is a bare id string whenever the expand did not apply. Anything that is not an object
+  // with a status yields null, which the decision layer reads as "no decline signal".
+  // NOTE the name: `latestInvoice` is already bound further down in this same function scope
+  // (the amount_paid read), so this one is deliberately distinct rather than shadowing it.
+  const invoiceForIntent = sub.latest_invoice
+  const pi =
+    invoiceForIntent && typeof invoiceForIntent === 'object'
+      ? (invoiceForIntent as Stripe.Invoice & { payment_intent?: string | Stripe.PaymentIntent | null }).payment_intent
+      : null
+  const paymentIntentStatus: string | null =
+    pi && typeof pi === 'object' ? ((pi as Stripe.PaymentIntent).status ?? null) : null
 
   const newStatus = mapStatus(sub.status)
   // ITEM-LEVEL FIRST, THEN ROOT — DO NOT COLLAPSE THIS TO ONE READ. The two branches are two
@@ -320,6 +353,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     // `!hadSubscription` would be false for a re-subscriber and would miss their 3-D Secure
     // first payment entirely. Null column => new subscription, which is the correct reading.
     isNewSubscription: sub.id !== (hostRow.stripe_subscription_id as string | null),
+    paymentIntentStatus,
     tier,
     oldTier,
   })
