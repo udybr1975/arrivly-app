@@ -99,7 +99,7 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > - Host-contact-to-guests toggle (WhatsApp/phone "show to guests on every page", OFF by default) is still **DEFERRED** to its own later pass — needs guest-page display work; do not ship a dead toggle.
 > - Per-property colour override lives in the **"Look" tab** inside the property editor (shipped S27 2b).
 
-## GO-LIVE RUNBOOK (next session — 1 Sep 2026)
+## GO-LIVE RUNBOOK (1 Sep 2026 — COMPLETE)
 
 **STATUS:** all partner confirmations received **1 Sep 2026** — Viator name-consent under
 General Terms cl. 3.6, and WRITTEN multi-tenant confirmation from **GetYourGuide AND Tiqets**.
@@ -108,6 +108,9 @@ BLOCKERS list below; the Stripe LIVE flip is **6** there. (This runbook's own "b
 numbering came from the session brief; the list is the authority.) The bulk-import 502 is fixed
 and the surface is **RE-FROZEN at `f94f665` (STEP 0 shipped)**. Host A was reset to baseline 1 Sep 2026.
 **The only thing remaining before the marketing launch is this runbook.**
+
+**RUNBOOK COMPLETE 1 Sep 2026 — Bemgu is LIVE and taking real payments.** Steps 0-3 all
+shipped; see each step.
 
 ### STEP 0 — SIGNUP UNDER EMAIL CONFIRMATION (**requires a freeze-lift; do this FIRST**)
 
@@ -142,11 +145,31 @@ before marketing traffic (post-runbook item, not a blocker).
 
 ### STEP 1 — EMAIL CONFIRMATION ON
 
+**DONE 1 Sep 2026.** Confirm email = ON (Supabase dashboard, via Claude in Chrome). Template
+uses `{{ .ConfirmationURL }}`, neutral wording, sender Bemgu <hello@bemgu.app> via Resend SMTP.
+Proven by a real signup (`udy.bar.yosef+golive1@gmail.com`, host `d1de87a8`, `is_test`): created
+16:00:30 with `brand_name` from metadata → confirmed 16:01:19 → welcome email stamped 16:01:22 →
+`/choose-plan`.
+
 Supabase **Auth → Email provider → Confirm email = ON**. Check the **"Confirm signup"** email
 template is **Bemgu-branded** (no "Arrivly", no Supabase default text). **Existing hosts are
 unaffected** (auto-confirmed at creation). **Social login is unaffected.**
 
 ### STEP 2 — STRIPE LIVE
+
+**DONE 1 Sep 2026.** Live products: Bemgu Starter `price_1UAuLKCJamIa548Jcbxbx3JC` · Growth
+`price_1UAuMnCJamIa548JV1DiUfcv` · Portfolio `price_1UAuNQCJamIa548Jp3nFGoAb` (EUR monthly,
+descriptions carry the property cap only). Live webhook endpoint **'bemgu-production'** →
+`https://bemgu.app/api/stripe-webhook`, 6 events, API version **2026-04-22.dahlia** (the account
+default — same as the sandbox endpoint; acacia is not offered on this account). Secret key
+**'Bemgu production'**. Five Vercel vars set **PRODUCTION-scope** via `vercel env rm/add`
+(secrets Sensitive); redeploy `dpl_5Vzz6KCZ` via `vercel redeploy`, **no empty commit**.
+**PROOF:** the test host's `trial_ends_at` was set to the past from chat so Checkout charged
+immediately (a trialing sub would have charged €0); `cs_live_` session, **no test badge**, real
+**€10 via 3-D Secure**; five webhook deliveries **all 200** (17:01:32-33 → `grace` during the
+bank step; 17:02:29 → **active**, `sub_1UAv3tCJamIa548J5PEKfCNg`, period end 1 Oct); refunded +
+cancelled immediately → row `expired` 17:11:44; host kept, `is_test`. **Anna's Stays: nothing
+opened, edited or deleted.**
 
 **Same Stripe account as Anna's Stays: CREATE NEW, NEVER EDIT OR DELETE ANYTHING EXISTING.**
 Anna's live key and her **"elegant-voyage"** webhook are **never touched**.
@@ -174,8 +197,36 @@ shows Bemgu test events as harmless — live mirrors it. Bemgu ignores Anna's ev
 
 ### STEP 3 — RECORD GO-LIVE
 
+**DONE — this commit.**
+
 Docs-only commit: record go-live in CLAUDE.md and mark the **Stripe LIVE flip** blocker
 **CLOSED** (it is **#6** in the LAUNCH BLOCKERS list below — the brief called it 7).
+
+### POST-RUNBOOK QUEUE (opened 1 Sep 2026, in priority order — all frozen-surface, each needs a conscious lift)
+
+**a. 3-D SECURE FIRST-PAYMENT MESSAGING (pre-marketing, FIRST).** `mapStatus` in
+`api/stripe-webhook.ts` maps `incomplete` → `grace` alongside `past_due`/`unpaid`, so a
+**brand-new** subscription waiting on the bank's 3-D Secure step sends the host a "payment
+failed" email + high-priority ntfy; and the notice logic has **no case for grace → active**, so
+when the bank step passes the host hears nothing. **Measured live 1 Sep: a 56-second window.
+Most EU cards hit this.** Fix: treat `incomplete` on a FIRST payment as pending (no host email),
+and add a 'recovered' notice for grace → active. Webhook file only, both gates.
+
+**b. AUTH POLISH BATCH (pre-marketing).** Show-password toggle on Login, Signup and
+ResetPassword (**all three, one commit**); plus the "Check your email" dead end when the address
+is already registered (Supabase enumeration protection returns no session AND no error — needs a
+"Didn't get it? Sign in instead" line).
+
+**c. STRIPE CHECKOUT BRANDING — A DECISION, NOT CODE.** Checkout shows the Anna's Stays logo and
+merchant **"U & A investment and consultancy"**; the card statement reads **"ANNAS STAYS,
+HELSINKI"**. These are ACCOUNT-LEVEL settings on the shared account. Options: neutral account
+branding for both products, or accept it and say so on `/choose-plan`.
+
+**d. Preview has NO Stripe env vars** — the shared sandbox rows were removed when Production was
+re-scoped, and Preview never had `STRIPE_SECRET_KEY` anyway. Restore from the sandbox dashboard
+only if preview checkout is ever needed.
+
+**e. Leaked-password protection toggle** (Supabase Auth) — **still off.**
 
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
@@ -247,6 +298,9 @@ docs/schema.md.
   `d273d7d4` Beautiful private space, `51a8b817` Cozy Studio in central Helsinki, `a1b1f547`
   Charming Studio for couples — the fourth was created 25 Aug 2026 and is a REAL property, not
   drift). Apartment totals: **14 total, 5 visible, 10 `is_test`.**
+  **1 Sep 2026 baseline: 10 hosts, 9 `is_test`** (the new one, `d1de87a8` "Go-live test 1",
+  rests at `expired` with a REAL cancelled sub id — **deliberately NOT active+exempt like the
+  others; it is the Stripe go-live fixture, keep it**). 15 apartments unchanged.
   **NOTHING WAS DELETED HERE** — the fixtures are the only regression corpus this project has,
   several are load-bearing, and they stay, flagged. (The ONE deliberate exception is Sweet home
   `d9614d11`, rebuilt in place on 26 Aug 2026 as the public demo — see the fixture rules and
@@ -394,9 +448,8 @@ values — do not change without an explicit decision.**
   **docs/resolved-debt.md**. THE LIVE NUMBER IS IN THE QUEUE (GitHub's 16), and the
   npm-audit-vs-Dependabot gap is a counting difference, NOT drift — do not re-litigate it.
 - **Redundant root `as any` in `api/stripe-webhook.ts` blunts a compile-error canary.** `types/Subscriptions.d.ts` declares `current_period_end` on the root, so that read compiles uncast; the cast's only effect is to SUPPRESS the error a Basil-typed SDK bump would raise there — the exact migration signal `api/_lib/stripe.ts` preserves and tells you not to cast away. **One-token removal, no runtime effect** — take it on the next non-comment edit to that block.
-- **First real `invoice.payment_succeeded` after `7f3dac5` is worth watching in the Vercel logs.**
-  **UNVERIFIED AT THE 22 Aug 2026 RESTRUCTURE** — settling it needs the Vercel runtime logs,
-  which cannot be read from the repo, so it stays open by the restructure's own rule. That path has NEVER executed on this endpoint (the pre-Basil field read resolved null and returned 200), so nothing downstream of the id extraction has run here. Specifically check it resolves the CURRENT subscription, not a superseded one — see the `sub.id` item under Tracked security follow-ups.
+- **`invoice.payment_succeeded` RAN LIVE 1 Sep 2026** (webhook 200, row → `active` with the
+  current sub id, `current_period_end` resolved to 1 Oct). **Closed.**
 - **`app_settings.trial_days` is 14; the original project brief says 30.** The brief is STALE — code and UI agree on 14, and 14 is the confirmed live plan value. Recorded so the discrepancy is not "discovered" again and fixed in the wrong direction.
 
 ### Tracked security follow-ups (S19; updated S24)
@@ -943,7 +996,11 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
    re-run them post-deploy.** **Phase F needs its OWN second pass before Tier 4 is sold** — the
    Tiers 1-3 gate does not cover it.
 5. **Written multi-tenant confirmation from GetYourGuide and Tiqets — CLOSED 1 Sep 2026.** BOTH confirmed IN WRITING, together with the Viator name-consent under General Terms cl. 3.6 (see the GO-LIVE RUNBOOK above). Tier 3's "connect your own account" promise now rests on provider rulings, not on our own terms reading. **Historical statement of the blocker, kept because it is the reason it existed:** Tier 3 sells "connect your own account" for both. That clearance is currently OUR terms reading, not theirs. Viator ruled NO on the identical question on 4 Aug 2026 after the same self-assessment said probably yes. Selling a tier on an unconfirmed permission is the risk; asking costs one email each.
-6. **Stripe LIVE flip — LAST.** Also then, at the Supabase Auth dashboard: enable
+6. **Stripe LIVE flip — CLOSED 1 Sep 2026 — Stripe LIVE, proven with a real €10 charge (see
+   GO-LIVE RUNBOOK STEP 2).** Email confirmation ON (STEP 1). **Leaked-password protection is
+   STILL NOT enabled — it remains an open Auth-dashboard toggle** (post-runbook queue item e).
+   **Historical statement of the blocker, kept because it is the reason it existed:**
+   Stripe LIVE flip — LAST. Also then, at the Supabase Auth dashboard: enable
    leaked-password protection AND **turn email confirmation ON** — it is deliberately OFF today
    (frictionless trial), DECIDED 31 Aug 2026 (Udy, in chat) to flip ON BEFORE the marketing
    launch, so unverified signups cannot bounce trial emails and burn sender reputation
@@ -1282,6 +1339,25 @@ drill) remains a graduation prerequisite.**
 > Session records 4–25 Aug 2026 are in docs/history.md; every rule each contained was hoisted
 > into this file before the move (the per-session hoist notes are in docs/history.md, 26 Aug
 > evening, R1).
+
+## SESSION RECORD — 1 Sep 2026 (GO-LIVE)
+
+**Bemgu went LIVE and took a real payment.** The GO-LIVE RUNBOOK was written, then executed
+end to end in one day: STEP 0 fixed signup under email confirmation (`f94f665`, the one
+conscious freeze-lift, both gates PASS, surface re-frozen the same day, DB half applied from
+chat as `handle_new_user_brand_name_from_metadata`); STEP 1 turned Confirm-email ON and proved
+it with a real signup; STEP 2 created the three live Stripe products, the `bemgu-production`
+webhook and a dedicated live key, scoped five Vercel vars to PRODUCTION and proved the whole
+path with a **real €10 3-D Secure charge**, refunded and cancelled immediately; STEP 3 is this
+commit. **LAUNCH BLOCKER #6 (Stripe LIVE flip) is CLOSED**, and #5 (GYG + Tiqets written
+confirmation) closed earlier the same day — so the marketing launch is no longer blocked on
+this file. **Nothing on Anna's Stays was opened, edited or deleted at any point.** Two things
+this session produced that outlive it: the **POST-RUNBOOK QUEUE** (five items, 3-D Secure
+first-payment messaging FIRST — a live-measured 56-second window in which a normal EU card
+makes the host receive a "payment failed" email, with no notice when it recovers), and the
+go-live fixture host `d1de87a8`, which rests at `expired` with a real cancelled sub id and is
+**deliberately not** the usual active+exempt test-host shape. **Full detail, every SHA and every
+measured timestamp: the GO-LIVE RUNBOOK section above — it is the record, not a summary of one.**
 
 ## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
 
