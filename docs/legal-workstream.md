@@ -82,10 +82,18 @@ survive without a half-edited document.
   states **Google's 30-day grounding storage**. **The Gemini grounding-cache question stays
   UNRESOLVED and lawyer-flagged**, per this workstream's own instruction — it is not swept up by
   D9.
+- **D10 — ToS v1 (2 Sep 2026, Udy in chat):** **VAT-EXEMPT** — no VAT added, Finnish
+  small-business exemption; **liability cap = fees paid in the 3 MONTHS before the claim**;
+  **service-withdrawal notice 30 days**; contact by **email only**. **TWO-SIDED CONTRACT NOTE:
+  if Bemgu later VAT-registers, ToS section 5 and the pricing page change in the SAME commit.**
+  Draft committed as `docs/legal-tos-DRAFT.md`; DRAFT status drops at publication with the other
+  three.
 
 ### REMAINING FOR THE EXECUTION SESSION
 
-1. **ToS v1 draft — none exists**, and the Signup consent checkbox already names it.
+1. ~~**ToS v1 draft — none exists**~~ — **DRAFTED 2 Sep 2026, `docs/legal-tos-DRAFT.md` (D10).**
+   It still needs the v1 editing pass and publication; the Signup consent checkbox names it and
+   still links to nothing.
 2. **The v1 editing pass**, resolving the markers against the decisions above.
 3. **ONE freeze-lifted build commit, both gates:** legal page + guest-notice links + brand-name
    injection + the wttr proxy (D4).
