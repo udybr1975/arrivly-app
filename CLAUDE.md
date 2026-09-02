@@ -98,7 +98,7 @@ every open item keeps its one-line statement here. Read one when you need to kno
 
 **Bemgu is LIVE and taking real payments.** Runbook, proofs and the POST-RUNBOOK QUEUE are in
 **docs/go-live-runbook.md**. **Remaining ACTIONABLE open items: (d)** Preview Stripe vars ·
-**(g)** duplicate pending ntfy · **(h)** Art. 30 ntfy enumeration.
+**(g)** duplicate pending ntfy · **(h)** — CLOSED 2 Sep 2026: the v1 DPA text shipped with the D7 ntfy row.
 **(e) is BLOCKED-ON-PLAN — accepted 1 Sep 2026, and STILL BLOCKED: D1 was AMENDED 2 Sep 2026,
 Supabase Pro is NOT purchased and is deferred until real paying hosts exist.** It is NOT
 actionable work — **do not re-attempt the toggle on the free tier**, the dashboard rejects it.
@@ -909,7 +909,7 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 
 ## LAUNCH BLOCKERS (ordered — the calendar runs on the first two)
 1. **Retention crons — SHIPPED 11 Aug 2026, blocker CLEARED.** `cron-cleanup-messages` (30d) and `cron-retention` (guest identities 30d, greetings 30d, guest push 7d, admin audit 365d) now match the drafted notice §6, so the documents are publishable. **The constraint is permanent even though the blocker is closed:** these periods are a two-sided contract — change a constant and the notice AND the Art. 30 record in the SAME commit, or none of them. **No exemptions, ever.**
-2. **Legal review — the only external dependency, so start it earliest.** Four documents DRAFTED and committed under `docs/`, NOT published, NOT in force; **eight of ten inventory gaps open**; a Finnish lawyer must review. Every `[CONFIRM]`/`[BUILD]` marker in those files IS the to-do list — never resolve, tidy, renumber or remove one. Roles are THREE-WAY: Bemgu controller for host data, PROCESSOR for guest data, controller in its own right for logs and anti-abuse. **DECISION 1 Sep 2026: Option B — publish v1 before marketing, lawyer as fast-follow; see docs/legal-workstream.md.**
+2. **Legal review — the only external dependency, so start it earliest.** FIVE documents DRAFTED and committed under `docs/` (host policy, guest notice, DPA, inventory, and the ToS added 2 Sep 2026), **NOT published, NOT in force**; a Finnish lawyer must review. **THE MARKERS ARE RESOLVED: the v1 editing pass ran 2 Sep 2026 against D1-D10, and the census went 17 CONFIRM / 5 BUILD -> 2 / 0, the two residuals being archived mentions in docs/history.md.** The old rule here — *never resolve, tidy, renumber or remove one* — governed the period BEFORE that pass; the remaining lawyer questions now live as prose in each document's "Flagged for legal review" section, which is the to-do list in their place. Roles are THREE-WAY: Bemgu controller for host data, PROCESSOR for guest data, controller in its own right for logs and anti-abuse. **DECISION 1 Sep 2026: Option B — publish v1 before marketing, lawyer as fast-follow; see docs/legal-workstream.md.**
 3. ~~**Dependency triage**~~ — **DONE 29 Aug 2026 (`386faf0` + `602ff15`), npm audit 6 -> 0.** **Re-check `npm audit` before the Stripe live flip** — this figure has an expiry like any other measured claim. **RE-CHECKED 1 Sep 2026 post-flip: 2 new dev-tree advisories (browserslist HIGH, postcss-selector-parser LOW), triaged unreachable in chat and patched LOCKFILE-ONLY at `070e3b4`; `npm audit` 0.**
 4. **Pentest / "hacker" agent gate — COMPLETE on the Tiers 1-3 surface, RAN AND CLOSED against
    `47bb840` (31 Aug 2026).** Four phase reports filed in docs/hacker-pass/ (docs commit
@@ -928,6 +928,9 @@ After explicit review, the ladder stays: **Tier 3 (Portfolio) capped at 12 prope
 
 > Closed-blocker histories: docs/history.md, 2 Sep 2026.
 
+**RESOLVED 2 Sep 2026 in the v1 editing pass (ntfy operator/location/retention now in
+the published text; heartbeat recorded in both §4 and §5 as drafted).** Historical
+statement kept:
 **COUNSEL-PENDING, opened 24 Aug 2026 by the ntfy heartbeat — all three are `[CONFIRM]`s in the
 drafted notice, not code work:** ntfy RETENTION for notice §6 (no period invented — every other
 row there is a promise backed by a cron); ntfy.sh OPERATOR/LOCATION in §4 and DPA Annex 2; and

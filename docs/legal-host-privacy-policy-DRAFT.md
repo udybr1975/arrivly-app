@@ -1,26 +1,26 @@
 # Bemgu — Privacy Policy for Hosts
 
 **Status: DRAFT for legal review. Not published.**
-Prepared 30 July 2026. Items marked **[CONFIRM]** need a decision or verification before publication.
+Prepared 30 July 2026. v1 editing pass completed 2 September 2026; remaining questions are listed at
+the end under "Flagged for legal review".
 This document is not legal advice. A Finnish data protection lawyer should review it before it goes live.
 
-**Effective date:** [CONFIRM — set on publication]
-**Last updated:** [CONFIRM — set on publication]
+**Effective date:** set at publication
+**Last updated:** set at publication
 
 ---
 
 ## 1. Who we are
 
-Bemgu is operated by **[CONFIRM — exact legal name as registered, e.g. "Udy Bar Yosef"]**, a private trader established in Finland.
+Bemgu is operated by **U & A Investment and Consultancy Oy**, a limited company registered in Finland (business ID 3234935-4).
 
-**Postal address:** Runeberginkatu 17 A, 00100 Helsinki, Finland
+**Postal address:** Runeberginkatu 17 A 3, 00100 Helsinki, Finland
 **Email:** hello@bemgu.app
-**Contact form:** [TO ADD — a web contact form is required in addition to the email address; email alone does not satisfy the EU e-commerce information duty]
 **Website:** https://bemgu.app
 
 In this policy, "we", "us" and "Bemgu" mean the above. "You" means a host — a person with a Bemgu account.
 
-We have not appointed a Data Protection Officer. Based on the scale and nature of our processing we do not believe one is required. **[CONFIRM with lawyer]**
+We have not appointed a Data Protection Officer. Based on the scale and nature of our processing we do not believe one is required. This assessment is flagged for legal review.
 
 ---
 
@@ -101,9 +101,12 @@ We use the following service providers. Each processes data only to provide thei
 | Vercel | Hosting and application logs | Compute assigned to Frankfurt; company established in the United States |
 | Resend | Outgoing email | EU (Ireland) |
 | Stripe | Subscription payments | Ireland / United States |
-| Google (Gemini AI) | Generating guides, greetings and chat replies | United States |
-| Google Search | Verifying places for the neighbourhood guide | United States |
-| LocationIQ | Turning addresses into map coordinates | **[CONFIRM — corporate seat and data processing terms]** |
+| Google (Gemini AI) | The guest chat assistants | United States |
+| Google Search | Answering guest chat questions with current information | United States |
+| LocationIQ | Turning property addresses into map coordinates — property addresses only, never guest identities | India (EU endpoint used) |
+| Groq | Generating guides, greetings and other AI text (zero-data-retention mode enabled) | United States |
+| Tavily | Searching for local events — city-level queries only | United States |
+| Geoapify | Places data for the neighbourhood guide | EU |
 | Cloudflare (Turnstile) | Bot protection on sign-up | United States |
 | Unsplash | Stock city photographs | United States |
 | Apple / Google push services | Delivering notifications to your device | United States |
@@ -111,7 +114,7 @@ We use the following service providers. Each processes data only to provide thei
 
 We do not sell your personal data, and we do not use it to advertise to you.
 
-**A note on your property address.** To build a neighbourhood guide we send the property address to Google's AI service **and to Google Search**. The address is not published, but it does leave our systems for that purpose. If you would rather it did not, do not use the guide feature.
+**A note on your property address.** To build the neighbourhood guide and show places on a map, we send the property address to the mapping providers above (LocationIQ and Geoapify). The guest chat assistant may also send it to Google's AI service and Google Search when answering location questions. The address is not published, but it does leave our systems for those purposes. If you would rather it did not, do not use the guide feature.
 
 ---
 
@@ -119,7 +122,7 @@ We do not sell your personal data, and we do not use it to advertise to you.
 
 Our database sits in the EU, our email provider is in the EU, and we have assigned our application servers to Frankfurt.
 
-**We do not claim that all processing happens inside the EU, because it does not.** Google, Stripe, Cloudflare and the push notification services are established outside the EU and receive data there. Those transfers rely on the safeguards described in each provider's terms, including the EU Standard Contractual Clauses and, where applicable, the EU–US Data Privacy Framework. **[CONFIRM — the exact transfer mechanism relied on for each provider, in particular Google's terms for unpaid API tiers]**
+**We do not claim that all processing happens inside the EU, because it does not.** Google, Stripe, Cloudflare and the push notification services are established outside the EU and receive data there. Those transfers rely on the safeguards described in each provider's terms, including the EU Standard Contractual Clauses and, where certified, the EU–US Data Privacy Framework. The exact mechanism relied on per provider is being confirmed in legal review.
 
 ---
 
@@ -127,15 +130,15 @@ Our database sits in the EU, our email provider is in the EU, and we have assign
 
 **Your account.** We keep your account data for as long as your account is open.
 
-**After you close your account.** We delete your account data, except records we must keep by law — principally accounting records, which we keep for the statutory period. **[CONFIRM — the retention period required by Finnish accounting law, currently understood to be six years from the end of the accounting year]**
+**After you close your account.** We delete your account data, except records we must keep by law — principally accounting records, which we keep for the period Finnish accounting law requires.
 
 **Administrative access records.** 24 months.
 
-**Server logs.** **[CONFIRM — retention windows applied by Vercel and Supabase]**
+**Server logs.** Held briefly by our hosting providers for security and debugging — currently around one day.
 
 **Your guests' data.** Held for the periods set out in the Data Processing Agreement and the Guest Privacy Notice. In summary, guest names and messages are erased 30 days after check-out, and guest notification registrations 7 days after check-out. Booking dates and references remain in your calendar with no person attached to them.
 
-**Backups.** Deleting a record removes it from the live service immediately. Encrypted backups are kept on a rolling cycle for disaster recovery, so a deleted record may persist in a backup until that cycle completes. **[CONFIRM — the backup retention window, and state it here as a number]**
+**Backups.** Deleting a record removes it immediately. We do not currently keep a separate backup archive of deleted records.
 
 ---
 
@@ -178,7 +181,7 @@ We do not make decisions about you by automated means that produce legal or simi
 
 ## 12. Cookies and local storage
 
-Bemgu uses browser storage strictly to keep you signed in and to remember interface preferences. We do not use advertising or tracking cookies, and we do not run third-party analytics on your dashboard. **[CONFIRM — verify against the live build before publication]**
+Bemgu uses browser storage strictly to keep you signed in and to remember interface preferences. We do not use advertising or tracking cookies, and we do not run third-party analytics on your dashboard.
 
 ---
 
@@ -190,21 +193,17 @@ If we change this policy we will update the date above and, for anything signifi
 
 ## 14. Contact
 
-**[CONFIRM — legal name]**
-Runeberginkatu 17 A, 00100 Helsinki, Finland
+**U & A Investment and Consultancy Oy**
+Runeberginkatu 17 A 3, 00100 Helsinki, Finland
 hello@bemgu.app
 
 ---
 
-## Open items before publication
+## Flagged for legal review
 
-1. Exact legal name as it should appear.
-2. Contact form built and linked (required in addition to email).
-3. Accounting retention period confirmed.
-4. Vercel and Supabase log retention confirmed (inventory Gap 8).
-5. LocationIQ corporate seat and processing terms confirmed (Gap 10).
-6. Google unpaid-tier terms and transfer basis confirmed (Gap 5).
-7. Backup retention window confirmed and stated as a number.
-8. Cookie and storage claim verified against the live build.
-9. Finnish lawyer review of the whole document.
-10. Guest Privacy Notice and Data Processing Agreement drafted — this policy references both.
+Published as v1 before lawyer review, by decision (Option B, 1 Sep 2026); the review is
+a fast-follow on this published text. Specifically flagged: whether a Data Protection
+Officer is required; whether a web contact form is required in addition to email; the
+exact transfer mechanism per non-EEA provider; the Finnish accounting retention period
+stated as a number; and the Google Search grounding cache question recorded in the
+internal workstream.

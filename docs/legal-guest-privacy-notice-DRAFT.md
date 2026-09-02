@@ -1,10 +1,11 @@
 # Privacy Notice for Guests
 
 **Status: DRAFT for legal review. Not published.**
-Prepared 30 July 2026. Items marked **[CONFIRM]** or **[BUILD]** need a decision before publication.
+Prepared 30 July 2026. v1 editing pass completed 2 September 2026; remaining questions are listed at
+the end under "Flagged for legal review".
 Not legal advice. To be reviewed by a Finnish data protection lawyer alongside the host policy and the DPA.
 
-**Effective date:** [CONFIRM — set on publication]
+**Effective date:** set at publication
 
 ---
 
@@ -23,7 +24,7 @@ The rest of this page explains it properly.
 
 ## 1. Who is responsible for your information
 
-**Your host.** The host of the property you are staying at decides what information goes into this page and why. In data protection terms, they are the *controller*. Their name is shown at the top of your guest page. **[BUILD — insert the host's brand name here automatically so the guest sees who it is]**
+**Your host.** The host of the property you are staying at decides what information goes into this page and why. In data protection terms, they are the *controller*. Their name is shown at the top of this notice and on your guest page.
 
 **Bemgu.** We are the company that makes the software your host uses. We handle your information **on your host's instructions**, not for our own purposes. In data protection terms, we are a *processor*.
 
@@ -65,7 +66,7 @@ If your host is legally required to register you with the police or a tourism au
 
 ## 3. Why
 
-Your host uses this page to give you what you need for your stay: how to get in, the Wi-Fi, the rules, and local suggestions. Their legal basis is their legitimate interest in running your stay well, and in performing the accommodation arrangement. **[CONFIRM with lawyer — legitimate interests versus contractual necessity, given most guests contract with a booking platform rather than the host directly]**
+Your host uses this page to give you what you need for your stay: how to get in, the Wi-Fi, the rules, and local suggestions. Their legal basis is their legitimate interest in running your stay well, and in performing the accommodation arrangement. (The precise legal basis — legitimate interests or contractual necessity — is flagged for legal review, since many guests book through a platform rather than with the host directly.)
 
 Notifications are sent only if you switch them on, and you can switch them off at any time in your browser or device settings.
 
@@ -79,14 +80,16 @@ Notifications are sent only if you switch them on, and you can switch them off a
 | Vercel | Server logs | Servers in Frankfurt; company in the United States |
 | Google (Gemini AI) | Chat messages you type, and the property address | United States |
 | Google Search | Chat questions, and the property address, when the assistant looks something up | United States |
+| Groq | The text of AI-generated content on your page — guides, events, greetings (zero-data-retention mode enabled) | United States |
+| Tavily | Event searches for the city — nothing about you | United States |
+| Geoapify | Places data for the guide — nothing about you | EU |
 | Cloudflare | An anti-abuse check when you use the pre-arrival chat | United States |
 | Apple / Google push services | A device registration, only if you enable notifications | United States |
-| ntfy.sh | A short message to Bemgu's own operator alerts when your page opens — see below | **[CONFIRM — operator and location]** |
-| wttr.in | **Your IP address** — see below | **[CONFIRM — operator and location]** |
+| ntfy.sh | A short message to Bemgu's own operator alerts when your page opens — see below; messages are deleted after about 12 hours | United States |
 
-**About the chat assistant.** When you ask it something, your question is sent to Google's AI service, and may also be sent to Google Search so it can look up current information. Do not type anything into it you would not want handled that way.
+**About the chat assistant.** When you ask it something, your question is sent to Google's AI service, and may also be sent to Google Search so it can look up current information. Do not type anything into it you would not want handled that way. Google stores grounded chat questions, their context and the answer for up to 30 days for its own debugging and quality checks.
 
-**About the weather.** The weather shown on your page is fetched **by your own browser, directly from a third-party weather service**. That means your IP address goes to them, not through us. We are telling you because it is not obvious, and because we cannot prevent it without removing the weather. **[BUILD — decide whether to route this through our own server, or keep it client-side and disclose it. Routing it server-side removes the guest's IP from the third party entirely and is the cleaner fix.]**
+**About the weather.** The weather on your page is fetched by Bemgu's own server, using the property's coordinates. Nothing about you — not your IP address, not your device — is sent to the weather service.
 
 **About the page-open ping.** When your page opens, Bemgu sends itself a short operational message so we can see the service is working. It contains the property name, its area, which version of the page you were shown and how you reached it. **It does not contain your name, your booking reference, your dates, your messages or your IP address.** It is not advertising and it is not shared with anyone else.
 
@@ -96,7 +99,7 @@ Notifications are sent only if you switch them on, and you can switch them off a
 
 ## 5. The part we are responsible for ourselves
 
-To keep the service working and stop it being abused, we keep short-lived server logs and run an automated check on the pre-arrival chat to tell real visitors from bots. This may involve your IP address. We also send ourselves a short operational message each time a guest page opens, so we can see the service is working — it carries the property and how the page was reached, and never your name, your booking reference, your dates or your IP address (see §4). We do this on our own initiative, both for security and to know the service is running, which makes us the controller for it, and our basis is our legitimate interest in a service that works and is not misused. **[CONFIRM — log retention periods]**
+To keep the service working and stop it being abused, we keep short-lived server logs and run an automated check on the pre-arrival chat to tell real visitors from bots. This may involve your IP address. We also send ourselves a short operational message each time a guest page opens, so we can see the service is working — it carries the property and how the page was reached, and never your name, your booking reference, your dates or your IP address (see §4). We do this on our own initiative, both for security and to know the service is running, which makes us the controller for it, and our basis is our legitimate interest in a service that works and is not misused. These logs are held briefly — currently around one day.
 
 ---
 
@@ -110,10 +113,10 @@ To keep the service working and stop it being abused, we keep short-lived server
 | Automatically generated daily suggestions | 30 days after check-out |
 | Stay dates and booking reference | Kept in your host's calendar, **with no name attached** once the above is erased |
 | The booking reference and first name your browser keeps on your device | **Cleared when your stay ends; expires 30 days after check-in** |
-| Server logs | **[CONFIRM]** |
-| The page-open ping sent to our alerts service (§4) | **[CONFIRM — how long messages persist on ntfy.sh. NOT covered by the server-logs row above: it is a different service with its own retention, so answering that row does not answer this one.]** |
+| Server logs | Held briefly by our hosting providers — currently around one day |
+| The page-open ping sent to our alerts service (§4) | Deleted from the alerts service after about 12 hours |
 
-"Permanently erased" means the record is deleted, not hidden. Encrypted backups run on a rolling cycle, so a deleted record may briefly persist in a backup. **[CONFIRM — state the backup window as a number]**
+"Permanently erased" means the record is deleted, not hidden.
 
 ---
 
@@ -141,13 +144,9 @@ If this notice changes we will update the date at the top.
 
 ---
 
-## Open items before publication
+## Flagged for legal review
 
-1. Host brand name inserted automatically, so the guest can see who the controller is. **[BUILD]**
-2. Link this notice from **every guest page and welcome page** — currently missing entirely (inventory Gap 6). **[BUILD]**
-3. Decide the weather fix: move the call server-side, or keep it client-side and rely on this disclosure (Gap 9).
-4. Confirm the weather service's operator and location.
-5. Confirm server log retention.
-6. Confirm the backup window and state it as a number.
-7. Confirm the legal basis wording for the host's processing.
-8. Lawyer review, together with the host policy and the DPA.
+This notice is linked from every guest page and welcome page, with the host's name
+shown so you can see who the controller is. A Finnish lawyer reviews it as a
+fast-follow to publication; the legal-basis wording in section 3 is specifically
+flagged.

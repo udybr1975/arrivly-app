@@ -4,16 +4,16 @@ Moved out of CLAUDE.md, which keeps the live rules and points here.
 
 ## LAUNCH DECISION — 1 Sep 2026 (Udy, in chat): OPTION B
 
-**Resolve the `[CONFIRM]` markers in a working session, publish the drafted documents as v1 on
+**Resolve the CONFIRM markers in a working session, publish the drafted documents as v1 on
 bemgu.app — a legal page plus REAL links under the Signup consent checkbox, which today links to
 NOTHING (a freeze-lifted code change, both gates) — BEFORE the first marketing spend.
 Finnish-lawyer review becomes a FAST-FOLLOW on the published v1, not a gate.**
 
 **LAUNCH BLOCKER #2 IS THEREBY SCHEDULED, NOT WAIVED.** The documents still get reviewed; what
 changed is the ORDER, so the external dependency stops blocking a launch that is otherwise
-ready. Everything below stands unchanged — the `[CONFIRM]`/`[BUILD]` markers are still the
-to-do list and are still never to be resolved, tidied, renumbered or removed except in that
-working session.
+ready. **THE WORKING SESSION RAN 2 Sep 2026: every marker in the four legal documents
+and the inventory is resolved per D1-D10.** The lawyer flags survive as prose in each
+document's "Flagged for legal review" section.
 
 ## PART 1 DECISIONS (1-2 Sep 2026, Udy in chat)
 
@@ -89,6 +89,17 @@ survive without a half-edited document.
   Draft committed as `docs/legal-tos-DRAFT.md`; DRAFT status drops at publication with the other
   three.
 
+**V1 EDITING PASS EXECUTED 2 Sep 2026.** All markers in the four legal documents and the
+inventory resolved against D1-D10. Census after: 2 CONFIRM / 0 BUILD across docs/, both
+residuals being archived mentions inside docs/history.md session records — not work
+items, and archived text is never edited. The Gemini grounding-cache question remains
+UNRESOLVED and lawyer-flagged, per this workstream's instruction. **TWO-SIDED NOTE from
+the free-tier decision: the backup-cycle sentences were REMOVED from all three documents
+because no automated backups exist on the free tier — when backups are introduced
+(Supabase Pro), the sentence returns WITH its window as a number, in the SAME commit.**
+Documents remain DRAFT; status drops at publication (the step-4 build commit), which is
+also what makes the guest-notice link, brand-name and weather-proxy sentences true.
+
 ### REMAINING FOR THE EXECUTION SESSION
 
 1. ~~**ToS v1 draft — none exists**~~ — **DRAFTED 2 Sep 2026, `docs/legal-tos-DRAFT.md` (D10).**
@@ -143,7 +154,7 @@ residency, client-side disclosures, transfers, and Art. 32 measures.
    host names removed from 4, the rest send aggregate counts only.
 4. **Retention — DECIDED AND IMPLEMENTED 11 Aug 2026** for `guests` (30d), `daily_greetings`
    (30d) and guest `push_subscriptions` (7d), matching guest notice §6. `admin_audit` runs at
-   365d but **[CONFIRM] — that period is the founder's recommendation, NOT counsel's.**
+   365d, **confirmed for v1 (D2); counsel to confirm in the fast-follow review.**
    **STILL OPEN: the booking ROW.** The guest LINK is severed automatically (the identity sweep
    nulls `bookings.guest_id` at 30 days, so the row stops being personal data), but the row
    itself is retained INDEFINITELY and deliberately, on a business-records rationale. That is
@@ -207,9 +218,9 @@ secret scanning + push protection confirmed **already enabled** 29 Jul.
    All remain **DRAFT, NOT published, NOT in force**. ~~pending the retention crons shipping~~
    — **those SHIPPED 11 Aug 2026 (SEQUENCING TRAP above is CLOSED), so the only remaining
    condition is the Finnish lawyer review**, which is now the longest-lead item on the launch
-   path and should start first. Every `[CONFIRM]` / `[BUILD]` marker
-   is intact and IS the outstanding to-do list — **never resolve, tidy, renumber or remove one.**
-   **Three `[CONFIRM]` markers are now answerable from the 4 Aug Gemini terms verification**
+   path and should start first. Every CONFIRM / BUILD marker
+   was resolved in the 2 Sep 2026 v1 editing pass, per the decisions recorded above.
+   **Three CONFIRM markers (resolved 2 Sep 2026 per D9) were answerable from the 4 Aug Gemini terms verification**
    (host policy open item 6; the host policy §7 transfer-mechanism marker citing "Google's terms
    for unpaid API tiers"; and the guest notice §4 chat paragraph, which does not yet mention the
    30-day grounding storage) — ~~queued for a post-billing editing pass~~ **REFRAMED Aug 5 2026:

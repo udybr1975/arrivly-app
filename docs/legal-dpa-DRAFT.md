@@ -3,10 +3,11 @@
 **Between you (the Host) and Bemgu**
 
 **Status: DRAFT for legal review. Not published, not in force.**
-Prepared 30 July 2026. Items marked **[CONFIRM]** need a decision or verification before this is offered to hosts.
+Prepared 30 July 2026. v1 editing pass completed 2 September 2026; remaining questions are listed at
+the end under "Flagged for legal review".
 Not legal advice. To be reviewed by a Finnish data protection lawyer alongside the host privacy policy and the guest privacy notice.
 
-**Version:** [CONFIRM] · **Effective date:** [CONFIRM]
+**Version:** 1.0 · **Effective date:** on publication
 
 ---
 
@@ -21,7 +22,7 @@ It is written in plain language on purpose. Where it uses a defined term from th
 **Parties**
 
 - **You**, the Host: the person or company holding the Bemgu account.
-- **Us**: **[CONFIRM — exact legal name]**, Runeberginkatu 17 A, 00100 Helsinki, Finland. Contact: hello@bemgu.app
+- **Us**: **U & A Investment and Consultancy Oy** (business ID 3234935-4), Runeberginkatu 17 A 3, 00100 Helsinki, Finland. Contact: hello@bemgu.app
 
 ---
 
@@ -79,7 +80,7 @@ You confirm that:
 
 You give general authorisation for us to engage the sub-processors listed in **Annex 2**. Each is bound by obligations no less protective than those in this agreement, and we remain responsible to you for their performance.
 
-If we intend to add or replace a sub-processor we will give you at least **[CONFIRM — 30 days recommended]** notice by email. If you reasonably object on data protection grounds within that period, we will discuss it with you; if we cannot resolve it, you may terminate your subscription and receive a pro-rata refund for the unused period.
+If we intend to add or replace a sub-processor we will give you at least **30 days'** notice by email. If you reasonably object on data protection grounds within that period, we will discuss it with you; if we cannot resolve it, you may terminate your subscription and receive a pro-rata refund for the unused period.
 
 ---
 
@@ -87,7 +88,7 @@ If we intend to add or replace a sub-processor we will give you at least **[CONF
 
 Our database, our application servers and our email provider are located in the EU.
 
-**Some sub-processors are not.** Google, Stripe, Cloudflare and the mobile push services are established outside the EU and receive data there. Annex 2 says which. Those transfers rely on the safeguards in each provider's terms, including the EU Standard Contractual Clauses and, where applicable, the EU–US Data Privacy Framework. **[CONFIRM — the exact mechanism relied on for each, and attach or reference the SCC module where applicable]**
+**Some sub-processors are not.** Google, Stripe, Cloudflare and the mobile push services are established outside the EU and receive data there. Annex 2 says which. Those transfers rely on the safeguards in each provider's terms, including the EU Standard Contractual Clauses and, where certified, the EU–US Data Privacy Framework. The exact mechanism relied on per provider is being confirmed in legal review.
 
 We do not describe our processing as EU-only, because it is not.
 
@@ -105,15 +106,15 @@ We apply these periods automatically. They are commitments, not intentions.
 | Guest notification registrations | Erased 7 days after check-out |
 | Booking dates, reference, source | Retained for your calendar, with no guest identity attached once the above is erased |
 
-Deletion is permanent removal, not archiving. Encrypted backups run on a rolling cycle, so a deleted record may persist in a backup until that cycle completes. **[CONFIRM — state the window as a number]**
+Deletion is permanent removal, not archiving.
 
-**When your account ends.** You can export your data for **[CONFIRM — 30 days recommended]** after your account closes. After that we delete all guest personal data, except anything we must keep by law. We will confirm deletion in writing if you ask.
+**When your account ends.** You can export your data for **30 days** after your account closes. After that we delete all guest personal data, except anything we must keep by law. We will confirm deletion in writing if you ask.
 
 ---
 
 ## 9. If something goes wrong
 
-If we become aware of a personal data breach affecting your guests' data, we will tell you **without undue delay**, and in any case within **[CONFIRM — 48 hours recommended]** of becoming aware.
+If we become aware of a personal data breach affecting your guests' data, we will tell you **without undue delay**, and in any case within **48 hours** of becoming aware.
 
 We will tell you what happened, which categories and roughly how many people and records are affected, the likely consequences, and what we are doing about it. If we do not have all of that at first, we will send what we have and follow up.
 
@@ -123,7 +124,7 @@ Notifying your supervisory authority and, where required, your guests is your de
 
 ## 10. Checking that we are doing this
 
-On request, and no more than **[CONFIRM — once a year recommended]**, we will provide the information reasonably needed to show we are meeting this agreement.
+On request, and no more than **once a year**, we will provide the information reasonably needed to show we are meeting this agreement.
 
 If that is not enough, you may audit us, or appoint an independent auditor to do so, on 30 days' notice, during business hours, without disrupting the service, and subject to confidentiality. You bear the cost unless the audit finds a material breach by us.
 
@@ -135,7 +136,7 @@ We are a small operation and we would rather answer questions directly than have
 
 This agreement runs for as long as you have a Bemgu account and any period afterwards in which we still hold guest data.
 
-We may update it to reflect changes in law or in the service. For anything that materially reduces your protections we will give you **[CONFIRM — 30 days recommended]** notice, and you may terminate if you object.
+We may update it to reflect changes in law or in the service. For anything that materially reduces your protections we will give you **30 days'** notice, and you may terminate if you object.
 
 If this agreement conflicts with our Terms of Service on the handling of guest personal data, **this agreement wins**.
 
@@ -172,17 +173,20 @@ If this agreement conflicts with our Terms of Service on the handling of guest p
 | Supabase | Database and authentication | EU (Frankfurt) |
 | Vercel | Application hosting and logs | Compute in Frankfurt; company in the United States |
 | Resend | Outgoing email | EU (Ireland) |
-| Google (Gemini AI) | Generating guides, greetings and chat replies | United States |
-| Google Search | Verifying places and answering chat questions | United States |
+| Google (Gemini AI) | The guest chat assistants | United States |
+| Google Search | Answering chat questions with current information | United States |
+| Groq | Generating guides, events and greetings (zero-data-retention mode enabled) | United States |
+| Tavily | Event searches — city-level queries, no guest identifiers | United States |
+| Geoapify | Places data for guides — no guest data | EU |
 | Cloudflare | Anti-abuse checks | United States |
-| LocationIQ | Converting addresses to coordinates | **[CONFIRM]** |
+| LocationIQ | Converting property addresses to coordinates — property addresses only, never guest identities | India (EU endpoint used) |
 | Apple / Google push services | Delivering notifications | United States |
 | Stripe | Host subscription payments — **no guest data** | Ireland / United States |
 | Unsplash | Stock city images — **no guest data** | United States |
 | Viator, GetYourGuide, Tiqets | Experience listings — **no guest data** | EU / United States |
-| ntfy.sh | Operator operational alerts and guest-page-open heartbeats — pseudonymous property-level event data, **no guest identifiers** | **[CONFIRM]** |
+| ntfy.sh | Operator operational alerts and heartbeats — pseudonymous property and host identifiers, never guest identities | United States |
 
-**[CONFIRM — decide whether to publish this annex at a stable URL so changes are visible, rather than only sending notice by email. Recommended.]**
+The current sub-processor list is published at **bemgu.app/legal** (a stable address); changes are additionally notified by email as section 6 describes.
 
 ---
 
@@ -197,19 +201,12 @@ If this agreement conflicts with our Terms of Service on the handling of guest p
 - Administrator actions logged automatically and retained 24 months
 - Automated deletion of guest personal data on the schedule in section 8
 - Application servers assigned to the EU region
-- **[CONFIRM — add backup encryption and restore-testing practice once verified]**
 
 ---
 
-## Open items before this is offered to hosts
+## Flagged for legal review
 
-1. Exact legal name.
-2. Notice periods in sections 6, 8 and 11.
-3. Breach notification deadline in section 9.
-4. Audit frequency in section 10.
-5. Transfer mechanism per sub-processor confirmed (section 7).
-6. Backup window stated as a number (section 8).
-7. LocationIQ seat confirmed (Annex 2).
-8. Decision on publishing the sub-processor list at a stable URL.
-9. **The retention automation in section 8 must be live in the product before this is offered.** As drafted it commits to behaviour that does not yet exist.
-10. Lawyer review, together with the host policy and the guest notice.
+Offered as v1 by decision (Option B, 1 Sep 2026); lawyer review is a fast-follow.
+Specifically flagged: the exact transfer mechanism per non-EEA sub-processor
+(section 7). The retention automation in section 8 has been live in the product since
+11 August 2026.
