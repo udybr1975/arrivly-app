@@ -49,6 +49,17 @@ survive without a half-edited document.
   the backups sentence in guest-notice section 6 becomes TRUE with **"7 days"**; log retention
   becomes 7 days; and the leaked-password toggle unblocks, so **post-runbook (e) closes when the
   toggle is actually flipped AND advisor-verified** — not when Pro is purchased.
+  **AMENDED 2 Sep 2026 (Udy, in chat): SUPABASE PRO IS *NOT* PURCHASED. Staying on the FREE
+  tier for now; Pro is DEFERRED until real paying hosts exist.** The backups rationale above
+  **stands and re-decides then** — it was not withdrawn, only postponed, and the exposure it
+  names (a live paying product with no automated database backups) is still live. The original
+  D1 text is kept above deliberately: **the reversal is appended, not rewritten, so that the
+  decision AND its reversal are both on the record** — a rewritten D1 would read as though Pro
+  had never been decided, and the next reader would re-derive the whole argument.
+  **CONSEQUENCES, both of which follow from D1's own publish-what-is-true rule:**
+  (i) guest-notice section 6 log-retention publishes the **"~1 day"** version, NOT the 7-day
+  one; (ii) **post-runbook (e) REMAINS BLOCKED-ON-PLAN / accepted exactly as recorded 1 Sep** —
+  **do not re-attempt the toggle on the free tier**, the dashboard will reject it again.
 - **D2 — `admin_audit` retention CONFIRMED at 365 days** as the v1 number; the lawyer flag stays.
 - **D3 — `guest_optins`: keep the table, mark it DORMANT in the inventory, OMIT from the guest
   notice v1.** **No disclosure of processing that never occurs** — describing a dormant table

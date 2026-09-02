@@ -157,9 +157,11 @@ every open item keeps its one-line statement here. Read one when you need to kno
 **Bemgu is LIVE and taking real payments.** Runbook, proofs and the POST-RUNBOOK QUEUE are in
 **docs/go-live-runbook.md**. **Remaining ACTIONABLE open items: (d)** Preview Stripe vars ·
 **(g)** duplicate pending ntfy · **(h)** Art. 30 ntfy enumeration.
-**(e) is UNBLOCKED BY D1 (Supabase Pro taken, 1-2 Sep 2026 — decided on BACKUPS, not on this
-toggle) and CLOSES ON TOGGLE + ADVISOR PROOF, not on the purchase** — see
-docs/legal-workstream.md, PART 1 DECISIONS.
+**(e) is BLOCKED-ON-PLAN — accepted 1 Sep 2026, and STILL BLOCKED: D1 was AMENDED 2 Sep 2026,
+Supabase Pro is NOT purchased and is deferred until real paying hosts exist.** It is NOT
+actionable work — **do not re-attempt the toggle on the free tier**, the dashboard rejects it.
+See docs/legal-workstream.md, PART 1 DECISIONS (D1 + its amendment) and the Tracked security
+follow-up below.
 **(a) CLOSED `3bbb958`; (b) CLOSED `d6e03ce`** (auth polish); **(c) CLOSED — decided 1 Sep
 2026** (Checkout branding, dashboard-only); **(f) CLOSED `a4a3fdd`**
 (declined first charge).
