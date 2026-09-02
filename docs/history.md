@@ -3810,3 +3810,141 @@ go-live fixture host `d1de87a8`, which rests at `expired` with a real cancelled 
 **deliberately not** the usual active+exempt test-host shape. **Full detail, every SHA and every
 measured timestamp: the GO-LIVE RUNBOOK section above — it is the record, not a summary of one.**
 
+---
+
+## 2 Sep 2026 — restructure at the 140K threshold (moved from CLAUDE.md)
+
+### The five conscious-lift records (from the freeze block)
+
+> **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 31 Aug 2026 for exactly one fix — the
+> bulk-import 502 (Groq json_object cannot emit a bare array), shipped as `9eb5255`, both gates
+> PASS with zero must-fix — and RE-FROZEN at `9eb5255` the same day, approved by Udy in chat.**
+>
+> **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 1 Sep 2026 for exactly one fix — the
+> GO-LIVE RUNBOOK STEP 0 signup-under-email-confirmation change (`Signup.tsx` `emailRedirectTo`
+> + `brand_name` metadata; `AuthCallback` welcome-email on the confirmation landing), shipped as
+> `f94f665`, both gates PASS with zero must-fix — and RE-FROZEN at `f94f665` the same day,
+> approved by Udy in chat. DB half: migration `handle_new_user_brand_name_from_metadata`,
+> applied and verified from chat.**
+>
+> **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 1 Sep 2026 (second lift that day) for
+> post-runbook item (a) — the 3-D Secure first-payment messaging fix — and EXTENDED the same day
+> to `src/components/host/BillingPanel.tsx` after code-reviewer round 1 FAILED on a crash (M1: a
+> new notice type returned `undefined` from a switch with no default, and the render site
+> destructured it). Six files, both gates PASS with zero must-fix on the FINAL bytes,
+> `test:billing-notice` 12/12, shipped as `3bbb958` — and RE-FROZEN at `3bbb958` the same day,
+> approved by Udy in chat. NO DB MIGRATION.**
+>
+> **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 1 Sep 2026 (THIRD lift that day) for the
+> DEPENDABOT PATCH, shipped as `070e3b4`:** browserslist 4.28.2 → 4.28.8 (two HIGH advisories)
+> and postcss-selector-parser 6.1.2 → 6.1.4 (one LOW). **Both were triaged UNREACHABLE in chat**
+> — dev tree only, no attacker input path (no `browserslist-stats.json` in the repo, no
+> untrusted CSS in the build) — **and fixed anyway**, because the cost is one lockfile commit and
+> a green Dependabot dashboard keeps the NEXT real alert visible. **LOCKFILE-ONLY: package.json
+> unchanged.** Seven packages moved, including two FORCED minors (browserslist's own manifest
+> demands them). Both gates PASS with zero must-fix; 252 tests green. **NO DB MIGRATION.**
+> **Residual:** the JS bundle moved ~190 bytes because the browserslist target set is unpinned,
+> so a caniuse-lite data bump shifts Babel's targets — **a payment-path browser smoke is
+> assigned to Udy in chat.**
+>
+> **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 1 Sep 2026 (FOURTH lift that day) for
+> POST-RUNBOOK ITEM (b), THE AUTH POLISH BATCH, shipped as `d6e03ce`:** a shared `PasswordInput`
+> component on all **FOUR** password fields (**the brief said three — `ResetPassword` has two**),
+> plus the "sign in instead" exit line on Signup's Check-your-email panel (**copy only — no
+> resend endpoint, so Supabase's enumeration protection is preserved exactly**).
+> **The security gate FAILED round 1 on M1, SPELL-JACKING:** a revealed field becomes
+> `type="text"` and its value becomes eligible for Chrome Enhanced Spellcheck and Microsoft
+> Editor, **both of which transmit field contents to a remote service** — i.e. the feature being
+> added was itself the only path by which a typed password could leave the device. Fixed with
+> **unconditional** `spellCheck={false}` + `autoCapitalize="none"` + `autoCorrect="off"`. Both
+> gates then re-run FROM SCRATCH: PASS with zero must-fix on the final bytes; 252 tests green.
+> **NO DB MIGRATION.** Surface **RE-FROZEN at `d6e03ce` the same day**, approved by Udy in chat.
+>
+> **THE FREEZE WAS CONSCIOUSLY LIFTED BY UDY IN CHAT ON 1 Sep 2026 (FIFTH lift that day) for
+> POST-RUNBOOK ITEM (f), THE DECLINED-FIRST-CHARGE FIX, shipped as `a4a3fdd`:** Stripe's
+> `incomplete` means BOTH "3-D Secure challenge in flight" and "first charge DECLINED", and (a)
+> suppressed both, so a declined host heard nothing until the cancellation email. The retrieve's
+> expand was deepened to `latest_invoice.payment_intent` — one more level of the SAME expand, no
+> extra API call — **which works only because the wire pin is acacia; BASIL REMOVED
+> `Invoice.payment_intent`, so a pin bump is a CODE change and is recorded as a FIFTH migration
+> site in `api/_lib/stripe.ts`.** The suppression was narrowed **FAIL-SAFE: notify only on a
+> POSITIVE `requires_payment_method`, so missing payment-intent data stays suppressed and the (a)
+> defect cannot return** — the inverse would tell a host mid-3DS their payment failed, which is
+> the worse message on the more frequent path. **NO NEW NoticeType** (a decline reuses `grace`,
+> deliberately avoiding the api/ ↔ src/ two-unions trap). Tests 12 → 15; all 255 green. Both
+> gates PASS with zero must-fix. **ONE post-verdict COMMENT-ONLY edit, declared under the
+> standing exemption:** both gates independently flagged that the Basil note asserted an
+> unmeasured "fails quietly" claim, so it now names BOTH candidate failure modes as unverified
+> and says to measure before moving the pin. **NO DB MIGRATION.** Surface **RE-FROZEN at
+> `a4a3fdd` the same day**, approved by Udy in chat.
+>
+
+### Session record — 1 Sep 2026 (GO-LIVE, and the first post-live fix)
+
+## SESSION RECORD — 1 Sep 2026 (GO-LIVE, and the first post-live fix)
+
+**Bemgu went LIVE, took real money, and then had its first live-measured defect found and
+fixed the same day.** The GO-LIVE RUNBOOK was written and executed end to end: STEP 0 fixed
+signup under email confirmation (`f94f665`), STEP 1 turned Confirm-email ON, STEP 2 created the
+live Stripe products, webhook and key and proved the path with a **real €10 3-D Secure charge**,
+STEP 3 recorded it. **LAUNCH BLOCKERS #5 and #6 both CLOSED**, so nothing in this file blocks
+the marketing launch. **Nothing on Anna's Stays was touched at any point.** That same €10 charge
+then exposed post-runbook item (a): a first payment waiting on the bank's 3-D Secure step is
+Stripe status `incomplete`, which mapped to `grace`, so the host was told their payment FAILED
+and then told nothing when it succeeded 56 seconds later — **fixed and PROVEN LIVE with a second
+real charge as `3bbb958`**, which also closed the re-subscriber hole and turned every genuine
+past-due card-retry recovery into a host notification for the first time. **THE LESSON THAT
+OUTLIVES THE DAY, and it nearly shipped a crash: the `NoticeType` union in `api/` and the
+`BillingNotice.type` union in `src/` are independent declarations that NOTHING type-checks
+against each other, because `api/` sits outside every tsconfig.** Adding a value server-side
+compiled green on both sides and would have left every recovered host with a permanently broken
+Billing page; a code-reviewer round caught it, the build could not. **Detail, proofs and the
+POST-RUNBOOK QUEUE (b)-(h): docs/go-live-runbook.md.**
+
+
+### LAUNCH BLOCKER 3 — dependency-triage closure detail
+
+ The remainder was cleared lockfile-only: every advisory was fixable by a PATCH already inside the existing semver range, so `package.json` is unchanged and no major was taken (`@google/genai` stayed on 2.6.0 — its own manifest declares `protobufjs: ^7.5.4`, which 7.6.6 satisfies). Full closure and the live smoke in PG-17's CLOSED entry, docs/pentest-queue.md.
+### LAUNCH BLOCKER 3 — the superseded-counts note
+
+ **Older counts in this file (Known notes' 8, and a since-deleted 7 on `d254df9`) are SUPERSEDED, and the gap between them was never drift** — GitHub counts one alert per advisory per manifest path while `npm audit` dedupes per package, so the two tools measure different things. Precedes the pentest gate.
+### LAUNCH BLOCKER 5 — historical statement
+
+ **Historical statement of the blocker, kept because it is the reason it existed:** Tier 3 sells "connect your own account" for both. That clearance is currently OUR terms reading, not theirs. Viator ruled NO on the identical question on 4 Aug 2026 after the same self-assessment said probably yes. Selling a tier on an unconfirmed permission is the risk; asking costs one email each.
+### LAUNCH BLOCKER 6 — historical statement and the email-flip detail
+
+   **Historical statement of the blocker, kept because it is the reason it existed:**
+   Stripe LIVE flip — LAST. Also then, at the Supabase Auth dashboard: enable
+   leaked-password protection AND **turn email confirmation ON** — it is deliberately OFF today
+   (frictionless trial), DECIDED 31 Aug 2026 (Udy, in chat) to flip ON BEFORE the marketing
+   launch, so unverified signups cannot bounce trial emails and burn sender reputation
+   (hacker-pass A07 note, docs/hacker-pass/phase2c-results.md).
+   **THE EMAIL-CONFIRMATION FLIP IS NOT A ONE-SWITCH JOB — SEE THE GO-LIVE RUNBOOK,
+   STEP 0 AND STEP 1, ABOVE.** Turning it on BEFORE the `Signup.tsx` `emailRedirectTo` +
+   `handle_new_user` brand_name fix lands leaves every email signup without a brand name.
+
+### QUEUE — DONE entries 0-3
+
+     0. ~~CLAUDE.md EXPIRY PASS~~ — **DONE 26 Aug 2026 (evening): 141,826 -> 125,117 chars**;
+        twelve entries retired to docs/history.md, seven stale claims corrected, nothing deleted
+        from the record. **THE RULE IT LEAVES BEHIND: the expiry class is a standing sweep, not a
+        one-off.** Any claim in this file asserting a GAP, an UNVERIFIED state or a PENDING answer
+        is a claim WITH AN EXPIRY and nothing re-checks it — re-verify each against source before
+        keeping it. This pass found three such claims false at once, all in the AI MODELS section
+        (the withdrawn 16 Oct deadline, "the file's ONLY live dated deadline", and "guest-chat is
+        the SOLE Google dependency" — `welcome-chat` also runs on Google). **A lesson that is
+        merely old is not the problem; a lesson that is WRONG is.**
+     1. ~~THE DEMO~~ — **DONE** (`23d5197`, 26 Aug 2026).
+     2. ~~PRE-ARRIVAL MARKETING PASS~~ — **DONE** (`3b7084c`, 26 Aug 2026). Landing.tsx only;
+        the research, the dropped "unlike" claims and the eight caveat sites are in
+        docs/history.md (26 Aug afternoon). **Step (i) turned out to be ALREADY DONE on 22 Aug**
+        — see the corrected delivered-message line above. **Step (iv), sandbox gap #1 (Alex has
+        no `platform_ref`), was NOT built and STAYS PARKED**; gap #6's copy is still deferred
+        behind it.
+     3. ~~gemini repoint~~ — DONE as Option A, `6518da7`, 26 Aug 2026; no repoint, see AI
+        MODELS.
+
+### QUEUE — the closed GYG/Tiqets pre-live confirmation bullet
+
+- **PRE-LIVE — OBTAIN WRITTEN CONFIRMATION FROM GYG AND TIQETS ON MULTI-TENANT HOST-OWN-ID.** Udy's own terms review (11 Aug 2026) cleared BOTH to keep host-own-partner-ID on Tier 3, and the code ships that way. **But note the EVIDENCE CLASS: that is a self-assessment, not a provider ruling.** For Viator we hold a written answer from Partner Support; for GYG and Tiqets we hold our own reading. **Viator is the proof that the two differ** — the terms were read carefully, the risk was spotted, the question was asked anyway, and the answer came back NO. Send the same question to both **before the Stripe live flip**, so a paying Tier-3 host is never sold a connection a provider later refuses. **Tiqets first — it uses the same partner-ID substitution shape (`partner=`) that Viator prohibited.** Contacts parked in PHASE I. If either answers no, Tier 3 needs repositioning, not just a code change.
+
