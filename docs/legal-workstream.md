@@ -15,6 +15,70 @@ ready. Everything below stands unchanged — the `[CONFIRM]`/`[BUILD]` markers a
 to-do list and are still never to be resolved, tidied, renumbered or removed except in that
 working session.
 
+## PART 1 DECISIONS (1-2 Sep 2026, Udy in chat)
+
+**Nothing in the drafts was edited tonight. The markers stay PHYSICALLY INTACT and are resolved
+in the v1 editing pass**, against the decisions below. This section is the input to that pass,
+not the pass itself — recorded separately so that if the pass is interrupted, the decisions
+survive without a half-edited document.
+
+### VERIFIED AT SOURCE (chat, 1 Sep 2026)
+
+- **Server logs.** Supabase free tier **1 day**; Vercel Pro runtime logs **1 day** (Vercel
+  pricing page). The guest-notice section 6 row reads *"held briefly by our hosting providers
+  for security and debugging (currently up to 7 days)"* **once Supabase Pro lands (D1)** —
+  otherwise **"~1 day"**. **The two versions are not interchangeable: publish the one that
+  matches the plan actually in force on the day of publication**, or section 6 is false the
+  moment it ships.
+- **ntfy.sh.** Operator **Philipp C. Heckel (US)**, published privacy policy; messages cached
+  **~12 h** then deleted; app delivery via **Google FCM**. Fills the section 6 ping row and the
+  DPA Annex 2 ntfy location (**United States**).
+- **LocationIQ.** **Unwired Labs (India) Pvt Ltd, Hyderabad**; Bemgu calls the **EU endpoint**
+  (`eu1.locationiq.com`); the provider publishes a DPA (`locationiq.com/dpa`). Annex 2 location
+  → **"India (EU endpoint used)"**. **Property addresses only, never guest identities.**
+- **Entity (Finnish register).** U & A Investment and Consultancy Oy, osakeyhtiö, Y-tunnus
+  **3234935-4**, Runeberginkatu 17 A [x], 00100 Helsinki. **PENDING Udy's address-letter
+  confirmation of A3 vs 4** — the only unresolved character, and it must be settled before
+  publication because a company's registered address is a statutory disclosure.
+
+### DECIDED (each: Udy in chat, on planner recommendation)
+
+- **D1 — Supabase Pro (EUR 25/mo): TAKEN.** **Decided on BACKUPS for a live paying product**,
+  not on the password toggle. Side effects, all of which are consequences rather than reasons:
+  the backups sentence in guest-notice section 6 becomes TRUE with **"7 days"**; log retention
+  becomes 7 days; and the leaked-password toggle unblocks, so **post-runbook (e) closes when the
+  toggle is actually flipped AND advisor-verified** — not when Pro is purchased.
+- **D2 — `admin_audit` retention CONFIRMED at 365 days** as the v1 number; the lawyer flag stays.
+- **D3 — `guest_optins`: keep the table, mark it DORMANT in the inventory, OMIT from the guest
+  notice v1.** **No disclosure of processing that never occurs** — describing a dormant table
+  would make the notice inaccurate in the direction of over-claiming.
+- **D4 — wttr.in weather: PROXY SERVER-SIDE** (the workstream's own 30 Jul recommendation), in
+  the v1 build commit. **This DELETES the guest-IP disclosure and the subprocessor row rather
+  than documenting them** — the cheapest compliance work is the processing you stop doing.
+- **D5 — `bookings` row indefinite retention CONFIRMED** on the business-records rationale for
+  v1; lawyer flag stays. **The guest link is still auto-severed at 30 days**, which is what keeps
+  this consistent with the published retention promise.
+- **D6 — Entity details: as verified above**, subject to the A3-vs-4 confirmation.
+- **D7 — ntfy DPA row amended** to *"pseudonymous property and host identifiers, never guest
+  identities"* — host account UUIDs now ride the alarm topic. **THIS DECIDES post-runbook (h),
+  which CLOSES when the v1 DPA text ships** (not when this decision is recorded).
+- **D8 — US transfers, v1 generic clause:** providers outside the EEA are engaged under **EU SCCs
+  or DPF certification**; the lawyer refines per-provider.
+- **D9 — nods.** DPA **v1.0 effective on publication**; subprocessor annex at a **stable URL**;
+  the three Gemini-era markers resolve against the **CURRENT** provider set — the table gains
+  **Groq (US, ZDR enabled)**, **Tavily (US)** and **Geoapify**, and the guest-chat paragraph
+  states **Google's 30-day grounding storage**. **The Gemini grounding-cache question stays
+  UNRESOLVED and lawyer-flagged**, per this workstream's own instruction — it is not swept up by
+  D9.
+
+### REMAINING FOR THE EXECUTION SESSION
+
+1. **ToS v1 draft — none exists**, and the Signup consent checkbox already names it.
+2. **The v1 editing pass**, resolving the markers against the decisions above.
+3. **ONE freeze-lifted build commit, both gates:** legal page + guest-notice links + brand-name
+   injection + the wttr proxy (D4).
+4. **Lawyer review as the fast-follow** on the published v1.
+
 ## PRE-LIVE LEGAL & COMPLIANCE WORKSTREAM (opened Jul 28 2026 — BLOCKS LAUNCH)
 
 Promoted out of the Settings cosmetic backlog. Bemgu will take subscription money from
