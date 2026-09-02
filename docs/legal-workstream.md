@@ -37,9 +37,10 @@ survive without a half-edited document.
   (`eu1.locationiq.com`); the provider publishes a DPA (`locationiq.com/dpa`). Annex 2 location
   → **"India (EU endpoint used)"**. **Property addresses only, never guest identities.**
 - **Entity (Finnish register).** U & A Investment and Consultancy Oy, osakeyhtiö, Y-tunnus
-  **3234935-4**, Runeberginkatu 17 A [x], 00100 Helsinki. **PENDING Udy's address-letter
-  confirmation of A3 vs 4** — the only unresolved character, and it must be settled before
-  publication because a company's registered address is a statutory disclosure.
+  **3234935-4**, **Runeberginkatu 17 A 3, 00100 Helsinki**. **SETTLED 2 Sep 2026 (Udy, in
+  chat): the register is correct.** The earlier *"17, 4"* on the Stripe screen was the error;
+  worth correcting there at leisure (**Settings → Business → Account details**) — cosmetic,
+  internal-only.
 
 ### DECIDED (each: Udy in chat, on planner recommendation)
 
