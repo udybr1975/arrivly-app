@@ -3948,3 +3948,33 @@ POST-RUNBOOK QUEUE (b)-(h): docs/go-live-runbook.md.**
 
 - **PRE-LIVE — OBTAIN WRITTEN CONFIRMATION FROM GYG AND TIQETS ON MULTI-TENANT HOST-OWN-ID.** Udy's own terms review (11 Aug 2026) cleared BOTH to keep host-own-partner-ID on Tier 3, and the code ships that way. **But note the EVIDENCE CLASS: that is a self-assessment, not a provider ruling.** For Viator we hold a written answer from Partner Support; for GYG and Tiqets we hold our own reading. **Viator is the proof that the two differ** — the terms were read carefully, the risk was spotted, the question was asked anyway, and the answer came back NO. Send the same question to both **before the Stripe live flip**, so a paying Tier-3 host is never sold a connection a provider later refuses. **Tiqets first — it uses the same partner-ID substitution shape (`partner=`) that Viator prohibited.** Contacts parked in PHASE I. If either answers no, Tier 3 needs repositioning, not just a code change.
 
+## SESSION RECORD — 2 Sep 2026 (legal execution session)
+
+**Everything between `58bb1d1` and `83a841b` is this session.** In order:
+- **`6faca95`** D1 AMENDED: Supabase Pro NOT purchased — FREE tier stands, Pro deferred
+  until real paying hosts. Consequences applied everywhere: §6 log retention published
+  as ~1 day; post-runbook (e) back to BLOCKED-ON-PLAN/accepted (the 1 Sep record governs);
+  backup-cycle sentences REMOVED from all three documents as false-on-free-tier, with
+  the two-sided return-note in the workstream.
+- **`28b5b6e`** CLAUDE.md restructured at the 140K threshold: ~10.9K moved verbatim to
+  docs/history.md (five lift records, the 1 Sep session record, closed launch-blocker
+  histories, DONE queue entries), three rules hoisted first, conservation gate exact.
+- **`4e7754a`** ToS v1 drafted and committed (D10: VAT-exempt, 3-month liability cap,
+  30-day withdrawal, email-only contact).
+- **`7c2be06`** THE V1 EDITING PASS: every marker in the five legal files resolved per
+  D1-D10; census 17/5 -> 2/0, residuals = archived history.md mentions; (h) CLOSED at
+  the shipped DPA text.
+- **`0d2e7d6`** FREEZE-LIFTED BUILD (lift by Udy in chat, this session, exactly this
+  commit): /legal pages rendering the docs from source, real Signup consent links,
+  guest-notice link + server-resolved host name on every guest surface, D4 weather
+  proxy (apartment-id design, brake + ntfy alarm, edge-cached). Three gate rounds,
+  both gates each round, all PASS. DRAFT dropped — legal v1 IN FORCE. Verified live
+  on bemgu.app by chat-side checks independently of the build session.
+- **`83a841b`** freeze bookkeeping; **TIERS 1-3 SURFACE RE-FROZEN AT `0d2e7d6`.**
+
+**THE STANDING ANSWER THIS SESSION PRODUCED: nothing stands between Bemgu and the
+marketing launch.** Lawyer review of the published v1 is a scheduled fast-follow
+(Option B), not a gate. Still open, none blocking: (d), (g), the optional €10 3-D
+Secure re-proof of (f), and the Landing-footer /legal link — **PARKED for the marketing
+session's first Landing edit (it is a frozen-surface change and needs a lift; do not
+fold it into an unrelated commit silently).**

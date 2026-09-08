@@ -118,6 +118,23 @@ follow-up below.
 2026** (Checkout branding, dashboard-only); **(f) CLOSED `a4a3fdd`**
 (declined first charge).
 
+**THE STANDING ANSWER, settled 2 Sep 2026: NOTHING STANDS BETWEEN BEMGU AND THE MARKETING
+LAUNCH.** Legal v1 is PUBLISHED AND IN FORCE at `bemgu.app/legal` (`0d2e7d6`); **the lawyer
+review of that published text is a SCHEDULED FAST-FOLLOW (Option B), NOT A GATE** — do not
+re-raise it as a blocker. The remaining open items above are real work, and **none of them
+blocks launch**.
+
+**TWO MORE OPEN ITEMS, NEITHER BLOCKING — hoisted 2 Sep 2026 out of that session's record
+before it moved, because each existed at exactly ONE site and would have left with it:**
+- **The `/legal` link in the LANDING FOOTER was deliberately NOT built.** `Landing.tsx` is
+  inside the FROZEN Tiers 1-3 surface, so it is **not** a one-line addition to fold into an
+  unrelated commit — **it needs its own conscious lift.** PARKED for the marketing session's
+  first Landing edit, where a lift is being taken anyway. The four documents are reachable at
+  `/legal` and from Signup today; this is discoverability, not compliance.
+- **An optional second real €10 3-D Secure charge would re-prove item (f)** (the declined
+  first charge fix) end to end. `(f)` shipped gate-verified and logic-verified at `a4a3fdd`;
+  this would make it live-verified. Optional, cheap, never a gate.
+
 ## What is Arrivly?
 Arrivly is a multi-tenant SaaS platform for short-term rental hosts. Each host sets up their property and gets a personalised branded guest page accessible via QR code. The guest page shows check-in info, WiFi, house rules, host picks, and an AI-generated neighbourhood guide.
 
@@ -1256,36 +1273,7 @@ drill) remains a graduation prerequisite.**
 > into this file before the move (the per-session hoist notes are in docs/history.md, 26 Aug
 > evening, R1).
 
-## SESSION RECORD — 2 Sep 2026 (legal execution session)
-
-**Everything between `58bb1d1` and `83a841b` is this session.** In order:
-- **`6faca95`** D1 AMENDED: Supabase Pro NOT purchased — FREE tier stands, Pro deferred
-  until real paying hosts. Consequences applied everywhere: §6 log retention published
-  as ~1 day; post-runbook (e) back to BLOCKED-ON-PLAN/accepted (the 1 Sep record governs);
-  backup-cycle sentences REMOVED from all three documents as false-on-free-tier, with
-  the two-sided return-note in the workstream.
-- **`28b5b6e`** CLAUDE.md restructured at the 140K threshold: ~10.9K moved verbatim to
-  docs/history.md (five lift records, the 1 Sep session record, closed launch-blocker
-  histories, DONE queue entries), three rules hoisted first, conservation gate exact.
-- **`4e7754a`** ToS v1 drafted and committed (D10: VAT-exempt, 3-month liability cap,
-  30-day withdrawal, email-only contact).
-- **`7c2be06`** THE V1 EDITING PASS: every marker in the five legal files resolved per
-  D1-D10; census 17/5 -> 2/0, residuals = archived history.md mentions; (h) CLOSED at
-  the shipped DPA text.
-- **`0d2e7d6`** FREEZE-LIFTED BUILD (lift by Udy in chat, this session, exactly this
-  commit): /legal pages rendering the docs from source, real Signup consent links,
-  guest-notice link + server-resolved host name on every guest surface, D4 weather
-  proxy (apartment-id design, brake + ntfy alarm, edge-cached). Three gate rounds,
-  both gates each round, all PASS. DRAFT dropped — legal v1 IN FORCE. Verified live
-  on bemgu.app by chat-side checks independently of the build session.
-- **`83a841b`** freeze bookkeeping; **TIERS 1-3 SURFACE RE-FROZEN AT `0d2e7d6`.**
-
-**THE STANDING ANSWER THIS SESSION PRODUCED: nothing stands between Bemgu and the
-marketing launch.** Lawyer review of the published v1 is a scheduled fast-follow
-(Option B), not a gate. Still open, none blocking: (d), (g), the optional €10 3-D
-Secure re-proof of (f), and the Landing-footer /legal link — **PARKED for the marketing
-session's first Landing edit (it is a frozen-surface change and needs a lift; do not
-fold it into an unrelated commit silently).**
+> Session record for 2 Sep 2026 (the legal execution session) is in docs/history.md.
 
 ## GROQ — VERIFIED PLATFORM FACTS (17-18 Aug 2026). Supersedes every earlier Groq figure.
 
