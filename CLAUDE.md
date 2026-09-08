@@ -647,6 +647,11 @@ values — do not change without an explicit decision.**
   the password toggle as a side benefit, never the reverse**, and it belongs on the
   pre-marketing decision list beside the legal ruling. Deciding Pro "for the toggle" would be
   buying the wrong thing for the right reason.
+  **DECIDED 2 Sep 2026 (D1 amendment, `6faca95`): free tier stands; Supabase Pro is DEFERRED.
+  Revisit trigger = the first real paying hosts. DO NOT REOPEN THE QUESTION** — it is no
+  longer an open pre-marketing decision, and re-raising it as one is the failure this very
+  lesson warns about. The LESSON above stays because it is durable (decide Pro on BACKUPS,
+  never on the password toggle); only its OPEN-DECISION status is closed.
 - **A QUALIFIER BELONGS INSIDE THE CLAIM STRING, NOT IN THE PROSE AROUND IT (Aug 11 2026).**
   `AuthShell`'s earnings claim was made self-qualifying — "and on Portfolio, you earn" in the SAME
   text node at the same size — so prominence parity holds by construction and cannot decouple under
@@ -1028,6 +1033,20 @@ recorded in both today.
         · two residuals from `6518da7`: the ntfy alarm body lands on exactly 500 chars at a
         64-char model id (tighten `{2,63}` or move `${MODEL}` last); `MODEL_RE` admits any
         lowercase-alnum value — a `/^gemini-/` anchor closes it. Executable, own gate cycle.
+     7. **LANDING BATCH — PARKED, NO ACTION HERE. Needs ONE conscious lift, taken in the
+        next Landing session; do not split it across commits and do not fold any part of it
+        into unrelated work.** `Landing.tsx` is inside the frozen Tiers 1-3 surface, which is
+        why these four are batched rather than taken opportunistically: the `/legal` footer
+        link; the AA-floor sweep including `#9a958c` x73 **and** the low-alpha-cream-on-dark
+        family; the hero callout overlap; and the hardcoded `€25` x2 pointed at
+        `src/config.ts` values. **The affiliate-agreement disclosure reading PRECEDES any paid
+        ad quoting host earnings** — it runs in the marketing project, and its findings land
+        back here.
+        **THIS SUPERSEDES THE LANDING-TOUCHING PARTS OF ITEMS 5 AND 6 ABOVE.** The AA-floor
+        sweep's `Landing.tsx` sites, the `€25` pair and the hero callout are all listed there
+        too — they ship HERE, in ONE lift, not as three separate frozen-surface touches.
+        Item 5's NON-Landing sites (the other 7 files) and item 6's non-Landing residuals are
+        unaffected and stay where they are.
      **Stripe LIVE flip is ABSOLUTE LAST, and only after the GYG + Tiqets written confirmations.**
      (The LESSONS RETIREMENT PASS that used to head this list was done 25 Aug, `4bfa0f2`.)
   7. **Pentest gate — LAST.** The work list is `docs/pentest-queue.md`; the rules for
