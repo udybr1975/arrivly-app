@@ -1,11 +1,9 @@
 # Bemgu — Terms of Service
 
-**Status: DRAFT for legal review. Not published.**
-Prepared 2 September 2026. This document is not legal advice. A Finnish lawyer should
-review it after publication, as part of the v1 fast-follow review.
+**Status: Published v1.0 — in force.** Effective 8 September 2026. A Finnish lawyer reviews this published text as a scheduled fast-follow.
 
-**Effective date:** set on publication
-**Last updated:** set on publication
+**Effective date:** 8 September 2026
+**Last updated:** 8 September 2026
 
 ---
 

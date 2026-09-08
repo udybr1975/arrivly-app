@@ -9,6 +9,7 @@ import { getDirectionsUrl } from '../../lib/maps'
 import { useInstallPrompt } from '../../lib/useInstallPrompt'
 import { readStoredHints, rememberHints, forgetHints } from '../../lib/welcomeClaimStore'
 import { ARRIVLY_CONFIG } from '../../config'
+import GuestLegalLink from './GuestLegalLink'
 import ExperiencesSheet, { type ExperienceItem } from './ExperiencesSheet'
 import TurnstileWidget from '../demo/TurnstileWidget'
 
@@ -291,6 +292,7 @@ export default function WelcomePage() {
         <div className="text-center max-w-sm">
           <div className="font-['Fraunces'] text-[22px] text-[#1c1c1a] mb-2">This page isn't available</div>
           <p className="text-[14px] text-[#5b5853] leading-relaxed">The link may be old or incomplete. Check with your host for an up-to-date one.</p>
+          <div className="mt-8"><GuestLegalLink /></div>
         </div>
       </div>
     )
@@ -321,6 +323,7 @@ export default function WelcomePage() {
               Message on WhatsApp
             </a>
           )}
+          <div className="mt-8"><GuestLegalLink /></div>
         </div>
       </div>
     )
@@ -626,13 +629,16 @@ function LiveWelcome({
             </div>
           )}
 
-          {/* 7 — Powered by Bemgu (trial only) */}
-          {showFooter && (
-            <div className="pt-6 pb-2 text-center">
+          {/* 7 — Guest privacy notice (always) + Powered by Bemgu (trial only) */}
+          <div className="pt-6 pb-2 text-center">
+            {showFooter && (
               <p className="font-['Fraunces'] italic text-[15px] text-[#9a958c]">{brandName}</p>
+            )}
+            <GuestLegalLink apartmentId={apartment.id} className="mt-4" />
+            {showFooter && (
               <p className="text-[10px] text-[#b3aa9b] mt-5">{ARRIVLY_CONFIG.poweredByText}</p>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
 
@@ -787,6 +793,7 @@ function LiveWelcome({
 
             <div className="pt-6 pb-2 text-center">
               <p className="font-['Fraunces'] italic text-[15px] text-[#9a958c]">{brandName}</p>
+              <GuestLegalLink apartmentId={apartment.id} className="mt-4" />
               {showFooter && <p className="text-[10px] text-[#b3aa9b] mt-5">{ARRIVLY_CONFIG.poweredByText}</p>}
             </div>
           </div>

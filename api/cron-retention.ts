@@ -7,7 +7,7 @@ import { sendNtfy } from './_lib/ntfy.js'
 // EXCEPT messages, which `cron-cleanup-messages.ts` owns.
 //
 // THESE PERIODS ARE A PUBLISHED PROMISE, NOT A TUNING KNOB. Each one is stated in
-// docs/legal-guest-privacy-notice-DRAFT.md §6. Changing a constant here without changing the
+// docs/legal-guest-privacy-notice.md §6. Changing a constant here without changing the
 // notice — or the reverse — makes the notice FALSE, which is materially worse than having no
 // notice at all. Change both, in the same commit, or neither.
 //

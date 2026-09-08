@@ -1,11 +1,8 @@
 # Privacy Notice for Guests
 
-**Status: DRAFT for legal review. Not published.**
-Prepared 30 July 2026. v1 editing pass completed 2 September 2026; remaining questions are listed at
-the end under "Flagged for legal review".
-Not legal advice. To be reviewed by a Finnish data protection lawyer alongside the host policy and the DPA.
+**Status: Published v1.0 — in force.** Effective 8 September 2026. A Finnish lawyer reviews this published text as a scheduled fast-follow.
 
-**Effective date:** set at publication
+**Effective date:** 8 September 2026
 
 ---
 

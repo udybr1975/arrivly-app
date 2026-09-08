@@ -86,7 +86,7 @@ survive without a half-edited document.
   small-business exemption; **liability cap = fees paid in the 3 MONTHS before the claim**;
   **service-withdrawal notice 30 days**; contact by **email only**. **TWO-SIDED CONTRACT NOTE:
   if Bemgu later VAT-registers, ToS section 5 and the pricing page change in the SAME commit.**
-  Draft committed as `docs/legal-tos-DRAFT.md`; DRAFT status drops at publication with the other
+  Draft committed as `docs/legal-tos.md`; DRAFT status drops at publication with the other
   three.
 
 **V1 EDITING PASS EXECUTED 2 Sep 2026.** All markers in the four legal documents and the
@@ -100,9 +100,21 @@ because no automated backups exist on the free tier — when backups are introdu
 Documents remain DRAFT; status drops at publication (the step-4 build commit), which is
 also what makes the guest-notice link, brand-name and weather-proxy sentences true.
 
+**PUBLICATION EXECUTED 8 September 2026 — v1.0 IS IN FORCE.** The four documents are
+published at `bemgu.app/legal` (terms · privacy · guest-notice · dpa), renamed without
+`-DRAFT`, and their status lines now read "Published v1.0 — in force." The three
+sentences that publication had to make true were made true in the SAME commit: the
+guest-notice link is on every guest and welcome surface in every state, the host's brand
+name reaches the notice via `?host=`, and D4's server-side weather proxy (`api/weather.ts`)
+removed the guest-IP disclosure rather than documenting it — the Art. 30 inventory's B10
+row, its client-side-disclosure list and gap 9 were rewritten to match, and the DPA's
+"published at bemgu.app/legal" sub-processor claim is now literally true because the DPA
+page renders its annexes. **The lawyer fast-follow review is the only legal work still
+outstanding**; the per-document "Flagged for legal review" sections are its agenda.
+
 ### REMAINING FOR THE EXECUTION SESSION
 
-1. ~~**ToS v1 draft — none exists**~~ — **DRAFTED 2 Sep 2026, `docs/legal-tos-DRAFT.md` (D10).**
+1. ~~**ToS v1 draft — none exists**~~ — **DRAFTED 2 Sep 2026, `docs/legal-tos.md` (D10).**
    It still needs the v1 editing pass and publication; the Signup consent checkbox names it and
    still links to nothing.
 2. **The v1 editing pass**, resolving the markers against the decisions above.
@@ -178,7 +190,9 @@ residency, client-side disclosures, transfers, and Art. 32 measures.
    can see who the controller is.
 7. **`guest_optins` is dormant (0 rows)** — decide keep or drop.
 8. **Supabase auth-log and Vercel log retention unverified.**
-9. **wttr.in weather is fetched by the GUEST'S BROWSER** — that sends the guest's IP to a
+9. **CLOSED 8 Sep 2026 — the weather call is now proxied through `api/weather.ts`; no guest IP
+   reaches the weather service.** Historical statement kept:
+   **wttr.in weather is fetched by the GUEST'S BROWSER** — that sends the guest's IP to a
    third party with no DPA. **RECOMMENDED ANSWER (30 Jul), better than disclosure: route the
    call through Bemgu's own server.** The guest's IP then never reaches the third party,
    **deleting a subprocessor and a disclosure instead of documenting them.** Preferred over
@@ -211,8 +225,8 @@ secret scanning + push protection confirmed **already enabled** 29 Jul.
 4. Guest-facing **privacy notice** — **DRAFTED 30 Jul.** NOT published, NOT in force.
 5. **Data processing agreement** (host = controller, Bemgu = processor) — **DRAFTED 30 Jul.** NOT published, NOT in force.
    **ALL FOUR DOCUMENTS ARE NOW COMMITTED (Aug 4 2026), verbatim, under `docs/`:**
-   `legal-host-privacy-policy-DRAFT.md`, `legal-guest-privacy-notice-DRAFT.md`,
-   `legal-dpa-DRAFT.md`, plus the Art. 30 data inventory as both
+   `legal-host-privacy-policy.md`, `legal-guest-privacy-notice.md`,
+   `legal-dpa.md`, plus the Art. 30 data inventory as both
    `legal-data-inventory-2026-07-28.md` (readable/diffable) and
    `legal-data-inventory-2026-07-28.docx` (the format counsel will want).
    All remain **DRAFT, NOT published, NOT in force**. ~~pending the retention crons shipping~~

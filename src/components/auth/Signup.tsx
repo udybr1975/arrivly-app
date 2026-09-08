@@ -217,10 +217,53 @@ export default function Signup() {
               </svg>
             )}
           </button>
+          {/* The label still toggles the checkbox; the two links must NOT, so each one
+              stops the click from reaching the span's handler. Consent semantics are
+              unchanged — the checkbox is still required and still gates submit. */}
           <span id="signup-terms-label" onClick={() => setAgreed(v => !v)} className="cursor-pointer select-none">
-            I agree to the terms and privacy policy
+            I agree to the{' '}
+            <a
+              href="/legal/terms"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="rounded text-[#7a5c00] underline underline-offset-2 hover:text-[#16100d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/50"
+            >
+              terms
+            </a>{' '}
+            and{' '}
+            <a
+              href="/legal/privacy"
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
+              className="rounded text-[#7a5c00] underline underline-offset-2 hover:text-[#16100d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/50"
+            >
+              privacy policy
+            </a>
           </span>
         </div>
+
+        <p className="pl-[28px] text-[11.5px] leading-relaxed text-[#6f6757]">
+          Also published:{' '}
+          <a
+            href="/legal/guest-notice"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded underline underline-offset-2 hover:text-[#16100d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/50"
+          >
+            Guest Privacy Notice
+          </a>{' '}
+          ·{' '}
+          <a
+            href="/legal/dpa"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="rounded underline underline-offset-2 hover:text-[#16100d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]/50"
+          >
+            Data Processing Agreement
+          </a>
+        </p>
 
         {error && (
           <p role="alert" className="text-[12px] text-[#8a1a1a] bg-[#fde4e4] border border-[#f3c9c9] rounded-[9px] px-3 py-2.5">{error}</p>

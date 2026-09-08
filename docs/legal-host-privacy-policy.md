@@ -1,12 +1,9 @@
 # Bemgu — Privacy Policy for Hosts
 
-**Status: DRAFT for legal review. Not published.**
-Prepared 30 July 2026. v1 editing pass completed 2 September 2026; remaining questions are listed at
-the end under "Flagged for legal review".
-This document is not legal advice. A Finnish data protection lawyer should review it before it goes live.
+**Status: Published v1.0 — in force.** Effective 8 September 2026. A Finnish lawyer reviews this published text as a scheduled fast-follow.
 
-**Effective date:** set at publication
-**Last updated:** set at publication
+**Effective date:** 8 September 2026
+**Last updated:** 8 September 2026
 
 ---
 
@@ -157,8 +154,8 @@ To exercise any of these, email **hello@bemgu.app**. We will respond within one 
 
 If you are unhappy with how we have handled your data, you can complain to the Finnish supervisory authority:
 
-**Office of the Data Protection Ombudsman** (Tietosuojavaltuutetun toimisto)
-Lintulahdenkuja 4, 00530 Helsinki · PO Box 800, 00531 Helsinki
+**Office of the Data Protection Ombudsman** (Tietosuojavaltuutetun toimisto)  
+Lintulahdenkuja 4, 00530 Helsinki · PO Box 800, 00531 Helsinki  
 tietosuoja.fi
 
 You may also complain to the authority in your own country of residence.
@@ -193,8 +190,8 @@ If we change this policy we will update the date above and, for anything signifi
 
 ## 14. Contact
 
-**U & A Investment and Consultancy Oy**
-Runeberginkatu 17 A 3, 00100 Helsinki, Finland
+**U & A Investment and Consultancy Oy**  
+Runeberginkatu 17 A 3, 00100 Helsinki, Finland  
 hello@bemgu.app
 
 ---

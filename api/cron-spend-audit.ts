@@ -34,6 +34,13 @@ const ROLLING_LIMITS: Record<string, number> = {
   'generate-guide': 30,
   'city-events-public': 21,
   'city-events-host': 9,
+  // 3x the 60/hour cap in api/weather.ts, registered in the SAME commit that added the
+  // brake. VICTIM-KEYED: /api/weather is reachable with only a public apartment UUID, so
+  // the named host is the one being hammered, not the caller — the alarm text says
+  // INVESTIGATE, never "block this host". No vendor key is spent here; the cost is Vercel
+  // invocations plus outbound calls to wttr.in from the shared fra1 egress IPs, which is
+  // exactly what a free volunteer service rate-limits on.
+  'weather': 180,
   // 3x the 20/hour cap in api/resolve-canonical-city.ts. REGISTERED DELIBERATELY, and it is not
   // optional bookkeeping: that brake exists to protect LocationIQ's 5,000/day pool, which is
   // FLEET-WIDE, and a per-host hourly cap provably cannot bound a fleet pool (the Tavily lesson).
@@ -76,7 +83,7 @@ const ROLLING_LIMITS: Record<string, number> = {
   // CLASSIFIED CALLER-KEYED — the bump follows a proven ownership check on
   // apartments.host_id, so blocking the named host is the correct remediation. NOTE this
   // file emits ONE SHARED alarm string for every endpoint (it leads with "INVESTIGATE BEFORE
-  // BLOCKING" and names the four victim-keyed endpoints as the exception), so the
+  // BLOCKING" and names the victim-keyed endpoints as the exception), so the
   // classification does not change the rendered text today — it is recorded here so a future
   // per-endpoint wording pass puts this one on the right side. No KEY_HINT: this endpoint
   // spends nothing with any vendor, so there is no key to revoke; the builders fall back to
@@ -109,11 +116,19 @@ const KEY_HINT: Record<string, string> = {
   'create-booking': 'amplifier (mints guest passes) - watch guest-chat + daily-greeting spend',
   'sync-ical': 'amplifier (mints guest passes) - watch guest-chat + daily-greeting spend',
   // Names the blast radius, not just the key: revoking this breaks address lookup EVERYWHERE
-  // (address save, guide places, host picks), not only the resolve endpoint. 74 chars - RE-MEASURED
-  // 21 Aug 2026 by executing both templates at their worst case (this hint, the longest endpoint
-  // name): per-host 467, global 487, both inside sendNtfy's 500-char slice with this hint intact
-  // as the last line. The figures moved from 451/472 when welcome-claim was added to the
-  // victim-keyed list in each string (+14 chars); re-measure again if either string grows.
+  // (address save, guide places, host picks), not only the resolve endpoint. 74 chars.
+  // RE-MEASURED 8 Sep 2026 by EXECUTING both templates at their worst case (this hint, the
+  // longest endpoint name): per-host 479, global 495, both inside sendNtfy's 500-char slice
+  // with this hint intact as the last line.
+  //
+  // THE 8 SEP RE-MEASURE CAUGHT A REAL OVERFLOW, which is the whole point of this note.
+  // Adding `/weather` to both victim-keyed lists (+8) took the GLOBAL template to 501 - ONE
+  // CHAR OVER the slice, silently truncating this hint. The figures recorded here before that
+  // (467/487) were ALSO STALE; executing the templates gave 471/493. The 8 chars were bought
+  // back by shortening the Sybil sentence ("A Sybil spread under the per-host limits" ->
+  // "Sybil spread under per-host limits", -6) plus the 2 the stale figures had understated.
+  // GLOBAL NOW HAS 5 CHARS OF HEADROOM. Re-measure BY EXECUTION, never by arithmetic on the
+  // number written here, before adding anything to either string.
   'resolve-canonical-city': 'LOCATIONIQ_API_KEY - shared with forward geocoding (address, guide, picks)',
   // Names the blast radius rather than the surface: GROQ_API_KEY is the ORG-WIDE TPM pool that
   // every Groq surface shares, so an operator paged about this endpoint must know that revoking
@@ -125,9 +140,12 @@ const KEY_HINT: Record<string, string> = {
   // groq branch spends the ORG-WIDE Groq TPM pool, the gemini branch spends the SHARED
   // GEMINI_API_KEY project (gen-lang-client-0819525902). An operator paged about this endpoint
   // cannot tell which from the alert, so naming one key would point half the incidents at the
-  // wrong console. 66 chars - re-measured 27 Aug 2026 by executing both templates with this
-  // hint: per-host 448, global 471, both inside sendNtfy's 500-char slice with this hint
-  // intact as the last line.
+  // wrong console. 66 chars - RE-MEASURED 8 Sep 2026 by executing both templates with this
+  // hint: per-host 460, global 476, both inside sendNtfy's 500-char slice with this hint
+  // intact as the last line. (Was 448/471 on 27 Aug; +8 for `/weather` in both victim-keyed
+  // lists, -6 on GLOBAL for the shortened Sybil sentence, and the rest is the stale-figure
+  // correction described in the resolve-canonical-city block above. THAT block, not this
+  // one, is the worst case and the one with only 5 chars of headroom.)
   'bulk-import': 'GROQ_API_KEY or GEMINI_API_KEY (shared) - provider set per surface',
   // Names BOTH vendors because both are spent on every call: the model on the shared Gemini
   // project, and up to 20 LocationIQ geocodes. An operator who revokes only one has not
@@ -325,8 +343,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         message:
           `Endpoint ${endpoint}: ${total} calls across ${hosts} hosts in ${WINDOW_HOURS}h (threshold ${threshold}).\n` +
           `ACTION: see GLOBAL top-contributors in the Vercel logs, then INVESTIGATE BEFORE BLOCKING.\n` +
-          `Contributors are counter KEYS: on guest-chat/daily-greeting/city-events-public/welcome-claim the key is the VICTIM host, not the caller - rotate QR secrets / revoke tokens instead.\n` +
-          `A Sybil spread under the per-host limits shows here only.\n` +
+          `Contributors are counter KEYS: on guest-chat/daily-greeting/city-events-public/welcome-claim/weather the key is the VICTIM host, not the caller - rotate QR secrets / revoke tokens instead.\n` +
+          `Sybil spread under per-host limits shows here only.\n` +
           `${KEY_HINT[endpoint] ?? 'see the endpoint owner'}`,
         priority: 'high',
       })
@@ -343,7 +361,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         title: 'Bemgu SUSTAINED spend alert (rolling 6h)',
         message:
           `Host ${host}: ${total} ${endpoint} calls in the last ${WINDOW_HOURS}h (rolling threshold ${ROLLING_LIMITS[endpoint]}).\n` +
-          `ACTION: INVESTIGATE BEFORE BLOCKING - on guest-chat/daily-greeting/city-events-public/welcome-claim this key is the VICTIM host, not the caller (rotate QR secrets / revoke tokens instead).\n` +
+          `ACTION: INVESTIGATE BEFORE BLOCKING - on guest-chat/daily-greeting/city-events-public/welcome-claim/weather this key is the VICTIM host, not the caller (rotate QR secrets / revoke tokens instead).\n` +
           `Paced at/under the hourly cap, so the per-hour alarm alone may not have flagged this.\n` +
           `${KEY_HINT[endpoint] ?? 'see the endpoint owner'}`,
         priority: 'high',

@@ -13,6 +13,7 @@ import EventsPage from './EventsPage'
 import ExperiencesSheet, { type ExperienceItem } from './ExperiencesSheet'
 import ChatBot from './ChatBot'
 import MessageHost from './MessageHost'
+import GuestLegalLink from './GuestLegalLink'
 import { ARRIVLY_CONFIG } from '../../config'
 import { iosNeedsHomeScreen, isStandalone, subscribeGuestToPush, checkPermission, isSubscribed } from '../../lib/webpush'
 import { api } from '../../lib/api'
@@ -404,27 +405,28 @@ export default function GuestPage() {
 
           if (aState.guestName) setGuestName(aState.guestName)
 
-          const weatherUrl = apt.lat != null && apt.lng != null
-            ? `https://wttr.in/${apt.lat},${apt.lng}?format=j1`
-            : `https://wttr.in/${encodeURIComponent(`${apt.neighborhood}, ${apt.city}`)}?format=j1`
-          fetch(weatherUrl)
-            .then(r => r.json())
+          // WEATHER GOES THROUGH OUR OWN SERVER (D4). The browser used to call wttr.in
+          // directly, which handed the guest's IP address to a third party; the published
+          // guest privacy notice now states that nothing about the guest reaches the
+          // weather service. DO NOT reintroduce a client-side call to any weather host —
+          // it would silently falsify that promise.
+          //
+          // Only the APARTMENT ID is sent: coordinates in a query string land in Vercel's
+          // edge access log, and exact coordinates are the street address. api/weather.ts
+          // resolves them server-side and does the classifying, so this side only stores
+          // the result. It answers 200-with-an-empty-body for every degraded case (no
+          // coordinates, upstream down, brake tripped), and the page then renders without
+          // weather exactly as it does when the request fails — no error state.
+          fetch(`/api/weather?apt=${encodeURIComponent(aptId!)}`)
+            .then(r => (r.ok ? r.json() : null))
             .then(data => {
-              const cur = data.current_condition?.[0]
-              if (!cur) return
-              const temp = Math.round(Number(cur.temp_C))
-              const desc = (cur.weatherDesc?.[0]?.value ?? '').toLowerCase()
-              let icon = '🌤'
-              let isOutdoor = false
-              if (desc.includes('sunny') || desc.includes('clear')) { icon = '☀️'; isOutdoor = true }
-              else if (desc.includes('partly')) { icon = '⛅'; isOutdoor = true }
-              else if (desc.includes('overcast') || desc.includes('cloudy')) { icon = '☁️' }
-              else if (desc.includes('snow') || desc.includes('blizzard')) { icon = '❄️'; isOutdoor = true }
-              else if (desc.includes('thunder') || desc.includes('storm')) { icon = '⛈' }
-              else if (desc.includes('rain') || desc.includes('drizzle') || desc.includes('shower')) { icon = '🌧' }
-              else if (desc.includes('mist') || desc.includes('fog')) { icon = '🌫' }
-              const condition = desc.charAt(0).toUpperCase() + desc.slice(1)
-              setWeather({ temp, condition, isOutdoorWeather: isOutdoor, icon })
+              if (!data || typeof data.temp !== 'number' || typeof data.condition !== 'string') return
+              setWeather({
+                temp: data.temp,
+                condition: data.condition,
+                isOutdoorWeather: data.isOutdoorWeather === true,
+                icon: typeof data.icon === 'string' ? data.icon : '🌤',
+              })
             })
             .catch(() => {})
 
@@ -771,6 +773,7 @@ export default function GuestPage() {
         <p className="text-sm text-[#9a958c] max-w-xs leading-relaxed">
           This guest page is temporarily unavailable. Please contact your host directly.
         </p>
+        <GuestLegalLink apartmentId={aptId} className="mt-8" />
       </div>
     )
   }
@@ -794,6 +797,7 @@ export default function GuestPage() {
         <p className="text-sm text-[#9a958c] max-w-xs leading-relaxed">
           This guest page is temporarily unavailable. Please contact your host directly.
         </p>
+        <GuestLegalLink apartmentId={aptId} className="mt-8" />
       </div>
     )
   }
@@ -815,6 +819,7 @@ export default function GuestPage() {
         <p className="text-sm text-[#5b5853] max-w-xs leading-relaxed mb-8">
           Welcome. There is no active booking for today — scan your check-in QR code to access your guest page.
         </p>
+        <GuestLegalLink apartmentId={aptId} />
         {showPoweredBy && (
           <p className="text-[10px] text-[#9a958c] mt-8">{ARRIVLY_CONFIG.poweredByText}</p>
         )}
@@ -836,6 +841,9 @@ export default function GuestPage() {
           <p className="text-white/70 text-base leading-relaxed max-w-xs">
             Thank you for your stay. We hope you had a wonderful time.
           </p>
+        </div>
+        <div className="text-center pb-2">
+          <GuestLegalLink apartmentId={aptId} tone="dark" />
         </div>
         {showPoweredBy && (
           <p className="text-white/30 text-[10px] text-center pb-6">{ARRIVLY_CONFIG.poweredByText}</p>
@@ -1717,6 +1725,7 @@ export default function GuestPage() {
 
             <div className="pt-6 pb-2 text-center">
               <p className="font-['Fraunces'] italic text-[15px] text-[#9a958c]">{brandName}</p>
+              <GuestLegalLink apartmentId={aptId} className="mt-4" />
               {showPoweredBy && (
                 <p className="text-[10px] text-[#b3aa9b] mt-5">{ARRIVLY_CONFIG.poweredByText}</p>
               )}

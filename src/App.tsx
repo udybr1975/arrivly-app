@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import Loader from './components/shared/Loader'
@@ -27,6 +27,12 @@ import WelcomePage from './components/guest/WelcomePage'
 import SuperAdmin from './components/admin/SuperAdmin'
 import Demo from './components/demo/Demo'
 import Landing from './components/Landing'
+
+// Lazily loaded, and that is deliberate: the four legal documents are imported into the
+// bundle as raw text, and they must not ride in the main chunk that every guest page
+// downloads on a phone. They are their own chunk, fetched only when /legal is opened.
+const LegalIndex = lazy(() => import('./components/legal/Legal').then(m => ({ default: m.LegalIndex })))
+const LegalDoc = lazy(() => import('./components/legal/Legal').then(m => ({ default: m.LegalDoc })))
 import { ARRIVLY_CONFIG } from './config'
 
 function LandingGate() {
@@ -91,6 +97,11 @@ export default function App() {
           <Route path="/demo" element={<Demo />} />
           <Route path="/guest" element={<GuestPage />} />
           <Route path="/w/:code" element={<WelcomePage />} />
+
+          {/* Published legal documents — public, no auth. The DPA page renders its
+              annexes, which is what makes "published at bemgu.app/legal" true. */}
+          <Route path="/legal" element={<Suspense fallback={<Loader />}><LegalIndex /></Suspense>} />
+          <Route path="/legal/:slug" element={<Suspense fallback={<Loader />}><LegalDoc /></Suspense>} />
 
           {/* Protected host routes */}
           <Route element={<PrivateRoute />}>

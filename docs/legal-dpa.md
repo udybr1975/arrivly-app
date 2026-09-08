@@ -2,12 +2,9 @@
 
 **Between you (the Host) and Bemgu**
 
-**Status: DRAFT for legal review. Not published, not in force.**
-Prepared 30 July 2026. v1 editing pass completed 2 September 2026; remaining questions are listed at
-the end under "Flagged for legal review".
-Not legal advice. To be reviewed by a Finnish data protection lawyer alongside the host privacy policy and the guest privacy notice.
+**Status: Published v1.0 — in force.** Effective 8 September 2026. A Finnish lawyer reviews this published text as a scheduled fast-follow.
 
-**Version:** 1.0 · **Effective date:** on publication
+**Version:** 1.0 · **Effective date:** 8 September 2026
 
 ---
 
