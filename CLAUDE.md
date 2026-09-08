@@ -33,10 +33,10 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
 > **Frozen surface — `0d2e7d6`** (8 Sep 2026), the legal-publication v1 build. The prior frozen tip `a4a3fdd` (1 Sep 2026) was the item-(f) declined-first-charge fix. The prior frozen tip `d6e03ce` (1 Sep) was the auth polish batch (post-runbook item (b)); `3bbb958` (1 Sep) the 3-D Secure first-payment messaging fix, with `070e3b4` — the Dependabot lockfile patch — between them in the chain; `f94f665` (1 Sep) the GO-LIVE STEP 0 signup-under-email-confirmation fix; `9eb5255` (31 Aug) the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `0d2e7d6` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
-> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`, RE-FROZEN 8 Sep 2026 at `0d2e7d6`
+> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`, RE-FROZEN 8 Sep 2026 at `0d2e7d6`, RE-FROZEN 8 Sep 2026 at `GA4_SHA_PLACEHOLDER`
 >
 > The Tiers 1-3 code surface — the guest page, the host dashboard, onboarding, and the `api/`
-> routes behind them — is **FROZEN as of `0d2e7d6`**. The freeze exists for ONE reason: so the
+> routes behind them — is **FROZEN as of `GA4_SHA_PLACEHOLDER`**. The freeze exists for ONE reason: so the
 > hacker-agent pass (LAUNCH BLOCKER #4) attacks a **stationary** surface. A finding against a
 > tree that has since moved is a finding you cannot act on with confidence, and a surface that
 > shifts mid-pass turns "we tested it" into a claim nobody can check.
@@ -44,6 +44,41 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Full conscious-lift records (what each lift changed and proved): docs/history.md, 2 Sep 2026.
 >
 > **OPEN RESIDUAL from the `070e3b4` lift: payment-path browser smoke assigned to Udy in chat — unverified.**
+>
+> **LIFT — 8 Sep 2026, LIFTED BY UDY IN CHAT, for the GA4 marketing instrumentation; re-frozen
+> at `GA4_SHA_PLACEHOLDER` the same day.** Google Analytics 4 with GDPR consent, a **structural**
+> guest-page exclusion and four funnel events. Lifted files, named in the lift: `App.tsx`,
+> `Signup.tsx`, `CompleteProfile.tsx`, `Dashboard.tsx`, `BillingPanel.tsx`, `PropertySetup.tsx`,
+> `api/stripe-webhook.ts`, plus `GuestPage.tsx` for **one `rel="noreferrer"` attribute** (granted
+> as an explicit extension after the security gate found that anchor is the only same-origin
+> full-navigation exit off a guest page). **`Landing.tsx` was NOT touched** — the parked LANDING
+> BATCH still owns its own lift.
+>
+> **THE RULES THIS CREATED, and they bind every future edit — full reasoning in the header
+> comments of `src/lib/analytics.ts` and `src/App.tsx`:**
+> - **NEVER add a react-router `<Link to>` / `<Navigate to>` into `/guest` or `/w/`.** The route
+>   gate is an **ENTRY** gate: once gtag.js is in the document it lives for that document's life
+>   and its enhanced-measurement hits read `window.location.href` themselves. Every guest link in
+>   the app is a FULL DOCUMENT LOAD, and that is load-bearing, not incidental.
+> - **A privacy control must be a MECHANISM, never a falsy value handed to someone else's
+>   script.** `page_referrer: ''` looked like suppression and was a bet on how a minified
+>   third-party script treats an empty string; the origin root is the fix.
+> - **react-router matches routes CASE-INSENSITIVELY** (`caseSensitive = false`), so any
+>   path-prefix security gate must lowercase first, or `/Guest?apt=…&token=…` walks through it.
+> - **A URL-shaped identifier can ride in the PATH, not only in `?` and `#`** — the apartment
+>   UUID does, at `/dashboard/property/:aptId`. Normalise over the VALUE SHAPE, not the one route.
+> - **`/legal/guest-notice` is a GUEST SURFACE even though it is not a guest route** — it is
+>   reached by `<Link>` from every guest screen, and Bemgu is a PROCESSOR for guest data.
+> - **`?checkout=success` ON `/dashboard` IS LOAD-BEARING** — `PrivateRoute` reads it to admit a
+>   host before the webhook writes `stripe_subscription_id`. Do not strip it; latch instead.
+>
+> **NEW ENV VAR: `GA4_API_SECRET`** — server-side only, NO `VITE_` prefix, Sensitive. Unset =
+> the server conversion event silently skips, by design.
+>
+> **OPEN, NOT BLOCKING — GAP 11 in docs/legal-data-inventory-2026-07-28.md, for the lawyer
+> fast-follow:** no in-product consent-withdrawal toggle (Art. 7(3) — needs its own lift into
+> `Settings.tsx`); the GA4 data-retention setting in the Google property is unset; the US
+> transfer mechanism for Google Analytics; and the legal basis for the server-side event.
 >
 > **LIFT — 8 Sep 2026, LIFTED BY UDY IN CHAT, for the legal-publication v1 build; re-frozen
 > at `0d2e7d6` the same day.** Shipped: the public `/legal` pages (the four documents rendered

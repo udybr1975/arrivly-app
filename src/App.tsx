@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from 'react'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import { supabase } from './lib/supabase'
 import Loader from './components/shared/Loader'
 import { ToastProvider } from './components/shared/Toast'
@@ -34,6 +34,44 @@ import Landing from './components/Landing'
 const LegalIndex = lazy(() => import('./components/legal/Legal').then(m => ({ default: m.LegalIndex })))
 const LegalDoc = lazy(() => import('./components/legal/Legal').then(m => ({ default: m.LegalDoc })))
 import { ARRIVLY_CONFIG } from './config'
+import ConsentBanner from './components/shared/ConsentBanner'
+import { initAnalytics, trackPageView, isTrackedRoute, isAnalyticsLoaded } from './lib/analytics'
+
+/**
+ * SPA page-view tracking, plus the guard that keeps the guest-page exclusion true.
+ *
+ * Both analytics calls are consent- AND route-gated inside the module, so calling them
+ * unconditionally on every navigation is safe: on a guest page they do nothing, and with no
+ * stored consent they do nothing. initAnalytics() is idempotent and is what loads the script
+ * for a visitor who granted consent on an earlier visit, since no banner is shown to them.
+ *
+ * THE FULL-LOAD GUARD IS THE PART THAT MATTERS. The route gate is an ENTRY gate: once gtag.js
+ * is in the document it stays, and its enhanced-measurement hits read `window.location.href`
+ * themselves — so arriving on `/guest?apt=…&token=…` through an in-app transition would hand
+ * Google a booking token even though nothing here called a tracking function. LandingGate
+ * below does exactly such a transition (`<Navigate to={'/guest?…'}>` for a saved booking in the
+ * installed app). Replacing the document tears the script out; on the reload `initAnalytics()`
+ * refuses the untracked route, so `isAnalyticsLoaded()` is false and this cannot loop.
+ */
+function AnalyticsTracker() {
+  const { pathname } = useLocation()
+  useEffect(() => {
+    if (!isTrackedRoute(pathname)) {
+      if (isAnalyticsLoaded()) {
+        // reload(), NOT replace(current URL). When a replace target equals the current URL
+        // except for a non-null FRAGMENT, the HTML navigation algorithm performs a fragment
+        // navigation — no unload, so gtag.js would SURVIVE on exactly the fragment-bearing
+        // routes (`/auth/callback#access_token=…`, `/reset-password#…`) this guard exists to
+        // protect. reload() is unconditional and preserves path, query and fragment.
+        window.location.reload()
+      }
+      return
+    }
+    initAnalytics()
+    trackPageView(pathname)
+  }, [pathname])
+  return null
+}
 
 function LandingGate() {
   const [checking, setChecking] = useState(true)
@@ -86,6 +124,7 @@ export default function App() {
   return (
     <ToastProvider>
       <BrowserRouter>
+        <AnalyticsTracker />
         <Routes>
           {/* Public */}
           <Route path="/" element={<LandingGate />} />
@@ -131,6 +170,7 @@ export default function App() {
           <Route path="/superadmin" element={<Navigate to="/admin" replace />} />
           <Route path="/dashboard/admin" element={<Navigate to="/admin" replace />} />
         </Routes>
+        <ConsentBanner />
       </BrowserRouter>
     </ToastProvider>
   )

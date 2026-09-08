@@ -912,7 +912,11 @@ export default function GuestPage() {
         <div ref={bannerRef} className="bg-[#e7d6ad] text-[#4a3a12] px-4 py-2 text-[12px]">
           <div className="mx-auto flex max-w-lg items-center justify-between gap-3">
             <span className="font-medium">You&apos;re looking at a demo guest page.</span>
-            <a href="/demo" className="shrink-0 whitespace-nowrap font-semibold text-[#4a3a12] underline underline-offset-2">
+            {/* rel="noreferrer" — this is the ONE full-navigation, same-origin exit from a
+                guest page, so without it the guest URL (apartment id + booking token) becomes
+                `document.referrer` on a tracked route. Browser-enforced, which is why it is
+                here as well as in the analytics module's own referrer suppression. */}
+            <a href="/demo" rel="noreferrer" className="shrink-0 whitespace-nowrap font-semibold text-[#4a3a12] underline underline-offset-2">
               Try it with your place →
             </a>
           </div>

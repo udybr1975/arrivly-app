@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { ARRIVLY_CONFIG } from '../../config'
+import { trackEvent } from '../../lib/analytics'
 import AuthShell, { AUTH_POINTS } from './AuthShell'
 import PasswordInput from './PasswordInput'
 import SocialAuthButtons from './SocialAuthButtons'
@@ -58,6 +59,9 @@ export default function Signup() {
     // lands on /auth/callback (emailRedirectTo above), and handle_new_user has already
     // written name + brand_name from the signup metadata, so nothing is written here.
     if (!signUpData.session) {
+      // The account EXISTS at this point — confirmation is a later step, not a condition of
+      // creation — so this is a success point for the funnel, same as the session path below.
+      trackEvent('signup')
       setAwaitingConfirmation(true)
       setLoading(false)
       return
@@ -92,6 +96,7 @@ export default function Signup() {
     // contact_email is now written; send-welcome reads the recipient from the DB.
     void api.post('/send-welcome', {}).catch(() => {})
 
+    trackEvent('signup')
     navigate('/choose-plan')
   }
 

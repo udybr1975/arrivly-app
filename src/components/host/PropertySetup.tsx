@@ -10,6 +10,7 @@ import { useToast } from '../shared/Toast'
 import PolicyBlockToast from '../shared/PolicyBlockToast'
 import ImportListing, { type AcceptedImport, type ApplySectionResult } from './ImportListing'
 import { SOURCE_DOC_MAX_CHARS } from '../../lib/listingText'
+import { trackPropertyLiveOnce } from '../../lib/analytics'
 import {
   EXTRAS_CATEGORIES,
   DETAIL_CATEGORY,
@@ -658,6 +659,31 @@ export default function PropertySetup() {
       }
       setApartmentId(data.id)
       savedId = data.id
+
+      // `property_live` — a host's FIRST property going live. AT MOST ONCE, and the guard is
+      // PER-DEVICE rather than per-host — see trackPropertyLiveOnce() for why, and for both
+      // directions in which that can be wrong.
+      //
+      // THIS INSERT IS THE ONLY is_visible false->true TRANSITION IN THIS FILE: a new property
+      // is created with `is_visible: true` (see the insert above) and this editor has no
+      // publish/unpublish control. The count below is what makes it "first": it asks whether
+      // any OTHER apartment of this host is already visible, so a second, third or tenth
+      // property never re-fires. `head: true` returns no rows, only the count.
+      //
+      // Fire-and-forget and fully swallowed — an analytics count must never delay a save or
+      // surface an error to the host.
+      const newId = data.id
+      void (async () => {
+        try {
+          const { count, error: countErr } = await supabase
+            .from('apartments')
+            .select('id', { count: 'exact', head: true })
+            .eq('host_id', user.id)
+            .eq('is_visible', true)
+            .neq('id', newId)
+          if (!countErr && (count ?? 0) === 0) trackPropertyLiveOnce()
+        } catch { /* analytics is never allowed to matter here */ }
+      })()
     }
 
     // Refresh the cached by-city hero (shown only when no host upload). Fire-and-forget.

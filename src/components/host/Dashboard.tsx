@@ -4,6 +4,7 @@ import { MapPin, QrCode, Plus, MoreHorizontal, ArrowRight, Building2, MessageCir
 import { supabase } from '../../lib/supabase'
 import { resolveImageUrl } from '../../lib/imageUtils'
 import { ARRIVLY_CONFIG } from '../../config'
+import { trackEvent, trackPropertyLiveOnce } from '../../lib/analytics'
 import { demoRemaining } from '../demo/demoTime'
 import KeepDemoModal from '../demo/KeepDemoModal'
 import BeYourGuestCard from '../demo/BeYourGuestCard'
@@ -133,6 +134,36 @@ export default function Dashboard() {
   const [nowTick, setNowTick] = useState(() => Date.now())
   const [demoToken, setDemoToken] = useState<{ aptId: string; token: string } | null>(null)
   const welcomeRef = useRef<HTMLDivElement>(null)
+
+  // THE SIGNUP-FLOW HALF OF `trial_started`. api/create-subscription.ts sends the signup flow
+  // back to /dashboard?checkout=success and the manage flow to /dashboard/billing?checkout=success
+  // — two landing pages, so the event needs a site on each or the whole first-time funnel is
+  // missing. (BillingPanel.tsx carries the other one.)
+  //
+  // THE PARAM IS DELIBERATELY NOT STRIPPED, AND THAT IS THE WHOLE POINT OF THE LATCH.
+  // `PrivateRoute.tsx` reads `checkout=success` ON /dashboard specifically (`returnedFromCheckout`)
+  // to admit a host during the window between Stripe redirecting them back and the webhook
+  // writing `stripe_subscription_id`. Removing it from the URL — with `replaceState`, and far
+  // worse with `navigate(…, { replace: true })` — leaves that window unguarded, so any reload
+  // inside it bounces the host to /choose-plan, where starting a SECOND checkout is the exact
+  // shape of the 9 Aug duplicate-subscription incident. `main.tsx` can trigger such a reload on
+  // its own (the service-worker `controllerchange` handler), so this is reachable without the
+  // host touching anything.
+  //
+  // A sessionStorage latch gives the once-only property without touching the URL. Per tab, which
+  // is the right scope: it is the tab that came back from Checkout.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('checkout') !== 'success') return
+    try {
+      if (sessionStorage.getItem('arrivly_ga_trial_started') === '1') return
+      sessionStorage.setItem('arrivly_ga_trial_started', '1')
+    } catch {
+      // Storage blocked: fall through and send. A duplicated conversion in a rare browser
+      // configuration is a better failure than a silently missing funnel step.
+    }
+    trackEvent('trial_started')
+  }, [])
 
   useEffect(() => {
     async function load() {
@@ -273,6 +304,10 @@ export default function Dashboard() {
 
   async function handleToggleVisibility(apt: Apartment) {
     const makeVisible = !apt.is_visible
+    // Read BEFORE the optimistic setList below, which would otherwise make this test inspect
+    // the state it is trying to describe. `list` is already loaded, so no extra query is needed
+    // here — unlike the PropertySetup site, which has no list and does one lightweight count.
+    const hadOtherVisible = list.some(a => a.id !== apt.id && a.is_visible === true)
     if (!makeVisible) {
       const ok = window.confirm(
         'Unpublish this property?\n\nThis hides your guest page from anyone who scans the QR code, including any guest currently staying. You can publish it again at any time.'
@@ -291,7 +326,14 @@ export default function Dashboard() {
       // revert on failure
       setList(prev => prev.map(a => (a.id === apt.id ? { ...a, is_visible: !makeVisible } : a)))
       window.alert("Couldn't update the property's status — please try again.")
+      return
     }
+
+    // `property_live` — the SECOND of the two false->true publish paths (PropertySetup's create
+    // is the other). Only on a genuine publish, and only when nothing else of this host's was
+    // already live. The at-most-once guard across BOTH paths lives inside
+    // trackPropertyLiveOnce(), not here — see the reasoning there.
+    if (makeVisible && !hadOtherVisible) trackPropertyLiveOnce()
   }
 
   async function handleDiscard(apt: Apartment) {

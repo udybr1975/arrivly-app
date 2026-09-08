@@ -104,6 +104,7 @@ We use the following service providers. Each processes data only to provide thei
 | Groq | Generating guides, greetings and other AI text (zero-data-retention mode enabled) | United States |
 | Tavily | Searching for local events — city-level queries only | United States |
 | Geoapify | Places data for the neighbourhood guide | EU |
+| Google Analytics | Usage statistics for our own website and host dashboard, only if you accept analytics cookies — never on guest pages | United States |
 | Cloudflare (Turnstile) | Bot protection on sign-up | United States |
 | Unsplash | Stock city photographs | United States |
 | Apple / Google push services | Delivering notifications to your device | United States |
@@ -178,7 +179,17 @@ We do not make decisions about you by automated means that produce legal or simi
 
 ## 12. Cookies and local storage
 
-Bemgu uses browser storage strictly to keep you signed in and to remember interface preferences. We do not use advertising or tracking cookies, and we do not run third-party analytics on your dashboard.
+Bemgu uses browser storage to keep you signed in and to remember interface preferences. We do not use advertising cookies, and we do not sell or share your data with advertisers.
+
+### Cookies and analytics
+
+We use Google Analytics 4 to understand how our website and the host dashboard are used — which pages are visited, and whether sign-up is completed. It runs in your browser **only if you accept**: we ask once, and analytics cookies are set only after you say yes. If you decline, no analytics script is loaded and **nothing is sent from your browser**. Declining has no effect on the service — every feature works exactly the same either way. You can change your mind by clearing this site's data in your browser, which makes us ask again.
+
+Addresses on our own site are shortened before they are sent: we remove everything after the `?` or `#`, and we replace any property identifier in the address with a placeholder. Where you came from is recorded only when it is another website (so we can see which channels bring hosts to us); a link followed within Bemgu is reduced to our home address before it is sent. Advertising storage is switched off in our code, not merely left unticked in a settings panel, so no advertising cookie is set even if you accept.
+
+**Analytics never runs on guest pages.** Pages your guests see — the guest page and the welcome page — load no analytics script at all, set no analytics cookie, and send nothing to Google. This is built into the code rather than being a setting, so it holds whatever your own choice was.
+
+**One event does not come from your browser, and so does not depend on your cookie choice.** When a paid subscription starts, our server sends a single conversion event to Google Analytics recording that a trial converted. It carries the event name and a **pseudonymous identifier: a one-way cryptographic hash of your account ID** — nothing that can be linked back to the analytics cookie in your browser. It does not carry your name, your email address, your payment details, or anything about your properties or guests. It is not a cookie and does not read anything from your device, so it is not covered by the cookie consent above; we rely on our legitimate interest in measuring whether our own marketing works, and you can object to it at hello@bemgu.app.
 
 ---
 
@@ -203,4 +214,4 @@ a fast-follow on this published text. Specifically flagged: whether a Data Prote
 Officer is required; whether a web contact form is required in addition to email; the
 exact transfer mechanism per non-EEA provider; the Finnish accounting retention period
 stated as a number; and the Google Search grounding cache question recorded in the
-internal workstream.
+internal workstream. **Added 8 September 2026 and part of the same fast-follow review:** section 12's cookies-and-analytics wording, the consent mechanism used for Google Analytics, and the server-side conversion event's hashed identifier.

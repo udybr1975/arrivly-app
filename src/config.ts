@@ -19,6 +19,16 @@ export const ARRIVLY_CONFIG = {
     { name: 'Indigo', hex: '#2a2a5a' },
   ],
 
+  // Analytics — Google Analytics 4. PUBLIC config, NOT a secret: a measurement id is
+  // designed to ship in the client bundle and identifies the property, nothing more. The
+  // Measurement Protocol API secret used by the server-side conversion event is a real
+  // secret and lives ONLY in Vercel as GA4_API_SECRET (no VITE_ prefix) — never here.
+  // Read from here, never hardcoded in a component; see src/lib/analytics.ts for the two
+  // gates (granted consent AND a non-guest route) that decide whether it is used at all.
+  analytics: {
+    measurementId: 'G-F45T7KH2CB',
+  },
+
   // Admin
   adminEmail: 'udy.bar.yosef@gmail.com',
 

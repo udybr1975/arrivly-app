@@ -4,6 +4,7 @@ import { api } from '../../lib/api'
 import { TIER_COPY } from '../../lib/tierCopy'
 import Loader from '../shared/Loader'
 import PlanCard from './PlanCard'
+import { trackEvent } from '../../lib/analytics'
 
 interface BillingNotice {
   // MIRRORS NoticeType IN api/_lib/billing-notice.ts. The two unions are INDEPENDENT
@@ -167,6 +168,10 @@ export default function BillingPanel() {
     const result = params.get('checkout')
     if (result === 'success' || result === 'cancelled') {
       setCheckoutResult(result)
+      // The client-side confirmation that a trial subscription started: Stripe Checkout
+      // completed and sent the host back here. Fires once — the param is stripped on the next
+      // line, so a reload cannot repeat it, and the effect has empty deps.
+      if (result === 'success') trackEvent('trial_started')
       window.history.replaceState({}, '', window.location.pathname)
     }
   }, [])

@@ -1,4 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
+import { createHash } from 'node:crypto'
 import { createClient } from '@supabase/supabase-js'
 import Stripe from 'stripe'
 import { getStripe, tierForPriceId, ARRIVLY_STRIPE_METADATA, subscriptionIdFromInvoice } from './_lib/stripe.js'
@@ -22,6 +23,63 @@ const ADMIN_EMAIL = 'udy.bar.yosef@gmail.com'
 
 // Tier names duplicated from src/lib/tierCopy.ts — same cross-boundary pattern as EXTRAS_CATEGORIES.
 const TIER_NAMES_W: Record<number, string> = { 1: 'Starter', 2: 'Growth', 3: 'Portfolio', 4: 'Pro' }
+
+// GA4 Measurement Protocol — the ONE server-side conversion event.
+//
+// WHY SERVER-SIDE AT ALL: the trial -> paid conversion has no client moment. It happens 14 days
+// after the host last touched a browser, inside this webhook, so a gtag call cannot see it.
+//
+// WHAT LEAVES THIS FUNCTION: an event NAME and a `client_id` that is the SHA-256 hex of the host
+// UUID. NOT the email, NOT the raw UUID, NOT any Stripe id — a hash is pseudonymous, one-way, and
+// useless to Google as an identifier of a person. No other parameter is sent.
+//
+// THE MEASUREMENT ID MIRRORS src/config.ts's `analytics.measurementId`. It cannot be imported —
+// api/ and src/ are separate compilation worlds here — so it is duplicated deliberately, the same
+// cross-boundary pattern as TIER_NAMES_W below. The env var wins when set.
+//
+// FIRE-AND-FORGET, ALWAYS. A GA outage must never fail, delay or retry a Stripe webhook: Stripe
+// reads a slow or non-200 response as a delivery failure and retries the whole event. Hence the
+// unawaited call with a swallowing .catch(), a short abort timeout, and a silent skip when
+// GA4_API_SECRET is unset (it is server-side only and has NO VITE_ prefix by design).
+//
+// THE HONEST COST OF THAT CHOICE: an unawaited fetch can be killed when the lambda freezes after
+// the response is written, so a fraction of conversions will simply never arrive. DELIVERY IS
+// BEST-EFFORT BY DESIGN. Do not "fix" this by awaiting it — a marketing metric must not sit in
+// front of a payment webhook's response.
+//
+// `engagement_time_msec` IS NOT DECORATION. Measurement Protocol events without it are commonly
+// accepted (200) yet never surface in standard reports, only in DebugView/Realtime — i.e. the
+// event would be invisible in the exact funnel it exists for. It carries no information about
+// anyone. NOTE ALSO that this hashed `client_id` cannot join to a browser `_ga` id: the server
+// event is a separate "user" by construction. That is the privacy property, not a bug — never
+// "repair" the funnel by sending a real client id or any user identifier.
+const GA4_MEASUREMENT_ID = process.env.GA4_MEASUREMENT_ID ?? 'G-F45T7KH2CB'
+
+function sendGa4SubscriptionStarted(hostId: string): void {
+  const apiSecret = process.env.GA4_API_SECRET
+  if (!apiSecret || !GA4_MEASUREMENT_ID) return
+
+  const clientId = createHash('sha256').update(hostId).digest('hex')
+  const url =
+    'https://www.google-analytics.com/mp/collect' +
+    `?measurement_id=${encodeURIComponent(GA4_MEASUREMENT_ID)}` +
+    `&api_secret=${encodeURIComponent(apiSecret)}`
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 3000)
+
+  void fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      client_id: clientId,
+      events: [{ name: 'subscription_started', params: { engagement_time_msec: '1' } }],
+    }),
+    signal: controller.signal,
+  })
+    .catch(() => { /* analytics never affects the webhook result */ })
+    .finally(() => clearTimeout(timer))
+}
 
 function scrubKeys(msg: string): string {
   return msg
@@ -326,6 +384,37 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   } catch (err) {
     console.error('[stripe-webhook] DB update exception:', scrubKeys(String((err as Error).message ?? '')))
     return res.status(500).json({ error: 'DB update exception' })
+  }
+
+  // `subscription_started` — the trial converting into REAL MONEY, and nothing else.
+  //
+  // THE FOUR CONDITIONS, each excluding a path that would otherwise look like a conversion:
+  //   oldStatus === 'trial'            — the transition is trial -> paid. Excludes a REACTIVATION
+  //                                      (expired -> active) and a grace RECOVERY, neither of
+  //                                      which is a new customer.
+  //   newStatus === 'active'           — our own mapped state after this event.
+  //   sub.status === 'active'          — the raw Stripe status. Excludes `incomplete`, i.e. a
+  //                                      first payment mid-3-D Secure or declined, both of which
+  //                                      map to `grace` and are explicitly not conversions.
+  //   invoice paid, amount > 0         — money actually moved. A EUR 0 invoice is not a conversion.
+  //
+  // Placed AFTER the hosts UPDATE above, which is also what makes it fire ONCE: the row now reads
+  // `active`, so any repeat delivery of this event arrives with oldStatus === 'active' and fails
+  // the first condition. No extra state is needed for idempotency.
+  //   hostRow.is_test !== true       — a test fixture must not inject a fake conversion. The
+  //                                      go-live fixture host carries a REAL cancelled Stripe
+  //                                      subscription and made a real charge, so this is not
+  //                                      hypothetical. Every neighbouring host-facing fan-out
+  //                                      below is is_test-gated; this matches them.
+  if (
+    (hostRow.subscription_status as string | null) === 'trial' &&
+    newStatus === 'active' &&
+    sub.status === 'active' &&
+    hostRow.is_test !== true &&
+    (sub.latest_invoice as Stripe.Invoice | null)?.status === 'paid' &&
+    (amountChargedCents ?? 0) > 0
+  ) {
+    sendGa4SubscriptionStarted(hostId)
   }
 
   // Subscription-change fan-out — parallel, each failure isolated

@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { ARRIVLY_CONFIG } from '../../config'
+import { trackEvent } from '../../lib/analytics'
 import AuthShell from './AuthShell'
 import Loader from '../shared/Loader'
 
@@ -117,6 +118,10 @@ export default function CompleteProfile() {
 
     // contact_email is now written; send-welcome reads the recipient from the DB.
     void api.post('/send-welcome', {}).catch(() => {})
+
+    // The OAuth half of the same funnel step: the account existed already, but the host only
+    // becomes a real signup once the brand profile write succeeds and they leave this screen.
+    trackEvent('signup')
 
     // A fresh admin OAuth account reaches brand bootstrap before AuthCallback's
     // admin branch; route it to /admin here so it isn't stranded on /choose-plan.
