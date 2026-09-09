@@ -1,0 +1,27 @@
+# Marketing images
+
+Static assets served at `https://bemgu.app/marketing/<filename>`. Drop a file in this folder,
+commit, push — the filename becomes the URL, permanently.
+
+**Additive only: never overwrite, never rename, never delete.** Files with the image extensions listed in `vercel.json` (png, jpg, jpeg, webp, svg, gif, avif — lowercase) are sent
+`Cache-Control: public, max-age=31536000, immutable` (see `vercel.json`), so a browser may serve
+the old bytes for a year with no way to force a refresh, and a deleted or renamed file leaves its
+URL falling through to the app shell. A new version needs a **new filename** (`…-v2.png`).
+
+**No guest data, ever.** Screenshots must come from the public demo apartment only — never a real
+host's page. No real guest name, no booking reference, no `?token=` or `?key=` in any URL. This
+repo is public and git objects never expire, so a mistake here cannot be undone by deleting the
+file.
+
+**Never build a QR here from the dashboard export.** The host QR panel mints a URL containing
+`?key=<apartment_qr_secrets.qr_secret>`, and a leaked key is revocable only by rotating the
+secret — which invalidates every QR already printed for that apartment. Build demo QRs by hand
+from `ARRIVLY_CONFIG.publicDemo` (`apt` + the public `ARR-EVT777` token).
+
+**Claim rules are stricter here than in the app.** A wrong claim in `Landing.tsx` is a one-line
+fix; the same claim in this folder is permanent in git and pinned in browsers. In particular:
+**Viator must never appear in a host-earnings statement** — hosts earn only on GetYourGuide and
+Tiqets, Viator is Bemgu-attributed at every tier — and any earnings claim must carry its tier and
+provider scope *inside the sentence*, not in nearby text.
+
+Keep files under ~1.5 MB where you can; social fetchers time out on heavy images.
