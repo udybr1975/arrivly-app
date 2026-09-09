@@ -488,12 +488,19 @@ values — do not change without an explicit decision.**
   moved to docs/history.md — it existed at exactly one site.)
 - **`ARR-PAR777` / `ARR-BCN777` are KEEP-PERMANENTLY** live/active/thank-you-state fixtures.
   Re-roll their dates when they lapse; never delete them.
-- **`ARR-EVT777` ON SWEET HOME IS THE PUBLIC DEMO FIXTURE (landing QR) — NOT a test fixture, and
-  the date rule does NOT apply to it (26 Aug 2026).** `apartments.is_public_demo = true`, and it
-  is the ONLY row that carries that flag. **ALL DATA ON IT IS INVENTED.** No iCal feed, no
-  street, no WhatsApp, ONE booking. **The token is deliberately PUBLIC** and resolves on any
-  date — `resolveGuestAccess` skips the date bound for this apartment — so there is nothing to
-  re-roll and a lapsed-looking date is the fixture working.
+- **`ARR-EVT777` ON SWEET HOME IS THE PUBLIC DEMO FIXTURE (landing QR) — NOT a test fixture
+  (26 Aug 2026).** `apartments.is_public_demo = true`, and it is the ONLY row that carries that
+  flag. **ALL DATA ON IT IS INVENTED.** No iCal feed, no street, no WhatsApp, ONE booking.
+  **`check_out` IS `2099-12-31`, SET DELIBERATELY 9 Sep 2026 — DO NOT "CORRECT" IT.**
+  **THIS LINE PREVIOUSLY CLAIMED THERE WAS "nothing to re-roll" AND THAT A LAPSED DATE WAS "the
+  fixture working". THAT WAS WRONG.** Only the TOKEN path is date-independent
+  (`decideDemoTokenState` returns `active` before any date compare). TWO OTHER THINGS DID LAPSE,
+  measured 9 Sep 2026 with 21 days to spare: the **keyed/tokenless date lookup**, which gets no
+  demo exemption and would have stopped matching on 2026-09-30; and **retention**, which would
+  have erased the demo guest name "Alex" on 2026-10-31. **The fix is a DATE, never a carve-out** —
+  retention still applies to this row exactly as to every other, its anchor simply never arrives,
+  so the published notice stays true for everyone. Mechanism and verification:
+  docs/resolved-debt.md.
   **NEVER attach a feed, a real address, real check-in details or a real stay to it**, and
   **NEVER re-add `is_public_demo` to the host column allowlist.** Flagging an apartment publishes
   EVERYTHING already on it, not just the one token the landing page prints: every

@@ -106,3 +106,45 @@ plus a single pointer. Moved VERBATIM during the 24 Aug restructure; nothing edi
   - **`void loadBookings()` on the 409 is unsignalled**, so a host who hits it and immediately
     switches apartments could see A's rows land after B's. Same shape as the existing `await` calls
     in the success and cancel paths.
+
+---
+
+## - **PUBLIC DEMO FIXTURE `ARR-EVT777` HAD TWO SILENT LAPSE DATES — CLOSED 9 Sep 2026 by setting `check_out` to 2099-12-31**
+
+CLAUDE.md had asserted that this fixture needed no date maintenance ("nothing to re-roll… a
+lapsed-looking date is the fixture working"). That was true of ONE access path and false of the
+fixture as a whole. Found by reading the code and the deployed SQL, 21 days before the first
+lapse would have fired.
+
+**What was actually true.** `decideDemoTokenState` (`api/_lib/public-demo.ts`) returns `'active'`
+on the `is_public_demo` check BEFORE any date comparison, so the landing page's
+`?apt=…&token=ARR-EVT777` link and QR resolve forever. That half of the claim was correct and is
+why the error survived so long.
+
+**Lapse 1 — the keyed/tokenless date lookup, 2026-09-30.** `api/guest-state.ts`'s keyed date path
+filters `.lte('check_in', today).gt('check_out', today)`. `isPublicDemo` there suppresses only the
+ntfy ping — it never skips the date bound, and the function's own comment says so. `.gt` is
+strict, so the lookup would have stopped matching ON checkout day. Reachable only if a host mints
+a keyed QR for this apartment from the Share panel, but a real date nonetheless. (Separately: the
+printed QR on `05-qr-print-card.png` carries neither a token nor a key, so it resolves to the
+neutral page regardless — a marketing defect recorded with that asset, not a fixture problem.)
+
+**Lapse 2 — retention would have erased the demo guest name, 2026-10-31.** The deployed
+`cleanup_guest_identities(30)` nulls `bookings.guest_id` where `check_out < current_date -
+30 days`, then deletes orphaned `guests` rows. `api/cron-retention.ts` states plainly that NONE of
+its sweeps carries a demo/exempt/host/apartment filter. The booking would have survived — erasure
+is of the identity, not the booking — so the token path would still have returned `active`, but
+"Dear Alex," would have gone nameless: silently, on the public demo page, and in the marketing
+screenshots published at immutable URLs the same night.
+
+**Why a date and not an exemption.** An exemption would make the published guest notice §6 false
+for everyone, which the no-carve-out rule forbids; the rule's own remedy is that fixtures survive
+by their DATES. Setting `check_out` to 2099-12-31 leaves retention applying to this row exactly as
+to every other — its anchor (`check_out + 30d`) simply never arrives. This is that rule applied,
+not an exception to it.
+
+**Verified in prod after the change (Supabase MCP, 9 Sep 2026):** `check_out = 2099-12-31`,
+`status = confirmed`, guest `Alex` still linked (`guest_id` non-null), sole booking on the demo
+apartment, today inside the date window, and the retention predicate false (next anchor
+2100-01-31). No cron writes to `bookings` at all — the four that reference it only read — and both
+demo crons gate on `hosts.is_demo = true`, which this host is not.
