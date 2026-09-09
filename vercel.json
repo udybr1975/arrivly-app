@@ -1,5 +1,11 @@
 {
   "regions": ["fra1"],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [{ "key": "Referrer-Policy", "value": "strict-origin" }]
+    }
+  ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
   ],

@@ -35,7 +35,92 @@ const LegalIndex = lazy(() => import('./components/legal/Legal').then(m => ({ de
 const LegalDoc = lazy(() => import('./components/legal/Legal').then(m => ({ default: m.LegalDoc })))
 import { ARRIVLY_CONFIG } from './config'
 import ConsentBanner from './components/shared/ConsentBanner'
-import { initAnalytics, trackPageView, isTrackedRoute, isAnalyticsLoaded } from './lib/analytics'
+import { Analytics, type BeforeSendEvent } from '@vercel/analytics/react'
+import { initAnalytics, trackPageView, isTrackedRoute, isAnalyticsLoaded, getConsent, normalizePath } from './lib/analytics'
+
+/**
+ * VERCEL WEB ANALYTICS — behind the SAME two gates as GA4, for the same reasons.
+ *
+ * THE STOCK ONE-LINER INSTALL WOULD BE A DATA LEAK HERE. Vercel Analytics reports the FULL
+ * page URL of every view, and on this project URLs are credentials: `/guest?apt=…&token=…`
+ * carries a booking token, `/w/:code` a welcome code, `/dashboard/property/:aptId` an
+ * apartment UUID. The published privacy policy promises analytics only with consent and never
+ * on guest surfaces, and that promise is not per-vendor.
+ *
+ * MEASURED AT SOURCE, NOT ASSUMED — @vercel/analytics 2.0.1 `Analytics` injects its script in
+ * a `useEffect(…, [])` THAT RETURNS NO CLEANUP. Unmounting the component does NOT remove the
+ * script, does NOT stop its automatic route tracking, and does NOT clear `window.va`. So the
+ * render gate below is an ENTRY gate — the same shape as gtag, and the same trap. Two things
+ * therefore carry the guarantee, and NEITHER is the unmount:
+ *   1. The render gate keeps the script from ever loading on an excluded route in the first
+ *      place, and `AnalyticsTracker`'s full-document reload tears it out of a document that
+ *      transitions onto one (see the flag below — the reload condition had to learn about this
+ *      script, because it previously keyed on gtag's flag alone).
+ *   2. `beforeSend` — registered on the analytics runtime and therefore surviving unmount. It
+ *      drops any event on an untracked path and rewrites every surviving URL to a normalised,
+ *      path-only form. TRUST IT SECOND, NOT FIRST: it is enforced inside
+ *      `/_vercel/insights/script.js`, a remote script that is not in this repo and can change
+ *      without a deploy here. The entry gate is the part we own. Do not relax the gate on the
+ *      strength of the filter.
+ *
+ * WHAT `beforeSend` STRUCTURALLY CANNOT DO — AND WHY vercel.json NOW CARRIES A HEADER.
+ * `BeforeSendEvent` is `{ type, url }` and nothing else: there is NO referrer field, so this
+ * filter reaches exactly one of the two URL-shaped channels. `src/lib/analytics.ts`'s
+ * `safeReferrer()` sanitises the other one for gtag, in JS — an option Vercel does not offer.
+ * The reachable path was real: `GuestPage` does `window.location.replace('/guest?apt=…&token=…')`,
+ * so that token-bearing URL becomes the document's `document.referrer`, which survives every
+ * later pushState; two in-product <Link> taps then reach a tracked route. `Referrer-Policy:
+ * strict-origin` in `vercel.json` closes it for BOTH tools at the browser, which is a mechanism
+ * rather than a convention, and it is why the published policy's referrer sentence is true.
+ * A VENDOR PRIVACY FILTER IS ONLY AS WIDE AS THE FIELDS THE VENDOR HANDS THE CALLBACK.
+ *
+ * KNOWN AND ACCEPTED — THE ACCEPT-PAGE VIEW IS NOT COUNTED BY VERCEL. `ConsentBanner` starts
+ * GA4 on the very page the visitor accepted on by calling `trackPageView()` itself; it cannot
+ * do the same here, because <Analytics/> renders from this component and the banner's local
+ * state change does not re-render it, so Vercel starts one navigation later. The direction is
+ * FEWER events, never more, so no published promise is affected — but it does mean the two
+ * properties will disagree on first-accept sessions, and a visitor who accepts and then leaves
+ * contributes zero Vercel events. Closing it means giving the banner a shared consent signal;
+ * that file was outside this change's freeze lift.
+ */
+
+/**
+ * Whether Vercel's script has been injected into THIS document. Module-level and never reset,
+ * because the script it tracks is never removed either — a `useState` here would lie the moment
+ * the component unmounted. Mirrors `isAnalyticsLoaded()` for gtag, and the reload guard reads
+ * BOTH: keying that guard on gtag alone would leave Vercel's script alive on a guest page in
+ * any future where GA4 is disabled and this is not.
+ */
+let vercelAnalyticsLive = false
+
+/**
+ * The second, independent layer. Runs on every event the Vercel runtime is about to send.
+ *
+ * FAIL-CLOSED, INCLUDING ON A URL IT CANNOT PARSE: anything that is not a URL on a tracked
+ * path is dropped entirely (`null`), and anything that survives is rebuilt from origin +
+ * NORMALISED PATHNAME — so the query string and fragment are not "stripped" so much as never
+ * carried over, and a UUID segment becomes `:id`. Reuses `isTrackedRoute` and `normalizePath`
+ * rather than restating either rule, so the exclusion list has exactly one definition.
+ *
+ * Declared at module scope so its identity is stable: the component re-registers it whenever
+ * `props.beforeSend` changes, and an inline arrow would re-register on every render.
+ */
+function vercelBeforeSend(event: BeforeSendEvent): BeforeSendEvent | null {
+  try {
+    const u = new URL(event.url)
+    if (!isTrackedRoute(u.pathname)) return null
+    // `...event` is a PASS-THROUGH, and that is the one thing to re-check on a version bump.
+    // Today `BeforeSendEvent` is exactly `{ type, url }`, so the spread copies nothing but the
+    // discriminant; an explicit `{ type: event.type, url }` would widen `type` and fail to
+    // assign, which is why the spread is the pragmatic form. But the dependency is a caret
+    // range: a minor that adds a payload field to `CustomEvent` would be copied through
+    // UNFILTERED and still compile. `track()` is called nowhere in this repo, which is what
+    // bounds it today.
+    return { ...event, url: `${u.origin}${normalizePath(u.pathname)}` }
+  } catch {
+    return null
+  }
+}
 
 /**
  * SPA page-view tracking, plus the guard that keeps the guest-page exclusion true.
@@ -55,14 +140,25 @@ import { initAnalytics, trackPageView, isTrackedRoute, isAnalyticsLoaded } from 
  */
 function AnalyticsTracker() {
   const { pathname } = useLocation()
+
+  // Re-read on every navigation rather than held in state: this component re-renders on each
+  // route change, which is the moment the answer can change.
+  const analyticsAllowed = getConsent() === 'granted' && isTrackedRoute(pathname)
+
+  useEffect(() => {
+    if (analyticsAllowed) vercelAnalyticsLive = true
+  }, [analyticsAllowed])
+
   useEffect(() => {
     if (!isTrackedRoute(pathname)) {
-      if (isAnalyticsLoaded()) {
+      if (isAnalyticsLoaded() || vercelAnalyticsLive) {
         // reload(), NOT replace(current URL). When a replace target equals the current URL
         // except for a non-null FRAGMENT, the HTML navigation algorithm performs a fragment
-        // navigation — no unload, so gtag.js would SURVIVE on exactly the fragment-bearing
-        // routes (`/auth/callback#access_token=…`, `/reset-password#…`) this guard exists to
-        // protect. reload() is unconditional and preserves path, query and fragment.
+        // navigation — no unload, so the analytics scripts would SURVIVE on exactly the
+        // fragment-bearing routes (`/auth/callback#access_token=…`, `/reset-password#…`) this
+        // guard exists to protect. reload() is unconditional and preserves path, query and
+        // fragment. A full document load is the ONLY way to remove Vercel's script, which
+        // ships no teardown of its own.
         window.location.reload()
       }
       return
@@ -70,7 +166,11 @@ function AnalyticsTracker() {
     initAnalytics()
     trackPageView(pathname)
   }, [pathname])
-  return null
+
+  // Rendered ONLY under both gates, so the script never reaches an excluded route. It is not
+  // removed again by unmounting (see the block comment above) — `beforeSend` is what continues
+  // to hold once it is in the document.
+  return analyticsAllowed ? <Analytics beforeSend={vercelBeforeSend} /> : null
 }
 
 function LandingGate() {

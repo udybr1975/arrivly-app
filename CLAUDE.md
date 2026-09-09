@@ -33,10 +33,10 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
 > **Frozen surface — `0d2e7d6`** (8 Sep 2026), the legal-publication v1 build. The prior frozen tip `a4a3fdd` (1 Sep 2026) was the item-(f) declined-first-charge fix. The prior frozen tip `d6e03ce` (1 Sep) was the auth polish batch (post-runbook item (b)); `3bbb958` (1 Sep) the 3-D Secure first-payment messaging fix, with `070e3b4` — the Dependabot lockfile patch — between them in the chain; `f94f665` (1 Sep) the GO-LIVE STEP 0 signup-under-email-confirmation fix; `9eb5255` (31 Aug) the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `0d2e7d6` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
-> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`, RE-FROZEN 8 Sep 2026 at `0d2e7d6`, RE-FROZEN 8 Sep 2026 at `0eea5fe`
+> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`, RE-FROZEN 8 Sep 2026 at `0d2e7d6`, RE-FROZEN 8 Sep 2026 at `0eea5fe`, RE-FROZEN 9 Sep 2026 at `VA_SHA`
 >
 > The Tiers 1-3 code surface — the guest page, the host dashboard, onboarding, and the `api/`
-> routes behind them — is **FROZEN as of `0eea5fe`**. The freeze exists for ONE reason: so the
+> routes behind them — is **FROZEN as of `VA_SHA`**. The freeze exists for ONE reason: so the
 > hacker-agent pass (LAUNCH BLOCKER #4) attacks a **stationary** surface. A finding against a
 > tree that has since moved is a finding you cannot act on with confidence, and a surface that
 > shifts mid-pass turns "we tested it" into a claim nobody can check.
@@ -44,6 +44,38 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Full conscious-lift records (what each lift changed and proved): docs/history.md, 2 Sep 2026.
 >
 > **OPEN RESIDUAL from the `070e3b4` lift: payment-path browser smoke assigned to Udy in chat — unverified.**
+>
+> **LIFT — 9 Sep 2026, LIFTED BY UDY IN CHAT, for Vercel Web Analytics; re-frozen at `VA_SHA`
+> the same day.** `@vercel/analytics` behind the SAME two gates as GA4. Lifted: `src/App.tsx`
+> plus the dependency. **`vercel.json` was ALSO changed and did NOT need the lift** — CLAUDE.md
+> lists config under NOT FROZEN — see the referrer rule below for why it had to change.
+>
+> **THE RULES THIS CREATED:**
+> - **A VENDOR PRIVACY FILTER IS ONLY AS WIDE AS THE FIELDS THE VENDOR HANDS THE CALLBACK.**
+>   Vercel's `beforeSend` receives `{ type, url }` and NO referrer field, so it structurally
+>   cannot do what `safeReferrer()` does for gtag. The referrer channel was real: `GuestPage`
+>   uses a full-document `location.replace('/guest?apt=…&token=…')`, so that token-bearing URL
+>   becomes `document.referrer` and SURVIVES every later pushState; two in-product `<Link>` taps
+>   then reach a tracked route. Closed with **`Referrer-Policy: strict-origin` on `/(.*)` in
+>   `vercel.json`** — a browser mechanism, covering BOTH tools and every third party.
+> - **A `Referrer-Policy` HEADER CONSTRAINS ONLY THE REFERRERS WE *SEND*.** An INBOUND
+>   cross-origin referrer is set by the LINKING site and can still be a full page URL. A first
+>   draft of the published §12 claimed our header made inbound referrers site-only; both gates
+>   caught it. **No published claim may rest on our header constraining that direction.**
+> - **`@vercel/analytics` INJECTS WITH NO CLEANUP** (`useEffect(…, [])`, verified at source in
+>   2.0.1). Unmounting `<Analytics/>` removes nothing and does not stop auto-tracking — so the
+>   render gate is an ENTRY gate, exactly like gtag, and `AnalyticsTracker`'s reload guard had to
+>   learn about this second script rather than keying on gtag's flag alone.
+>
+> **KNOWN, ACCEPTED:** the accept-page view is not counted by Vercel (`ConsentBanner` starts GA4
+> directly but cannot reach `<Analytics/>`); direction is fewer events, never more. **DEFERRED,
+> needs a `src/lib/analytics.ts` lift:** `//w/CODE` (and `/%2Fw/CODE`) pass the prefix test while
+> react-router matches nothing — collapse repeated slashes in BOTH `isTrackedRoute` and
+> `normalizePath`, since the latter builds the string actually transmitted.
+>
+> **UTM PARAMETERS NEVER REACH EITHER TOOL** — `normalizePath` strips the query string, by
+> design. Paid-campaign attribution therefore does NOT work today; that needs a deliberate
+> decision to allowlist specific query keys, not a bug report.
 >
 > **LIFT — 8 Sep 2026, LIFTED BY UDY IN CHAT, for the GA4 marketing instrumentation; re-frozen
 > at `0eea5fe` the same day.** Google Analytics 4 with GDPR consent, a **structural**
