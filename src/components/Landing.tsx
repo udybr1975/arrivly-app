@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import QRCode from 'qrcode'
 import Logo from './shared/Logo'
 import { ARRIVLY_CONFIG } from '../config'
+import { trackEvent } from '../lib/analytics'
 import {
   QrIcon,
   PinIcon,
@@ -88,6 +89,15 @@ const DEMO_ENABLED = import.meta.env.VITE_DEMO_ENABLED === 'true'
 const PUBLIC_DEMO_URL =
   `${ARRIVLY_CONFIG.appUrl}/guest?apt=${ARRIVLY_CONFIG.publicDemo.apartmentId}` +
   `&token=${ARRIVLY_CONFIG.publicDemo.token}`
+
+// The Brevo-hosted waitlist form. A PLAIN LINK, NEVER AN EMBED — no Brevo script, iframe or
+// widget loads on this page, so nothing reaches Brevo until the visitor chooses to go there.
+// That is the same privacy shape as the analytics gates: a visitor who does not click is never
+// disclosed to a third party at all. Kept as a named constant beside PUBLIC_DEMO_URL because
+// that is where this page's external URLs live — src/config.ts holds branding and plan values,
+// not link targets. The URL is public, not a secret.
+const WAITLIST_URL =
+  'https://1c79c4bb.sibforms.com/serve/MUIFAB_vQlluYtFvZusJOGITPzkJi-UhHQrAaTKVNh-i64bBoDnEcNcTxzUR5Ct1XgwVVQeN506weoPK45tpZPN0yioagB6jW5RQzNJdkBNiMC7BNVdnWwPMC1OKG7KA8Zc5GiyLy5Z3wpdUaG8uqyuvUkczyozgU2gDaRRviMbFSTkV68jfjuKS87GOSKF-dVxgnAIQ4pBxp7dsYA=='
 
 // Smooth-scroll to the live-demo section. prefers-reduced-motion gets an INSTANT jump rather
 // than no jump at all — the reduced-motion request is about animation, not about staying put.
@@ -1431,6 +1441,29 @@ export default function Landing() {
                 See a live demo
               </button>
             )}
+          </div>
+
+          {/* Waitlist — a SECONDARY route, deliberately on its own row BELOW the primary pair
+              rather than as a third button beside them. Two secondary buttons in one row read
+              as equal alternatives and would dilute "Start free", which must stay the single
+              primary action here. Same secondary treatment as "See a live demo" — no new
+              colours, no new tokens.
+
+              The supporting line makes NO claim about availability. Bemgu is live and taking
+              payments, so "join the waitlist" could otherwise read as "the product isn't ready
+              yet", and any copy hinting at what is coming would brush against the standing rule
+              that the landing page must never imply the full booking system (Phase F). */}
+          <div className="mt-6 flex flex-col items-center gap-2">
+            <p className="text-[13px] text-[#f0ede6]/55">Prefer to hear from us first?</p>
+            <a
+              href={WAITLIST_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={() => trackEvent('waitlist_click')}
+              className="rounded-xl border border-[#2c2925] bg-[#23211d] px-7 py-4 text-[15px] text-[#f0ede6]/80 no-underline transition-colors hover:border-[#c8a24e]/40 hover:text-[#f0ede6] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#c8a24e]"
+            >
+              Join the waitlist
+            </a>
           </div>
         </div>
       </section>

@@ -33,10 +33,10 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
 > **Frozen surface — `0d2e7d6`** (8 Sep 2026), the legal-publication v1 build. The prior frozen tip `a4a3fdd` (1 Sep 2026) was the item-(f) declined-first-charge fix. The prior frozen tip `d6e03ce` (1 Sep) was the auth polish batch (post-runbook item (b)); `3bbb958` (1 Sep) the 3-D Secure first-payment messaging fix, with `070e3b4` — the Dependabot lockfile patch — between them in the chain; `f94f665` (1 Sep) the GO-LIVE STEP 0 signup-under-email-confirmation fix; `9eb5255` (31 Aug) the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `0d2e7d6` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
-> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`, RE-FROZEN 8 Sep 2026 at `0d2e7d6`, RE-FROZEN 8 Sep 2026 at `0eea5fe`, RE-FROZEN 9 Sep 2026 at `2777afa`
+> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`, RE-FROZEN 8 Sep 2026 at `0d2e7d6`, RE-FROZEN 8 Sep 2026 at `0eea5fe`, RE-FROZEN 9 Sep 2026 at `2777afa`, RE-FROZEN 9 Sep 2026 at `WL_SHA`
 >
 > The Tiers 1-3 code surface — the guest page, the host dashboard, onboarding, and the `api/`
-> routes behind them — is **FROZEN as of `2777afa`**. The freeze exists for ONE reason: so the
+> routes behind them — is **FROZEN as of `WL_SHA`**. The freeze exists for ONE reason: so the
 > hacker-agent pass (LAUNCH BLOCKER #4) attacks a **stationary** surface. A finding against a
 > tree that has since moved is a finding you cannot act on with confidence, and a surface that
 > shifts mid-pass turns "we tested it" into a claim nobody can check.
@@ -44,6 +44,33 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Full conscious-lift records (what each lift changed and proved): docs/history.md, 2 Sep 2026.
 >
 > **OPEN RESIDUAL from the `070e3b4` lift: payment-path browser smoke assigned to Udy in chat — unverified.**
+>
+> **LIFT — 9 Sep 2026, LIFTED BY UDY IN CHAT, STANDALONE, for the waitlist CTA; re-frozen at
+> `WL_SHA` the same day.** A "Join the waitlist" secondary CTA on `Landing.tsx` linking out to a
+> Brevo-hosted form. **THE PARKED LANDING BATCH (queue item 7) IS NOT INCLUDED AND STAYS
+> PARKED** — the `/legal` footer link, the AA-floor sweep, the hero callout overlap and the
+> hardcoded `€25` pair were all deliberately left alone, and both gates MEASURED that (footer
+> still has no `/legal` link; `€25` still x2; `#9a958c` still x11 in this file). **This lift does
+> NOT discharge item 7's own lift.**
+>
+> **THE BRIEF POINTED AT A SECTION THAT DOES NOT EXIST.** It said "near the Founding Hosts
+> section"; there is no such section — zero matches for `founding` in `src/`, it is an unbuilt
+> item in the cosmetic tail. The CTA went into the **Final CTA** section instead, on its OWN ROW
+> below the Start free / See a live demo pair rather than as a third button beside them: three
+> buttons in one `flex-wrap` row read as three equal options, cost "Start free" its primacy, and
+> wrap to an arbitrary 2+1 split at narrow widths.
+>
+> **THE COPY CONSTRAINT WORTH REMEMBERING: BEMGU IS LIVE, SO "WAITLIST" IS A TRAP.** The obvious
+> copy ("Be first to know", "early access") would imply the product is not yet purchasable —
+> false — and anything explaining what the waitlist is FOR brushes against the standing rule that
+> the landing page must never imply the full booking system. The line used, "Prefer to hear from
+> us first?", makes no availability claim at all. **If marketing wants the waitlist tied to a
+> named programme, that is a copy decision with a claim in it — do not invent one.**
+>
+> **NOTHING FROM BREVO LOADS ON THE PAGE** — plain `<a href>` + `target="_blank"` +
+> `rel="noopener noreferrer"`, no script, iframe, widget, pixel or `preconnect`. A visitor who
+> does not click is never disclosed to Brevo. **Never convert this to an embed.** `rel="noreferrer"`
+> is what sends Brevo no referrer at all; the site-wide `Referrer-Policy` is only the backstop.
 >
 > **LIFT — 9 Sep 2026, LIFTED BY UDY IN CHAT, for Vercel Web Analytics; re-frozen at `2777afa`
 > the same day.** `@vercel/analytics` behind the SAME two gates as GA4. Lifted: `src/App.tsx`
