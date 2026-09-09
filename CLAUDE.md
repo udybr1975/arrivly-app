@@ -33,10 +33,10 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
 > **Frozen surface — `0d2e7d6`** (8 Sep 2026), the legal-publication v1 build. The prior frozen tip `a4a3fdd` (1 Sep 2026) was the item-(f) declined-first-charge fix. The prior frozen tip `d6e03ce` (1 Sep) was the auth polish batch (post-runbook item (b)); `3bbb958` (1 Sep) the 3-D Secure first-payment messaging fix, with `070e3b4` — the Dependabot lockfile patch — between them in the chain; `f94f665` (1 Sep) the GO-LIVE STEP 0 signup-under-email-confirmation fix; `9eb5255` (31 Aug) the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `0d2e7d6` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
-> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`, RE-FROZEN 8 Sep 2026 at `0d2e7d6`, RE-FROZEN 8 Sep 2026 at `0eea5fe`, RE-FROZEN 9 Sep 2026 at `2777afa`, RE-FROZEN 9 Sep 2026 at `1eb54a5`, RE-FROZEN 9 Sep 2026 at `7f8458c`
+> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`, RE-FROZEN 8 Sep 2026 at `0d2e7d6`, RE-FROZEN 8 Sep 2026 at `0eea5fe`, RE-FROZEN 9 Sep 2026 at `2777afa`, RE-FROZEN 9 Sep 2026 at `1eb54a5`, RE-FROZEN 9 Sep 2026 at `7f8458c`, RE-FROZEN 9 Sep 2026 at `BAR_SHA`
 >
 > The Tiers 1-3 code surface — the guest page, the host dashboard, onboarding, and the `api/`
-> routes behind them — is **FROZEN as of `7f8458c`**. The freeze exists for ONE reason: so the
+> routes behind them — is **FROZEN as of `BAR_SHA`**. The freeze exists for ONE reason: so the
 > hacker-agent pass (LAUNCH BLOCKER #4) attacks a **stationary** surface. A finding against a
 > tree that has since moved is a finding you cannot act on with confidence, and a surface that
 > shifts mid-pass turns "we tested it" into a claim nobody can check.
@@ -44,6 +44,39 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Full conscious-lift records (what each lift changed and proved): docs/history.md, 2 Sep 2026.
 >
 > **OPEN RESIDUAL from the `070e3b4` lift: payment-path browser smoke assigned to Udy in chat — unverified.**
+>
+> **LIFT — 9 Sep 2026, LIFTED BY UDY IN CHAT, for the Founding Hosts ANNOUNCEMENT BAR; re-frozen
+> at `BAR_SHA` the same day.** A slim gold bar at the very top of `Landing.tsx`, above the sticky
+> header, linking to `#founding`. Sole file: `Landing.tsx`, bar only. Queue item 7 stays parked
+> (measured untouched: no `/legal` footer link, `#9a958c` still x11, `EUR 25` still x2, hero
+> callout unchanged).
+>
+> **THE RULE THIS CREATED — `trackEvent(` IS AN ENUMERATION SITE, AND IT HAS NOW GONE STALE
+> TWICE.** The Art. 30 record (A10) lists every funnel event. `7f8458c` added
+> `founding_host_claim` and updated the `hosts.founding_at` COLUMN row while missing the EVENT
+> list entirely; this lift added `founding_bar_click` and found the record two behind. **Any new
+> `trackEvent(...)` anywhere in `src/` changes that sentence, and the authoritative check is a
+> repo-wide grep for `trackEvent(`** — never add one name from memory. Same "three of four table
+> rows updated" signature the sweep lesson names.
+>
+> **VISIBILITY IS THREE INDEPENDENT CLAUSES:** a successful response, the server's own
+> `closed === false`, and `remaining > 0`. Loading, error, rate-limit and closed all render
+> NOTHING, so the page is byte-identical to before — which is also why NO SPACE IS RESERVED, and
+> therefore why the bar is a **DELIBERATE CLS CONTRIBUTION** on the landing page. Vercel Web
+> Analytics has measured that metric since `2777afa`; do not read it later as a regression.
+>
+> **KNOWN RESIDUALS, recorded not fixed (all outside "announcement bar only"):**
+> - **TWO DEFINITIONS OF `closed` NOW COEXIST IN THIS FILE.** The BAR honours the server's flag;
+>   the SECTION still infers `foundingClosed = foundingRemaining === 0` (one line, outside this
+>   lift). They agree by construction today. The day the endpoint gains an operator kill switch
+>   returning `{ remaining: 7, closed: true }`, the bar would hide while the section still shows
+>   the full pitch and a live claim button — the worse half. **One-line follow-up, needs its own
+>   say-so.**
+> - Single-line-at-every-width is currently a MEASUREMENT (verified to 320px), not a mechanism:
+>   there is no `whitespace-nowrap`, deliberately, because that converts a wrap into horizontal
+>   overflow. A copy edit or a font fallback could wrap it.
+> - The `\u2192` arrow is a text node, so it is read aloud in the accessible name of the page's
+>   first tab stop; the section's own CTA uses an SVG that is not.
 >
 > **LIFT — 9 Sep 2026, LIFTED BY UDY IN CHAT, for the FOUNDING HOSTS programme; re-frozen at
 > `7f8458c` the same day.** Automatic model: the first 50 hosts to claim get Portfolio with the

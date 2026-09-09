@@ -116,6 +116,17 @@ function scrollToLiveDemo(e: React.MouseEvent<HTMLAnchorElement>) {
   el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
 }
 
+// Smooth-scroll to the Founding Hosts section. Same shape as scrollToLiveDemo above, including
+// the reduced-motion branch: that request is about ANIMATION, not about staying put, so it gets
+// an instant jump rather than nothing.
+function scrollToFounding(e: React.MouseEvent<HTMLAnchorElement>) {
+  const el = document.getElementById('founding')
+  if (!el) return // no section → let the href fall through to the browser's own anchor jump
+  e.preventDefault()
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+}
+
 // Scroll-reveal wrapper: fades + lifts children into view once. Respects
 // prefers-reduced-motion (shows immediately, no animation) and is SSR-safe
 // (window only touched inside the client-only effect).
@@ -829,6 +840,11 @@ export default function Landing() {
   // counter cannot disagree if the cap is ever changed. Null until the fetch lands; the render
   // falls back to FOUNDING_CAP_FALLBACK below.
   const [foundingLimit, setFoundingLimit] = useState<number | null>(null)
+  // The server's own `closed`, kept rather than inferred from `remaining === 0`. The two agree
+  // today by construction, but the announcement bar's visibility rule is written as "closed ===
+  // false AND remaining > 0", and a rule enforced by inference silently stops being enforced the
+  // day the endpoint's definition of closed changes. NULL until a successful response.
+  const [foundingStatusClosed, setFoundingStatusClosed] = useState<boolean | null>(null)
 
   useEffect(() => {
     let alive = true
@@ -840,6 +856,7 @@ export default function Landing() {
         if (typeof n === 'number' && Number.isFinite(n)) setFoundingRemaining(Math.max(0, Math.floor(n)))
         const l = d?.limit
         if (typeof l === 'number' && Number.isFinite(l) && l > 0) setFoundingLimit(Math.floor(l))
+        if (typeof d?.closed === 'boolean') setFoundingStatusClosed(d.closed)
       })
       .catch(() => { /* stays null → the section renders without a number */ })
 
@@ -900,6 +917,49 @@ export default function Landing() {
   return (
     // Root wrapper SCOPES Inter to the landing only; headings opt into Fraunces.
     <div className="min-h-screen bg-[#1c1c1a] font-['Inter'] text-[#f0ede6] antialiased [text-rendering:optimizeLegibility]">
+      {/* ──────────────────── Founding Hosts announcement bar ──────────────────── */}
+      {/* ALL THREE VISIBILITY RULES ARE ENFORCED HERE, and each is a separate clause on purpose:
+          a successful response (remaining is non-null), the server's own closed === false, and
+          remaining > 0. Loading, an error, and a full programme all render NOTHING — the page is
+          then byte-identical to today. There is deliberately no "programme closed" bar: the
+          section's own closed state already says that, and a second place saying it is a second
+          place to forget to update.
+
+          NO RESERVED SPACE, AND THAT IS THE SPEC'S OWN CHOICE, NOT AN OVERSIGHT. Reserving a
+          strip would avoid the insertion shift, but rule 2 requires that a loading/error/closed
+          page render exactly as it does today, and a permanently blank 34px strip is not that.
+          So the bar is inserted when the count confirms. The cost is bounded: it lands within
+          the first moments, at the very top, and browsers' native scroll anchoring holds the
+          viewport steady for anyone who has already scrolled — only a visitor still at scroll 0
+          in the first fetch sees the page move, by the bar's own height.
+
+          IN NORMAL FLOW, NOT FIXED, so it cannot overlap anything. The header below is
+          `sticky top-0 z-50` and keeps working unchanged: the bar scrolls away, the header then
+          pins to the viewport. The consent banner is `fixed bottom-0 z-50` at the other end of
+          the page — no overlap and no stacking conflict, since this bar takes no z-index at all.
+          It is first in DOM order, so it is the first tab stop: correct for a top-of-page link,
+          and it does not displace the banner, which lives outside this component. */}
+      {foundingRemaining !== null && foundingRemaining > 0 && foundingStatusClosed === false && (
+        <a
+          href="#founding"
+          onClick={e => {
+            trackEvent('founding_bar_click')
+            scrollToFounding(e)
+          }}
+          className="block w-full bg-[#c8a24e] text-[#16100d] no-underline transition-colors hover:bg-[#e7d6ad] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#16100d]"
+        >
+          {/* One line at every width: the qualifying clause is the part that drops on mobile,
+              never the count. Gold-on-dark-ink is the Start free treatment, reused as-is — the
+              brightest line on a page that is otherwise charcoal, which is the "noticeable"
+              requirement met by contrast rather than by motion. */}
+          <div className="mx-auto max-w-6xl px-5 py-2 text-center text-[13px] font-semibold sm:px-8">
+            Founding Hosts: {foundingRemaining} {foundingRemaining === 1 ? 'place' : 'places'} left
+            <span className="hidden sm:inline"> — first month of Portfolio free</span>
+            {' \u2192'}
+          </div>
+        </a>
+      )}
+
       {/* ─────────────────────────── Sticky nav ─────────────────────────── */}
       <header className="sticky top-0 z-50 border-b border-[#2c2925] bg-[#1c1c1a]/90 backdrop-blur supports-[backdrop-filter]:bg-[#1c1c1a]/75">
         <nav className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5 sm:px-8">
