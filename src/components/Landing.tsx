@@ -47,6 +47,13 @@ const DEFAULT_PLANS: PublicPlan[] = [
 ]
 const DEFAULT_PRICING: Pricing = { trialDays: 14, fromPriceEuros: 10, currency: 'eur', plans: DEFAULT_PLANS }
 
+// Portfolio. Mirrors FOUNDING_TIER in api/create-subscription.ts and ChoosePlan.tsx.
+const PORTFOLIO_TIER = 3
+
+// Render fallback for the Founding Hosts headline until /api/founding-status answers. The
+// authoritative cap is founding_places_limit() in SQL, shared with the claim.
+const FOUNDING_CAP_FALLBACK = 50
+
 // Marketing labels + copy — defined HERE (never written to the DB/config). Prices and
 // property caps come from the fetched plans; only presentation lives in this map.
 const TIER_META: Record<number, { name: string; descriptor?: string; badge?: string; featured?: boolean; comingSoon?: boolean; bullets: string[] }> = {
@@ -814,9 +821,28 @@ function PhoneMockup() {
 
 export default function Landing() {
   const [pricing, setPricing] = useState<Pricing>(DEFAULT_PRICING)
+  // NULL means UNKNOWN, and it is not the same as 0. While loading, or on any error, the
+  // section renders WITHOUT a number — showing no count is honest, showing a wrong one is not,
+  // and defaulting to the full 50 would advertise places that may already be gone.
+  const [foundingRemaining, setFoundingRemaining] = useState<number | null>(null)
+  // The programme size comes from SQL too (founding_places_limit), so the headline and the
+  // counter cannot disagree if the cap is ever changed. Null until the fetch lands; the render
+  // falls back to FOUNDING_CAP_FALLBACK below.
+  const [foundingLimit, setFoundingLimit] = useState<number | null>(null)
 
   useEffect(() => {
     let alive = true
+    fetch('/api/founding-status')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => {
+        if (!alive) return
+        const n = d?.remaining
+        if (typeof n === 'number' && Number.isFinite(n)) setFoundingRemaining(Math.max(0, Math.floor(n)))
+        const l = d?.limit
+        if (typeof l === 'number' && Number.isFinite(l) && l > 0) setFoundingLimit(Math.floor(l))
+      })
+      .catch(() => { /* stays null → the section renders without a number */ })
+
     fetch('/api/public-pricing')
       .then(r => (r.ok ? r.json() : null))
       .then(data => {
@@ -853,6 +879,23 @@ export default function Landing() {
 
   const startLabel = `Start free — ${pricing.trialDays} days`
   const plansSorted = [...pricing.plans].sort((a, b) => a.tier - b.tier)
+
+  // Founding Hosts derived values. The cap (50) is the programme size and is the ONE number
+  // here that is not plan data; the Portfolio price and property cap come from the `plans`
+  // table via /api/public-pricing, never from config.ts (which holds no prices at all).
+  // Rendered cap: SQL first, the constant only until that lands (or if it fails). The constant
+  // is a RENDER FALLBACK, not a second source of truth — founding_places_limit() is what the
+  // claim actually enforces.
+  const foundingCap = foundingLimit ?? FOUNDING_CAP_FALLBACK
+  const foundingClosed = foundingRemaining === 0
+  // Falls back to DEFAULT_PLANS rather than to fresh literals: this file already carries one
+  // DB-matching fallback and a second copy of "25" or "12" would be a third place for the real
+  // plan values to drift from (the hardcoded €25 pair in the parked landing batch is exactly
+  // that defect, and this must not add to it).
+  const DEFAULT_PORTFOLIO = DEFAULT_PLANS.find(p => p.tier === PORTFOLIO_TIER)!
+  const portfolioPlan = pricing.plans.find(p => p.tier === PORTFOLIO_TIER) ?? DEFAULT_PORTFOLIO
+  const portfolioCap = portfolioPlan.maxProperties ?? DEFAULT_PORTFOLIO.maxProperties!
+  const portfolioPriceLabel = `€${portfolioPlan.priceEuros}`
 
   return (
     // Root wrapper SCOPES Inter to the landing only; headings opt into Fraunces.
@@ -1397,6 +1440,84 @@ export default function Landing() {
                 <p className="pb-6 pr-10 text-[14px] leading-[1.75] text-[#f0ede6]/60">{item.a}</p>
               </details>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ─────────────────────── Founding Hosts ─────────────────────── */}
+      {/* COPY IS UDY-APPROVED AND OTHERWISE VERBATIM — do not rewrite or embellish it.
+          TWO DELIBERATE DEVIATIONS FROM THE APPROVED TEXT, BOTH FORCED, BOTH NEEDING SIGN-OFF:
+          (1) "with the commissions paid to you" -> "with GetYourGuide & Tiqets commissions paid
+          to you". VIATOR COMMISSIONS ARE BEMGU-ATTRIBUTED AT EVERY TIER (written Viator ruling,
+          4 Aug 2026 — a host PID may not ride on links served from bemgu.app), so an
+          unqualified host-earnings claim is contractually false. The binding rule is that the
+          qualifier lives INSIDE the claim string, not in nearby prose; the form copied here is
+          the one already used at the top of this file.
+          (2) "every feature" -> "every Portfolio feature", because "every feature" on a tier-3
+          offer reads as including the Tier-4 booking platform, which is not built and must
+          never be implied.
+          Everything else is exactly as approved. The only computed
+          values are the Portfolio price and property cap, which come from /api/public-pricing
+          (the `plans` table) and are NEVER hardcoded: `src/config.ts` holds no prices, and
+          reintroducing one there is a standing rule violation.
+
+          THE COUNTER IS ADVISORY, NOT AUTHORITATIVE. /api/founding-status is edge-cached for
+          60s, so it can lag reality by up to a minute; the race-safe claim in
+          create-subscription.ts is what actually decides, and it refuses gracefully if the
+          places went while someone was reading. That is why a stale "3 left" is acceptable and
+          a wrong-but-confident "50 left" would not be. */}
+      <section id="founding" className="bg-[#1c1c1a] py-20 sm:py-24">
+        <div className="mx-auto max-w-2xl px-5 sm:px-8">
+          <div className="rounded-2xl border border-[#2c2925] bg-[#23211d] p-7 sm:p-9">
+            <div className="text-[12px] uppercase tracking-[.16em] text-[#c8a24e]">Founding Hosts</div>
+            <h2 className="mt-2 font-['Fraunces'] text-[30px] font-light leading-tight text-[#f0ede6] sm:text-[36px]">
+              Founding Hosts — {foundingCap} places
+            </h2>
+
+            {foundingClosed ? (
+              <p className="mt-5 text-[15px] leading-[1.7] text-[#f0ede6]/70">
+                The Founding Hosts programme is full.
+              </p>
+            ) : (
+              <>
+                <p className="mt-5 text-[15px] leading-[1.7] text-[#f0ede6]/70">
+                  I&apos;m looking for {foundingCap} hosts who&apos;ll run their next guests through Bemgu
+                  and tell me, plainly, what&apos;s wrong with it.
+                </p>
+                <p className="mt-4 text-[15px] leading-[1.7] text-[#f0ede6]/70">
+                  <span className="font-semibold text-[#f0ede6]">What you get:</span> One month of the
+                  Portfolio tier free — up to {portfolioCap} properties, every Portfolio feature, including
+                  bookable tours and tickets, with GetYourGuide &amp; Tiqets commissions paid to you. Plus my
+                  direct line. I built this; I answer.
+                </p>
+                <p className="mt-4 text-[15px] leading-[1.7] text-[#f0ede6]/70">
+                  <span className="font-semibold text-[#f0ede6]">What I ask:</span> Get your first property
+                  live within 3 days of joining (it takes minutes — I&apos;ll help if it doesn&apos;t). Honest
+                  feedback along the way. And if Bemgu earns it, a testimonial I can quote.
+                </p>
+                <p className="mt-4 text-[13px] leading-[1.7] text-[#f0ede6]/55">
+                  After your free month, your card is charged the normal Portfolio price
+                  {` (${portfolioPriceLabel}/month)`} automatically — cancel
+                  anytime before then and pay nothing.
+                </p>
+                <p className="mt-5 text-[13px] text-[#f0ede6]/55">
+                  {foundingRemaining !== null ? <span className="font-semibold text-[#e7d6ad]">{foundingRemaining}</span> : null}
+                  {foundingRemaining !== null
+                    ? (foundingRemaining === 1 ? ' place left. ' : ' places left. ')
+                    : 'Places are limited. '}
+                  When they&apos;re filled, the programme closes.
+                </p>
+                <div className="mt-7">
+                  <Link
+                    to="/signup?founding=1"
+                    className="group inline-flex items-center gap-2 rounded-xl bg-[#c8a24e] px-7 py-4 text-[15px] font-semibold text-[#16100d] no-underline transition-colors hover:bg-[#e7d6ad] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#e7d6ad] focus-visible:ring-offset-2 focus-visible:ring-offset-[#23211d]"
+                  >
+                    Claim a founding place
+                    <ArrowRightIcon className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                  </Link>
+                </div>
+              </>
+            )}
           </div>
         </div>
       </section>

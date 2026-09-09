@@ -36,7 +36,7 @@ const LegalDoc = lazy(() => import('./components/legal/Legal').then(m => ({ defa
 import { ARRIVLY_CONFIG } from './config'
 import ConsentBanner from './components/shared/ConsentBanner'
 import { Analytics, type BeforeSendEvent } from '@vercel/analytics/react'
-import { initAnalytics, trackPageView, isTrackedRoute, isAnalyticsLoaded, getConsent, normalizePath } from './lib/analytics'
+import { initAnalytics, trackPageView, isTrackedRoute, isAnalyticsLoaded, getConsent, normalizePath, normalizeQuery } from './lib/analytics'
 
 /**
  * VERCEL WEB ANALYTICS — behind the SAME two gates as GA4, for the same reasons.
@@ -116,7 +116,10 @@ function vercelBeforeSend(event: BeforeSendEvent): BeforeSendEvent | null {
     // range: a minor that adds a payload field to `CustomEvent` would be copied through
     // UNFILTERED and still compile. `track()` is called nowhere in this repo, which is what
     // bounds it today.
-    return { ...event, url: `${u.origin}${normalizePath(u.pathname)}` }
+    // Path + the UTM allowlist, nothing else — the SAME two helpers gtag's context uses, so the
+    // two vendors cannot disagree about what a URL is allowed to contain. `u.search` is filtered
+    // by allowlist and `u.hash` is never read at all.
+    return { ...event, url: `${u.origin}${normalizePath(u.pathname)}${normalizeQuery(u.search)}` }
   } catch {
     return null
   }

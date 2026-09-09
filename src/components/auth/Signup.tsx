@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useNavigate, Link } from 'react-router-dom'
+import { useNavigate, Link, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { api } from '../../lib/api'
 import { ARRIVLY_CONFIG } from '../../config'
@@ -25,6 +25,14 @@ const SIGNUP_SUB =
 
 export default function Signup() {
   const navigate = useNavigate()
+  // FOUNDING CLAIM, CARRIED THE WAY THE BRAND FIELDS ALREADY ARE — in the signUp metadata,
+  // not in a parallel mechanism. That matters because of email confirmation: with confirmation
+  // ON there is no session here, the host leaves the tab and comes back through a link in an
+  // email, so any client-side state (a query param, component state, even a route) is gone by
+  // the time they reach /choose-plan. `user_metadata` is the one channel that survives the
+  // round trip, and it is already how first_name and brand_name get there.
+  const [searchParams] = useSearchParams()
+  const isFoundingClaim = searchParams.get('founding') === '1'
   const [firstName, setFirstName] = useState('')
   const [brandName, setBrandName] = useState('')
   const [email, setEmail] = useState('')
@@ -45,7 +53,14 @@ export default function Signup() {
       password,
       options: {
         emailRedirectTo: `${ARRIVLY_CONFIG.appUrl}/auth/callback`,
-        data: { first_name: firstName.trim(), brand_name: brandName.trim() },
+        data: {
+          first_name: firstName.trim(),
+          brand_name: brandName.trim(),
+          // Not a credential and not treated as one server-side: the programme is automatic
+          // and open to anyone while places last, so this only remembers an intent. The
+          // race-safe claim and the one-per-host rule live in create-subscription.ts.
+          ...(isFoundingClaim ? { founding_claim: true } : {}),
+        },
       },
     })
 
@@ -144,7 +159,14 @@ export default function Signup() {
       </div>
 
       <h1 className="font-['Fraunces'] font-light text-[31px] leading-tight text-[#1c1c1a]">Create your account</h1>
-      <p className="mt-2 text-sm text-[#6f6757]">Start your 14-day free trial. Card added at checkout — no charge today.</p>
+      {isFoundingClaim ? (
+        <p className="mt-2 text-sm text-[#6f6757]">
+          <span className="font-semibold text-[#1c1c1a]">Claiming a founding place.</span>{' '}
+          You&apos;ll pick the Portfolio plan next — the first month is free.
+        </p>
+      ) : (
+        <p className="mt-2 text-sm text-[#6f6757]">Start your 14-day free trial. Card added at checkout — no charge today.</p>
+      )}
 
       <SocialAuthButtons />
 

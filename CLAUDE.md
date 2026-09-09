@@ -33,10 +33,10 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
 > **Frozen surface — `0d2e7d6`** (8 Sep 2026), the legal-publication v1 build. The prior frozen tip `a4a3fdd` (1 Sep 2026) was the item-(f) declined-first-charge fix. The prior frozen tip `d6e03ce` (1 Sep) was the auth polish batch (post-runbook item (b)); `3bbb958` (1 Sep) the 3-D Secure first-payment messaging fix, with `070e3b4` — the Dependabot lockfile patch — between them in the chain; `f94f665` (1 Sep) the GO-LIVE STEP 0 signup-under-email-confirmation fix; `9eb5255` (31 Aug) the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `0d2e7d6` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
-> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`, RE-FROZEN 8 Sep 2026 at `0d2e7d6`, RE-FROZEN 8 Sep 2026 at `0eea5fe`, RE-FROZEN 9 Sep 2026 at `2777afa`, RE-FROZEN 9 Sep 2026 at `1eb54a5`
+> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`, RE-FROZEN 8 Sep 2026 at `0d2e7d6`, RE-FROZEN 8 Sep 2026 at `0eea5fe`, RE-FROZEN 9 Sep 2026 at `2777afa`, RE-FROZEN 9 Sep 2026 at `1eb54a5`, RE-FROZEN 9 Sep 2026 at `FH_SHA`
 >
 > The Tiers 1-3 code surface — the guest page, the host dashboard, onboarding, and the `api/`
-> routes behind them — is **FROZEN as of `1eb54a5`**. The freeze exists for ONE reason: so the
+> routes behind them — is **FROZEN as of `FH_SHA`**. The freeze exists for ONE reason: so the
 > hacker-agent pass (LAUNCH BLOCKER #4) attacks a **stationary** surface. A finding against a
 > tree that has since moved is a finding you cannot act on with confidence, and a surface that
 > shifts mid-pass turns "we tested it" into a claim nobody can check.
@@ -44,6 +44,60 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Full conscious-lift records (what each lift changed and proved): docs/history.md, 2 Sep 2026.
 >
 > **OPEN RESIDUAL from the `070e3b4` lift: payment-path browser smoke assigned to Udy in chat — unverified.**
+>
+> **LIFT — 9 Sep 2026, LIFTED BY UDY IN CHAT, for the FOUNDING HOSTS programme; re-frozen at
+> `FH_SHA` the same day.** Automatic model: the first 50 hosts to claim get Portfolio with the
+> first month free (100%-off duration-'once' coupon `FOUNDING-HOST-1M`), no application form and
+> no approval. Lifted: `Landing.tsx`, `App.tsx`, `src/lib/analytics.ts`, `Signup.tsx`,
+> `ChoosePlan.tsx`, `api/create-subscription.ts`, plus NEW `api/founding-status.ts` and a
+> migration. Queue item 7 stays parked.
+>
+> **THE PLACES RULE IS SELF-CLEANING AND LIVES IN SQL, NOT IN TYPESCRIPT.** A place is held by a
+> founding host with a visible apartment (permanent) OR within 7 days of `founding_at`
+> (pending), so an abandoned claim expires by TIME ARITHMETIC — no cron. `founding_places_held()`
+> is the SINGLE definition shared by the public counter and by `claim_founding_place()`, which
+> is why the number a visitor sees and the number the server enforces cannot drift. **Both gates
+> reported "places are never released" as a must-fix; both were WRONG, and it was settled by
+> reading the DEPLOYED function body rather than the migration that was sent.**
+>
+> **THE RULES THIS CREATED:**
+> - **JAVASCRIPT `setMonth(+1)` OVERFLOWS WHERE STRIPE CLAMPS.** 31 Jan + 1 month is 3 March in
+>   JS and 28 Feb in Stripe. On an auto-charge disclosure that told the host a date LATER than
+>   the day their card is actually taken. Clamp: `min(day, daysInTargetMonth)`. Two sites.
+> - **A DISCLOSURE MUST BE GATED ON THE TIER ACTUALLY SELECTED, AND MUST NAME IT.** The founding
+>   sentence rendered for every tier, so a founding visitor picking Starter saw "first month
+>   free, then €25" while buying €10 with a 14-day trial. On touch there is no hover to move the
+>   preselected tier, which is why naming the plan inside the sentence is the second half.
+> - **THE AUTHORITATIVE AUTO-CHARGE DISCLOSURE IS STRIPE `custom_text`,** rendered above the pay
+>   button, built server-side from the **STRIPE PRICE** — never from `plans.price_cents`, which
+>   is display-only and can drift from what is charged.
+> - **A COUPON ID IS A HUMAN-TYPEABLE STRING IN A SHARED STRIPE ACCOUNT** (shared with Anna's
+>   Stays). Validate `percent_off === 100 && duration === 'once' && valid !== false` before use;
+>   a squatted `duration:'forever'` would give the subscription away silently.
+> - **`max_redemptions` DELIBERATELY NOT SET:** pending places expire, so more than 50 hosts can
+>   legitimately claim over the programme's life, and a hard Stripe cap would turn a benign
+>   over-count into a failed checkout at the card screen. **The Stripe coupon's `times_redeemed`
+>   is the true ledger of free months granted — nothing in the app reads it.**
+> - **DECIDE ELIGIBILITY BEFORE CONSUMING A SCARCE RESOURCE.** Claiming first and checking after
+>   burned a place on a host who received nothing, releasable only by waiting out the 7 days.
+> - **`claim_founding_place(p_host_id uuid)` TAKES THE HOST ID AS A PARAMETER, not `auth.uid()`.**
+>   It is service-role-only today (`proacl {postgres, service_role}`, `search_path` pinned,
+>   verified at the live ACL). **A future DROP + CREATE instead of CREATE OR REPLACE resets the
+>   ACL to Supabase defaults and re-grants EXECUTE via PUBLIC** — at which point it becomes an
+>   anon primitive for burning all 50 places or stamping `founding_at` on another host.
+>
+> **UTM PARAMETERS NOW REACH ANALYTICS** — `normalizeQuery` allowlists exactly
+> `utm_source|utm_medium|utm_campaign|utm_content`, length-capped, everything else dropped. This
+> supersedes the earlier note that campaign attribution did not work. The parked `//w/CODE` and
+> `/%2Fw/CODE` evasions are CLOSED (decode-until-stable, then collapse), in both
+> `isTrackedRoute` and `normalizePath`.
+>
+> **KNOWN RESIDUALS, recorded not fixed:** `subscription_started` never fires for a founding host
+> (first invoice is €0 and month two arrives with the row already `active`) — do not later read
+> that as "founding hosts didn't convert"; the founding HEADER on the plan step is not
+> tier-gated the way the disclosure now is; a path still containing `%` after three decode passes
+> is treated as tracked rather than fail-closed; and no operator ntfy fires when a place is
+> claimed or when the last one goes.
 >
 > **LIFT — 9 Sep 2026, LIFTED BY UDY IN CHAT, STANDALONE, for the waitlist CTA; re-frozen at
 > `1eb54a5` the same day.** A "Join the waitlist" secondary CTA on `Landing.tsx` linking out to a

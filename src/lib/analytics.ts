@@ -57,14 +57,51 @@ export type ConsentChoice = 'granted' | 'denied'
  * exclusion automatically. The cost is that a hypothetical `/guestbook` would also be
  * excluded, which is the harmless direction.
  */
+/**
+ * Canonicalise a pathname BEFORE any prefix test or transmission.
+ *
+ * THREE THINGS, and each closed a real evasion of the guest gate:
+ *   - lowercase, because react-router matches routes CASE-INSENSITIVELY by default
+ *     (`caseSensitive = false`, verified in the installed react-router 7.18 build), so
+ *     `/Guest?apt=…&token=…` renders GuestPage while a case-sensitive prefix test waves it
+ *     through — the gate reading as fail-closed while being open;
+ *   - percent-decode, so `/%2Fw/CODE` cannot hide a doubled slash inside an escape;
+ *   - collapse repeated slashes, so `//w/CODE` cannot slip past a `startsWith('/w/')` test.
+ *
+ * The last two matter because react-router matches NEITHER `//w/CODE` nor `/%2Fw/CODE` to a
+ * route — the page renders blank — while the un-canonicalised gate called them TRACKED and the
+ * un-canonicalised normaliser passed the welcome code straight through into the transmitted
+ * URL (a welcome code is not a UUID, so the UUID pass does not mask it). It is applied in BOTH
+ * `isTrackedRoute` and `normalizePath`, and the second is the one that matters most: that is
+ * the function which builds the string actually sent.
+ */
+function canonicalPath(pathname: string): string {
+  let p = pathname
+  // DECODE UNTIL STABLE, NOT ONCE. A single decode leaves `/%252Fw/CODE` as `/%2Fw/CODE` — no
+  // doubled slash to collapse, so the gate calls it TRACKED and the normaliser transmits the
+  // welcome code verbatim (a welcome code is not a UUID, so the UUID pass does not mask it).
+  // React-router matches none of these, so the page is blank and the code is never USED — but
+  // it would still be sent, which is the whole failure this canonicaliser exists to stop, one
+  // encoding layer up. Bounded at 3 passes: enough for any realistic double/triple encoding,
+  // and a hard stop rather than a loop an attacker could lengthen.
+  for (let i = 0; i < 3; i++) {
+    let next = p
+    try {
+      next = decodeURIComponent(p)
+    } catch {
+      // Malformed escape — keep what we have. The collapse and prefix tests still run, so this
+      // degrades to "no worse than before", never to open.
+      break
+    }
+    if (next === p) break
+    p = next
+  }
+  return p.toLowerCase().replace(/\/{2,}/g, '/')
+}
+
 export function isTrackedRoute(pathname: string): boolean {
   if (typeof pathname !== 'string') return false
-  // LOWERCASED FIRST, AND THAT IS NOT COSMETIC: react-router matches routes
-  // CASE-INSENSITIVELY by default (`caseSensitive = false`, verified in the installed
-  // react-router 7.18 build), so `/Guest?apt=…&token=…` renders GuestPage. A case-sensitive
-  // prefix test would return true for it and inject the script onto a token-bearing guest
-  // URL — the gate reading as fail-closed while being open.
-  const p = pathname.toLowerCase()
+  const p = canonicalPath(pathname)
   return !(
     p.startsWith('/guest') ||
     p.startsWith('/w/') ||
@@ -91,10 +128,43 @@ const UUID_SEGMENT = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
  */
 export function normalizePath(pathname: string): string {
   if (typeof pathname !== 'string' || pathname === '') return '/'
-  return pathname
+  return canonicalPath(pathname)
     .split('/')
     .map(seg => (UUID_SEGMENT.test(seg) ? ':id' : seg))
     .join('/')
+}
+
+/**
+ * The ONLY query parameters that may ever be transmitted: the four standard UTM campaign keys.
+ *
+ * AN ALLOWLIST, NEVER A DENYLIST, and the difference is the whole point on this project —
+ * booking tokens (`?token=`), QR keys (`?key=`), apartment ids (`?apt=`) and Stripe's
+ * `?checkout=` all ride in query strings, so a rule that names what to REMOVE is one new
+ * parameter away from leaking. This names what may STAY; everything else, known or not yet
+ * invented, is dropped by default.
+ *
+ * Values are re-encoded through URLSearchParams, and each is length-capped: a UTM value is
+ * attacker-supplyable by anyone who can craft a link to the site, and an unbounded one would
+ * be an unbounded string forwarded to two analytics vendors.
+ */
+const UTM_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content'] as const
+const UTM_MAX_LEN = 120
+
+export function normalizeQuery(search: string): string {
+  if (typeof search !== 'string' || search === '') return ''
+  let params: URLSearchParams
+  try {
+    params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search)
+  } catch {
+    return ''
+  }
+  const kept = new URLSearchParams()
+  for (const key of UTM_KEYS) {
+    const value = params.get(key)
+    if (value) kept.set(key, value.slice(0, UTM_MAX_LEN))
+  }
+  const out = kept.toString()
+  return out ? `?${out}` : ''
 }
 
 /** The stored choice, or null when the visitor has not chosen yet. */
@@ -187,7 +257,9 @@ function safeReferrer(): string {
  */
 function setPageContext(path: string): void {
   gtag('set', {
-    page_location: `${window.location.origin}${normalizePath(path)}`,
+    // Path + UTM only. The fragment is never carried (it is not read here at all), and every
+    // query parameter outside the UTM allowlist is dropped — see normalizeQuery.
+    page_location: `${window.location.origin}${normalizePath(path)}${normalizeQuery(window.location.search)}`,
     page_referrer: safeReferrer(),
   })
 }
