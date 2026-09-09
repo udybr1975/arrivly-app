@@ -116,11 +116,30 @@ function scrollToLiveDemo(e: React.MouseEvent<HTMLAnchorElement>) {
   el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
 }
 
+/**
+ * THE ONE identifier for the Founding Hosts section. The section id, the bar's href and the
+ * hash handled on initial load are all built from this constant, so they cannot drift — which
+ * is exactly how the reported bug happened: outreach used `#founding-hosts` while the section
+ * was `#founding`, so the URL resolved to no element and the browser left the visitor at the
+ * top of the page with nothing to indicate why.
+ */
+const FOUNDING_ANCHOR_ID = 'founding-hosts'
+
+/**
+ * The pre-fix id, still honoured on initial load ONLY.
+ *
+ * It is not a second identifier — nothing renders it and nothing links to it. It exists because
+ * `#founding` was published as the outreach URL before this fix, so links carrying it may
+ * already be in circulation, and a link that silently dumps a visitor at the top of the page is
+ * the failure being repaired here, not one worth reintroducing from the other direction.
+ */
+const FOUNDING_ANCHOR_LEGACY = 'founding'
+
 // Smooth-scroll to the Founding Hosts section. Same shape as scrollToLiveDemo above, including
 // the reduced-motion branch: that request is about ANIMATION, not about staying put, so it gets
 // an instant jump rather than nothing.
 function scrollToFounding(e: React.MouseEvent<HTMLAnchorElement>) {
-  const el = document.getElementById('founding')
+  const el = document.getElementById(FOUNDING_ANCHOR_ID)
   if (!el) return // no section → let the href fall through to the browser's own anchor jump
   e.preventDefault()
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -845,9 +864,31 @@ export default function Landing() {
   // false AND remaining > 0", and a rule enforced by inference silently stops being enforced the
   // day the endpoint's definition of closed changes. NULL until a successful response.
   const [foundingStatusClosed, setFoundingStatusClosed] = useState<boolean | null>(null)
+  // "The founding-status fetch has finished, either way" — NOT "it succeeded". The initial-load
+  // hash scroll waits on this so the announcement bar has already taken its space; a failed
+  // fetch must still release the scroll, or a dead endpoint would silently break deep links.
+  const [foundingStatusSettled, setFoundingStatusSettled] = useState(false)
+  const hashScrollDone = useRef(false)
 
   useEffect(() => {
     let alive = true
+
+    // THE DEEP LINK MUST NOT DEPEND ON A NETWORK CALL SUCCEEDING *OR* FAILING.
+    //
+    // `foundingStatusSettled` gates the initial-load hash scroll so the announcement bar has
+    // already taken its space. `.then` covers success and `.catch` covers rejection — but a
+    // fetch that simply never settles (captive portal, stalled connection, an edge timeout
+    // longer than the visitor's patience) is neither, and would leave the gate shut forever.
+    // The visitor then sits at the top of the page: EXACTLY THE SYMPTOM THIS COMMIT EXISTS TO
+    // FIX, arrived at by a different route.
+    //
+    // So the gate opens on a timer regardless. The trade is deliberate and one-sided: scrolling
+    // before the bar lands costs a ~34px undershoot, while never scrolling costs the whole
+    // feature. Both gates flagged this independently.
+    const settleTimer = setTimeout(() => {
+      if (alive) setFoundingStatusSettled(true)
+    }, 1200)
+
     fetch('/api/founding-status')
       .then(r => (r.ok ? r.json() : null))
       .then(d => {
@@ -857,8 +898,13 @@ export default function Landing() {
         const l = d?.limit
         if (typeof l === 'number' && Number.isFinite(l) && l > 0) setFoundingLimit(Math.floor(l))
         if (typeof d?.closed === 'boolean') setFoundingStatusClosed(d.closed)
+        setFoundingStatusSettled(true)
       })
-      .catch(() => { /* stays null → the section renders without a number */ })
+      .catch(() => {
+        // Stays null → the section renders without a number and no bar is shown. The scroll
+        // gate is still released, so a deep link works even when the counter does not.
+        if (alive) setFoundingStatusSettled(true)
+      })
 
     fetch('/api/public-pricing')
       .then(r => (r.ok ? r.json() : null))
@@ -891,8 +937,37 @@ export default function Landing() {
       .catch(() => {})
     return () => {
       alive = false
+      clearTimeout(settleTimer)
     }
   }, [])
+
+  // DIRECT NAVIGATION TO THE HASH, which the browser cannot do for us on this page.
+  //
+  // On a fresh SPA load the document is an empty shell: the browser performs its native
+  // hash-scroll BEFORE React has rendered the section, finds no such element, and gives up
+  // silently — leaving the visitor at the top. Nothing retries it. So the scroll has to be
+  // performed explicitly, once, after the section exists.
+  //
+  // IT WAITS FOR THE FOUNDING STATUS TO SETTLE, and that is the part worth not "simplifying"
+  // away: the announcement bar is inserted above everything else when its count arrives, so a
+  // scroll performed before that lands ~34px off once the bar pushes the page down. Settling
+  // first means one scroll, to the right place. `settled` is set on BOTH the success and the
+  // failure path, so a dead endpoint delays this by one fetch rather than disabling it.
+  //
+  // Guarded by a ref rather than by state: this must happen exactly once per page load, and it
+  // must not re-fire if the status resolves again.
+  useEffect(() => {
+    if (!foundingStatusSettled || hashScrollDone.current) return
+    const hash = window.location.hash.slice(1)
+    if (hash !== FOUNDING_ANCHOR_ID && hash !== FOUNDING_ANCHOR_LEGACY) return
+    const el = document.getElementById(FOUNDING_ANCHOR_ID)
+    if (!el) return
+    hashScrollDone.current = true
+    // Same reduced-motion rule as every other scroll on this page: the request is about
+    // ANIMATION, not about staying put, so it gets an instant jump rather than nothing.
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    el.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' })
+  }, [foundingStatusSettled])
 
   const startLabel = `Start free — ${pricing.trialDays} days`
   const plansSorted = [...pricing.plans].sort((a, b) => a.tier - b.tier)
@@ -941,7 +1016,7 @@ export default function Landing() {
           and it does not displace the banner, which lives outside this component. */}
       {foundingRemaining !== null && foundingRemaining > 0 && foundingStatusClosed === false && (
         <a
-          href="#founding"
+          href={`#${FOUNDING_ANCHOR_ID}`}
           onClick={e => {
             trackEvent('founding_bar_click')
             scrollToFounding(e)
@@ -1526,7 +1601,10 @@ export default function Landing() {
           create-subscription.ts is what actually decides, and it refuses gracefully if the
           places went while someone was reading. That is why a stale "3 left" is acceptable and
           a wrong-but-confident "50 left" would not be. */}
-      <section id="founding" className="bg-[#1c1c1a] py-20 sm:py-24">
+      {/* scroll-mt clears the ~57px sticky header. Without it a direct hit on
+          /#founding-hosts lands with the heading tucked underneath the nav, which reads as
+          "the anchor is still wrong" even though the scroll worked. */}
+      <section id={FOUNDING_ANCHOR_ID} className="scroll-mt-20 bg-[#1c1c1a] py-20 sm:py-24">
         <div className="mx-auto max-w-2xl px-5 sm:px-8">
           <div className="rounded-2xl border border-[#2c2925] bg-[#23211d] p-7 sm:p-9">
             <div className="text-[12px] uppercase tracking-[.16em] text-[#c8a24e]">Founding Hosts</div>

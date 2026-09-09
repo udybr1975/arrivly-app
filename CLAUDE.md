@@ -33,10 +33,10 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > **No secret values live in this repo — it is PUBLIC.** Server-side keys have no `VITE_` prefix and exist only in Vercel env vars. **VERIFIED AT SOURCE 14 Aug 2026** via the GitHub API — `"private": false`, `"visibility": "public"`, `created_at 2026-06-05`, i.e. public since creation, never flipped. `.gitignore` carries five `.env` ignore patterns plus a `!.env.example` negation, and no secret has ever been committed. Do not re-derive or soften this line.
 > **Frozen surface — `0d2e7d6`** (8 Sep 2026), the legal-publication v1 build. The prior frozen tip `a4a3fdd` (1 Sep 2026) was the item-(f) declined-first-charge fix. The prior frozen tip `d6e03ce` (1 Sep) was the auth polish batch (post-runbook item (b)); `3bbb958` (1 Sep) the 3-D Secure first-payment messaging fix, with `070e3b4` — the Dependabot lockfile patch — between them in the chain; `f94f665` (1 Sep) the GO-LIVE STEP 0 signup-under-email-confirmation fix; `9eb5255` (31 Aug) the bulk-import 502 fix; `47bb840` (29 Aug) the guest-chat "Message {host}" offramp; `a418f98` the Share picker and `fb6c3b1` the demo-open counter before it — the three sanctioned post-gate feature commits. The freeze gate itself completed at `ca89036`. **THE TIERS 1-3 SURFACE IS RE-FROZEN AT `0d2e7d6` — see the 🧊 freeze block below.** PG-41/42/43 opened as post-freeze residuals (PG-41 must precede the AA-floor sweep's freeze). **PUSHED — MEASURED, not recalled** (`git log --oneline origin/master..HEAD` empty after a fetch). **A DOCS TIP ABOVE THE CODE HEAD IS THE NORMAL STATE HERE, NEVER A MISMATCH** — this line exists for DRIFT DETECTION only. Full commit ancestry is in git; do not restate it here, and do not infer push state from any SHA quoted in this file.
 >
-> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`, RE-FROZEN 8 Sep 2026 at `0d2e7d6`, RE-FROZEN 8 Sep 2026 at `0eea5fe`, RE-FROZEN 9 Sep 2026 at `2777afa`, RE-FROZEN 9 Sep 2026 at `1eb54a5`, RE-FROZEN 9 Sep 2026 at `7f8458c`, RE-FROZEN 9 Sep 2026 at `2d6ae8e`
+> ## 🧊 TIERS 1-3 SURFACE FROZEN — declared 29 Aug 2026 at `47bb840`, RE-FROZEN 31 Aug 2026 at `9eb5255`, RE-FROZEN 1 Sep 2026 at `f94f665`, RE-FROZEN 1 Sep 2026 at `3bbb958`, RE-FROZEN 1 Sep 2026 at `d6e03ce`, RE-FROZEN 1 Sep 2026 at `a4a3fdd`, RE-FROZEN 8 Sep 2026 at `0d2e7d6`, RE-FROZEN 8 Sep 2026 at `0eea5fe`, RE-FROZEN 9 Sep 2026 at `2777afa`, RE-FROZEN 9 Sep 2026 at `1eb54a5`, RE-FROZEN 9 Sep 2026 at `7f8458c`, RE-FROZEN 9 Sep 2026 at `2d6ae8e`, RE-FROZEN 9 Sep 2026 at `ANCHOR_SHA`
 >
 > The Tiers 1-3 code surface — the guest page, the host dashboard, onboarding, and the `api/`
-> routes behind them — is **FROZEN as of `2d6ae8e`**. The freeze exists for ONE reason: so the
+> routes behind them — is **FROZEN as of `ANCHOR_SHA`**. The freeze exists for ONE reason: so the
 > hacker-agent pass (LAUNCH BLOCKER #4) attacks a **stationary** surface. A finding against a
 > tree that has since moved is a finding you cannot act on with confidence, and a surface that
 > shifts mid-pass turns "we tested it" into a claim nobody can check.
@@ -44,6 +44,23 @@ every open item keeps its one-line statement here. Read one when you need to kno
 > Full conscious-lift records (what each lift changed and proved): docs/history.md, 2 Sep 2026.
 >
 > **OPEN RESIDUAL from the `070e3b4` lift: payment-path browser smoke assigned to Udy in chat — unverified.**
+>
+> **LIFT — 9 Sep 2026, LIFTED BY UDY IN CHAT, anchor fix under the announcement-bar scope;
+> re-frozen at `ANCHOR_SHA`.** `/#founding-hosts` landed at the top of the page.
+>
+> **THE RULE THIS CREATED — A HASH ANCHOR ON AN SPA NEEDS AN EXPLICIT SCROLL, AND ONE OWNER FOR
+> THE ID.** Two separate defects hid behind one report: the published URL used an id the page
+> never had (the code was internally consistent, so in-page clicks worked and only the URL
+> failed), AND direct hash navigation never worked at all — on a fresh load the browser
+> hash-scrolls BEFORE React renders the section, finds nothing and gives up silently, with
+> nothing to retry it. **A section id, its links and its scroll target must all derive from ONE
+> constant**, and **the initial-load scroll must be performed explicitly after mount.**
+> **A PROMISE-GATED UI STATE NEEDS A TIMER, NOT JUST `.then`/`.catch`:** the scroll waits for
+> the founding-status fetch so the bar has taken its space, and a fetch that never SETTLES is
+> neither success nor rejection — without the 1200ms fallback the deep link would silently
+> reproduce the very bug being fixed. `scroll-mt-20` clears the sticky header, or the scroll
+> succeeds and still reads as broken. **Residual:** a legacy `/#founding` visitor keeps the
+> stale hash in the address bar (accepted on initial load only; nothing renders or links to it).
 >
 > **LIFT — 9 Sep 2026, LIFTED BY UDY IN CHAT, for the Founding Hosts ANNOUNCEMENT BAR; re-frozen
 > at `2d6ae8e` the same day.** A slim gold bar at the very top of `Landing.tsx`, above the sticky
