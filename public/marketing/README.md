@@ -13,6 +13,14 @@ SPA catch-all rewrite (`/((?!marketing/).*)`), so a typo'd or deleted asset URL 
 instead of quietly serving the app shell — which, under the immutable header above, a browser
 would then pin at that URL for a year.
 
+**So publish the URL only AFTER the deploy is live.** MEASURED in production: a missing
+`/marketing/` path returns `404` *carrying the same* `max-age=31536000, immutable` header — the
+header rule matches on the path, not on whether the file exists. Fetch a URL before its asset
+deploys and that browser has a **404 cached for a year**, and adding the file later will not
+dislodge it. Push, wait for the Vercel deployment to go READY, confirm the URL returns `200`, and
+only then put it in a post. Same reason a typo cannot be fixed by adding the file under the
+typo'd name — use a new filename.
+
 **No guest data, ever.** Screenshots must come from the public demo apartment only — never a real
 host's page. No real guest name, no booking reference, no `?token=` or `?key=` in any URL. This
 repo is public and git objects never expire, so a mistake here cannot be undone by deleting the
