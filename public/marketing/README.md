@@ -8,6 +8,11 @@ commit, push — the filename becomes the URL, permanently.
 the old bytes for a year with no way to force a refresh. A new version needs a **new filename**
 (`…-v2.png`).
 
+**A missing `/marketing/<file>` path returns a real 404.** `vercel.json` excludes `/marketing/` from the
+SPA catch-all rewrite (`/((?!marketing/).*)`), so a typo'd or deleted asset URL fails visibly
+instead of quietly serving the app shell — which, under the immutable header above, a browser
+would then pin at that URL for a year.
+
 **No guest data, ever.** Screenshots must come from the public demo apartment only — never a real
 host's page. No real guest name, no booking reference, no `?token=` or `?key=` in any URL. This
 repo is public and git objects never expire, so a mistake here cannot be undone by deleting the

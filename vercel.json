@@ -11,7 +11,7 @@
     }
   ],
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!marketing/).*)", "destination": "/index.html" }
   ],
   "functions": {
     "api/**/*.ts": {
