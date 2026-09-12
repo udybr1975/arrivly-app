@@ -1,12 +1,12 @@
-# Marketing images
+# Marketing assets
 
 Static assets served at `https://bemgu.app/marketing/<filename>`. Drop a file in this folder,
 commit, push — the filename becomes the URL, permanently.
 
-**Additive only: never overwrite, never rename, never delete.** Files with the image extensions listed in `vercel.json` (png, jpg, jpeg, webp, svg, gif, avif — lowercase) are sent
+**Additive only: never overwrite, never rename, never delete.** Files with the asset extensions listed in `vercel.json` (png, jpg, jpeg, webp, svg, gif, avif, mp4, pdf — lowercase) are sent
 `Cache-Control: public, max-age=31536000, immutable` (see `vercel.json`), so a browser may serve
-the old bytes for a year with no way to force a refresh, and a deleted or renamed file leaves its
-URL falling through to the app shell. A new version needs a **new filename** (`…-v2.png`).
+the old bytes for a year with no way to force a refresh. A new version needs a **new filename**
+(`…-v2.png`).
 
 **No guest data, ever.** Screenshots must come from the public demo apartment only — never a real
 host's page. No real guest name, no booking reference, no `?token=` or `?key=` in any URL. This

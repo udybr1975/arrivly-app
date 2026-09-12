@@ -6,7 +6,7 @@
       "headers": [{ "key": "Referrer-Policy", "value": "strict-origin" }]
     },
     {
-      "source": "/marketing/(.*)\\.(png|jpg|jpeg|webp|svg|gif|avif)",
+      "source": "/marketing/(.*)\\.(png|jpg|jpeg|webp|svg|gif|avif|mp4|pdf)",
       "headers": [{ "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }]
     }
   ],
